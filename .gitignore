@@ -1,0 +1,43 @@
+# Rust/Cargo
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# VSCode/Editor
+.vscode/
+*.code-workspace
+.idea/
+*.swp
+*.swo
+
+# OS/Filesystem
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Build/Doc Artifacts
+*.rlib
+*.dSYM/
+doc/
+
+# Coverage/Testing
+coverage/
+*.profraw
+
+# Memory Bank and Documentation (keep these tracked!)
+!memory-bank/
+!docs/
+
+# Misc
+*.tmp
+*.bak
+
+# Ignore Repomix output
+repomix-output.xml
+
+# Project-specific/infra
+.clinerules
+.cursor
+

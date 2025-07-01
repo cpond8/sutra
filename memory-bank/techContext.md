@@ -1,0 +1,149 @@
+# Sutra Engine - Technical Context
+
+## Technology Stack
+
+### Core Language: Rust
+**Why Rust:**
+- Memory safety without garbage collection
+- Excellent performance for game engines
+- Strong type system prevents many runtime errors
+- Rich ecosystem for parsing and data structures
+- Zero-cost abstractions align with minimalism philosophy
+
+### Key Dependencies
+- **im crate**: Persistent, immutable data structures for World state
+- **serde**: Serialization for world snapshots and debugging
+- **Standard library**: Minimal external dependencies by design
+
+## Development Environment
+
+### Project Structure
+```
+sutra/
+├── Cargo.toml          # Rust project configuration
+├── src/
+│   ├── lib.rs          # Core library API
+│   ├── ast.rs          # AST types and span tracking
+│   ├── value.rs        # Runtime data values
+│   ├── world.rs        # Persistent world state
+│   ├── parser.rs       # S-expression parsing
+│   ├── atom.rs         # Irreducible operations
+│   ├── eval.rs         # Evaluation engine
+│   ├── macro.rs        # Macro expansion system
+│   ├── validate.rs     # Validation passes
+│   ├── macros_std.rs   # Standard macro library
+│   └── cli.rs          # Command-line interface
+├── tests/              # Integration tests
+├── examples/           # Example scripts and usage
+└── docs/               # Design documentation
+```
+
+### Build System
+- **Cargo**: Standard Rust build tool
+- **Tests**: Unit tests per module, integration tests for pipeline
+- **CI/CD**: GitHub Actions for automated testing
+- **Documentation**: Rust docs + custom markdown
+
+## Technical Constraints
+
+### Performance Requirements
+- Handle worlds with thousands of entities/storylets
+- Sub-millisecond evaluation for single storylets
+- Minimal memory allocation during evaluation
+- Efficient serialization for save/load
+
+### Platform Support
+- **Primary**: macOS, Linux, Windows (via Rust's cross-platform support)
+- **Future**: WASM for web deployment
+- **Architecture**: Pure library design enables any frontend
+
+## Data Structure Choices
+
+### AST Representation
+- Recursive enum for s-expressions
+- Span information for error reporting
+- No optimization or transformation in AST layer
+
+### World State
+- Persistent HashMap from `im` crate
+- Path-based addressing with type safety
+- Immutable updates with structural sharing
+- Explicit PRNG state for determinism
+
+### Value System
+- Tagged union of primitive types
+- No object-oriented features
+- Direct mapping to JSON for serialization
+- Type coercion handled explicitly
+
+## Parsing Strategy
+
+### S-Expression Parser
+- Hand-written recursive descent
+- No external parser generator dependencies
+- Robust error recovery and reporting
+- Minimal state and memory allocation
+
+### Brace-Block Translator
+- Stack-based line-oriented parser
+- Translates to canonical s-expressions
+- No semantic interpretation
+- Round-trip conversion support
+
+## Evaluation Model
+
+### Tail-Call Optimization
+- Evaluator structured as iterative loop
+- Enables unbounded recursion for simulation
+- No stack overflow for well-formed programs
+- Critical for agent-based systems
+
+### Error Handling
+- Result types throughout
+- Span preservation for user feedback
+- Multiple error collection (not fail-fast)
+- Clear separation of error categories
+
+## Extension Architecture
+
+### Registry Pattern
+- Dynamic atom and macro registration
+- Runtime introspection capabilities
+- Clean plugin boundaries
+- No recompilation for new features
+
+### Output Abstraction
+- Trait-based output system
+- Injectable for testing and UI integration
+- No hardcoded I/O or rendering
+- Multiple output streams supported
+
+## Testing Strategy
+
+### Unit Testing
+- Every module tested in isolation
+- Property-based testing for core operations
+- Golden file tests for parsing and expansion
+- Mock injection for all external dependencies
+
+### Integration Testing
+- Full pipeline tests with realistic examples
+- Regression testing on all example scripts
+- Performance benchmarking on larger worlds
+- Cross-platform compatibility testing
+
+## Deployment Considerations
+
+### Library-First Design
+- Core engine as Rust library crate
+- CLI as thin wrapper over library API
+- No global state or initialization requirements
+- Thread-safe by design (immutable data)
+
+### Future UI Integration
+- Pure API enables any frontend
+- WebAssembly compilation supported
+- Real-time introspection and debugging
+- Hot-reload for development workflows
+
+*Last Updated: 2025-06-30*
