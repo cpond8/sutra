@@ -22,13 +22,14 @@
 
 ---
 
-## **Stage 2: Canonical S-Expr Parser (COMPLETED)**
+## **Stage 2: Canonical PEG Parser (COMPLETED)**
 
-- **2.1:** **(✓)** Implement recursive s-expr parser (parens, atoms, quoted strings, numbers, symbols).
-- **2.2:** **(✓)** Robust error reporting: invalid tokens, unbalanced parens, type errors, and line numbers.
-  - **(✓)** **Risk:** Error context—add span info to AST nodes, but keep this decoupled from later stages.
-- **2.3:** **(✓)** Unit/golden tests for parser, including edge cases.
-  - **(✓)** **Improvement:** Make the parser stateless and functional; avoid mutable state or global buffers.
+- **2.1:** **(✓)** Implement a robust parser for the canonical s-expression and brace-block syntaxes **using a formal PEG (Parsing Expression Grammar)**.
+  - **(New)** The grammar will be defined in `src/sutra.pest`, serving as the single source of truth for all supported syntaxes.
+  - **(New)** The implementation will use a parser generator library (e.g., `pest`) for maximum maintainability and superior error reporting.
+- **2.2:** **(✓)** Robust error reporting with precise span information derived directly from the PEG parser.
+- **2.3:** **(✓)** Unit/golden tests for the parser covering both s-expression and brace-block inputs, including edge cases.
+- **Principle:** This approach unifies all parsing logic, ensuring consistency and long-term maintainability.
 
 ---
 
@@ -98,11 +99,9 @@
 
 ---
 
-## **Stage 9: (After MVP) Brace-Block DSL Translator**
+## **Stage 9: (After MVP) Brace-Block DSL Translator (MERGED INTO STAGE 2)**
 
-- **9.1:** Build brace-block-to-s-expr translator as a pure function/module. **Test this independently; don’t entangle with AST, macro, or world logic.**
-- **9.2:** Add CLI/test harness option for brace-block input; output canonical s-expr for debug.
-- **9.3:** Expand and refactor tests/examples to use both input modes.
+- **Note:** The implementation of the brace-block translator has been unified with the s-expression parser in Stage 2 under a single PEG-based system. This ensures a single source of truth for all syntax and consistent error handling. All work for this stage is now tracked under Stage 2.
 
 ---
 
@@ -130,23 +129,27 @@
 
 ## **Pipeline Visualization (Updated)**
 
-```text
-[ S-Expr Script ]
-      |
-[ S-Expr Parser ]
-      |
-[ Validator ] (structural)
-      |
-[ Macro System ]
-      |
-[ Validator ] (expanded)
-      |
-[ Atom Engine ]
-      |
-[ World State / Output ]
-```
+```mermaid
+graph TD
+    subgraph "Input"
+        A["S-Expr Script"]
+        B["Brace-Block Script"]
+    end
 
-**(Brace-block translator inserts only after MVP, as an optional front-end. All authoring, debugging, and testing is pipeline-aware and inspectable at each stage.)**
+    subgraph "Pipeline"
+        C["Unified PEG Parser"]
+        D["Canonical AST"]
+        E["Validator (structural)"]
+        F["Macro System"]
+        G["Validator (expanded)"]
+        H["Atom Engine"]
+        I["World State / Output"]
+    end
+
+    A --> C
+    B --> C
+    C --> D --> E --> F --> G --> H --> I
+```
 
 ---
 

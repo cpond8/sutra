@@ -48,11 +48,11 @@ parse → macro-expand → validate → evaluate → output/presentation
 
 ### Syntax System
 
-**Dual Syntax Support**
-- Brace-block syntax for accessibility
-- S-expression syntax for power users
-- One-to-one, lossless mapping between both
-- Canonical AST is always s-expression based
+**Unified PEG Parser**
+- A single, formal PEG (Parsing Expression Grammar) defined in `src/sutra.pest` serves as the single source of truth for all supported syntaxes.
+- The parser supports both s-expression and brace-block syntaxes.
+- All input is parsed into a single canonical AST (`Expr`), ensuring perfect consistency.
+- This approach provides superior error reporting and long-term maintainability.
 
 **Auto-Resolution ("Auto-Get")**
 - **Status**: Implemented in `src/eval.rs`.
@@ -66,7 +66,8 @@ parse → macro-expand → validate → evaluate → output/presentation
 - **ast.rs** - AST types and span tracking
 - **value.rs** - Runtime data values
 - **world.rs** - Persistent world state
-- **parser.rs** - S-expression parsing
+- **sutra.pest** - Formal PEG grammar for all syntaxes
+- **parser.rs** - Unified PEG-based parser
 - **atom.rs** - Irreducible operations
 - **eval.rs** - Evaluation engine with TCO
 - **macro.rs** - Macro expansion system
@@ -74,7 +75,6 @@ parse → macro-expand → validate → evaluate → output/presentation
 
 ### Extension Modules
 - **macros_std.rs** - Standard narrative/gameplay macros
-- **brace_translator.rs** - Brace-block to s-expr conversion
 - **cli.rs** - Command-line interface
 
 ## Design Patterns

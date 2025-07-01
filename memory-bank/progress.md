@@ -9,8 +9,9 @@
     - `src/value.rs`: `Value` enum for all runtime data.
     - `src/world.rs`: `World` struct for immutable state.
     - `src/error.rs`: Unified `SutraError` and `SutraErrorKind`.
-- **Stage 2: S-Expression Parser**:
-    - `src/parser.rs`: Functional recursive-descent parser for S-expressions.
+- **Stage 2: Unified PEG Parser**:
+    - **(Refactoring)** The existing parser is being upgraded to a unified PEG-based system to handle both s-expression and brace-block syntaxes from a single formal grammar (`src/sutra.pest`).
+    - `src/parser.rs`: Will be refactored to use the `pest` library.
 - **Stage 3: Atom Engine (Fully Implemented & Tested)**:
     - `src/eval.rs`: Evaluation loop and "auto-get" symbol resolution implemented.
     - `src/atoms_std.rs`: Complete Tier 1 atom set implemented (`set!`, `del!`, `get`, `+`, `-`, `*`, `/`, `eq?`, `gt?`, `lt?`, `not`, `cond`, `list`, `len`).
@@ -78,17 +79,8 @@
 **Dependencies:** Stages 1-6
 **Risk:** Medium - requires balancing power and simplicity
 
-### Stage 8: Brace-Block Translator (Not Started)
-**Alternative Syntax Support:**
-
-- Line-oriented parser for brace-block syntax
-- Lossless conversion to canonical s-expressions
-- Round-trip testing and validation
-- Integration with CLI and tooling
-
-**Estimated Effort:** 1-2 weeks
-**Dependencies:** Stage 2 (parser foundation)
-**Risk:** Low - well-specified translation rules
+### Stage 8: Brace-Block Translator (MERGED INTO STAGE 2)
+**Note:** This stage has been merged into the work for Stage 2. The new unified PEG parser will handle both syntaxes, removing the need for a separate translator module.
 
 ## Current Status Assessment
 

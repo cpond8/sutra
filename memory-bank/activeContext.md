@@ -18,10 +18,19 @@
 
 ## Next Steps (Immediate Priority)
 
-1.  **Implement Macro Expansion Logic**:
+1.  **Implement Unified PEG Parser**:
+    - **Priority:** This is the new immediate priority, as a robust parser is a prerequisite for further macro development.
+    - **Action:** Refactor `src/parser.rs` to use the `pest` library, driven by a new formal grammar file `src/sutra.pest`.
+    - **Goal:** The new parser must handle both s-expression and brace-block syntaxes, producing the identical canonical `Expr` AST for both.
+    - **Testing:** Create `tests/parser_tests.rs` with comprehensive golden files to ensure correctness and parity.
+
+2.  **Implement Macro Expansion Logic**:
+    - **Dependency:** Blocked until the unified parser is complete.
     - Flesh out the `expand_macros` function in `src/macro.rs`. This involves recursively traversing the AST and applying transformations for any registered macros.
     - Implement recursion depth limiting to prevent infinite loops.
-2.  **Implement Standard Macros**:
+
+3.  **Implement Standard Macros**:
+    - **Dependency:** Blocked until macro expansion logic is complete.
     - Begin implementing the first standard macros (e.g., `storylet`, `choice`) in `src/macros_std.rs` and register them.
     - Create a new test file, `tests/macro_expansion_tests.rs`, to validate the expansion logic.
 

@@ -66,23 +66,19 @@
 
 ---
 
-## **Stage 2: S-Expr Parser**
+## **Stage 2: Unified PEG Parser**
 
 - **/src/parser.rs**
+    - `pub fn parse(source: &str) -> Result<Expr, SutraError>`
+    - **Unified PEG-based parser for both s-expression and brace-block syntaxes.**
+    - Uses the formal grammar from `src/sutra.pest`.
+    - **No macro or world dependency.** Pure, stateless.
 
-    - `parse_sexpr(&str) -> Result<Expr, Error>`
-
-    - Recursive descent, minimal state
-
-    - Error types with span info
-
-    - **No macro or world dependency**
-
-    - _Pure, stateless_
+- **/src/sutra.pest**
+    - The formal PEG grammar defining both the canonical s-expression and the author-friendly brace-block syntax.
 
 - **Testing:**
-
-    - Golden tests for valid/invalid input, edge cases
+    - Golden tests for valid/invalid input, edge cases, and syntax parity.
 
 
 ---
@@ -240,23 +236,9 @@
 
 ---
 
-## **Stage 9: (After Core) Brace-Block Translator**
+## **Stage 9: (After Core) Brace-Block Translator (MERGED INTO STAGE 2)**
 
-- **/src/brace_translator.rs**
-
-    - `brace_to_sexpr(input: &str) -> Result<String, Error>`
-
-    - Pure, line-oriented, stack-based parser
-
-    - Golden file tests (brace DSL → s-expr)
-
-    - **No dependency on macro, world, atom**
-
-    - CLI/test harness integration
-
-- **Testing:**
-
-    - Round-trip tests (brace → s-expr → AST → macroexpand)
+- **Note:** This module is no longer needed as its functionality is now integrated into the unified parser in `src/parser.rs`.
 
 
 ---
@@ -282,14 +264,14 @@
 |value.rs|Data values, conversions, serialization|std, im|
 |world.rs|Persistent world state|value, im|
 |error.rs|Error types, pretty-printing|std|
-|parser.rs|S-expr → AST|ast, error|
+|**parser.rs**|**Unified PEG Parser (S-Expr/Brace) → AST**|**ast, error, pest**|
+|**sutra.pest**|**Formal PEG Grammar**|**-**|
 |atom.rs|Atom functions|ast, value, world, error|
 |eval.rs|Eval engine|ast, atom, world, value, error|
 |macro.rs|Macro system|ast, value, error|
 |macros_std.rs|Narrative/gameplay macro patterns|macro, ast|
 |validate.rs|Structural & semantic validation|ast, macro, error|
 |cli.rs/bin/|CLI/test harness|lib API|
-|brace_translator.rs|Brace DSL → s-expr|std, error|
 |examples/, docs/|Content, tests, docs|none|
 
 ---
@@ -435,19 +417,7 @@
 
 ---
 
-### **brace_translator.rs**
-
-- **Check:**
-
-    - Translator should output _only_ canonical s-expr—never AST or world data.
-
-- **Potential Flaw:**
-
-    - Make sure error reporting in the translator includes both DSL location and s-expr location for debugging.
-
-- **Opportunity:**
-
-    - Support round-trip tests and “show translated output” for all examples.
+*This section has been removed as `brace_translator.rs` is obsolete.*
 
 
 ---

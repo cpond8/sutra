@@ -152,22 +152,25 @@ impl std::error::Error for SutraError { /* ... */ }
 
 # **5. src/parser.rs**
 
-> **Principle:** Stateless, pure, source-to-AST, never semantic validation.
+> **Principle:** Stateless, pure, unified, and formally defined via PEG.
 
 ```rust
 use crate::ast::{Expr, Span};
 use crate::error::SutraError;
 
-pub fn parse_sexpr(source: &str) -> Result<Expr, SutraError>;
+// The unified parser for all Sutra syntaxes.
+// It will intelligently dispatch to the correct top-level
+// grammar rule (s-expression or brace-block) based on input.
+pub fn parse(source: &str) -> Result<Expr, SutraError>;
 ```
 
 **Notes:**
 
-- Pure function; never mutates or checks semantics.
-
-- Returns the full source tree with spans.
-
-- Testable in isolation.
+- This module is a thin wrapper around a `pest`-based parser.
+- The formal grammar is defined in `src/sutra.pest`.
+- Contains a private `ast_mapper` submodule to handle the transformation from `pest`'s CST to our canonical `Expr` AST. This mapping logic is rigorously unit-tested.
+- Pure function; never mutates or performs semantic validation.
+- Testable in isolation with golden files for both syntaxes.
 
 
 ---
@@ -333,21 +336,9 @@ pub fn validate_semantics(expr: &Expr) -> Vec<SutraError>;
 
 ---
 
-# **11. src/brace_translator.rs**
+# **11. src/brace_translator.rs (REMOVED)**
 
-> **Principle:** Stateless, pure, no coupling to core logic.
-
-```rust
-use crate::error::SutraError;
-
-pub fn brace_to_sexpr(source: &str) -> Result<String, SutraError>;
-```
-
-**Notes:**
-
-- Translates block-brace DSL to canonical s-expr as a string, never to AST or value.
-
-- Error spans point to DSL, not s-expr.
+> This module has been removed. Its functionality is now part of the unified PEG parser in `src/parser.rs`.
 
 
 ---

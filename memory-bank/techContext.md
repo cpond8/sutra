@@ -14,6 +14,8 @@
 - **im**: For persistent, immutable data structures (`im = "15.1.0"`).
 - **rand**: Core random number generation traits and utilities (`rand = "0.8.5"`).
 - **rand_xoshiro**: A specific, high-performance, seedable PRNG implementation (`rand_xoshiro = "0.6.0"`).
+- **pest**: A powerful, expressive PEG (Parsing Expression Grammar) parser generator (`pest = "2.0"`).
+- **pest_derive**: The derive macro for `pest` (`pest_derive = "2.0"`).
 - **serde**: (Planned) For serialization of world snapshots and debugging.
 - **Standard library**: Used extensively to keep external dependencies minimal.
 
@@ -28,7 +30,8 @@ sutra/
 │   ├── ast.rs          # AST types and span tracking
 │   ├── value.rs        # Runtime data values
 │   ├── world.rs        # Persistent world state
-│   ├── parser.rs       # S-expression parsing
+│   ├── sutra.pest      # Formal PEG grammar for all syntaxes
+│   ├── parser.rs       # Unified PEG-based parser
 │   ├── atom.rs         # Irreducible operations
 │   ├── eval.rs         # Evaluation engine
 │   ├── macro.rs        # Macro expansion system
@@ -80,17 +83,12 @@ sutra/
 
 ## Parsing Strategy
 
-### S-Expression Parser
-- Hand-written recursive descent
-- No external parser generator dependencies
-- Robust error recovery and reporting
-- Minimal state and memory allocation
-
-### Brace-Block Translator
-- Stack-based line-oriented parser
-- Translates to canonical s-expressions
-- No semantic interpretation
-- Round-trip conversion support
+### Unified PEG Parser
+- A single, formal PEG (Parsing Expression Grammar) is defined in `src/sutra.pest`. This file is the single source of truth for all supported syntaxes.
+- The parser is built using the `pest` library, which provides excellent performance and rich, precise error reporting.
+- It handles both canonical s-expression syntax and the author-friendly brace-block syntax.
+- The parser's sole responsibility is to transform source text into the canonical `Expr` AST, with no semantic interpretation.
+- This unified approach ensures maximum maintainability, consistency, and transparency.
 
 ## Evaluation Model
 
