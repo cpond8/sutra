@@ -18,16 +18,21 @@
     - `tests/core_eval_tests.rs`: A comprehensive integration test suite validates the parser, all atoms, and the full evaluation pipeline. All tests passing.
 - **Module Integration**: All modules correctly declared in `src/lib.rs`.
 
+### In Progress: Foundational Scaffolding (Stage 4)
+- **`src/macro.rs`**: Foundational structures for the macro system (`MacroFn`, `MacroRegistry`) are defined.
+- **`src/macros_std.rs`**: Placeholder module for the standard macro library is in place.
+- **Module Integration**: New modules are correctly declared in `src/lib.rs`.
+
 ### Completed: Comprehensive Design Phase
 - **Architectural Foundation**: Core philosophy, atom/macro specs, pipeline design are all documented and stable.
 - **Implementation Planning**: The 10-stage plan and per-file breakdowns are complete.
 
 ## What's Left to Build
 
-### Stage 4: Macro System (Not Started)
+### Stage 4: Macro System (In Progress)
 **Major Components:**
 
-- Pattern-matching macro expansion
+- **(Next)** Pattern-matching macro expansion
 - Hygiene system for variable scoping
 - Standard macro library (storylet, choice, pool, etc.)
 - Expansion tracing for debugging
@@ -142,4 +147,4 @@
 - **User macro system design** - security and namespace management
 - **Advanced tooling requirements** - editor support, visual debugging
 
-*Last Updated: 2025-06-30*
+*Last Updated: 2025-07-01*

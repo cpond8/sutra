@@ -1,5 +1,7 @@
 # **Sutra Engine: Module/File Plan**
 
+*Last Updated: 2025-07-01*
+
 ---
 
 ## **Stage 0: Project Bootstrapping**

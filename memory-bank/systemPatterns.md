@@ -80,7 +80,7 @@ parse → macro-expand → validate → evaluate → output/presentation
 ## Design Patterns
 
 ### Registry Pattern
-- **Status**: Implemented in `src/atom.rs`.
+- **Status**: Implemented in `src/atom.rs`. Foundational structures for the macro registry have been created in `src/macro.rs`.
 - Atoms and macros stored in inspectable registries.
 - The `AtomFn` signature is `fn(args: &[Expr], context: &mut EvalContext) -> Result<(Value, World), SutraError>`, ensuring all evaluation context is passed explicitly.
 - Runtime introspection of available operations.
@@ -127,4 +127,4 @@ parse → macro-expand → validate → evaluate → output/presentation
 - Plugin architecture through registries
 - No core engine modifications required for new features
 
-*Last Updated: 2025-06-30*
+*Last Updated: 2025-07-01*

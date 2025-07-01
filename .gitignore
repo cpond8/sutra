@@ -34,9 +34,6 @@ coverage/
 *.tmp
 *.bak
 
-# Ignore Repomix output
-repomix-output.xml
-
 # Project-specific/infra
 .clinerules
 .cursor

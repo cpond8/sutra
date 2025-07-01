@@ -3,22 +3,27 @@
 ## Current Work Focus
 
 **Phase**: Stage 4 Implementation (Macro System)
-**Priority**: Implementing the foundational components of the macro expansion engine.
+**Priority**: Implementing the core macro expansion logic.
 
-### Recent Changes (2025-06-30)
+### Recent Changes (2025-07-01)
+- **Began Stage 4: Macro System**:
+  - **Created `src/macro.rs`**: Established the foundational structures for the macro system, including `MacroFn` and `MacroRegistry`.
+  - **Created `src/macros_std.rs`**: Added the placeholder module for the standard macro library.
+  - **Integrated Modules**: Declared the new modules in `src/lib.rs`.
 - **Completed Stage 3: Atom Engine**:
-  - **Full Tier 1 Atom Set**: Implemented the complete standard library of atoms in `src/atoms_std.rs`, including math (`-`, `*`, `/`), predicates (`gt?`, `lt?`, `not`), and data operations (`get`, `list`, `len`).
-  - **Auto-Get Implemented**: Modified `src/eval.rs` to automatically resolve symbols (e.g., `player.hp`) to their corresponding values in the world state, a core authoring-experience feature.
-  - **Path Bug Fixed**: Corrected a subtle but critical bug in `set!`, `get!`, and `del!` where path expressions like `(list "player" "hp")` were being misinterpreted.
-  - **Comprehensive Test Suite**: Created `tests/core_eval_tests.rs`, which validates the parser, all atoms, and the full evaluation pipeline. All tests are passing.
+  - **Full Tier 1 Atom Set**: Implemented the complete standard library of atoms in `src/atoms_std.rs`.
+  - **Auto-Get Implemented**: Modified `src/eval.rs` to automatically resolve symbols.
+  - **Path Bug Fixed**: Corrected path handling in `set!`, `get!`, and `del!`.
+  - **Comprehensive Test Suite**: Created `tests/core_eval_tests.rs` with full coverage for Stages 0-3.
 
 ## Next Steps (Immediate Priority)
 
-1.  **Begin Stage 4: Macro System**:
-    - Create `src/macro.rs` to define the `MacroFn` type, the macro registry, and the core macro expansion logic.
-    - Create `src/macros_std.rs` to house the standard macro definitions (e.g., `storylet`, `choice`).
-    - The immediate goal is to create the structural foundation for the macro system, which will be built upon in subsequent tasks.
-2.  **Update Implementation Plans**: Ensure all `docs/*.md` files accurately reflect the completion of Stage 3 and the plan for Stage 4.
+1.  **Implement Macro Expansion Logic**:
+    - Flesh out the `expand_macros` function in `src/macro.rs`. This involves recursively traversing the AST and applying transformations for any registered macros.
+    - Implement recursion depth limiting to prevent infinite loops.
+2.  **Implement Standard Macros**:
+    - Begin implementing the first standard macros (e.g., `storylet`, `choice`) in `src/macros_std.rs` and register them.
+    - Create a new test file, `tests/macro_expansion_tests.rs`, to validate the expansion logic.
 
 ## Active Decisions and Considerations
 

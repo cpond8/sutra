@@ -3,6 +3,8 @@ pub mod atom;
 pub mod atoms_std;
 pub mod error;
 pub mod eval;
+pub mod r#macro;
+pub mod macros_std;
 pub mod parser;
 pub mod value;
 pub mod world;

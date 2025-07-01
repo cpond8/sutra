@@ -1,5 +1,7 @@
 Here is a **carefully considered, refined, per-file breakdown** for the Sutra core, with type sketches and public API signatures. Every aspect has been revisited for clarity, modularity, and future-proofing. Design notes are included at each step.
 
+*Last Updated: 2025-07-01*
+
 ---
 
 # **1. src/ast.rs**
