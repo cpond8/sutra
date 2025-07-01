@@ -11,9 +11,11 @@
 - Zero-cost abstractions align with minimalism philosophy
 
 ### Key Dependencies
-- **im crate**: Persistent, immutable data structures for World state
-- **serde**: Serialization for world snapshots and debugging
-- **Standard library**: Minimal external dependencies by design
+- **im**: For persistent, immutable data structures (`im = "15.1.0"`).
+- **rand**: Core random number generation traits and utilities (`rand = "0.8.5"`).
+- **rand_xoshiro**: A specific, high-performance, seedable PRNG implementation (`rand_xoshiro = "0.6.0"`).
+- **serde**: (Planned) For serialization of world snapshots and debugging.
+- **Standard library**: Used extensively to keep external dependencies minimal.
 
 ## Development Environment
 

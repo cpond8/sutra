@@ -56,9 +56,9 @@ This memory bank was synthesized from analysis of these comprehensive design doc
 4. **A_LANGUAGE_SPEC.md** - Formal specification of Tier 1 atoms and macros
 5. **B_STORYLET_SPEC.md** - Storylet system specification for narrative content
 6. **C_THREAD_SPEC.md** - Thread system for modular narrative flows
-7. **i. implementation_outline.md** - 10-stage implementation roadmap
-8. **ii. implementation_file_plan.md** - Module structure and file organization
-9. **iii. implementation_per_file_plan.md** - Detailed per-file API and type specifications
+7. **i_implementation_outline.md** - 10-stage implementation roadmap
+8. **ii_implementation_file_plan.md** - Module structure and file organization
+9. **iii_implementation_per_file_plan.md** - Detailed per-file API and type specifications
 
 ## Memory Bank Usage
 

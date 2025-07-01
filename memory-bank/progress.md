@@ -2,71 +2,27 @@
 
 ## What Works (Current State)
 
+### Completed: Foundational Scaffolding (Stages 0-3)
+- **Project Structure**: `Cargo.toml` configured and `tests/` directory created.
+- **Stage 1: Core Data Types**:
+    - `src/ast.rs`: `Expr` and `Span` for the AST.
+    - `src/value.rs`: `Value` enum for all runtime data.
+    - `src/world.rs`: `World` struct for immutable state.
+    - `src/error.rs`: Unified `SutraError` and `SutraErrorKind`.
+- **Stage 2: S-Expression Parser**:
+    - `src/parser.rs`: Functional recursive-descent parser for S-expressions.
+- **Stage 3: Atom Engine (Fully Implemented & Tested)**:
+    - `src/eval.rs`: Evaluation loop and "auto-get" symbol resolution implemented.
+    - `src/atoms_std.rs`: Complete Tier 1 atom set implemented (`set!`, `del!`, `get`, `+`, `-`, `*`, `/`, `eq?`, `gt?`, `lt?`, `not`, `cond`, `list`, `len`).
+    - `src/world.rs`: `set` and `del` methods fully implemented with recursive helpers.
+    - `tests/core_eval_tests.rs`: A comprehensive integration test suite validates the parser, all atoms, and the full evaluation pipeline. All tests passing.
+- **Module Integration**: All modules correctly declared in `src/lib.rs`.
+
 ### Completed: Comprehensive Design Phase
-**Architectural Foundation (100% Complete)**
-
-- Core philosophy and principles fully documented
-- Complete atom set specification with rationale
-- Macro system architecture and expansion rules
-- Standard macro library specification (Tiers 1-3)
-- Dual syntax specification (brace-block ↔ s-expression)
-- Full pipeline design (parse → expand → validate → eval → output)
-
-**Implementation Planning (100% Complete)**
-
-- 10-stage implementation roadmap
-- Complete module/file structure plan
-- Per-file API signatures and type sketches
-- Dependency analysis and module boundaries
-- Testing strategy for each component
-
-**Narrative Design Integration (100% Complete)**
-
-- Emily Short QBN pattern mapping to Sutra macros
-- Storylet, pool, and history system specifications
-- Thread system for modular narrative flows
-- Grammar and dynamic text generation patterns
-- Complete authoring pattern cookbook
+- **Architectural Foundation**: Core philosophy, atom/macro specs, pipeline design are all documented and stable.
+- **Implementation Planning**: The 10-stage plan and per-file breakdowns are complete.
 
 ## What's Left to Build
-
-### Stage 1: Core Data Types (Not Started)
-**Immediate Next Steps:**
-
-- `Expr` enum for AST representation with span tracking
-- `Value` enum for runtime data (Number, String, Bool, List, Map)
-- `World` struct with persistent immutable state
-- `SutraError` type with comprehensive error reporting
-- Basic serialization and debug formatting
-
-**Estimated Effort:** 1-2 weeks
-**Dependencies:** None
-**Risk:** Low - well-specified, straightforward implementation
-
-### Stage 2: S-Expression Parser (Not Started)
-**Requirements:**
-
-- Pure, stateless recursive descent parser
-- Robust error reporting with source spans
-- Support for symbols, strings, numbers, booleans, lists
-- Comprehensive test suite with edge cases
-
-**Estimated Effort:** 1-2 weeks
-**Dependencies:** Stage 1 (AST types)
-**Risk:** Low - standard parsing problem with clear specification
-
-### Stage 3: Atom Engine (Not Started)
-**Core Implementation:**
-
-- Registry pattern for atom dispatch
-- All Tier 1 atoms: state mutations, math, predicates, control flow
-- Tail-call optimized evaluator
-- Output injection for testability
-- Comprehensive atom test suite
-
-**Estimated Effort:** 2-3 weeks
-**Dependencies:** Stages 1-2
-**Risk:** Medium - TCO implementation and registry design need care
 
 ### Stage 4: Macro System (Not Started)
 **Major Components:**
@@ -153,9 +109,8 @@
 ## Known Issues and Technical Debt
 
 ### Current Issues
-- No implementation yet - purely design phase
-- Some design decisions may need revision during implementation
-- Performance characteristics not yet validated
+- Performance characteristics not yet validated with large-scale content.
+- Macro system is the next major implementation step and carries significant complexity.
 
 ### Future Technical Debt Risks
 - **Macro system feature creep** - need to resist adding too many convenience macros

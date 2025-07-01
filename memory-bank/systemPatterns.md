@@ -55,9 +55,10 @@ parse → macro-expand → validate → evaluate → output/presentation
 - Canonical AST is always s-expression based
 
 **Auto-Resolution ("Auto-Get")**
-- Authors never write explicit `get` operations
-- Path references automatically resolve to values
-- Clean, spreadsheet-like authoring experience
+- **Status**: Implemented in `src/eval.rs`.
+- Authors never write explicit `get` operations.
+- Path references (e.g., `player.hp`) are automatically resolved to values from the world state during evaluation.
+- This provides a clean, spreadsheet-like authoring experience.
 
 ## Module Boundaries
 
@@ -79,14 +80,17 @@ parse → macro-expand → validate → evaluate → output/presentation
 ## Design Patterns
 
 ### Registry Pattern
-- Atoms and macros stored in inspectable registries
-- Runtime introspection of available operations
-- Clean extension point for new functionality
+- **Status**: Implemented in `src/atom.rs`.
+- Atoms and macros stored in inspectable registries.
+- The `AtomFn` signature is `fn(args: &[Expr], context: &mut EvalContext) -> Result<(Value, World), SutraError>`, ensuring all evaluation context is passed explicitly.
+- Runtime introspection of available operations.
+- Clean extension point for new functionality.
 
 ### Output Injection
-- All output handled through injectable traits
-- Enables testing, UI integration, and custom rendering
-- No global or hardcoded I/O
+- **Status**: Implemented in `src/atom.rs`.
+- All output handled through injectable traits (`OutputSink`).
+- Enables testing, UI integration, and custom rendering.
+- No global or hardcoded I/O.
 
 ### Error Handling
 - Span-based error reporting throughout pipeline

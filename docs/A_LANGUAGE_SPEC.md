@@ -17,15 +17,18 @@ All design choices are explained in context of Sutra’s guiding principles: min
 
 ## Tier 1 Table: Canonical Atoms and Macros
 
+> **Note:** Features marked with `(implemented)` are complete. Others are planned.
+
 | Category   | Atoms (irreducible core)                                         | Macros (author-facing, expand to atoms)                                                               |
 | ---------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Predicate  | `eq?`, `gt?`, `lt?`, `gte?`, `lte?`, `has?`, `exists?`           | `is?`, `over?`, `under?`, `at-least?`, `at-most?`, `has?` (macro alias), `not`, `and`, `or`, `empty?` |
-| Assignment | `set!`, `add!`, `sub!`, `mul!`, `div!`, `push!`, `pull!`, `del!` | `inc!`, `dec!`                                                                                        |
-| Math/Value | `+`, `-`, `*`, `/`, `min`, `max`, `abs`, `mod`, `count`          | (optional: macro wrappers for auto-get)                                                               |
-| Control    | `cond`, `do`                                                     | `if`, `when`, `else`, `let`, `for-each`                                                               |
+| Predicate  | `eq?` (implemented), `gt?` (implemented), `lt?` (implemented), `not` (implemented), `gte?`, `lte?`, `has?`, `exists?` | `is?`, `over?`, `under?`, `at-least?`, `at-most?`, `has?` (macro alias), `and`, `or`, `empty?`      |
+| Assignment | `set!` (implemented), `del!` (implemented), `add!`, `sub!`, `mul!`, `div!`, `push!`, `pull!` | `inc!`, `dec!`                                                                                        |
+| Data       | `get` (implemented), `list` (implemented), `len` (implemented)   | (N/A)                                                                                                 |
+| Math/Value | `+` (implemented), `-` (implemented), `*` (implemented), `/` (implemented), `min`, `max`, `abs`, `mod` | (N/A)                                                                                                 |
+| Control    | `cond` (implemented), `do`                                       | `if`, `when`, `else`, `let`, `for-each`                                                               |
 | Output     | `print`                                                          | —                                                                                                     |
 | Random     | `rand`                                                           | `chance?`                                                                                             |
-| Utility    | `auto-get` (built-in macroexpansion)                             | `path`, `first`, `last`, `nth` (deferred, not part of Tier 1)                                         |
+| Utility    | `auto-get` (implemented evaluator feature)                       | `path`, `first`, `last`, `nth` (deferred)                                                             |
 | Debug      | (future/reserved)                                                | `debug`, `fail`, `error`, `assert` (not part of Tier 1)                                               |
 
 ---
@@ -46,7 +49,7 @@ All design choices are explained in context of Sutra’s guiding principles: min
 | `not`       | `not`             | Logical negation.                     |
 | `and`       | `and`             | Logical AND (all predicates true).    |
 | `or`        | `or`              | Logical OR (any predicate true).      |
-| `empty?`    | `eq?` + `count`   | Collection at path has zero elements. |
+| `empty?`    | `eq?` + `len`     | Collection at path has zero elements. |
 
 **Example:**
 
@@ -100,7 +103,7 @@ All basic math/value operations are atoms and always author-facing; no macro wra
 | `max`   | Maximum              | max 1 6<br>max (get hp) 10 |
 | `abs`   | Absolute value       | abs -7<br>abs (get hp)     |
 | `mod`   | Modulo               | mod 10 4<br>mod (get hp) 3 |
-| `count` | Collection length    | count (get items)          |
+| `len`   | Collection length    | len (get items)            |
 
 > Authors may pass values or `(get path)`.
 > Optional macro for auto-get is allowed, but not required.
@@ -238,18 +241,18 @@ _(In a UI, the engine can also auto-show “locked” choices or feedback if des
 ### **Rationale**
 
 - Self-documenting intent (“this is a cost/resource gate”).
-    
+
 - Clean, repeatable authoring of pay-to-act, affordance, or ability-gated options.
-    
+
 - Enables system/UI to consistently show/hide/grey out options and track resource cost patterns.
-    
+
 
 ### **Edge Cases**
 
 - Author is responsible for handling the cost deduction or custom “can’t afford” messaging.
-    
+
 - Can nest, or combine with multiple requires in a single choice block for multi-resource gates.
-    
+
 
 ---
 
@@ -287,18 +290,18 @@ _(Engine runs these threshold blocks after every state mutation.)_
 ### **Rationale**
 
 - Eliminates scattered menace/fail/loop checks; centralizes all critical triggers.
-    
+
 - Author can manage all event triggers from one place.
-    
+
 - Engine/system can display tension, meter, or drama more easily.
-    
+
 
 ### **Edge Cases**
 
 - Trigger can be one-shot (default) or repeatable if designed so.
-    
+
 - If multiple thresholds can fire at once, engine defines order (first-match, all, priority).
-    
+
 
 ---
 
@@ -338,18 +341,18 @@ _(Or, if steps are modular, triggers the corresponding thread/step.)_
 ### **Rationale**
 
 - Encapsulates open-ended navigation without authoring extra logic per move.
-    
+
 - Makes “hub zones” safe, extensible, and visualizable.
-    
+
 - Reduces copy/paste and navigation spaghetti.
-    
+
 
 ### **Edge Cases**
 
 - Can be nested inside a thread, or global (e.g., world map).
-    
+
 - Spokes can have their own gating (using `requires`).
-    
+
 
 ---
 
@@ -374,7 +377,7 @@ _System automatically triggers the event with the highest current weight._
 ### **Macro Expansion**
 
 - Evaluates all candidate weights, triggers one with the highest value:
-    
+
 
 ```lisp
 (let { candidates [ ... ] }
@@ -384,21 +387,21 @@ _System automatically triggers the event with the highest current weight._
 ```
 
 - `max-by-weight` is an engine/system utility.
-    
+
 
 ### **Rationale**
 
 - Enables dynamic, systemic content surfacing.
-    
+
 - Authors can express both emergent narrative and “director” logic in one block.
-    
+
 
 ### **Edge Cases**
 
 - Weight can be static or computed.
-    
+
 - Engine can randomize among ties, or use secondary keys.
-    
+
 
 ---
 
@@ -434,21 +437,21 @@ _Automatically fires when the player’s location becomes "kitchen"._
 ```
 
 - Typically, the engine watches for `player.location` changes and checks all `at` blocks.
-    
+
 
 ### **Rationale**
 
 - Centralizes location-based events.
-    
+
 - Avoids scattering “arrival” logic in many different places.
-    
+
 
 ### **Edge Cases**
 
 - Can trigger once or be repeatable, per author logic.
-    
+
 - Can combine with `requires`/`threshold` for extra gating.
-    
+
 
 ---
 
@@ -484,21 +487,21 @@ _Engine automatically executes this block each world tick._
 ```
 
 - The engine triggers all `tick` macros at the start/end of each simulation step.
-    
+
 
 ### **Rationale**
 
 - Centralizes all simulation/agent logic.
-    
+
 - Easy to extend and maintain complex worlds.
-    
+
 
 ### **Edge Cases**
 
 - Can have multiple `tick` blocks (run in order of appearance or by tag).
-    
+
 - Can be combined with `threshold` for dynamic loops.
-    
+
 
 ---
 
@@ -552,16 +555,16 @@ Expands to a `choice` block that records an intent variable and executes side-ef
 ### **Rationale**
 
 - Makes reflective/roleplay choices a first-class authoring pattern.
-    
+
 - Encourages more expressive, reactive narratives.
-    
+
 
 ### **Edge Cases**
 
 - Can store the last selected intent, or accumulate a history (with `push!`).
-    
+
 - Can be combined with gating/thresholds for advanced branching.
-    
+
 
 ---
 
@@ -577,11 +580,11 @@ Expands to a `choice` block that records an intent variable and executes side-ef
 
 ### **1. Pool Declaration (`pool`)**
 
-- **Purpose:**  
+- **Purpose:**
     Define a set of eligible storylets/events, by explicit list, tag, or query.
-    
+
 - **Syntax:**
-    
+
     ```sutra
     pool {
       (storylet "find-clue"   (tag discovery))
@@ -589,29 +592,29 @@ Expands to a `choice` block that records an intent variable and executes side-ef
       (storylet "find-food"   (tag resource) (weight 1))
     }
     ```
-    
+
     Or, by tag:
-    
+
     ```sutra
     pool (tag discovery)
     ```
-    
+
     Filtered:
-    
+
     ```sutra
     pool (tag danger) exclude seen
     ```
-    
+
 
 ---
 
 ### **2. Selection Macros (`select`, `random`, `sample`, `shuffle`)**
 
-- **Purpose:**  
+- **Purpose:**
     Choose one or more events from a pool by weight, randomness, or sampling, possibly excluding seen events.
-    
+
 - **Syntax:**
-    
+
     ```sutra
     select from pool {
       (storylet "find-clue"   (weight player.menace))
@@ -619,67 +622,67 @@ Expands to a `choice` block that records an intent variable and executes side-ef
       (storylet "rest"        (weight 1))
     }
     ```
-    
+
     Random pick:
-    
+
     ```sutra
     random from pool (tag resource)
     ```
-    
+
     Sample N:
-    
+
     ```sutra
     sample 2 from pool (tag discovery) exclude seen
     ```
-    
+
     Shuffle:
-    
+
     ```sutra
     shuffle pool (tag rumor)
     ```
-    
+
 
 ---
 
 ### **3. History Tracking (`history`, `seen`, `exclude`)**
 
-- **Purpose:**  
+- **Purpose:**
     Track and gate seen events, enable “no repeats,” achievements, recaps, and replayability.
-    
-- **Syntax:**  
+
+- **Syntax:**
     Mark event as tracked:
-    
+
     ```sutra
     storylet "find-clue" (tag discovery) history {
       print "You find a cryptic note."
     }
     ```
-    
+
     Exclude already-seen:
-    
+
     ```sutra
     sample 1 from pool (tag event) exclude seen
     ```
-    
+
     Check if seen:
-    
+
     ```sutra
     if seen "find-clue" {
       print "You already found the clue here."
     }
     ```
-    
+
 
 ---
 
 ### **4. Metadata and Tag Syntax**
 
 - **Use parenthesized, space-separated key-value pairs:**
-    
+
     - `(tag danger)` `(weight 2)` `(area forest)`
-        
+
     - Multiple tags/fields: `(tag danger) (weight player.menace) (region east)`
-        
+
 
 ---
 
@@ -699,20 +702,20 @@ tick {
 ```
 
 - Pools and sampling can be filtered/tagged and are extensible by agent, group, or context.
-    
+
 
 ---
 
 ### **6. Implementation Notes**
 
 - **Parser:**
-    
+
     - Block/brace structure, s-expr–style metadata.
-        
+
 - **Engine:**
-    
+
     - Pool construction, random/weighted selection, history tracking are all O(N) and scalable.
-        
+
 
 ---
 
@@ -722,47 +725,47 @@ tick {
 
 ### **1. Variable and Expression Interpolation**
 
-- **Syntax:**  
+- **Syntax:**
     Use braces `{ ... }` inside quoted text for variables or expressions.
-    
+
 - **Examples:**
-    
+
     ```sutra
     print "Welcome, {player.name}!"
     print "You have {player.gold} gold."
     print "Your HP is now {+ player.hp 5}."
     print "Inventory: {count player.items} items."
     ```
-    
+
 - **No string concatenation or macro clutter required.**
-    
+
 
 ---
 
 ### **2. Inline Random Fragment Insertion (Symbolic Pattern)**
 
-- **Syntax:**  
+- **Syntax:**
     Use braces with `|` pipe symbol: `{option1|option2|option3}`
-    
+
 - **Examples:**
-    
+
     ```sutra
     print "You find a {rusty|shiny|ancient} key."
     print "You spot a {blue|red|yellow} door."
     print "Your rival is {player.rival|a stranger|nobody}."
     ```
-    
+
 - **Notes:**
-    
+
     - No keywords/macro words in text; parser/engine samples at runtime.
-        
+
 
 ---
 
 ### **3. Template/Grammar Expansion**
 
 - **Grammar Definition Syntax:**
-    
+
     ```sutra
     define grammar {
       adjective ["sleepy" "fierce" "luminous"]
@@ -771,17 +774,17 @@ tick {
       place     ["forest" "clearing" "ruins"]
     }
     ```
-    
-- **Referencing slots in text:**  
+
+- **Referencing slots in text:**
     Use `[slot]`, e.g.:
-    
+
     ```sutra
     print "The [adjective] [animal] [action] in the [place]."
     ```
-    
-- **Nesting/Recursion:**  
+
+- **Nesting/Recursion:**
     Grammar rules can reference other slots:
-    
+
     ```sutra
     define grammar {
       origin ["A [adjective] [animal] appears."]
@@ -790,16 +793,16 @@ tick {
     }
     print "[origin]"
     ```
-    
+
 - **With Metadata:**
-    
+
     ```sutra
     adjective [
       ("sleepy" (weight 2))
       ("luminous" (player.location "ruins"))
     ]
     ```
-    
+
 
 ---
 
@@ -820,49 +823,49 @@ tick {
 ### **5. Implementation Feasibility**
 
 - **Parser:**
-    
+
     - All features extend naturally from Sutra’s block/brace + s-expr conventions.
-        
+
     - Metadata/weights are handled as in all other blocks.
-        
+
     - `{...}` for interpolation/fragments and `[slot]` for templates are both regular, simple patterns.
-        
+
 - **Engine:**
-    
+
     - Random, weighted, and sampling logic is standard; history is just a set/flag; grammar expansion is recursive but simple to bound.
-        
+
     - Can support deterministic runs if desired (by PRNG seeding).
-        
+
 
 ---
 
 ## **Best Practices**
 
 - **Always use parenthesized `(key value)` tags for metadata/fields in pools/events.**
-    
+
 - **Use `{...}` for all variable/fragment insertion and `[slot]` for grammar/template expansion.**
-    
+
 - **Prefer pools and grammar for variety, replayability, and procedural generation.**
-    
+
 - **Track history and “seen” status to maximize emergent gameplay.**
-    
+
 - **Keep templates/pools shallow and composable for easy scaling.**
-    
+
 
 ---
 
 ## **What’s Next (Suggested Order)**
 
 - **Formalize agent/group event execution (per-agent pools and history).**
-    
+
 - **Expand context and weighting in pools/grammar for even richer simulation.**
-    
+
 - **Eventually add procedural event/pool generation and debugging/analytics macros.**
-    
+
 
 ---
 
-**This is your canonical Tier 3 reference for dynamic, emergent, and replayable Sutra games.**  
+**This is your canonical Tier 3 reference for dynamic, emergent, and replayable Sutra games.**
 If you need a PDF, sample projects, or parser/AST specs, just ask!
 
 ---
@@ -879,7 +882,7 @@ Here is the **formalized, canonical Tier 3+ Sutra macro and grammar/event/pool s
 
 ### **1. Pool Declaration and Events**
 
-**Purpose:**  
+**Purpose:**
 Define a set of eligible storylets/events, each as a block, with modifiers/logic as prefix expressions.
 
 **Syntax:**
@@ -912,9 +915,9 @@ pool {
 ```
 
 - **All expressions are prefix:** e.g. `(eq? agent.location "meadow")`, `(if agent.hungry 0 5)`.
-    
+
 - **No infix, no ambiguous ordering.**
-    
+
 
 ---
 
@@ -975,37 +978,37 @@ if (seen "find-clue") {
 ```
 
 - `seen` is a prefix macro/atom as in Tier 1.
-    
+
 
 ---
 
 ### **4. Metadata/Tags**
 
 - Use key-value, prefix syntax inside blocks:
-    
+
     - `tag combat`
-        
+
     - `weight 2`
-        
+
     - Multiple fields:
-        
+
         ```
         tag danger
         weight (* agent.rage 3)
         region east
         ```
-        
+
 
 ---
 
 ### **5. Best Practices**
 
 - **Every field and expression is prefix notation.**
-    
+
 - **Block style for every event or grammar rule for clarity.**
-    
+
 - **Use explicit `if ... else ...` (prefix: `(if cond a b)`), not infix.**
-    
+
 
 ---
 
@@ -1021,7 +1024,7 @@ print "Inventory: {count player.items} items."
 ```
 
 - Inside `{ ... }`, use prefix: `{+ player.hp 5}`.
-    
+
 
 ---
 
@@ -1033,7 +1036,7 @@ print "Your rival is {player.rival|a stranger|nobody}."
 ```
 
 - Fragment selection is _not_ an expression; just enumerate options with `|`.
-    
+
 
 ---
 
@@ -1066,7 +1069,7 @@ print "The [adjective] [animal] appears."
 ```
 
 - Each `[slot]` is expanded using the grammar rule (optionally context/weighted).
-    
+
 
 ---
 
@@ -1091,9 +1094,9 @@ else {
 ```
 
 - All expressions, conditions, and branches are **prefix**.
-    
+
 - `else` keyword _must_ be used when there is a second branch.
-    
+
 
 ---
 
@@ -1126,19 +1129,19 @@ tick {
 ## **III. Parser and Engine Notes**
 
 - **Parser:**
-    
+
     - Everything after a field or macro is parsed as prefix (S-expression) until the next field, block, or end.
-        
+
     - `{ ... }` opens a block; lines inside are `key <prefix-expr>`.
-        
+
     - No ambiguity, no need for infix parsing or operator precedence.
-        
+
 - **Engine:**
-    
+
     - Evaluates prefix expressions using the standard macro/atom set.
-        
+
     - Grammar and event pools are resolved with prefix expressions for weights/conditions.
-        
+
 
 ---
 
@@ -1159,16 +1162,16 @@ tick {
 ## **V. Authoring Principles**
 
 - **Uniformity:**
-    
+
     - Prefix notation everywhere, in pools, conditions, weights, and all logic.
-        
+
 - **Explicitness:**
-    
+
     - `else` is always present for two-branch conditionals.
-        
+
 - **Block structure for all pools/grammar/events.**
-    
+
 - **No reliance on alignment, indentation, or special separators for modifiers.**
-    
+
 
 ---

@@ -1,8 +1,4 @@
----
-applyTo: "**"
----
-
-# Your Meta-Instructions
+# Copilot Meta-Instructions
 
 ## Memory Bank Maintenance
 
@@ -25,12 +21,10 @@ applyTo: "**"
 - Avoid quick hacks or solutions that introduce duplication or misalignment with the broader design. Every change or feature should improve or maintain the codebase's organization.
 - Leverage all available tools and context (memory bank, sequential thinking, up-to-date documentation, knowledge graph) to maximize effectiveness and maintain architectural integrity.
 
-- **IMPORTANT:** Explicitly evaluate every piece of code against the Sutra Engine's design principles. If it does not align, refactor or redesign it to fit the architecture. Do this for every line of code you write or modify.
-
 ## Documentation Process
 
 - When triggered by **update memory bank**, review every memory bank file, even if some do not require updates. Focus on `activeContext.md` and `progress.md` for current state.
 - When context needs clarification, document the current state, clarify next steps, and record insights and patterns.
 - Treat the memory bank as a living, evolving record. Keep it precise, clear, and up to date at all times.
 
-_Last updated: 2025-06-30_
+*Last updated: 2025-06-30*

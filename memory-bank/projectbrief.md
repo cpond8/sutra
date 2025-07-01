@@ -13,10 +13,9 @@ Sutra aspires to be a **universal substrate for compositional, emergent, and nar
 
 ## Project Status
 
-- **Early-stage and highly experimental** - most decisions are provisional
-- Currently in design and documentation phase
-- Implementation plan is fully specified and ready for execution
-- Built in Rust for performance and type safety
+- **Core implementation in progress** - foundational stages complete.
+- Key architectural decisions validated through implementation.
+- Built in Rust for performance and type safety.
 
 ## Key Design Philosophy
 
@@ -45,7 +44,7 @@ Sutra aspires to be a **universal substrate for compositional, emergent, and nar
 
 ## Current Development Phase
 
-**Stage 0**: Project bootstrapping and foundation setting (completed)
-**Next**: Stage 1 - Canonical AST and Data Types implementation
+**Stages 0-3**: Core Engine and Primitives (completed)
+**Next**: Stage 4 - Macro System implementation
 
 *Last Updated: 2025-06-30*
