@@ -19,8 +19,6 @@ use crate::error::{SutraError, SutraErrorKind};
 use crate::macros_std;
 use std::collections::HashMap;
 
-pub mod utils;
-
 /// Represents a single step in the macro expansion trace.
 #[derive(Debug, Clone)]
 pub struct TraceStep {
@@ -46,16 +44,8 @@ pub struct MacroRegistry {
 /// It creates a standard registry, expands the given expression, and returns the result.
 pub fn expand(expr: &Expr) -> Result<Expr, SutraError> {
     let mut registry = MacroRegistry::new();
-    // Register all standard macros.
-    // In the future, this could be more dynamic, allowing users to load
-    // different macro libraries.
-    registry.register("is?", macros_std::expand_is);
-    registry.register("over?", macros_std::expand_over);
-    registry.register("under?", macros_std::expand_under);
-    registry.register("add!", macros_std::expand_add);
-    registry.register("sub!", macros_std::expand_sub);
-    registry.register("inc!", macros_std::expand_inc);
-    registry.register("dec!", macros_std::expand_dec);
+    // Centralized registration of all standard macros.
+    macros_std::register_std_macros(&mut registry);
 
     // We start at depth 0. The expand_recursive function will handle incrementing it.
     registry.expand_recursive(expr, 0)
@@ -88,14 +78,33 @@ impl MacroRegistry {
             });
         }
 
-        // We only care about lists, as they are the only form that can be a macro call.
+        // First, handle the case of an `if` expression, which is a special form.
+        // We need to recursively expand its branches.
+        if let Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+            span,
+        } = expr
+        {
+            let expanded_condition = self.expand_recursive(condition, depth + 1)?;
+            let expanded_then = self.expand_recursive(then_branch, depth + 1)?;
+            let expanded_else = self.expand_recursive(else_branch, depth + 1)?;
+            return Ok(Expr::If {
+                condition: Box::new(expanded_condition),
+                then_branch: Box::new(expanded_then),
+                else_branch: Box::new(expanded_else),
+                span: span.clone(),
+            });
+        }
+
+        // Now, handle lists, which are the primary target for macro expansion.
         let (items, span) = match expr {
             Expr::List(items, span) => (items, span),
-            // If not a list, there's nothing to expand, so return it as is.
+            // For any other expression type (symbols, literals), there's nothing to expand.
             _ => return Ok(expr.clone()),
         };
 
-        // If the list is empty, there's nothing to do.
         if items.is_empty() {
             return Ok(expr.clone());
         }
@@ -161,6 +170,24 @@ impl MacroRegistry {
             return Err(SutraError {
                 kind: SutraErrorKind::Macro("Macro expansion depth limit exceeded.".to_string()),
                 span: Some(expr.span()),
+            });
+        }
+
+        if let Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+            span,
+        } = expr
+        {
+            let expanded_condition = self.trace_recursive(condition, trace, depth + 1)?;
+            let expanded_then = self.trace_recursive(then_branch, trace, depth + 1)?;
+            let expanded_else = self.trace_recursive(else_branch, trace, depth + 1)?;
+            return Ok(Expr::If {
+                condition: Box::new(expanded_condition),
+                then_branch: Box::new(expanded_then),
+                else_branch: Box::new(expanded_else),
+                span: span.clone(),
             });
         }
 

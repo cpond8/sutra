@@ -1,3 +1,4 @@
+use crate::path::Path;
 use crate::value::Value;
 use im::HashMap;
 use rand::{RngCore, SeedableRng};
@@ -27,11 +28,11 @@ impl World {
         }
     }
 
-    pub fn get(&self, path: &[&str]) -> Option<&Value> {
+    pub fn get(&self, path: &Path) -> Option<&Value> {
         let mut current = &self.data;
-        for key in path {
+        for key in &path.0 {
             if let Value::Map(map) = current {
-                if let Some(value) = map.get(*key) {
+                if let Some(value) = map.get(key.as_str()) {
                     current = value;
                 } else {
                     return None;
@@ -43,22 +44,22 @@ impl World {
         Some(current)
     }
 
-    pub fn set(&self, path: &[&str], val: Value) -> Self {
-        if path.is_empty() {
+    pub fn set(&self, path: &Path, val: Value) -> Self {
+        if path.0.is_empty() {
             return self.clone(); // Or handle as an error
         }
-        let new_data = set_recursive(&self.data, path, val);
+        let new_data = set_recursive(&self.data, &path.0, val);
         Self {
             data: new_data,
             prng: self.prng.clone(),
         }
     }
 
-    pub fn del(&self, path: &[&str]) -> Self {
-        if path.is_empty() {
+    pub fn del(&self, path: &Path) -> Self {
+        if path.0.is_empty() {
             return self.clone(); // Or handle as an error
         }
-        let new_data = del_recursive(&self.data, path);
+        let new_data = del_recursive(&self.data, &path.0);
         Self {
             data: new_data,
             prng: self.prng.clone(),
@@ -78,63 +79,68 @@ impl Default for World {
 }
 
 // Recursive helper for immutable `set`.
-fn set_recursive(current: &Value, path: &[&str], val: Value) -> Value {
-    // Base case: If path is empty, we've reached the target. Return the new value.
-    if path.is_empty() {
-        return val;
-    }
+fn set_recursive(current: &Value, path_segments: &[String], val: Value) -> Value {
+    let key = &path_segments[0];
+    let remaining_segments = &path_segments[1..];
 
-    let key = path[0];
     let mut map = match current {
         Value::Map(m) => m.clone(),
-        // If the current value is not a map, we create a new one to continue the path.
+        // If we're trying to set a value on a non-map, we start with a fresh map.
         _ => HashMap::new(),
     };
 
-    // Recurse: Get the child to update, or start with a Nil value if it doesn't exist.
-    let child = map.get(key).unwrap_or(&Value::Nil);
-    let new_child = set_recursive(child, &path[1..], val);
+    if remaining_segments.is_empty() {
+        // Base case: we've reached the end of the path, so insert the value.
+        map.insert(key.clone(), val);
+    } else {
+        // Recursive step: get the child, or a Nil default, and recurse.
+        let child = map.get(key).unwrap_or(&Value::Nil);
+        let new_child = set_recursive(child, remaining_segments, val);
+        map.insert(key.clone(), new_child);
+    }
 
-    // Update the map with the new child and return the new map as a Value.
-    map.insert(key.to_string(), new_child);
     Value::Map(map)
 }
 
 // Recursive helper for immutable `del`.
-fn del_recursive(current: &Value, path: &[&str]) -> Value {
-    // If the current value is not a map or the path is empty, we can't delete anything.
-    let (map, key) = match (current, path.first()) {
-        (Value::Map(m), Some(k)) => (m, *k),
-        _ => return current.clone(),
+fn del_recursive(current: &Value, path_segments: &[String]) -> Value {
+    let key = if let Some(k) = path_segments.first() {
+        k
+    } else {
+        // Should not happen if called from `del` which checks for empty path.
+        return current.clone();
     };
 
-    // If the key doesn't exist in the map, there's nothing to do.
-    if !map.contains_key(key) {
+    let mut map = if let Value::Map(m) = current {
+        m.clone()
+    } else {
+        // Cannot delete from a non-map value.
         return current.clone();
+    };
+
+    // Base case: If this is the last segment, remove the key and we're done.
+    if path_segments.len() == 1 {
+        map.remove(key);
+        return Value::Map(map);
     }
 
-    let mut new_map = map.clone();
+    // Recursive step: If the child exists, recurse on it.
+    if let Some(child) = map.get(key) {
+        let new_child = del_recursive(child, &path_segments[1..]);
 
-    // Base case: If this is the last key in the path, remove it from the new map.
-    if path.len() == 1 {
-        new_map.remove(key);
-    } else {
-        // Recurse: Get the child and apply the deletion to it.
-        let child = new_map.get(key).unwrap(); // Safe due to contains_key check
-        let new_child = del_recursive(child, &path[1..]);
-
-        // If the child is now an empty map after deletion, remove it from this map.
-        // Otherwise, update the map with the modified child.
-        if let Value::Map(m) = &new_child {
+        // If the recursion resulted in an empty map, remove the key from the current map.
+        // Otherwise, update the map with the new, modified child.
+        if let Value::Map(ref m) = new_child {
             if m.is_empty() {
-                new_map.remove(key);
+                map.remove(key);
             } else {
-                new_map.insert(key.to_string(), new_child);
+                map.insert(key.clone(), new_child);
             }
         } else {
-            new_map.insert(key.to_string(), new_child);
+            // If the new child is not a map (e.g., Nil), update it.
+            map.insert(key.clone(), new_child);
         }
     }
 
-    Value::Map(new_map)
+    Value::Map(map)
 }

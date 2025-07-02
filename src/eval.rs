@@ -18,10 +18,14 @@ pub struct EvalContext<'a, 'o> {
 }
 
 impl<'a, 'o> EvalContext<'a, 'o> {
-    /// A helper method to recursively call the evaluator.
-    /// This is the primary way atoms should evaluate their arguments.
+    /// A helper method to recursively call the evaluator with the context's current world.
     pub fn eval(&mut self, expr: &Expr) -> Result<(Value, World), SutraError> {
         eval_expr(expr, self.world, self.output, self.opts, self.depth + 1)
+    }
+
+    /// A helper method to recursively call the evaluator with a new world state.
+    pub fn eval_in(&mut self, world: &World, expr: &Expr) -> Result<(Value, World), SutraError> {
+        eval_expr(expr, world, self.output, self.opts, self.depth + 1)
     }
 }
 
@@ -118,8 +122,35 @@ fn eval_expr(
             }),
             span: Some(span.clone()),
         }),
+        Expr::Path(path, _) => Ok((Value::Path(path.clone()), world.clone())),
         Expr::String(s, _) => Ok((Value::String(s.clone()), world.clone())),
         Expr::Number(n, _) => Ok((Value::Number(*n), world.clone())),
         Expr::Bool(b, _) => Ok((Value::Bool(*b), world.clone())),
+        &Expr::If {
+            ref condition,
+            ref then_branch,
+            ref else_branch,
+            ..
+        } => {
+            let (cond_val, next_world) = eval_expr(condition, world, output, opts, depth + 1)?;
+            if let Value::Bool(b) = cond_val {
+                if b {
+                    eval_expr(then_branch, &next_world, output, opts, depth + 1)
+                } else {
+                    eval_expr(else_branch, &next_world, output, opts, depth + 1)
+                }
+            } else {
+                Err(SutraError {
+                    kind: SutraErrorKind::Eval(EvalError {
+                        message: "The condition for an `if` expression must evaluate to a Boolean."
+                            .to_string(),
+                        expanded_code: condition.pretty(),
+                        original_code: None,
+                        suggestion: None,
+                    }),
+                    span: Some(condition.span()),
+                })
+            }
+        }
     }
 }

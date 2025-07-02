@@ -26,17 +26,18 @@ use pest_derive::Parser;
 #[grammar = "sutra.pest"]
 struct SutraParser;
 
-/// Parses a source string into a Sutra `Expr` AST.
+/// Parses a source string into a vector of top-level Sutra `Expr` AST nodes.
 ///
-/// This function is the sole public entry point to the parser.
+/// This function is the sole public entry point to the parser. It is purely
+/// syntactic and does not add any semantic wrappers like `(do ...)`.
 ///
 /// # Arguments
 /// * `source` - A string slice containing the Sutra code.
 ///
 /// # Returns
-/// * `Ok(Expr)` - A single `Expr::List` representing the entire program body.
+/// * `Ok(Vec<Expr>)` - A vector of expressions found at the top level of the source.
 /// * `Err(SutraError)` - If parsing fails.
-pub fn parse(source: &str) -> Result<Expr, SutraError> {
+pub fn parse(source: &str) -> Result<Vec<Expr>, SutraError> {
     // `SutraParser::parse` attempts to match the `program` rule from the grammar.
     // If it fails, it returns a `pest` error, which we map to our `SutraError`.
     let pairs = SutraParser::parse(Rule::program, source).map_err(|e| {
@@ -65,121 +66,70 @@ pub fn parse(source: &str) -> Result<Expr, SutraError> {
     })?;
 
     // We build the AST from all expressions found inside the `program` rule.
-    let ast_nodes: Result<Vec<Expr>, SutraError> = root_pair
+    root_pair
         .into_inner()
         .filter(|p| p.as_rule() != Rule::EOI)
         .map(build_ast_from_pair)
-        .collect();
-
-    // The entire script is wrapped in a canonical `(do ...)` block.
-    let mut final_nodes = vec![Expr::Symbol(
-        "do".to_string(),
-        Span { start: 0, end: 0 }, // Synthetic span
-    )];
-    final_nodes.extend(ast_nodes?);
-
-    let start = 0;
-    let end = source.len();
-    Ok(Expr::List(final_nodes, Span { start, end }))
+        .collect()
 }
 
 /// Recursively builds an `Expr` AST from a `pest` `Pair`.
-/// This is the core transformation logic.
 fn build_ast_from_pair(pair: Pair<Rule>) -> Result<Expr, SutraError> {
-    // ---
-    // This function was refactored to solve a series of ownership errors.
-    // Key principle: Extract all needed metadata (span, rule) from the `pair`
-    // *before* consuming it with `pair.into_inner()`.
-    // ---
     let span = Span {
         start: pair.as_span().start(),
         end: pair.as_span().end(),
     };
-    let rule = pair.as_rule();
 
-    match rule {
-        Rule::list | Rule::block => {
-            let inner_exprs: Result<Vec<Expr>, SutraError> =
-                pair.into_inner().map(build_ast_from_pair).collect();
-            Ok(Expr::List(inner_exprs?, span))
-        }
-        Rule::expr | Rule::atom => match pair.into_inner().next() {
-            Some(inner_pair) => build_ast_from_pair(inner_pair),
-            None => Err(SutraError {
-                kind: SutraErrorKind::Parse(format!(
-                    "Grammar bug: rule '{:?}' had no inner content.",
-                    rule
-                )),
-                span: Some(span),
-            }),
-        },
-        Rule::number => {
-            let num = pair.as_str().parse::<f64>().map_err(|_| SutraError {
-                kind: SutraErrorKind::Parse(format!("Invalid number literal: '{}'", pair.as_str())),
-                span: Some(span.clone()),
-            })?;
-            Ok(Expr::Number(num, span))
-        }
+    match pair.as_rule() {
+        Rule::list | Rule::block => Ok(Expr::List(
+            pair.into_inner()
+                .map(build_ast_from_pair)
+                .collect::<Result<Vec<_>, _>>()?,
+            span,
+        )),
+        Rule::expr | Rule::atom => build_ast_from_pair(pair.into_inner().next().unwrap()),
+        Rule::number => Ok(Expr::Number(pair.as_str().parse().unwrap(), span)),
         Rule::boolean => Ok(Expr::Bool(pair.as_str() == "true", span)),
         Rule::symbol => Ok(Expr::Symbol(pair.as_str().to_string(), span)),
-        Rule::string => {
-            // Try to process the inner child as before (for non-empty strings)
-            let mut unescaped = String::new();
-            let mut used_inner = false;
-            if let Some(inner_pair) = pair.clone().into_inner().next() {
-                used_inner = true;
-                for content_pair in inner_pair.into_inner() {
-                    match content_pair.as_rule() {
-                        Rule::str_char => unescaped.push_str(content_pair.as_str()),
-                        Rule::escape_sequence => {
-                            let escaped_char = match content_pair.as_str().chars().nth(1) {
-                                Some('n') => '\n',
-                                Some('t') => '\t',
-                                Some('\\') => '\\',
-                                Some('"') => '"',
-                                _ => {
-                                    return Err(SutraError {
-                                        kind: SutraErrorKind::Parse(format!(
-                                            "Invalid escape sequence: {}",
-                                            content_pair.as_str()
-                                        )),
-                                        span: Some(Span {
-                                            start: content_pair.as_span().start(),
-                                            end: content_pair.as_span().end(),
-                                        }),
-                                    });
-                                }
-                            };
-                            unescaped.push(escaped_char);
-                        }
-                        _ => unreachable!("Grammar should not produce other pairs inside a string"),
-                    }
+        Rule::string => Ok(Expr::String(unescape_string(pair)?, span)),
+        _ => unreachable!("Structural rules should not be processed here."),
+    }
+}
+
+/// Pure helper function to unescape a string from a `pest` `Pair`.
+fn unescape_string(pair: Pair<Rule>) -> Result<String, SutraError> {
+    // The `string` rule in the grammar is `@{ "\"" ~ inner ~ "\"" }`.
+    // `pair.as_str()` gives us the full text, including the surrounding quotes.
+    let full_str = pair.as_str();
+
+    // We slice the string to remove the first and last characters (the quotes).
+    // This is simpler and more robust than traversing the CST, even if it's
+    // slightly less performant for very long strings. The correctness and
+    // simplicity trade-off is worth it here.
+    let inner_str = &full_str[1..full_str.len() - 1];
+
+    // Now, we manually unescape the recognized sequences.
+    let mut result = String::with_capacity(inner_str.len());
+    let mut chars = inner_str.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => result.push('\n'),
+                Some('t') => result.push('\t'),
+                Some('\\') => result.push('\\'),
+                Some('"') => result.push('"'),
+                // If we encounter an invalid escape, we just push the characters
+                // literally. The grammar should prevent this, but this is safer.
+                Some(other) => {
+                    result.push('\\');
+                    result.push(other);
                 }
+                // A dangling escape at the end of a string.
+                None => result.push('\\'),
             }
-            if !used_inner {
-                // Fallback: extract the substring between the quotes
-                let s = pair.as_str();
-                if s.len() >= 2 {
-                    unescaped = s[1..s.len() - 1].to_string();
-                } else {
-                    unescaped = String::new();
-                }
-            }
-            Ok(Expr::String(unescaped, span))
-        }
-        Rule::program
-        | Rule::EOI
-        | Rule::inner
-        | Rule::str_char
-        | Rule::escape_sequence
-        | Rule::symbol_start
-        | Rule::symbol_inner
-        | Rule::WHITESPACE
-        | Rule::COMMENT => {
-            unreachable!(
-                "Structural rule '{:?}' should not be processed directly by build_ast_from_pair",
-                rule
-            )
+        } else {
+            result.push(c);
         }
     }
+    Ok(result)
 }

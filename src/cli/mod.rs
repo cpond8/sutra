@@ -32,23 +32,36 @@ pub fn run() {
     }
 }
 
+use crate::ast::{Expr, Span};
+
 /// Handles the `macrotrace` subcommand.
 fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
     let filename = path.to_str().ok_or("Invalid filename")?;
     let source = fs::read_to_string(filename)?;
-    let ast = parser::parse(&source).map_err(|e| e.with_source(&source))?;
+    let ast_nodes = parser::parse(&source).map_err(|e| e.with_source(&source))?;
+
+    let program = if ast_nodes.len() == 1 {
+        ast_nodes.into_iter().next().unwrap()
+    } else {
+        let span = Span {
+            start: 0,
+            end: source.len(),
+        };
+        Expr::List(
+            {
+                let mut vec = vec![Expr::Symbol("do".to_string(), span.clone())];
+                vec.extend(ast_nodes);
+                vec
+            },
+            span,
+        )
+    };
 
     let mut registry = MacroRegistry::new();
-    // TODO: This manual registration should be moved into a function in macros_std.
-    registry.register("is?", macros_std::expand_is);
-    registry.register("over?", macros_std::expand_over);
-    registry.register("under?", macros_std::expand_under);
-    registry.register("add!", macros_std::expand_add);
-    registry.register("sub!", macros_std::expand_sub);
-    registry.register("inc!", macros_std::expand_inc);
-    registry.register("dec!", macros_std::expand_dec);
+    // Centralized registration of all standard macros.
+    macros_std::register_std_macros(&mut registry);
 
-    let trace = registry.macroexpand_trace(&ast)?;
+    let trace = registry.macroexpand_trace(&program)?;
     output::print_trace(&trace);
 
     Ok(())

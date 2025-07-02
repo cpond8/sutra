@@ -40,7 +40,8 @@ parse → macro-expand → validate → evaluate → output/presentation
 - `set!`, `add!`, `del!`, `push!`, `pull!` - state mutation
 - `+`, `-`, `*`, `/` - pure math operations
 - `eq?`, `gt?`, `lt?`, `has?` - predicates
-- `cond`, `do` - control flow
+- `if` - conditional evaluation (native special form)
+- `do` - sequential evaluation
 - `print` - output
 - `rand` - randomness
 
@@ -60,18 +61,42 @@ parse → macro-expand → validate → evaluate → output/presentation
 - All input is parsed into a single canonical AST (`Expr`), ensuring perfect consistency.
 - This approach provides superior error reporting and long-term maintainability.
 
-**Auto-Resolution ("Auto-Get")**
+**Path Canonicalization**
 
-- **Status**: Implemented in `src/macros.rs` and `src/macros_std.rs`.
-- **Method**: The "auto-get" feature is now handled entirely during the macro expansion phase.
+- **Status**: Fully implemented in `src/macros_std.rs`.
+- **Method**: The macro expansion layer is the sole authority for interpreting user-facing path syntax and converting it into a canonical, unambiguous `Expr::Path` AST node. This replaces the older, less explicit "auto-get" system.
 - **Process**:
-  1. Authors write code using bare symbols (e.g., `(is? player.hp 100)`).
-  2. During macro expansion, macros like `is?` use a `wrap_in_get` helper function.
-  3. This helper transforms any bare symbol argument into an explicit `(get ...)` call (e.g., `(get player.hp)`).
-  4. The final AST passed to the evaluator contains only explicit `(get ...)` calls for all world lookups.
-- **Canonicalization Contract**: All macro-generated atom path arguments are now strictly required to be in the canonical flat `(list ...)` form, enforced by a single canonicalization helper and comprehensive tests.
-- **Evaluator Role**: The evaluator (`src/eval.rs`) has been simplified and now throws a semantic error if it encounters a bare symbol, ensuring no implicit lookups occur during evaluation.
-- **Benefit**: This enforces a stricter separation of concerns, making the pipeline more transparent and easier to debug. The evaluator is only responsible for executing atoms, not for resolving symbols.
+
+  ```mermaid
+  graph TD
+      subgraph User Code
+          A["(inc! player.hp)"]
+      end
+
+      subgraph Stage 1: Parse
+          B(Parser)
+          C["Expr::List(\n  Expr::Symbol(\"inc!\"),\n  Expr::Symbol(\"player.hp\")\n)"]
+      end
+
+      subgraph Stage 2: Macro Expand
+          D(Macro Expander)
+          E["expr_to_path(\"player.hp\") -> Path([\"player\", \"hp\"])"]
+          F["Expanded AST:\n(set! \n  (path player hp) \n  (+ (get (path player hp)) 1))"]
+      end
+
+      subgraph Stage 3: Evaluate
+          G(Evaluator)
+          H["Atoms (`set!`, `get`, `+`) operate on canonical `Value::Path`"]
+      end
+
+      A --> B --> C --> D --> E --> F --> G --> H
+  ```
+
+- **Key Principles**:
+  1. **Single Source of Truth**: The `expr_to_path` function in `src/macros_std.rs` is the only place in the engine that understands and parses path syntax (e.g., `player.hp` or `(list "player" "hp")`).
+  2. **Canonical AST**: The macro expander's primary responsibility is to produce a canonical AST where all paths are explicit `Expr::Path` nodes and all value lookups are explicit `(get ...)` calls.
+  3. **Simplified Evaluator**: The evaluator (`src/eval.rs`) is simplified and hardened. It operates only on the canonical AST and will throw a semantic error if it encounters a bare symbol, enforcing the contract with the macro layer.
+- **Benefit**: This architecture creates a highly predictable, transparent, and robust pipeline. It fully decouples syntax from evaluation, making the system easier to debug, test, and extend.
 
 ## Module Boundaries
 
@@ -83,7 +108,7 @@ parse → macro-expand → validate → evaluate → output/presentation
 - **sutra.pest** - Formal PEG grammar for all syntaxes
 - **parser.rs** - Unified PEG-based parser
 - **atom.rs** - Irreducible operations
-- **eval.rs** - Evaluation engine with TCO
+- **eval.rs** - Evaluation engine with TCO and native `if` special form
 - **macros.rs** - Macro expansion system
 - **macros_std.rs** - Standard macro library
 - **validate.rs** - Structural and semantic validation (planned)
@@ -151,12 +176,5 @@ parse → macro-expand → validate → evaluate → output/presentation
 - User-defined macros (future)
 - Plugin architecture through registries
 - No core engine modifications required for new features
-
-### Macro Path Canonicalization Pattern (2025-07-01)
-
-- All macro-generated atom calls with path arguments must use `canonicalize_path`.
-- No path normalization logic is allowed outside the macro layer.
-- Macro expansion tests enforce this contract for all path forms and error cases.
-- This pattern ensures single source of truth, minimalism, and strict separation of concerns between macro and atom layers.
 
 _Last Updated: 2025-07-01_

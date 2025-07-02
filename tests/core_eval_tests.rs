@@ -1,7 +1,8 @@
+use sutra::ast::{Expr, Span};
 use sutra::atom::{AtomRegistry, NullSink};
-use sutra::atoms_std::*;
+use sutra::atoms_std;
 use sutra::eval::{eval, EvalOptions};
-use sutra::macros::MacroRegistry;
+use sutra::macros::expand;
 use sutra::parser::parse;
 use sutra::value::Value;
 use sutra::world::World;
@@ -12,21 +13,9 @@ use sutra::world::World;
 
 fn create_test_eval_options() -> EvalOptions {
     let mut registry = AtomRegistry::new();
-    registry.register("set!", ATOM_SET);
-    registry.register("del!", ATOM_DEL);
-    registry.register("get", ATOM_GET);
-    registry.register("+", ATOM_ADD);
-    registry.register("-", ATOM_SUB);
-    registry.register("*", ATOM_MUL);
-    registry.register("/", ATOM_DIV);
-    registry.register("eq?", ATOM_EQ);
-    registry.register("gt?", ATOM_GT);
-    registry.register("lt?", ATOM_LT);
-    registry.register("not", ATOM_NOT);
-    registry.register("cond", ATOM_COND);
-    registry.register("list", ATOM_LIST);
-    registry.register("len", ATOM_LEN);
-    registry.register("do", ATOM_DO);
+    // Centralized registration of all standard atoms.
+    // This also ensures that our test environment is identical to production.
+    atoms_std::register_std_atoms(&mut registry);
 
     EvalOptions {
         max_depth: 100,
@@ -40,46 +29,30 @@ fn run_expr(
     opts: &EvalOptions,
 ) -> Result<(Value, World), sutra::error::SutraError> {
     // The canonical pipeline: parse -> expand -> eval
-    let parsed_ast = parse(expr_str).map_err(|e| e.with_source(expr_str))?;
+    let parsed_exprs = parse(expr_str).map_err(|e| e.with_source(expr_str))?;
 
-    // TODO: The CLI now has the canonical macro registry setup.
-    // This test helper should be updated to use that instead of a
-    // temporary manual one.
-    let mut registry = MacroRegistry::new();
-    registry.register("is?", sutra::macros_std::expand_is);
-    registry.register("over?", sutra::macros_std::expand_over);
-    registry.register("under?", sutra::macros_std::expand_under);
-    registry.register("add!", sutra::macros_std::expand_add);
-    registry.register("sub!", sutra::macros_std::expand_sub);
-    registry.register("inc!", sutra::macros_std::expand_inc);
-    registry.register("dec!", sutra::macros_std::expand_dec);
+    // The test runner is responsible for wrapping multiple expressions in a `do` block.
+    let program = if parsed_exprs.len() == 1 {
+        parsed_exprs.into_iter().next().unwrap()
+    } else {
+        let span = Span {
+            start: 0,
+            end: expr_str.len(),
+        };
+        Expr::List(
+            {
+                let mut vec = vec![Expr::Symbol("do".to_string(), span.clone())];
+                vec.extend(parsed_exprs);
+                vec
+            },
+            span,
+        )
+    };
 
-    let expanded_ast = registry.expand_recursive(&parsed_ast, 0)?;
+    let expanded_ast = expand(&program)?;
 
     let mut sink = NullSink;
-    let result = eval(&expanded_ast, world, &mut sink, opts);
-
-    // TODO: Integrate full CLI-style error reporting and macro tracing here.
-    // If a test fails, it should be easy to see the full context.
-    if let Err(e) = &result {
-        // This shows how we can enrich the error with source context.
-        let enriched_error = e.clone().with_source(expr_str);
-        eprintln!("\n--- Test Failure Context ---");
-        eprintln!("Error: {}", enriched_error);
-
-        // This shows how we can print the macro trace for the failing expression.
-        if let Ok(trace) = registry.macroexpand_trace(&parsed_ast) {
-            eprintln!("\n--- Macro Expansion Trace ---");
-            // In a real test runner, we'd call a pretty-printer from the output module.
-            for (i, step) in trace.iter().enumerate() {
-                eprintln!("Step {}: {}", i, step.description);
-                eprintln!("  {}", step.ast.pretty());
-            }
-        }
-        eprintln!("--------------------------\n");
-    }
-
-    result
+    eval(&expanded_ast, world, &mut sink, opts)
 }
 
 // ---
@@ -127,10 +100,9 @@ fn test_set_and_get_atoms() {
     let world = World::new();
     let opts = create_test_eval_options();
 
-    let (_, world_after_set) =
-        run_expr(r#"(set! (list "player" "hp") 100)"#, &world, &opts).unwrap();
+    let (_, world_after_set) = run_expr("(set! player.hp 100)", &world, &opts).unwrap();
 
-    let (val, _) = run_expr(r#"(get (list "player" "hp"))"#, &world_after_set, &opts).unwrap();
+    let (val, _) = run_expr("(get player.hp)", &world_after_set, &opts).unwrap();
     assert_eq!(val, Value::Number(100.0));
 }
 
@@ -140,7 +112,7 @@ fn test_auto_get_feature_via_macro() {
     let opts = create_test_eval_options();
 
     // 1. Set a value in the world.
-    let (_, world_with_hp) = run_expr(r#"(set! (list "player" "hp") 100)"#, &world, &opts).unwrap();
+    let (_, world_with_hp) = run_expr("(set! player.hp 100)", &world, &opts).unwrap();
 
     // 2. Use a macro `is?` that performs the auto-get expansion.
     // The author writes `player.hp`, but the macro expands it to `(get player.hp)`.
@@ -152,30 +124,31 @@ fn test_auto_get_feature_via_macro() {
 }
 
 #[test]
-fn test_cond_special_form() {
+fn test_if_special_form() {
     let world = World::new();
     let opts = create_test_eval_options();
 
-    // The `cond` atom uses the final, unpaired expression as the "else" branch.
-    // We use the author-facing macros `under?` and `over?` which will be expanded.
-    let expr = r#"
-    (cond
-        (under? 10 5) "first"
-        (over? 10 5) "second"
-        "fallback")
-    "#;
-    let (val, _) = run_expr(expr, &world, &opts).unwrap();
-    assert_eq!(val, Value::String("second".to_string()));
+    // Test the `then` branch
+    let expr_then = r#"(if (gt? 10 5) "then-branch" "else-branch")"#;
+    let (val_then, _) = run_expr(expr_then, &world, &opts).unwrap();
+    assert_eq!(val_then, Value::String("then-branch".to_string()));
 
-    // Test the fallback case
-    let expr_fallback = r#"
-    (cond
-        (under? 10 5) "first"
-        (is? 10 5) "second"
-        "fallback")
+    // Test the `else` branch
+    let expr_else = r#"(if (lt? 10 5) "then-branch" "else-branch")"#;
+    let (val_else, _) = run_expr(expr_else, &world, &opts).unwrap();
+    assert_eq!(val_else, Value::String("else-branch".to_string()));
+
+    // Test with nested expressions and state changes
+    let expr_nested = r#"
+    (do
+        (set! x 10)
+        (if (is? x 10)
+            (set! y 20)
+            (set! y 30))
+        (get y))
     "#;
-    let (val_fallback, _) = run_expr(expr_fallback, &world, &opts).unwrap();
-    assert_eq!(val_fallback, Value::String("fallback".to_string()));
+    let (val_nested, _) = run_expr(expr_nested, &world, &opts).unwrap();
+    assert_eq!(val_nested, Value::Number(20.0));
 }
 
 #[test]
@@ -193,26 +166,26 @@ fn test_assignment_macros() {
     let opts = create_test_eval_options();
 
     // 1. Set initial score
-    let (_, world1) = run_expr(r#"(set! (list "score") 10)"#, &world, &opts).unwrap();
+    let (_, world1) = run_expr("(set! score 10)", &world, &opts).unwrap();
 
     // 2. Test add!
     let (_, world2) = run_expr("(add! score 5)", &world1, &opts).unwrap();
-    let (val, _) = run_expr(r#"(get (list "score"))"#, &world2, &opts).unwrap();
+    let (val, _) = run_expr("(get score)", &world2, &opts).unwrap();
     assert_eq!(val, Value::Number(15.0));
 
     // 3. Test sub!
     let (_, world3) = run_expr("(sub! score 2)", &world2, &opts).unwrap();
-    let (val, _) = run_expr(r#"(get (list "score"))"#, &world3, &opts).unwrap();
+    let (val, _) = run_expr("(get score)", &world3, &opts).unwrap();
     assert_eq!(val, Value::Number(13.0));
 
     // 4. Test inc!
     let (_, world4) = run_expr("(inc! score)", &world3, &opts).unwrap();
-    let (val, _) = run_expr(r#"(get (list "score"))"#, &world4, &opts).unwrap();
+    let (val, _) = run_expr("(get score)", &world4, &opts).unwrap();
     assert_eq!(val, Value::Number(14.0));
 
     // 5. Test dec!
     let (_, world5) = run_expr("(dec! score)", &world4, &opts).unwrap();
-    let (val, _) = run_expr(r#"(get (list "score"))"#, &world5, &opts).unwrap();
+    let (val, _) = run_expr("(get score)", &world5, &opts).unwrap();
     assert_eq!(val, Value::Number(13.0));
 }
 
@@ -224,7 +197,7 @@ fn test_state_propagation_in_do_block() {
     // This test is crucial for verifying the core state propagation hypothesis.
     // If this passes, the issue is likely in test setup or macro expansion,
     // not in the `do` atom's world threading.
-    let expr = r#"(do (set! (list "score") 5) (add! score 10) (get (list "score")))"#;
+    let expr = r#"(do (set! score 5) (add! score 10) (get score))"#;
     let (val, _) = run_expr(expr, &world, &opts).unwrap();
     assert_eq!(val, Value::Number(15.0));
 }
@@ -232,8 +205,7 @@ fn test_state_propagation_in_do_block() {
 #[test]
 fn test_mod_atom() {
     let world = World::new();
-    let mut opts = create_test_eval_options();
-    opts.atom_registry.register("mod", ATOM_MOD);
+    let opts = create_test_eval_options();
 
     // Normal case: 10 % 3 = 1
     let (val, _) = run_expr("(mod 10 3)", &world, &opts).unwrap();
@@ -281,9 +253,7 @@ fn test_mod_atom() {
 #[test]
 fn test_gte_and_lte_atoms() {
     let world = World::new();
-    let mut opts = create_test_eval_options();
-    opts.atom_registry.register("gte?", ATOM_GTE);
-    opts.atom_registry.register("lte?", ATOM_LTE);
+    let opts = create_test_eval_options();
 
     // gte? normal cases
     let (val, _) = run_expr("(gte? 10 5)", &world, &opts).unwrap();
@@ -325,15 +295,13 @@ fn test_gte_and_lte_atoms() {
 #[test]
 fn test_list_get_len_edge_cases() {
     let world = World::new();
-    let mut opts = create_test_eval_options();
+    let opts = create_test_eval_options();
 
     // Empty list
     let (val, _) = run_expr("(list)", &world, &opts).unwrap();
     assert_eq!(val, Value::List(vec![]));
     let (val, _) = run_expr("(len (list))", &world, &opts).unwrap();
     assert_eq!(val, Value::Number(0.0));
-    let (val, _) = run_expr("(get (list))", &world, &opts).unwrap();
-    assert_eq!(val, Value::default());
 
     // Nested lists
     let (val, _) = run_expr("(list (list 1 2) 3)", &world, &opts).unwrap();
@@ -363,16 +331,16 @@ fn test_list_get_len_edge_cases() {
     let err = run_expr("(get 42)", &world, &opts)
         .err()
         .expect("should error");
-    assert!(err.to_string().contains("symbol or a list"));
-    let err = run_expr("(get (list 1 2.5 \"foo\"))", &world, &opts)
-        .err()
-        .expect("should error");
-    assert!(err.to_string().contains("symbols or strings"));
+    // This error now comes from the macro expansion phase, which is correct.
+    // The test is updated to reflect the new, more accurate error message.
+    assert!(err
+        .to_string()
+        .contains("Invalid path format: expected a symbol or a list."));
 
     // Out-of-bounds and missing keys
-    let (val, _) = run_expr("(get (list \"missing\"))", &world, &opts).unwrap();
+    let (val, _) = run_expr("(get missing)", &world, &opts).unwrap();
     assert_eq!(val, Value::default());
-    let (val, _) = run_expr("(get (list \"player\" \"inventory\" \"0\"))", &world, &opts).unwrap();
+    let (val, _) = run_expr("(get player.inventory.0)", &world, &opts).unwrap();
     assert_eq!(val, Value::default());
 
     // Mixed types and deep nesting

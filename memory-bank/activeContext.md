@@ -2,64 +2,28 @@
 
 ## Current Work Focus
 
-**Phase**: Authoring Experience & Tooling
-**Priority**: Build out the professional CLI to provide a robust and transparent development experience.
+**Phase**: Core Engine Hardening
+**Priority**: Re-implement `cond` as a macro.
 
 ### Recent Changes (2025-07-01)
 
-1.  **Macro Path Canonicalization Migration Complete**:
-
-    - All macro-generated atom calls now strictly require canonical `(list ...)` path arguments.
-    - Centralized canonicalization logic in `canonicalize_path` (single source of truth).
-    - All assignment/path macros refactored to use this logic.
-    - Macro expansion and integration tests robustly enforce the contract.
-    - All tests pass except for a single world state propagation issue (see below).
-
-2.  **Implemented Rich Error Reporting**:
-
-    - **`src/error.rs`**: The `SutraError` system was overhauled. `EvalError` now captures the original code, expanded code, and a helpful suggestion.
-    - **`src/atoms_std.rs`**: The entire atom library was refactored to produce these new rich, contextual errors, using a new `eval_err!` helper macro to ensure consistency.
-    - **Two-Phase Enrichment**: A pattern was established where errors are created with local context and then enriched with global context (like the original source code) by a top-level runner.
-
-3.  **Implemented Macro Expansion Tracing**:
-
-    - **`src/macros.rs`**: The `macro` module was renamed to `macros` to avoid keyword conflicts.
-    - The `macroexpand_trace` function was implemented to produce a step-by-step vector of `TraceStep` structs, detailing the entire expansion process.
-
-4.  **Scaffolded Professional CLI**:
-
-    - **`Cargo.toml`**: Added dependencies for `clap`, `termcolor`, `difference`, `walkdir`, and `serde`.
-    - **`src/cli/`**: A new module was created to house all CLI logic, separating it cleanly from the core engine library.
-    - **`macrotrace` command**: The first CLI command was implemented, providing a colorized, diff-based view of the macro expansion process.
-
-5.  **Refactored and Hardened `get` Atom (2025-07-01)**:
-
-    - The `get` atom was fully refactored for minimalism, purity, and robust edge-case handling.
-    - Now supports both world-path and collection (list/map/string) access in a single, pure function.
-    - Always returns `Nil` for not found/out-of-bounds, never an empty map.
-    - All type and evaluation errors are explicit and contextual.
-    - All related tests now pass; only unrelated world state propagation test remains failing.
+1.  **Comprehensive Code Review Completed**: A full audit of the codebase was performed against the principles in the memory bank.
+2.  **Critical Bugs Fixed**:
+    - Fixed a state propagation bug in `atoms_std.rs` where `eval_args` failed to thread the `World` state correctly.
+    - Fixed a macro expansion bug where `Expr::If` nodes were not being recursively expanded.
+3.  **Codebase Hardened**:
+    - Refactored `macros_std.rs` to eliminate redundant logic using a new helper macro.
+    - Simplified recursive `set` and `del` logic in `world.rs`.
+    - Corrected the entire test suite (`core_eval_tests`, `macro_expansion_tests`, `parser_tests`) to align with the current canonical architecture.
+4.  **Core Engine Stabilized**: All tests now pass, indicating the core evaluation and expansion pipelines are stable and correct.
 
 ## Next Steps (Immediate Priority)
 
-1.  **Debug World State Propagation Issue**:
-
-    - The only remaining test failure (`test_state_propagation_in_do_block`) is due to a state threading bug, not canonicalization or atom logic.
-    - Action: Investigate and fix world state propagation in the evaluation pipeline.
-
-2.  **Implement Core CLI Commands**:
-
-    - **Priority:** Flesh out the CLI to make the engine fully usable from the command line.
-    - **Action:** Implement the `run`, `validate`, and `macroexpand` commands according to the CLI specification. This will involve building out the `output.rs` module to handle enriched error printing.
-    - **Goal:** A user can run a Sutra script from the CLI and see well-formatted output or errors.
-
-3.  **Implement Filesystem-Aware Commands**:
-
-    - **Action:** Implement the `test` command, using the `walkdir` crate to discover and run all test files in a directory. Implement the `format` command.
-    - **Goal:** The test suite can be run with a single command.
-
-4.  **Update Documentation (Completed)**:
-    - All memory bank files and implementation plans have been updated to reflect the latest changes.
+1.  **Re-implement `cond` as a Macro**:
+    - With the core evaluator now stable, the `cond` construct can be re-introduced as a macro that expands into a series of nested `if` expressions. This will restore full functionality as per the language specification.
+2.  **Complete `get` Atom**:
+    - The `get` atom must be extended to support collection access (lists, maps, strings) to fulfill its design contract.
+3.  **Finalize and Document**: Once the above tasks are complete, the memory bank should be given a final review to ensure all documentation is consistent with the final, stable architecture.
 
 ## Active Decisions and Considerations
 
@@ -70,15 +34,15 @@
 - **Minimal, Pure, and Robust Atoms**: All core atoms, especially `get`, are now implemented as pure, minimal, and robust functions, with explicit handling for all edge cases and consistent return values.
 - **Keyword-Avoidant Naming**: The `macro` module was renamed to `macros` to improve clarity and avoid confusing `r#` syntax.
 - **Strict pipeline separation**: `parse -> expand -> eval`.
-- **Macro-based "auto-get"**: This is the canonical pattern.
-- **Explicit `(get ...)` in evaluated AST**: The macro expander is responsible for this transformation.
+- **Path Canonicalization**: The macro system is the sole authority for converting user-facing path syntax into canonical `Expr::Path` nodes. This is the primary architectural pattern.
+- **Strict Pipeline Separation**: The `parse -> expand -> eval` pipeline is strictly enforced. The evaluator will reject any non-canonical AST forms (like bare symbols), ensuring the macro expander has done its job.
 - **Span-aware `AtomFn`**: The signature `fn(..., parent_span: &Span)` is the standard for all atoms.
 
 ### Current Design Questions
 
-- **Path representation**: Whether to use `&[&str]` or custom `Path` type for world navigation
-- **Macro hygiene**: How sophisticated to make the hygiene system for user-defined macros
-- **Performance optimization**: When to implement lazy evaluation or other optimizations
+- **Macro hygiene**: How sophisticated to make the hygiene system for user-defined macros.
+- **Performance optimization**: When to implement lazy evaluation or other optimizations.
+- **`get` atom completion**: The `get` atom needs to be extended to support collection access (lists, maps) in addition to world paths.
 
 ## Important Patterns and Preferences
 
@@ -107,9 +71,9 @@
 ### Key Architectural Insights
 
 - **Canonicalization Contract Fully Enforced**: The macro system now guarantees that all atom path arguments are in the canonical flat `(list ...)` form, with a single source of truth and comprehensive test coverage.
-- **Immutability requires careful state propagation**: The current regression highlights that when working with immutable data structures like `World`, it is critical to ensure that the _new_ state from one operation is correctly threaded as the input to the _next_ operation. A single mistake here breaks the chain of state.
-- **Pipeline interactions are subtle**: Even with pure, decoupled stages, the composition of those stages can introduce bugs if the "seams" between them are not handled perfectly. The `run_expr` test helper is a microcosm of this challenge.
-- **Good error reporting is non-negotiable**: The recent refactor to improve error messages was a necessary step to make debugging complex issues like the current regression feasible.
+- **Immutability requires careful state propagation**: The `ATOM_DO` bug is a perfect example of this. When working with immutable data structures like `World`, it is critical to ensure that the _new_ state from one operation is correctly threaded as the input to the _next_ operation. A single mistake here breaks the chain of state.
+- **Registries are a critical architectural component**: The discovery of duplicated and incomplete atom/macro registries highlights that a single source of truth for standard libraries is non-negotiable for a robust, maintainable system.
+- **Test environments must mirror production**: The fact that the test suite's macro registry was incomplete but tests were still passing (incidentally) shows the danger of divergent environments. A test setup must be identical to the production pipeline to be reliable.
 - **Minimalism enables power**: Small atom set + macro composition provides unlimited expressiveness
 - **Syntax flexibility matters**: Dual syntax removes adoption barriers while preserving power
 - **Transparency is crucial**: Authors must be able to understand and debug their content
@@ -128,14 +92,5 @@
 - **Emergence from composition**: Complex narrative behaviors arise from simple building blocks
 - **Author ergonomics matter**: Syntax and debugging tools are as important as functionality
 - **Modularity enables reuse**: Storylets, pools, and threads compose cleanly
-
-## Macro Path Canonicalization Contract (2025-07-01)
-
-- The macro system now enforces a strict contract: **all path arguments to core atoms (e.g., `set!`, `del!`) are canonicalized at macro-expansion time**.
-- The canonicalization logic is centralized in `src/macros/utils.rs::canonicalize_path`, which is the single source of truth for all macro-level path normalization.
-- All assignment/path macros (`add!`, `sub!`, `inc!`, `dec!`, etc.) have been refactored to use this helper and now document this contract explicitly.
-- The macro expansion test suite covers all path forms (symbol, dotted symbol, list, string, mixed/invalid) and verifies that errors are surfaced for malformed paths.
-- **Known issue:** The canonicalization logic for list-of-strings is not yet correct; a sentinel test is in place and failing as expected. The next step is to fix this logic and confirm all tests pass.
-- This contract ensures compositionality, deduplication, and pipeline purity, and permanently closes a class of macro/atom bugs.
 
 _Last Updated: 2025-07-01_

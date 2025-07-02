@@ -4,13 +4,8 @@ use sutra::ast::Expr;
 use sutra::parser::parse;
 
 // A helper to get the inner expressions from a parsed program.
-// Our `parse` function wraps the program in a root `Expr::List`.
-fn get_inner_exprs(program: Expr) -> Vec<Expr> {
-    if let Expr::List(items, _) = program {
-        items
-    } else {
-        panic!("Expected a root list expression");
-    }
+fn get_inner_exprs(program: Result<Vec<Expr>, sutra::error::SutraError>) -> Vec<Expr> {
+    program.unwrap()
 }
 
 // ---
@@ -19,8 +14,7 @@ fn get_inner_exprs(program: Expr) -> Vec<Expr> {
 
 #[test]
 fn test_parse_simple_s_expression() {
-    let program = parse("(+ 1 2)").unwrap();
-    let items = get_inner_exprs(program);
+    let items = get_inner_exprs(parse("(+ 1 2)"));
     assert_eq!(items.len(), 1);
 
     if let Expr::List(inner_items, _) = &items[0] {
@@ -35,15 +29,13 @@ fn test_parse_simple_s_expression() {
 
 #[test]
 fn test_parse_nested_s_expression() {
-    let program = parse("(+ 1 (* 2 3))").unwrap();
-    let items = get_inner_exprs(program);
+    let items = get_inner_exprs(parse("(+ 1 (* 2 3))"));
     assert_eq!(items[0].pretty(), "(+ 1 (* 2 3))");
 }
 
 #[test]
 fn test_parse_string_literal() {
-    let program = parse(r#"(set! (list "name") "sutra")"#).unwrap();
-    let items = get_inner_exprs(program);
+    let items = get_inner_exprs(parse(r#"(set! (list "name") "sutra")"#));
     assert_eq!(items[0].pretty(), r#"(set! (list "name") "sutra")"#);
 }
 
@@ -61,17 +53,15 @@ fn test_parse_brace_block_equivalent() {
 #[test]
 fn test_parse_with_comments() {
     let source = "; this is a comment\n (+ 1 2) ; another comment";
-    let program = parse(source).unwrap();
-    let items = get_inner_exprs(program);
+    let items = get_inner_exprs(parse(source));
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].pretty(), "(+ 1 2)");
 }
 
 #[test]
 fn test_parse_string_with_escapes() {
-    let source = r#"("hello \"world\" \n\t")"#;
-    let program = parse(source).unwrap();
-    let items = get_inner_exprs(program);
+    let source = r#"("hello \"world\"\n\t")"#;
+    let items = get_inner_exprs(parse(source));
     assert_eq!(items.len(), 1);
 
     if let Expr::List(inner, _) = &items[0] {

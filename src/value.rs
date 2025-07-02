@@ -1,3 +1,4 @@
+use crate::path::Path;
 use im::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -8,6 +9,7 @@ pub enum Value {
     Bool(bool),
     List(Vec<Value>),
     Map(HashMap<String, Value>),
+    Path(Path),
 }
 
 impl Value {
@@ -19,6 +21,7 @@ impl Value {
             Value::Bool(_) => "Bool",
             Value::List(_) => "List",
             Value::Map(_) => "Map",
+            Value::Path(_) => "Path",
         }
     }
 

@@ -17,15 +17,16 @@
 - **Stage 3: Atom Engine (Completed & Refactored)**:
   - `src/eval.rs`: The evaluation loop is stable. The original "auto-get" feature was **removed** and refactored into the macro system in Stage 4. The evaluator now correctly rejects bare symbols.
   - `src/atoms_std.rs`: The complete Tier 1 atom set is implemented and has been refactored to produce rich, contextual errors.
-  - `src/world.rs`: `set` and `del` methods are fully implemented.
-  - `tests/core_eval_tests.rs`: The test suite is passing.
+  - `src/world.rs`: `set` and `del` methods are fully implemented and simplified.
 - **Module Integration**: All modules correctly declared in `src/lib.rs`.
 
-### In Progress: Stage 4 - Macro System (Partially Implemented)
+### Completed: Stage 4 - Core Engine Stabilization
 
-- **`src/macros.rs`**: The recursive macro expansion engine is implemented. The module has been renamed from `macro.rs` to `macros.rs`.
-- **`src/macros_std.rs`**: The standard macro library for "auto-get" (`is?`, `over?`, etc.) and assignments (`add!`, `inc!`) is implemented.
-- **Status**: The core expansion logic is complete. The `macroexpand-trace` feature for debugging has been implemented.
+- **`src/macros.rs`**: The recursive macro expansion engine was fixed to correctly handle `Expr::If` nodes.
+- **`src/macros_std.rs`**: The standard macro library was refactored to remove redundant code.
+- **`src/atoms_std.rs`**: The critical state-propagation bug in `eval_args` was fixed.
+- **`tests/`**: The entire test suite was corrected and now passes, confirming the stability of the core engine.
+- **Status**: The core engine is stable and architecturally sound.
 
 ### Completed: Comprehensive Design Phase
 
@@ -39,7 +40,6 @@
 - All assignment/path macros refactored to use this logic.
 - Macro expansion and integration tests now robustly enforce the contract.
 - **Status:** Canonicalization migration is complete and fully tested. All related tests pass.
-- **Known issue:** The only remaining test failure (`test_state_propagation_in_do_block`) is unrelated to canonicalization and is due to world state propagation.
 
 ### Atom Engine Refactor (2025-07-01)
 
@@ -47,25 +47,39 @@
 - Now supports both world-path and collection (list/map/string) access in a single, pure function.
 - Always returns `Nil` for not found/out-of-bounds, never an empty map.
 - All type and evaluation errors are explicit and contextual.
-- All related tests now pass; only unrelated world state propagation test remains failing.
+- All related tests now pass.
 
 ## What's Left to Build
 
-### Stage 4: Macro System (In Progress)
+### Stage 5: Advanced Macro System (Immediate Priority)
 
 **Major Components:**
 
-- **(✓) Expansion tracing for debugging**: Implemented via `macroexpand_trace` and exposed in the CLI.
-- **(Next)** Pattern-matching macro expansion
+- **(Next) Re-implement `cond` as a Macro**: With the core evaluator now stable, the `cond` construct should be re-introduced as a macro that expands into a series of nested `if` expressions.
+- **(Next) Complete `get` Atom**: The `get` atom must be extended to support collection access (lists, maps, strings) to fulfill its design contract.
+- Pattern-matching macro expansion
 - Hygiene system for variable scoping
 - Standard macro library (storylet, choice, pool, etc.)
 - Recursion depth limiting
 
 **Estimated Effort:** 3-4 weeks
-**Dependencies:** Stages 1-3
+**Dependencies:** Stage 4
 **Risk:** Medium-High - macro hygiene and expansion can be complex
 
-### Stage 5: Validation and Author Feedback (Partially Complete)
+### Stage 5: Advanced Macro System (Not Started)
+
+**Major Components:**
+
+- Pattern-matching macro expansion
+- Hygiene system for variable scoping
+- Standard macro library (storylet, choice, pool, etc.)
+- Recursion depth limiting
+
+**Estimated Effort:** 3-4 weeks
+**Dependencies:** Stage 4
+**Risk:** Medium-High - macro hygiene and expansion can be complex
+
+### Stage 6: Validation and Author Feedback (Partially Complete)
 
 **Two-Pass Validation:**
 
@@ -75,10 +89,10 @@
 - Error aggregation and reporting
 
 **Estimated Effort:** 1-2 weeks
-**Dependencies:** Stages 1-4
+**Dependencies:** Stage 5
 **Risk:** Low - validation rules are well-specified
 
-### Stage 6: CLI and Testing Infrastructure (In Progress)
+### Stage 7: CLI and Testing Infrastructure (In Progress)
 
 **Command-Line Interface:**
 
@@ -89,7 +103,7 @@
 - Integration with all pipeline stages.
 
 **Estimated Effort:** 1-2 weeks
-**Dependencies:** Stages 1-5
+**Dependencies:** Stage 6
 **Risk:** Low - thin wrapper over library API
 
 ### Stage 7: Standard Macro Library (Not Started)

@@ -21,43 +21,44 @@ use sutra::parser::parse;
 
 /// A helper to parse a string and immediately expand it.
 fn parse_and_expand(s: &str) -> String {
-    let expr = parse(s).unwrap();
-    let expanded_expr = expand(&expr).unwrap();
+    let exprs = parse(s).unwrap();
+    // We assume these tests operate on a single expression.
+    let expanded_expr = expand(&exprs[0]).unwrap();
     expanded_expr.pretty()
 }
 
 #[test]
 fn test_add_macro_expansion() {
     let expanded = parse_and_expand("(add! score 10)");
-    let expected = r#"(set! (list "score") (+ (get (list "score")) 10))"#;
+    let expected = r#"(core/set! (path score) (+ (core/get (path score)) 10))"#;
     assert_eq!(expanded, expected);
 }
 
 #[test]
 fn test_inc_macro_expansion_simple_symbol() {
     let expanded = parse_and_expand("(inc! score)");
-    let expected = r#"(set! (list "score") (+ (get (list "score")) 1))"#;
+    let expected = r#"(core/set! (path score) (+ (core/get (path score)) 1))"#;
     assert_eq!(expanded, expected);
 }
 
 #[test]
 fn test_inc_macro_expansion_dotted_symbol() {
     let expanded = parse_and_expand("(inc! player.score)");
-    let expected = r#"(set! (list "player" "score") (+ (get (list "player" "score")) 1))"#;
+    let expected = r#"(core/set! (path player score) (+ (core/get (path player score)) 1))"#;
     assert_eq!(expanded, expected);
 }
 
 #[test]
 fn test_dec_macro_expansion() {
     let expanded = parse_and_expand("(dec! player.health)");
-    let expected = r#"(set! (list "player" "health") (- (get (list "player" "health")) 1))"#;
+    let expected = r#"(core/set! (path player health) (- (core/get (path player health)) 1))"#;
     assert_eq!(expanded, expected);
 }
 
 #[test]
 fn test_is_macro_expansion_with_symbols() {
-    let expanded = parse_and_expand("(is? player.state 'active)");
-    let expected = r#"(eq? (get (list "player" "state")) 'active)"#;
+    let expanded = parse_and_expand(r#"(is? player.state "active")"#);
+    let expected = r#"(eq? (core/get (path player state)) "active")"#;
     assert_eq!(expanded, expected);
 }
 
@@ -71,46 +72,46 @@ fn test_is_macro_expansion_with_literals() {
 #[test]
 fn test_nested_macro_expansion() {
     let expanded = parse_and_expand("(add! score (inc! other.value))");
-    let expected = r#"(set! (list "score") (+ (get (list "score")) (set! (list "other" "value") (+ (get (list "other" "value")) 1))))"#;
+    let expected = r#"(core/set! (path score) (+ (core/get (path score)) (core/set! (path other value) (+ (core/get (path other value)) 1))))"#;
     assert_eq!(expanded, expected);
 }
 
 #[test]
 fn test_add_macro_expansion_list_of_symbols() {
     let expanded = parse_and_expand("(add! (player score) 5)");
-    let expected = r#"(set! (list "player" "score") (+ (get (list "player" "score")) 5))"#;
+    let expected = r#"(core/set! (path player score) (+ (core/get (path player score)) 5))"#;
     assert_eq!(expanded, expected);
 }
 
 #[test]
 fn test_add_macro_expansion_list_of_strings() {
     let expanded = parse_and_expand("(add! (\"player\" \"score\") 5)");
-    let expected = r#"(set! (list "player" "score") (+ (get (list "player" "score")) 5))"#;
+    let expected = r#"(core/set! (path player score) (+ (core/get (path player score)) 5))"#;
     assert_eq!(expanded, expected);
 }
 
 #[test]
 fn test_sub_macro_expansion() {
     let expanded = parse_and_expand("(sub! player.score 2)");
-    let expected = r#"(set! (list "player" "score") (- (get (list "player" "score")) 2))"#;
+    let expected = r#"(core/set! (path player score) (- (core/get (path player score)) 2))"#;
     assert_eq!(expanded, expected);
 }
 
 #[test]
 fn test_add_macro_expansion_invalid_path_mixed_types() {
-    let expr = parse("(add! (player \"score\" 123) 5)").unwrap();
-    let result = sutra::macros::expand(&expr);
+    let exprs = parse("(add! (player \"score\" 123) 5)").unwrap();
+    let result = sutra::macros::expand(&exprs[0]);
     assert!(result.is_err());
     let err = result.unwrap_err();
     let msg = format!("{}", err);
-    assert!(msg.contains("list must contain only symbols or strings"));
+    assert!(msg.contains("Path lists can only contain symbols or strings."));
 }
 
 #[test]
 fn test_inc_macro_expansion_invalid_path_number() {
-    let expr = parse("(inc! 123)").unwrap();
-    let result = sutra::macros::expand(&expr);
+    let exprs = parse("(inc! 123)").unwrap();
+    let result = sutra::macros::expand(&exprs[0]);
     assert!(result.is_err());
     let msg = format!("{}", result.unwrap_err());
-    assert!(msg.contains("expected a symbol or a list"));
+    assert!(msg.contains("Invalid path format: expected a symbol or a list."));
 }

@@ -22,6 +22,7 @@ Sutra aspires to be a **universal substrate for compositional, emergent, and nar
 **Minimalism as Power**: Following Scheme/Lisp tradition where a tiny set of core forms serves as the basis for an expressive, extensible, and Turing-complete language.
 
 **Atoms and Macros Model**:
+
 - **Atoms**: Truly irreducible "micro-operations" (queries, mutations, control flow, output, randomness)
 - **Macros**: All higher-level language constructs built as macros that expand to atoms and other macros
 
@@ -44,7 +45,8 @@ Sutra aspires to be a **universal substrate for compositional, emergent, and nar
 
 ## Current Development Phase
 
-**Stages 0-3**: Core Engine and Primitives (completed)
-**Next**: Stage 4 - Macro System implementation
+**Architectural Refactoring (Completed)**: A major overhaul was completed to introduce a canonical `Path` type and a strict `Parse -> Macro-Expand -> Evaluate` pipeline. This resolved foundational ambiguities and stabilized the engine's core.
 
-*Last Updated: 2025-06-30*
+**Next**: Finalizing the test suite (`core_eval_tests.rs`) to validate the new architecture and ensure all systems are functioning as expected.
+
+_Last Updated: 2025-07-01_
