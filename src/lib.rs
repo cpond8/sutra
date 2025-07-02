@@ -10,3 +10,4 @@ pub mod parser;
 pub mod path;
 pub mod value;
 pub mod world;
+pub mod registry;

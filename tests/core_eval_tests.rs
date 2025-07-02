@@ -1,9 +1,9 @@
 use sutra::ast::{Expr, Span};
-use sutra::atom::{AtomRegistry, NullSink};
-use sutra::atoms_std;
+use sutra::atom::NullSink;
 use sutra::eval::{eval, EvalOptions};
 use sutra::macros::expand;
 use sutra::parser::parse;
+use sutra::registry::build_default_atom_registry;
 use sutra::value::Value;
 use sutra::world::World;
 
@@ -12,11 +12,7 @@ use sutra::world::World;
 // ---
 
 fn create_test_eval_options() -> EvalOptions {
-    let mut registry = AtomRegistry::new();
-    // Centralized registration of all standard atoms.
-    // This also ensures that our test environment is identical to production.
-    atoms_std::register_std_atoms(&mut registry);
-
+    let registry = build_default_atom_registry();
     EvalOptions {
         max_depth: 100,
         atom_registry: registry,

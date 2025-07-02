@@ -49,6 +49,14 @@
 - All type and evaluation errors are explicit and contextual.
 - All related tests now pass.
 
+### Unified Registry Pattern (2025-07-01)
+
+- **Canonical Registry Builder**: Atom and macro registry setup is now fully DRY. Both production and test code use canonical builder functions (`build_default_atom_registry`, `build_default_macro_registry` in `registry.rs`).
+- **No Duplication**: All standard atoms/macros are registered in one place; tests and production always share the same logic.
+- **Extensible**: Tests may further mutate the registry after construction for custom scenarios, but always start from the canonical builder.
+- **Contract**: All registration logic is centralized; new atoms/macros are added in one place and available everywhere.
+- **Status:** Registry unification is complete and all related tests pass.
+
 ## What's Left to Build
 
 ### Stage 5: Advanced Macro System (Immediate Priority)

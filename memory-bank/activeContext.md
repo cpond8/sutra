@@ -16,6 +16,8 @@
     - Simplified recursive `set` and `del` logic in `world.rs`.
     - Corrected the entire test suite (`core_eval_tests`, `macro_expansion_tests`, `parser_tests`) to align with the current canonical architecture.
 4.  **Core Engine Stabilized**: All tests now pass, indicating the core evaluation and expansion pipelines are stable and correct.
+5.  **Unified Registry Pattern Implemented**: Atom and macro registry setup is now fully DRY. Both production and test code use canonical builder functions (`build_default_atom_registry`, `build_default_macro_registry`), eliminating all duplication and ensuring test/production parity.
+6.  **Doctest Audit and Documentation**: All public-facing modules have been reviewed for Rust doctest suitability. Doctests were added to `ast.rs`, `value.rs`, and all public macro expansion functions in `macros_std.rs`. For `atoms_std.rs`, a module-level comment documents why doctests are not appropriate. The registry builder functions in `registry.rs` have doc examples that compile and run, confirming the unified registry pattern is robust and testable.
 
 ## Next Steps (Immediate Priority)
 
@@ -37,6 +39,8 @@
 - **Path Canonicalization**: The macro system is the sole authority for converting user-facing path syntax into canonical `Expr::Path` nodes. This is the primary architectural pattern.
 - **Strict Pipeline Separation**: The `parse -> expand -> eval` pipeline is strictly enforced. The evaluator will reject any non-canonical AST forms (like bare symbols), ensuring the macro expander has done its job.
 - **Span-aware `AtomFn`**: The signature `fn(..., parent_span: &Span)` is the standard for all atoms.
+- **Unified Registry Pattern**: All atom and macro registration is now centralized in canonical builder functions. No duplication exists between test and production setup; all code paths use the same logic for registry construction.
+- **Doctest Documentation Pattern**: All public API functions that can be meaningfully demonstrated in isolation (e.g., registry builders) have doc examples that compile and run. Internal or context-dependent functions (e.g., atoms) are documented with comments explaining why doctests are not appropriate.
 
 ### Current Design Questions
 
@@ -78,6 +82,7 @@
 - **Syntax flexibility matters**: Dual syntax removes adoption barriers while preserving power
 - **Transparency is crucial**: Authors must be able to understand and debug their content
 - **Immutability simplifies**: Pure functional approach eliminates many bug classes
+- **Doctest Documentation Pattern**: The project now follows a clear pattern: add doctests to all public APIs where feasible, and document with comments where not. This ensures clarity for future contributors and robust, example-driven documentation.
 
 ### Implementation Strategy Insights
 

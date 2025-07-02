@@ -43,6 +43,14 @@ pub fn register_std_atoms(registry: &mut AtomRegistry) {
     registry.register("len", ATOM_LEN);
 }
 
+/*
+NOTE: Direct doctests for atoms (e.g., ATOM_ADD) are not feasible here because they require
+internal context types (EvalContext, EvalOptions, World) that are not public or do not implement
+required traits for doctesting. The previous doctest example was removed because it cannot compile
+outside the engine crate. Atom functions are best tested via integration or unit tests
+where the full engine context is available. See tests/ for examples.
+*/
+
 // ---
 // Error Handling & Helpers
 // ---

@@ -52,6 +52,13 @@ parse → macro-expand → validate → evaluate → output/presentation
 - `is?`, `over?`, `at-least?` - readable predicates
 - `inc!`, `dec!` - common mutations
 
+### Registry Pattern (Unified, DRY)
+
+- **Canonical Registry Builder**: Both production and test code use a single, canonical builder function for atom and macro registries (`build_default_atom_registry`, `build_default_macro_registry` in `registry.rs`).
+- **No Duplication**: All standard atoms/macros are registered in one place; tests and production always share the same logic.
+- **Extensible**: Tests may further mutate the registry after construction for custom scenarios, but always start from the canonical builder.
+- **Contract**: All registration logic is centralized; new atoms/macros are added in one place and available everywhere.
+
 ### Syntax System
 
 **Unified PEG Parser**

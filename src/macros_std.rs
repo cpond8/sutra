@@ -145,14 +145,59 @@ fn create_binary_predicate_macro(
     })
 }
 
+/// Expands `(is? a b)` to `(eq? (core/get a) (core/get b))`.
+///
+/// # Examples
+///
+/// ```rust
+/// use sutra::ast::{Expr, Span};
+/// use sutra::macros_std::expand_is;
+/// let expr = Expr::List(vec![
+///     Expr::Symbol("is?".to_string(), Span::default()),
+///     Expr::Symbol("foo".to_string(), Span::default()),
+///     Expr::Symbol("bar".to_string(), Span::default()),
+/// ], Span::default());
+/// let expanded = expand_is(&expr).unwrap();
+/// assert!(matches!(expanded, Expr::List(_, _)));
+/// ```
 pub fn expand_is(expr: &Expr) -> Result<Expr, SutraError> {
     create_binary_predicate_macro(expr, "is?", "eq?")
 }
 
+/// Expands `(over? a b)` to `(gt? (core/get a) (core/get b))`.
+///
+/// # Examples
+///
+/// ```rust
+/// use sutra::ast::{Expr, Span};
+/// use sutra::macros_std::expand_over;
+/// let expr = Expr::List(vec![
+///     Expr::Symbol("over?".to_string(), Span::default()),
+///     Expr::Symbol("foo".to_string(), Span::default()),
+///     Expr::Symbol("bar".to_string(), Span::default()),
+/// ], Span::default());
+/// let expanded = expand_over(&expr).unwrap();
+/// assert!(matches!(expanded, Expr::List(_, _)));
+/// ```
 pub fn expand_over(expr: &Expr) -> Result<Expr, SutraError> {
     create_binary_predicate_macro(expr, "over?", "gt?")
 }
 
+/// Expands `(under? a b)` to `(lt? (core/get a) (core/get b))`.
+///
+/// # Examples
+///
+/// ```rust
+/// use sutra::ast::{Expr, Span};
+/// use sutra::macros_std::expand_under;
+/// let expr = Expr::List(vec![
+///     Expr::Symbol("under?".to_string(), Span::default()),
+///     Expr::Symbol("foo".to_string(), Span::default()),
+///     Expr::Symbol("bar".to_string(), Span::default()),
+/// ], Span::default());
+/// let expanded = expand_under(&expr).unwrap();
+/// assert!(matches!(expanded, Expr::List(_, _)));
+/// ```
 pub fn expand_under(expr: &Expr) -> Result<Expr, SutraError> {
     create_binary_predicate_macro(expr, "under?", "lt?")
 }
@@ -161,7 +206,7 @@ pub fn expand_under(expr: &Expr) -> Result<Expr, SutraError> {
 fn create_assignment_macro(
     expr: &Expr,
     macro_name: &str,
-    atom_name: &str,
+    op_symbol: &str,
 ) -> Result<Expr, SutraError> {
     define_macro_helper!(expr, macro_name, 2, |items, span| {
         let set_symbol = Expr::Symbol("core/set!".to_string(), items[0].span());
@@ -169,7 +214,7 @@ fn create_assignment_macro(
         let canonical_path = Expr::Path(expr_to_path(path_arg)?, path_arg.span());
         let value_arg = items[2].clone();
 
-        let atom_symbol = Expr::Symbol(atom_name.to_string(), items[0].span());
+        let atom_symbol = Expr::Symbol(op_symbol.to_string(), items[0].span());
         let inner_expr = Expr::List(
             vec![atom_symbol, wrap_in_get(path_arg), value_arg],
             span.clone(),
@@ -182,25 +227,66 @@ fn create_assignment_macro(
     })
 }
 
+/// Expands `(add! foo 1)` to `(core/set! (path foo) (+ (core/get foo) 1))`.
+///
+/// # Examples
+///
+/// ```rust
+/// use sutra::ast::{Expr, Span};
+/// use sutra::macros_std::expand_add;
+/// let expr = Expr::List(vec![
+///     Expr::Symbol("add!".to_string(), Span::default()),
+///     Expr::Symbol("foo".to_string(), Span::default()),
+///     Expr::Number(1.0, Span::default()),
+/// ], Span::default());
+/// let expanded = expand_add(&expr).unwrap();
+/// assert!(matches!(expanded, Expr::List(_, _)));
+/// ```
 pub fn expand_add(expr: &Expr) -> Result<Expr, SutraError> {
     create_assignment_macro(expr, "add!", "+")
 }
 
+/// Expands `(sub! foo 1)` to `(core/set! (path foo) (- (core/get foo) 1))`.
+///
+/// # Examples
+///
+/// ```rust
+/// use sutra::ast::{Expr, Span};
+/// use sutra::macros_std::expand_sub;
+/// let expr = Expr::List(vec![
+///     Expr::Symbol("sub!".to_string(), Span::default()),
+///     Expr::Symbol("foo".to_string(), Span::default()),
+///     Expr::Number(1.0, Span::default()),
+/// ], Span::default());
+/// let expanded = expand_sub(&expr).unwrap();
+/// assert!(matches!(expanded, Expr::List(_, _)));
+/// ```
 pub fn expand_sub(expr: &Expr) -> Result<Expr, SutraError> {
     create_assignment_macro(expr, "sub!", "-")
 }
 
-/// Expands `(inc! path)` to `(set! <path> (+ (get <path>) 1))`.
+/// Expands `(inc! foo)` to `(core/set! (path foo) (+ (core/get foo) 1))`.
+///
+/// # Examples
+///
+/// ```rust
+/// use sutra::ast::{Expr, Span};
+/// use sutra::macros_std::expand_inc;
+/// let expr = Expr::List(vec![
+///     Expr::Symbol("inc!".to_string(), Span::default()),
+///     Expr::Symbol("foo".to_string(), Span::default()),
+/// ], Span::default());
+/// let expanded = expand_inc(&expr).unwrap();
+/// assert!(matches!(expanded, Expr::List(_, _)));
+/// ```
 pub fn expand_inc(expr: &Expr) -> Result<Expr, SutraError> {
     define_macro_helper!(expr, "inc!", 1, |items, span| {
         let set_symbol = Expr::Symbol("core/set!".to_string(), items[0].span());
         let path_arg = &items[1];
         let canonical_path = Expr::Path(expr_to_path(path_arg)?, path_arg.span());
-
         let add_symbol = Expr::Symbol("+".to_string(), items[0].span());
         let one = Expr::Number(1.0, items[0].span());
         let inner_expr = Expr::List(vec![add_symbol, wrap_in_get(path_arg), one], span.clone());
-
         Ok(Expr::List(
             vec![set_symbol, canonical_path, inner_expr],
             span.clone(),
@@ -208,17 +294,28 @@ pub fn expand_inc(expr: &Expr) -> Result<Expr, SutraError> {
     })
 }
 
-/// Expands `(dec! path)` to `(set! <path> (- (get <path>) 1))`.
+/// Expands `(dec! foo)` to `(core/set! (path foo) (- (core/get foo) 1))`.
+///
+/// # Examples
+///
+/// ```rust
+/// use sutra::ast::{Expr, Span};
+/// use sutra::macros_std::expand_dec;
+/// let expr = Expr::List(vec![
+///     Expr::Symbol("dec!".to_string(), Span::default()),
+///     Expr::Symbol("foo".to_string(), Span::default()),
+/// ], Span::default());
+/// let expanded = expand_dec(&expr).unwrap();
+/// assert!(matches!(expanded, Expr::List(_, _)));
+/// ```
 pub fn expand_dec(expr: &Expr) -> Result<Expr, SutraError> {
     define_macro_helper!(expr, "dec!", 1, |items, span| {
         let set_symbol = Expr::Symbol("core/set!".to_string(), items[0].span());
         let path_arg = &items[1];
         let canonical_path = Expr::Path(expr_to_path(path_arg)?, path_arg.span());
-
         let sub_symbol = Expr::Symbol("-".to_string(), items[0].span());
         let one = Expr::Number(1.0, items[0].span());
         let inner_expr = Expr::List(vec![sub_symbol, wrap_in_get(path_arg), one], span.clone());
-
         Ok(Expr::List(
             vec![set_symbol, canonical_path, inner_expr],
             span.clone(),
@@ -226,11 +323,21 @@ pub fn expand_dec(expr: &Expr) -> Result<Expr, SutraError> {
     })
 }
 
-// ---
-// New Core Macros
-// ---
-
-/// Expands `(set! <path> <value>)` to `(core/set! (path <...>) <value>)`.
+/// Expands `(set! foo 42)` to `(core/set! (path foo) 42)`.
+///
+/// # Examples
+///
+/// ```rust
+/// use sutra::ast::{Expr, Span};
+/// use sutra::macros_std::expand_set;
+/// let expr = Expr::List(vec![
+///     Expr::Symbol("set!".to_string(), Span::default()),
+///     Expr::Symbol("foo".to_string(), Span::default()),
+///     Expr::Number(42.0, Span::default()),
+/// ], Span::default());
+/// let expanded = expand_set(&expr).unwrap();
+/// assert!(matches!(expanded, Expr::List(_, _)));
+/// ```
 pub fn expand_set(expr: &Expr) -> Result<Expr, SutraError> {
     define_macro_helper!(expr, "set!", 2, |items, span| {
         let atom_symbol = Expr::Symbol("core/set!".to_string(), items[0].span());
@@ -244,7 +351,20 @@ pub fn expand_set(expr: &Expr) -> Result<Expr, SutraError> {
     })
 }
 
-/// Expands `(get <path>)` to `(core/get (path <...>))`.
+/// Expands `(get foo)` to `(core/get (path foo))`.
+///
+/// # Examples
+///
+/// ```rust
+/// use sutra::ast::{Expr, Span};
+/// use sutra::macros_std::expand_get;
+/// let expr = Expr::List(vec![
+///     Expr::Symbol("get".to_string(), Span::default()),
+///     Expr::Symbol("foo".to_string(), Span::default()),
+/// ], Span::default());
+/// let expanded = expand_get(&expr).unwrap();
+/// assert!(matches!(expanded, Expr::List(_, _)));
+/// ```
 pub fn expand_get(expr: &Expr) -> Result<Expr, SutraError> {
     define_macro_helper!(expr, "get", 1, |items, span| {
         let atom_symbol = Expr::Symbol("core/get".to_string(), items[0].span());
