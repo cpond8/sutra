@@ -1,0 +1,3 @@
+(add! score 10)
+(inc! score)
+(is? score 11)

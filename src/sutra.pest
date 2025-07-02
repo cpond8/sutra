@@ -1,0 +1,76 @@
+// Sutra Engine PEG Grammar (v4.1 - Audited & Commented)
+// ====================================================
+// This grammar has been refined after a thorough audit to improve the robustness
+// of the parser's error reporting, especially for string escape sequences.
+// Every rule is commented to clarify its intent and purpose.
+
+// -- Special Rules --
+
+// `WHITESPACE` and `COMMENT` are silent rules (`_`) that `pest` can apply
+// implicitly between any other rules. This keeps the main grammar clean.
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+COMMENT    = _{ ";" ~ (!"\n" ~ ANY)* }
+
+// -- Core Grammar Rules --
+
+// A `program` is the top-level rule, consisting of zero or more expressions.
+// `SOI` (Start of Input) and `EOI` (End of Input) anchor the parse to ensure
+// the entire input string is consumed.
+program = { SOI ~ expr* ~ EOI }
+
+// An `expr` (expression) is the fundamental recursive unit of the language.
+expr = { list | block | atom }
+
+// `list` and `block` are the two equivalent forms for collections of expressions.
+list  = { "(" ~ expr* ~ ")" }
+block = { "{" ~ expr* ~ "}" }
+
+// An `atom` is any primitive, non-recursive value. The order of rules inside
+// `atom` is important: `pest` tries them in sequence. We check for more
+// specific types (number, boolean) before falling back to the general `symbol`.
+atom = { number | boolean | string | symbol }
+
+// -- Primitive Atom Rules --
+
+// `number` parses floating-point or integer values. It correctly handles negatives.
+// The `@` makes it an "atomic" rule, preventing `pest` from backtracking within it,
+// which is more efficient and prevents partial matches.
+number = @{ "-"? ~ ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT+)? }
+
+// `boolean` matches the exact keywords.
+boolean = @{ "true" | "false" }
+
+// The `string` rule is broken down to create a richer CST (Concrete Syntax Tree).
+// This allows the parser to process escape sequences with full span information,
+// leading to much better error messages for invalid escapes.
+// The top-level `string` rule just defines the quotes.
+// It is marked as ATOMIC (`@`) to prevent the silent `WHITESPACE` rule from
+// being applied inside the quotes.
+string = @{ "\"" ~ inner ~ "\"" }
+// `inner` contains the actual content of the string.
+inner = { (str_char | escape_sequence)* }
+// `str_char` is any single character that is not a quote or a backslash.
+str_char = @{ !("\"" | "\\") ~ ANY }
+// `escape_sequence` explicitly defines the valid escape sequences.
+// TODO: The parser should produce a specific error if a `\` is followed by
+// an invalid character (e.g., `\q`). The current grammar doesn't parse invalid
+// escapes, which `pest` will report as a generic "expected..." error. A future
+// improvement could be to allow `\\ ~ ANY` and validate it in the AST-building step.
+escape_sequence = @{ "\\" ~ ("\"" | "\\" | "n" | "t") }
+
+// `symbol` definition is carefully crafted for Sutra's needs.
+// It uses helper rules for clarity and maintainability.
+symbol_start = { ASCII_ALPHA | "_" | "+" | "-" | "*" | "/" | "<" | ">" | "=" | "?" | "!" }
+symbol_inner = { ASCII_ALPHANUMERIC | "_" | "." | "+" | "-" | "*" | "/" | "<" | ">" | "=" | "?" | "!" }
+
+symbol = @{
+    // This is a "negative lookahead". It ensures that if the parser sees
+    // "true" or "false" followed by a delimiter (whitespace, end of input, or a
+    // closing bracket), it will NOT match it as a symbol. This forces it to be
+    // parsed by the `boolean` rule, which is what we want.
+    !(("true" | "false") ~ (WHITESPACE | EOI | ")" | "}")) ~
+    // A symbol must start with a character defined in `symbol_start`...
+    symbol_start ~
+    // ...and can be followed by zero or more characters from `symbol_inner`.
+    symbol_inner*
+}

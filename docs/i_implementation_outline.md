@@ -1,8 +1,9 @@
 # **Sutra Engine Staged Implementation Plan (Refined)**
 
-*Last Updated: 2025-07-01*
+_Last Updated: 2025-07-01_
 
 ---
+
 ## **Stage 0: Project & Philosophy Bootstrapping (COMPLETED)**
 
 - **0.1:** **(✓)** Reaffirm guiding principles: **purity, immutability, minimalism, separation of concerns, compositionality, single source of truth, maximal testability**.
@@ -15,7 +16,7 @@
 ## **Stage 1: Canonical AST and Data Types (COMPLETED)**
 
 - **1.1:** **(✓)** Define `Expr` enum (S-expression node: List, Symbol, String, Number, Bool).
-- **1.2:** **(✓)** Define `Value` (data: Number, String, Bool, List, Map, etc.)—make sure it’s *deeply* cloneable or persistent for pure state transitions.
+- **1.2:** **(✓)** Define `Value` (data: Number, String, Bool, List, Map, etc.)—make sure it’s _deeply_ cloneable or persistent for pure state transitions.
 - **1.3:** **(✓)** Define `World` as a deeply immutable persistent map (consider `im::HashMap` or similar).
   - **(✓)** **Potential flaw:** Avoid custom “object” systems or non-uniform data. Keep World as “just data”—no methods beyond structural ops.
 - **1.4:** **(✓)** Serialization/debug formatting for AST and World (useful immediately for tests).
@@ -25,9 +26,9 @@
 ## **Stage 2: Canonical PEG Parser (COMPLETED)**
 
 - **2.1:** **(✓)** Implement a robust parser for the canonical s-expression and brace-block syntaxes **using a formal PEG (Parsing Expression Grammar)**.
-  - **(New)** The grammar will be defined in `src/sutra.pest`, serving as the single source of truth for all supported syntaxes.
-  - **(New)** The implementation will use a parser generator library (e.g., `pest`) for maximum maintainability and superior error reporting.
-- **2.2:** **(✓)** Robust error reporting with precise span information derived directly from the PEG parser.
+  - **(✓)** The grammar is now defined in `src/sutra.pest`, serving as the single source of truth for all supported syntaxes.
+  - **(✓)** The implementation now uses the `pest` parser generator library for maximum maintainability and superior error reporting.
+- **2.2:** **(✓)** Robust error reporting with precise span information derived directly from the PEG parser is implemented.
 - **2.3:** **(✓)** Unit/golden tests for the parser covering both s-expression and brace-block inputs, including edge cases.
 - **Principle:** This approach unifies all parsing logic, ensuring consistency and long-term maintainability.
 
@@ -35,49 +36,52 @@
 
 ## **Stage 3: Atom Engine / Evaluator (COMPLETED)**
 
-- **3.1:** **(✓)** Implement atom evaluation—**each atom is a pure function:** `(AST, World) -> (Result<Value>, World)`.
+- **3.1:** **(✓)** Implement atom evaluation. The `AtomFn` signature is now `(args, context, parent_span) -> Result<(Value, World), SutraError>` to support enhanced error reporting.
 - **3.2:** **(✓)** Implement full Tier 1 atom set: `set!`, `del!`, `get`, `+`, `-`, `*`, `/`, `eq?`, `gt?`, `lt?`, `not`, `cond`, `list`, `len`.
 - **3.3:** **(✓)** Immutably update World on every mutation; track all randomness via explicit PRNG in World.
 - **3.4:** **(✓)** Make `print` atom an injectable callback, not hardwired to IO—this maximizes compositionality and testability.
 - **3.5:** **(✓)** Unit tests for each atom; golden tests for evaluation scenarios.
   - **(✓)** **Flaw to avoid:** Don’t allow atoms to “cheat” by mutating data outside World; ensure all change flows through World and explicit returns.
-- **Bonus:** **(✓)** "Auto-get" feature implemented in the evaluator, allowing direct use of symbols as world paths.
 - **(✓)** **Optimization:** Structure the evaluator as a pure, tail-call optimized loop (for future unbounded recursion/macro loops).
+- **Note:** The "auto-get" feature, originally planned and implemented here, has been **refactored and moved to Stage 4**. The evaluator now rejects bare symbols.
 
 ---
 
 ## **Stage 4: Macro System (Expansion Only) (IN PROGRESS)**
 
-- **4.1:** **(Started)** Implement pattern-matching macro expansion engine (Tier 1–2 macros).
-    - **(✓)** Scaffolding for `MacroRegistry` created in `src/macro.rs`.
-    - **(✓)** Placeholder for standard macros created in `src/macros_std.rs`.
-- **4.2:** Macro expansion is **purely syntactic:** AST-in, AST-out—never touch World.
-- **4.3:** Macro hygiene: name hygiene for locals, recursion limits to avoid runaway expansions.
-- **4.4:** Provide debug tracing for macroexpansion (author-inspectable at any step).
-- **4.5:** Write and test all standard macros (storylet, choice, etc.) as macros, not as atoms or engine logic.
-    - **Flaw to avoid:** Never let macro code “sneak” into atom engine—keep macro system and atoms fully layered.
-- **4.6:** Macroexpand “explain” CLI/test tool for authors.
+- **4.1:** **(✓)** Implement pattern-matching macro expansion engine in `src/macros.rs` (renamed from `macro.rs`).
+- **4.2:** **(✓)** Implement macro-based "auto-get" feature.
+  - **(✓)** Standard macros (`is?`, `add!`, etc.) in `src/macros_std.rs` now use a `wrap_in_get` helper to transform bare symbols into explicit `(get ...)` calls.
+  - **(✓)** This makes macro expansion the sole owner of symbol resolution, simplifying the evaluator.
+- **4.3:** **(✓)** Macro expansion is **purely syntactic:** AST-in, AST-out—never touch World.
+- **4.3a:** **(✓)** Macro path canonicalization is now strictly enforced: all macro-generated atom path arguments are canonicalized at expansion time, using a single helper (`canonicalize_path`).
+  - **(✓)** Comprehensive tests enforce the contract; all macro/atom integration tests pass except for a single unrelated world state propagation issue.
+- **4.4:** **(Next)** Macro hygiene: name hygiene for locals, recursion limits to avoid runaway expansions.
+- **4.5:** **(✓)** Provide debug tracing for macroexpansion (author-inspectable at any step).
+- **4.6:** **(Next)** Write and test all standard macros (storylet, choice, etc.) as macros, not as atoms or engine logic.
+  - **Flaw to avoid:** Never let macro code “sneak” into atom engine—keep macro system and atoms fully layered.
+- **4.7:** **(✓)** Macroexpand “explain” CLI/test tool for authors (implemented as `macrotrace` command).
 - **Improvement:** Macro system should be generic: treat author, system, or future user macros identically (no “privileged” macros).
 
 ---
 
-## **Stage 5: Validation and Author Feedback**
+## **Stage 5: Validation and Author Feedback (IN PROGRESS)**
 
-- **5.1:** Validation functions:
+- **5.1:** **(Next)** Validation functions:
   - Structural validation: malformed AST, missing macro fields, etc.
   - Semantic validation: type mismatches, duplicate definitions, etc.
-- **5.2:** Integrate validation **before** macro expansion (parse-time) and **after** (expanded form).
-- **5.3:** Author-centric error reporting—print errors in the original surface syntax where possible.
+- **5.2:** **(Next)** Integrate validation **before** macro expansion (parse-time) and **after** (expanded form).
+- **5.3:** **(✓)** Author-centric error reporting—The foundational `EvalError` system provides rich, contextual errors. This will be the model for validation errors.
   - **Optimization:** Validation should be functional and stateless; emit all errors found, don’t stop at first.
 - **Principle:** Keep validator in its own crate/module; don’t couple to macro or atom implementations.
 
 ---
 
-## **Stage 6: Test Harness and CLI (Optional at First, Then Iterative)**
+## **Stage 6: Test Harness and CLI (IN PROGRESS)**
 
-- **6.1:** Build a minimal test CLI to run s-expr scripts, macroexpand, step World, and debug.
-- **6.2:** Provide snapshot output and macroexpansion traces for every test.
-  - **Flaw to avoid:** Don’t let CLI code pollute engine—engine should be library-first.
+- **6.1:** **(✓)** Build a professional CLI to run scripts, macroexpand, etc. A new `src/cli` module now exists, using `clap`.
+- **6.2:** **(✓)** Provide macroexpansion traces for every test. The `macrotrace` command is implemented. The test harness in `tests/core_eval_tests.rs` has been updated to show how to use this on failure.
+  - **Flaw to avoid:** Don’t let CLI code pollute engine—engine is library-first.
 - **Improvement:** Add a `ScriptTest` trait or similar to easily compose test scripts, macroexpansion checks, and golden output.
 
 ---

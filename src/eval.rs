@@ -1,6 +1,6 @@
 use crate::ast::Expr;
 use crate::atom::{AtomRegistry, OutputSink};
-use crate::error::{SutraError, SutraErrorKind};
+use crate::error::{EvalError, SutraError, SutraErrorKind};
 use crate::value::Value;
 use crate::world::World;
 
@@ -43,41 +43,54 @@ fn eval_expr(
 ) -> Result<(Value, World), SutraError> {
     if depth > opts.max_depth {
         return Err(SutraError {
-            kind: SutraErrorKind::Eval("Recursion depth limit exceeded.".to_string()),
+            kind: SutraErrorKind::Eval(EvalError {
+                message: "Recursion depth limit exceeded.".to_string(),
+                expanded_code: expr.pretty(),
+                original_code: None,
+                suggestion: None,
+            }),
             span: Some(expr.span()),
         });
     }
 
     match expr {
-        Expr::List(items, _span) => {
+        Expr::List(items, span) => {
             if items.is_empty() {
+                // An empty list evaluates to an empty list value.
                 return Ok((Value::List(vec![]), world.clone()));
             }
 
+            // The head of the list must be a symbol corresponding to an atom.
+            // The macro expansion phase is responsible for ensuring this.
             let head = &items[0];
             let tail = &items[1..];
 
-            let atom_name = match head {
-                Expr::Symbol(s, _) => s,
-                _ => {
-                    return Err(SutraError {
-                        kind: SutraErrorKind::Eval(
-                            "The first element of a list must be a symbol naming an atom."
-                                .to_string(),
-                        ),
-                        span: Some(head.span()),
-                    })
-                }
+            let atom_name = if let Expr::Symbol(s, _) = head {
+                s
+            } else {
+                return Err(SutraError {
+                    kind: SutraErrorKind::Eval(EvalError {
+                        message: "The first element of a list to be evaluated must be a symbol naming an atom.".to_string(),
+                        expanded_code: expr.pretty(),
+                        original_code: None,
+                        suggestion: None,
+                    }),
+                    span: Some(head.span()),
+                });
             };
 
-            let atom_fn = match opts.atom_registry.get(atom_name) {
-                Some(f) => f,
-                None => {
-                    return Err(SutraError {
-                        kind: SutraErrorKind::Eval(format!("Atom '{}' not found.", atom_name)),
-                        span: Some(head.span()),
-                    })
-                }
+            let atom_fn = if let Some(f) = opts.atom_registry.get(atom_name) {
+                f
+            } else {
+                return Err(SutraError {
+                    kind: SutraErrorKind::Eval(EvalError {
+                        message: format!("Atom '{}' not found.", atom_name),
+                        expanded_code: expr.pretty(),
+                        original_code: None,
+                        suggestion: None,
+                    }),
+                    span: Some(head.span()),
+                });
             };
 
             let mut context = EvalContext {
@@ -87,32 +100,24 @@ fn eval_expr(
                 depth,
             };
 
-            atom_fn(tail, &mut context)
+            atom_fn(tail, &mut context, span)
         }
-        // Literals evaluate to themselves, with the crucial exception of symbols.
-        Expr::Symbol(s, _) => {
-            // ---
-            // TODO: Lexical Scoping and the "Auto-Get" Fallback
-            //
-            // The current implementation provides the "auto-get" feature by assuming
-            // any unresolved symbol is a path to be looked up in the global `World`.
-            // This is correct for the current specification.
-            //
-            // However, when a feature like `let` bindings is introduced to create
-            // lexical scopes, this logic will need to be extended. The symbol
-            // resolution order should be:
-            //
-            // 1. Check for the symbol in the current lexical scope (and its parents).
-            // 2. If not found, *then* fall back to looking it up in the `World` as a path.
-            //
-            // This will likely involve adding a lexical `Environment` to the
-            // `EvalContext` (e.g., as a stack of HashMaps representing scopes)
-            // and checking it here before the world lookup.
-            // ---
-            let path: Vec<&str> = s.split('.').collect();
-            let value = world.get(&path).cloned().unwrap_or_default();
-            Ok((value, world.clone()))
-        }
+        // Literals evaluate to themselves.
+        // A bare symbol at this stage is a semantic error, as all legitimate
+        // world lookups should have been transformed into `(get ...)` calls
+        // by the macro expansion phase.
+        Expr::Symbol(s, span) => Err(SutraError {
+            kind: SutraErrorKind::Eval(EvalError {
+                message: format!(
+                    "Unexpected bare symbol '{}' found during evaluation. All value lookups must be explicit `(get ...)` calls.",
+                    s
+                ),
+                expanded_code: expr.pretty(),
+                original_code: None,
+                suggestion: Some("Did you mean to use `(get ...)`?".to_string()),
+            }),
+            span: Some(span.clone()),
+        }),
         Expr::String(s, _) => Ok((Value::String(s.clone()), world.clone())),
         Expr::Number(n, _) => Ok((Value::Number(*n), world.clone())),
         Expr::Bool(b, _) => Ok((Value::Bool(*b), world.clone())),

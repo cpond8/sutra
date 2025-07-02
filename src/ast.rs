@@ -26,6 +26,14 @@ impl Expr {
         }
     }
 
+    pub fn into_list(self) -> Option<Vec<Expr>> {
+        if let Expr::List(items, _) = self {
+            Some(items)
+        } else {
+            None
+        }
+    }
+
     // Utility: pretty printing, tree walking
     pub fn pretty(&self) -> String {
         match self {

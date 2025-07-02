@@ -14,10 +14,14 @@
 - **im**: For persistent, immutable data structures (`im = "15.1.0"`).
 - **rand**: Core random number generation traits and utilities (`rand = "0.8.5"`).
 - **rand_xoshiro**: A specific, high-performance, seedable PRNG implementation (`rand_xoshiro = "0.6.0"`).
-- **pest**: A powerful, expressive PEG (Parsing Expression Grammar) parser generator (`pest = "2.0"`).
-- **pest_derive**: The derive macro for `pest` (`pest_derive = "2.0"`).
-- **serde**: (Planned) For serialization of world snapshots and debugging.
-- **Standard library**: Used extensively to keep external dependencies minimal.
+- **pest**: A powerful, expressive PEG (Parsing Expression Grammar) parser generator (`pest = "2.7.10"`).
+- **pest_derive**: The derive macro for `pest` (`pest_derive = "2.7.10"`).
+- **serde**: For serialization and deserialization (`serde = { version = "1.0", features = ["derive"] }`).
+- **serde_json**: For JSON data format support (`serde_json = "1.0"`).
+- **clap**: For command-line argument parsing (`clap = { version = "4.5.4", features = ["derive"] }`).
+- **termcolor**: For colored terminal output (`termcolor = "1.4.1"`).
+- **difference**: For generating text diffs (`difference = "2.0.0"`).
+- **walkdir**: For recursive directory traversal (`walkdir = "2.5.0"`).
 
 ## Development Environment
 
@@ -27,19 +31,23 @@ sutra/
 ├── Cargo.toml          # Rust project configuration
 ├── src/
 │   ├── lib.rs          # Core library API
+│   ├── main.rs         # Main CLI entry point
 │   ├── ast.rs          # AST types and span tracking
 │   ├── value.rs        # Runtime data values
 │   ├── world.rs        # Persistent world state
+│   ├── error.rs        # Unified error types
 │   ├── sutra.pest      # Formal PEG grammar for all syntaxes
 │   ├── parser.rs       # Unified PEG-based parser
 │   ├── atom.rs         # Irreducible operations
 │   ├── eval.rs         # Evaluation engine
-│   ├── macro.rs        # Macro expansion system
-│   ├── validate.rs     # Validation passes
+│   ├── macros.rs       # Macro expansion engine
 │   ├── macros_std.rs   # Standard macro library
-│   └── cli.rs          # Command-line interface
+│   ├── validate.rs     # Validation passes (planned)
+│   └── cli/            # CLI module
+│       ├── mod.rs      # Main CLI logic and dispatch
+│       ├── args.rs     # CLI argument definitions
+│       └── output.rs   # Output formatting and printing
 ├── tests/              # Integration tests
-├── examples/           # Example scripts and usage
 └── docs/               # Design documentation
 ```
 
@@ -146,4 +154,4 @@ sutra/
 - Real-time introspection and debugging
 - Hot-reload for development workflows
 
-*Last Updated: 2025-06-30*
+*Last Updated: 2025-07-01*

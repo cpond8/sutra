@@ -1,6 +1,6 @@
 Here is a **carefully considered, refined, per-file breakdown** for the Sutra core, with type sketches and public API signatures. Every aspect has been revisited for clarity, modularity, and future-proofing. Design notes are included at each step.
 
-*Last Updated: 2025-07-01*
+_Last Updated: 2025-07-01_
 
 ---
 
@@ -39,7 +39,6 @@ impl Expr {
 
 - **No coupling to Value/World.**
 
-
 ---
 
 # **2. src/value.rs**
@@ -72,7 +71,6 @@ impl Value {
 - Explicit conversion and type guard methods prevent accidental type confusion.
 
 - Only for runtime state, _never_ for code.
-
 
 ---
 
@@ -111,7 +109,6 @@ impl World {
 
 - World never exposes mutation—every op returns a new World.
 
-
 ---
 
 # **4. src/error.rs**
@@ -122,11 +119,19 @@ impl World {
 use crate::ast::Span;
 
 #[derive(Debug, Clone)]
+pub struct EvalError {
+    pub message: String,
+    pub expanded_code: String,
+    pub original_code: Option<String>,
+    pub suggestion: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub enum SutraErrorKind {
     Parse(String),
     Macro(String),
     Validation(String),
-    Eval(String),
+    Eval(EvalError),
     Io(String),
 }
 
@@ -134,7 +139,11 @@ pub enum SutraErrorKind {
 pub struct SutraError {
     pub kind: SutraErrorKind,
     pub span: Option<Span>,
-    // Optionally: cause/chain
+}
+
+impl SutraError {
+    // Enriches the error with original source code context.
+    pub fn with_source(mut self, source: &str) -> Self;
 }
 
 impl std::fmt::Display for SutraError { /* ... */ }
@@ -146,7 +155,6 @@ impl std::error::Error for SutraError { /* ... */ }
 - Uniform error type for the entire pipeline.
 
 - Span is always available for user feedback/debug.
-
 
 ---
 
@@ -172,7 +180,6 @@ pub fn parse(source: &str) -> Result<Expr, SutraError>;
 - Pure function; never mutates or performs semantic validation.
 - Testable in isolation with golden files for both syntaxes.
 
-
 ---
 
 # **6. src/atom.rs**
@@ -186,9 +193,13 @@ use crate::value::Value;
 use crate::world::World;
 use crate::error::SutraError;
 
-// Atom function type: takes AST arguments and the current evaluation context.
-// It returns a tuple containing the resulting Value and the new World state.
-pub type AtomFn = fn(args: &[Expr], context: &mut EvalContext) -> Result<(Value, World), SutraError>;
+// Atom function type: takes AST arguments, the current evaluation context,
+// and the span of the parent expression for high-quality error reporting.
+pub type AtomFn = fn(
+    args: &[Expr],
+    context: &mut EvalContext,
+    parent_span: &Span,
+) -> Result<(Value, World), SutraError>;
 
 // Output sink for `print`, etc.
 pub trait OutputSink {
@@ -214,12 +225,16 @@ impl AtomRegistry {
 
 - Output is handled through explicit trait, enabling test mocks.
 
-
 ---
 
 # **7. src/eval.rs**
 
 > **Principle:** Pure interpreter, TCO, stateless except for output and world transition.
+
+**Notes:**
+
+- The evaluator's role is strictly to execute atoms. It does not perform any kind of implicit symbol resolution.
+- Bare symbols are treated as a semantic error, ensuring that all world lookups are made explicit via `(get ...)` by the macro system.
 
 ```rust
 use crate::ast::Expr;
@@ -261,18 +276,33 @@ pub fn eval(
 
 - Eval returns new world and value, never mutates input.
 
-
 ---
 
-# **8. src/macro.rs**
+# **8. src/macros.rs** (renamed from `macro.rs`)
 
 > **Principle:** Syntactic, stateless, author-inspectable, fully testable.
+
+**Notes:**
+
+- This module is responsible for the "auto-get" feature and for providing detailed expansion tracing for debugging.
+- **All macro-generated atom path arguments are now strictly canonicalized at expansion time, using a single helper (`canonicalize_path`).**
+- Macroexpansion is a pure, `AST -> AST` transformation and has no access to the `World`.
 
 ```rust
 use crate::ast::Expr;
 use crate::error::SutraError;
 
+// Represents a single step in the macro expansion trace.
+#[derive(Debug, Clone)]
+pub struct TraceStep {
+    pub description: String,
+    pub ast: Expr,
+}
+
 pub type MacroFn = fn(&Expr) -> Result<Expr, SutraError>;
+
+// The main entry point for the macro expansion pipeline stage.
+pub fn expand(expr: &Expr) -> Result<Expr, SutraError>;
 
 // Macro registry for both built-in and user macros
 pub struct MacroRegistry {
@@ -280,38 +310,44 @@ pub struct MacroRegistry {
 }
 
 impl MacroRegistry {
-    pub fn expand_macros(&self, expr: &Expr, depth: usize) -> Result<Expr, SutraError>;
+    pub fn expand_recursive(&self, expr: &Expr, depth: usize) -> Result<Expr, SutraError>;
     pub fn register(&mut self, name: &str, func: MacroFn);
-    pub fn macroexpand_trace(&self, expr: &Expr) -> Vec<Expr>;
+    // Returns a full, step-by-step trace of the expansion process.
+    pub fn macroexpand_trace(&self, expr: &Expr) -> Result<Vec<TraceStep>, SutraError>;
 }
 ```
-
-**Notes:**
-
-- Macroexpansion is recursive, capped, and always pure.
-
-- Macroexpansion trace can be surfaced in CLI/debug.
-
-
----
 
 # **9. src/macros_std.rs**
 
 > **Principle:** All narrative/gameplay constructs live here as macros, never as atoms or engine hacks.
 
 ```rust
-use crate::macro::MacroRegistry;
+use crate::ast::Expr;
+use crate::error::SutraError;
 
-// Function to register all standard macros (storylet, pool, etc.)
-pub fn register_standard_macros(reg: &mut MacroRegistry);
+// Each standard macro is an exported function with this signature.
+// Example:
+pub fn expand_is(expr: &Expr) -> Result<Expr, SutraError>;
+pub fn expand_add(expr: &Expr) -> Result<Expr, SutraError>;
+// ... and so on for all standard macros.
 ```
 
 **Notes:**
 
 - All Tier 1–3 narrative/gameplay macros are defined here, in Rust, but _in terms of macro expansion_ (not eval).
-
+- **All assignment/path macros now strictly enforce canonicalization of path arguments at expansion time, using the single canonicalization helper.**
 - Each macro has a docstring, usage, and macroexpansion test.
 
+---
+
+# **(NEW) 9a. src/atoms_std.rs**
+
+> **Principle:** Atom contracts now strictly require canonical path arguments.
+
+**Notes:**
+
+- All atoms that operate on world paths (e.g., `set!`, `get`, `del!`) now require the canonical flat `(list ...)` form for path arguments, as enforced by macro expansion and tested throughout the suite.
+- Any non-canonical path form is rejected with a clear error.
 
 ---
 
@@ -333,36 +369,40 @@ pub fn validate_semantics(expr: &Expr) -> Vec<SutraError>;
 
 - Can be used before/after macroexpansion.
 
-
 ---
 
 # **11. src/brace_translator.rs (REMOVED)**
 
 > This module has been removed. Its functionality is now part of the unified PEG parser in `src/parser.rs`.
 
-
 ---
 
-# **12. src/cli.rs (or /src/bin/sutra.rs)**
+# **12. src/cli/**
 
-> **Principle:** Only call into public API, never internal helpers.
+> **Principle:** A pure orchestrator of the core library, with a focus on user experience.
 
-```rust
-// Example subcommands:
-// sutra run mygame.sutra
-// sutra macroexpand mygame.sutra
-// sutra validate mygame.sutra
-// sutra snapshot mygame.sutra
+### **`src/cli/mod.rs`**
 
-// Each subcommand is a thin wrapper: input -> parse -> expand -> validate -> eval
-```
+- Contains the main `run()` function for the CLI.
+- Responsible for parsing arguments and dispatching to subcommand handlers.
+
+### **`src/cli/args.rs`**
+
+- Defines all CLI arguments, subcommands, and help messages using `clap`.
+- `pub struct SutraArgs` is the top-level container.
+- `pub enum Command` defines all subcommands (`Run`, `Macrotrace`, etc.).
+
+### **`src/cli/output.rs`**
+
+- Handles all printing to the console.
+- Contains functions like `print_trace` which use `termcolor` and `difference` to create rich, readable output.
+- Centralizes error formatting logic.
 
 **Notes:**
 
 - CLI is fully testable, can be used in CI.
 
 - CLI uses output sinks for print, macroexpand trace, etc.
-
 
 ---
 
@@ -373,7 +413,6 @@ pub fn validate_semantics(expr: &Expr) -> Vec<SutraError>;
 - **Example scripts for all author-facing macro patterns.**
 
 - **Markdown docs for engine pipeline, extending macros/atoms, etc.**
-
 
 ---
 
@@ -394,7 +433,6 @@ pub fn validate_semantics(expr: &Expr) -> Vec<SutraError>;
 - **All pipelines are explicit, testable, and stepwise: translate/parse → macroexpand → validate → eval → output.**
 
 - **Golden tests and documentation are never an afterthought—they are essential.**
-
 
 ---
 
@@ -420,14 +458,12 @@ Here is a **careful, high-level system review**—evaluating not just the parts,
 
 - Macro and atom registries create clear boundaries—adding new language features never pollutes existing code.
 
-
 **Potential Risk:**
 
 - If macro/atom registration were ever to become dynamic or support user loading, concurrency and versioning might need to be managed.
-    **Mitigation:**
+  **Mitigation:**
 
 - For now, registries are simple, and can be made thread-safe or hot-swappable in the future as a pure wrapper.
-
 
 ---
 
@@ -441,14 +477,12 @@ Here is a **careful, high-level system review**—evaluating not just the parts,
 
 - No step in the pipeline can “cheat” and affect anything except by explicit data flow.
 
-
 **Potential Risk:**
 
 - Deep world state cloning could be a perf issue for very large worlds (but in practice, `im` structures are efficient for most real usage).
-    **Mitigation:**
+  **Mitigation:**
 
 - If you hit scaling limits, swap in a faster persistent structure later; API contract does not change.
-
 
 ---
 
@@ -462,14 +496,12 @@ Here is a **careful, high-level system review**—evaluating not just the parts,
 
 - CLI/test harness exposes pipeline step by step for debugging.
 
-
 **Potential Flaw:**
 
 - If an error occurs after spans are dropped (eg, late in eval), you could lose some precision in reporting.
-    **Mitigation:**
+  **Mitigation:**
 
 - Always preserve span as far down the pipeline as possible, or “bubble up” context from last known node.
-
 
 ---
 
@@ -483,14 +515,12 @@ Here is a **careful, high-level system review**—evaluating not just the parts,
 
 - CLI/test harness can script, inspect, and test every pipeline step.
 
-
 **Potential Oversight:**
 
 - User macros (for runtime authoring) are not in MVP, but pipeline is ready for them.
-    **Mitigation:**
+  **Mitigation:**
 
 - Design registry and macro expansion to eventually support user-defined macros and module imports, without architectural rewrite.
-
 
 ---
 
@@ -504,21 +534,20 @@ Here is a **careful, high-level system review**—evaluating not just the parts,
 
 - System is library-first, CLI second—always automatable, never brittle.
 
-
 ---
 
 ### **6. Cross-Cutting Principle Audit**
 
-|Principle|Upheld?|Notes|
-|---|---|---|
-|Single Source of Truth|✓|World for state; AST for code.|
-|Minimalism|✓|Atoms are minimal; macros compose all else.|
-|Separation of Concerns|✓|Parser, macro, eval, validate, world, CLI all isolated.|
-|Pure Functions/Immutability|✓|All logic is pure or persistent.|
-|Modularity/Composability|✓|Registry pattern everywhere; code is “plug-and-play.”|
-|Transparency/Traceability|✓|Spans, macroexpansion trace, output sinks, explain features.|
-|Determinism|✓|PRNG in world, no global state.|
-|Extensibility|✓|Macro/atom/user macro registries are open.|
+| Principle                   | Upheld? | Notes                                                        |
+| --------------------------- | ------- | ------------------------------------------------------------ |
+| Single Source of Truth      | ✓       | World for state; AST for code.                               |
+| Minimalism                  | ✓       | Atoms are minimal; macros compose all else.                  |
+| Separation of Concerns      | ✓       | Parser, macro, eval, validate, world, CLI all isolated.      |
+| Pure Functions/Immutability | ✓       | All logic is pure or persistent.                             |
+| Modularity/Composability    | ✓       | Registry pattern everywhere; code is “plug-and-play.”        |
+| Transparency/Traceability   | ✓       | Spans, macroexpansion trace, output sinks, explain features. |
+| Determinism                 | ✓       | PRNG in world, no global state.                              |
+| Extensibility               | ✓       | Macro/atom/user macro registries are open.                   |
 
 ---
 
@@ -529,20 +558,19 @@ Here is a **careful, high-level system review**—evaluating not just the parts,
 ### _Possibilities:_
 
 - **Path Typing:**
-    Consider a newtype for world paths (not just `&[&str]` but a `Path` struct), for better ergonomics and type safety.
+  Consider a newtype for world paths (not just `&[&str]` but a `Path` struct), for better ergonomics and type safety.
 
 - **Span Carryover:**
-    Always preserve span on Value and World for better error reporting deep in the stack.
+  Always preserve span on Value and World for better error reporting deep in the stack.
 
 - **Test Hooks Everywhere:**
-    Ensure every sink (output, macroexpansion, world snapshot) is easily injectable for fuzz/property tests.
+  Ensure every sink (output, macroexpansion, world snapshot) is easily injectable for fuzz/property tests.
 
 - **Registry Introspection:**
-    CLI and API should always allow querying the registry for macros/atoms available and their docstrings.
+  CLI and API should always allow querying the registry for macros/atoms available and their docstrings.
 
 - **Macro Hygiene:**
-    For user macros (future), hygiene needs deeper design—possibly explore pattern-matching libraries like egg (Rust) for macro system, but this can wait.
-
+  For user macros (future), hygiene needs deeper design—possibly explore pattern-matching libraries like egg (Rust) for macro system, but this can wait.
 
 ---
 
@@ -579,7 +607,6 @@ Your staged implementation plan, file/module plan, and per-file breakdown are **
 
 - **Testing, validation, and introspection** are first-class, not afterthoughts; every stage is testable in isolation, and error reporting is required to carry spans for maximal author/developer usability.
 
-
 ---
 
 # 2. **Detailed Structural Review**
@@ -587,68 +614,67 @@ Your staged implementation plan, file/module plan, and per-file breakdown are **
 ### **A. Staged Implementation Outline**
 
 - **Stage 0 (Philosophy/CI/Scaffolding):**
-    Properly prioritizes foundation (README, guiding principles) and TDD.
-    **Suggestion:** Explicitly add a README section on the difference between the _canonical AST_ and authoring syntax, with visual diagrams. This will anchor future contributors and clarify the brace-block vs s-expr approach.
+  Properly prioritizes foundation (README, guiding principles) and TDD.
+  **Suggestion:** Explicitly add a README section on the difference between the _canonical AST_ and authoring syntax, with visual diagrams. This will anchor future contributors and clarify the brace-block vs s-expr approach.
 
 - **Stage 1 (AST/Data Types):**
-    Correct separation between AST (syntax tree), Value (runtime data), and World (state).
-    **Potential Pitfall:**
+  Correct separation between AST (syntax tree), Value (runtime data), and World (state).
+  **Potential Pitfall:**
 
-    - Ensure _all_ world mutation helpers in `world.rs` are pure (returning new World).
+  - Ensure _all_ world mutation helpers in `world.rs` are pure (returning new World).
 
-    - Document how "path" navigation works (avoid stringly-typed access—consider a `Path` struct or at least enforce slice-of-str for safety).
+  - Document how "path" navigation works (avoid stringly-typed access—consider a `Path` struct or at least enforce slice-of-str for safety).
 
 - **Stage 2 (Parser):**
-    Parser is pure, stateless, does not perform semantic checks—excellent.
-    **Risk:**
+  Parser is pure, stateless, does not perform semantic checks—excellent.
+  **Risk:**
 
-    - AST nodes must _always_ retain source span/location, or at least allow attaching debug info post-factum; this is crucial for macro expansion/explain tools.
+  - AST nodes must _always_ retain source span/location, or at least allow attaching debug info post-factum; this is crucial for macro expansion/explain tools.
 
 - **Stage 3 (Atom Engine):**
-    All atoms are pure functions `(AST, World) -> (Value, World)`; output is handled by injectable callback.
-    **Positive:**
+  All atoms are pure functions `(AST, World) -> (Value, World)`; output is handled by injectable callback.
+  **Positive:**
 
-    - This is exactly what the philosophy and architecture require.
+  - This is exactly what the philosophy and architecture require.
 
 - **Stage 4 (Macro System):**
-    Macros are pure AST-in/AST-out transforms; macro hygiene and expansion depth are called out.
-    **Risk:**
+  Macros are pure AST-in/AST-out transforms; macro hygiene and expansion depth are called out.
+  **Risk:**
 
-    - If user macros are added later, careful namespace management will be needed; plan for that in the registry now, even if deferred.
+  - If user macros are added later, careful namespace management will be needed; plan for that in the registry now, even if deferred.
 
 - **Stage 5 (Validation):**
-    Two-pass: structure (pre-macro) and semantics (post-macro).
-    **Strength:**
+  Two-pass: structure (pre-macro) and semantics (post-macro).
+  **Strength:**
 
-    - This separation prevents many authoring bugs.
-        **Enhancement:**
+  - This separation prevents many authoring bugs.
+    **Enhancement:**
 
-    - Optionally, add a "linter" pass for warnings (not just errors)—this can catch common authoring anti-patterns or risky choices.
+  - Optionally, add a "linter" pass for warnings (not just errors)—this can catch common authoring anti-patterns or risky choices.
 
 - **Stage 6 (CLI/Test Harness):**
-    CLI is always layered _above_ the library, never calling internals directly.
-    **Strength:**
+  CLI is always layered _above_ the library, never calling internals directly.
+  **Strength:**
 
-    - Prevents "leaky abstraction" and ensures testability/automation.
+  - Prevents "leaky abstraction" and ensures testability/automation.
 
 - **Stage 7 (History, Pools, Selection):**
-    Macro layer only—selection, weighting, and history are not engine privileges.
-    **Positive:**
+  Macro layer only—selection, weighting, and history are not engine privileges.
+  **Positive:**
 
-    - Matches Emily Short's design patterns and all macro/pool specs.
+  - Matches Emily Short's design patterns and all macro/pool specs.
 
 - **Stage 8 (Documentation/Examples):**
-    Example-driven documentation and golden tests are prioritized.
-    **Best Practice:**
+  Example-driven documentation and golden tests are prioritized.
+  **Best Practice:**
 
-    - Keeps the engine honest and future-proof.
+  - Keeps the engine honest and future-proof.
 
 - **Stage 9 (Brace-Block DSL Translator):**
-    Fully decoupled, pure; can be inserted or omitted with no impact to pipeline.
+  Fully decoupled, pure; can be inserted or omitted with no impact to pipeline.
 
 - **Stage 10 (Iteration/Refinement):**
-    All future extensions are added as new macros, atoms, or test files—_never_ by patching core code or creating special cases.
-
+  All future extensions are added as new macros, atoms, or test files—_never_ by patching core code or creating special cases.
 
 ---
 
@@ -662,15 +688,12 @@ Your staged implementation plan, file/module plan, and per-file breakdown are **
 
 - **World state**: Always persistent/immutable; all helpers return new world.
 
-
 **Potential incremental improvements:**
 
 - **Path abstraction:** Consider introducing a `Path` struct/type (vs. raw `&[&str]`) for extra type-safety, especially as world trees get deep or authors start composing paths dynamically.
 
-- **Macro/Atom registry introspection:** CLI should always be able to list all available atoms/macros and their docstrings (helps both authors and future UIs).
-
-- **Macro hygiene:** Begin research for possible advanced macro hygiene (esp. if user macros are to be allowed in the future).
-
+- **Span Handling:**
+  Ensure that error spans are preserved as far down the stack as possible, even into late evaluation or world diffing. Consider attaching last-known span to World or Value, at least in debug mode.
 
 ---
 
@@ -686,13 +709,11 @@ Your plan matches the documented **storylet/QBN architecture**, macro patterns, 
 
 - **Pools and history are built as compositional, author-extensible macros**—no "magic" built into the engine, only the macro layer.
 
-
 **Risks avoided:**
 
 - No "object" systems or privileged game structures are creeping into the core; everything is just data + macros.
 
 - Engine is not hardwired to any single narrative pattern (storylet, thread, pool, etc.); all are composable from the macro/atom set.
-
 
 ---
 
@@ -710,7 +731,6 @@ The implementation plan is **fully aligned** with all core principles:
 
 - **Extensibility:** New patterns, constructs, or features are always introduced via new macro libraries or, rarely, via well-justified new atoms. Never by changing the core engine in a breaking way.
 
-
 ---
 
 # 5. **Risks, Possible Oversights, and Recommendations**
@@ -721,41 +741,33 @@ Most critiques in your _own_ review sections have already anticipated common ris
 
 - Current API uses `&[&str]` for path access in the world; consider a dedicated `Path` struct (with builder, validation, and display methods) to reduce bugs as the state tree grows.
 
-
 ### **B. Span Handling**
 
 - Ensure that error spans are preserved as far down the stack as possible, even into late evaluation or world diffing. Consider attaching last-known span to World or Value, at least in debug mode.
-
 
 ### **C. Registry Management**
 
 - As you add user macros, namespace management becomes crucial. Even though not an MVP concern, consider architecting registry types for potential scoping/modules from the start.
 
-
 ### **D. Test/Mock Infrastructure**
 
 - All output (print, choice display, macro expansion traces) should be injectable (trait-based) for unit tests, property tests, and future UI integration.
-
 
 ### **E. Macro Hygiene and User-Defined Macros**
 
 - The macro system is well-designed for author-facing use; however, user macros bring up hygiene/naming issues. A forward-looking registry design (with module/namespace) will make adding this in the future much easier.
 
-
 ### **F. CLI as Reference Tool**
 
 - Consider making the CLI able to dump registry (macros, atoms), macroexpansion traces, and validation info in both brace and s-expr syntax, for debugging and author feedback.
-
 
 ### **G. Future UI/Editor Integration**
 
 - Pipeline is designed to allow future editors, debuggers, or web UIs to slot in easily. Continue to test that all pipeline stages are accessible and introspectable via simple API calls, not just via CLI.
 
-
 ### **H. Performance (World Cloning/Immutability)**
 
 - While persistent structures are fast for small/medium games, keep an eye on performance for very large worlds (tens of thousands of objects). Document (in README and code comments) the expected tradeoffs and the fact that the world API is swappable if scaling issues arise.
-
 
 ---
 
@@ -767,23 +779,22 @@ Most critiques in your _own_ review sections have already anticipated common ris
 
 - **Your documentation, pipeline design, and authoring guidelines are all aligned with best practices** from both a software architecture and narrative design perspective.
 
-
 ---
 
 ## **Summary Table: Plan vs. Canonical Principles**
 
-|Principle / Goal|Status|Comments|
-|---|---|---|
-|Minimalism (atoms, no bloat)|✓|Atom set and macro layer strictly minimal|
-|Compositionality|✓|Everything is compositional|
-|Separation of Concerns|✓|No cross-layer dependencies|
-|Extensibility|✓|Macro/atom registries, no code patching|
-|Pure Functions/Immutability|✓|Engine is pure except persistent World|
-|Authoring Experience|✓|Macro patterns match real narrative needs|
-|Introspection/Debuggability|✓|Pipeline is fully explainable/inspectable|
-|Performance Scalability|Mostly ✓|See note on world structure perf|
-|Storylet/QBN Paradigm Support|✓|All features covered as macros, not engine|
-|Future-Proofing|✓|Registries, modules, pipelines allow it|
+| Principle / Goal              | Status   | Comments                                   |
+| ----------------------------- | -------- | ------------------------------------------ |
+| Minimalism (atoms, no bloat)  | ✓        | Atom set and macro layer strictly minimal  |
+| Compositionality              | ✓        | Everything is compositional                |
+| Separation of Concerns        | ✓        | No cross-layer dependencies                |
+| Extensibility                 | ✓        | Macro/atom registries, no code patching    |
+| Pure Functions/Immutability   | ✓        | Engine is pure except persistent World     |
+| Authoring Experience          | ✓        | Macro patterns match real narrative needs  |
+| Introspection/Debuggability   | ✓        | Pipeline is fully explainable/inspectable  |
+| Performance Scalability       | Mostly ✓ | See note on world structure perf           |
+| Storylet/QBN Paradigm Support | ✓        | All features covered as macros, not engine |
+| Future-Proofing               | ✓        | Registries, modules, pipelines allow it    |
 
 ---
 

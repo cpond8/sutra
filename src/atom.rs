@@ -5,11 +5,15 @@ use crate::value::Value;
 use crate::world::World;
 use std::collections::HashMap;
 
-// Atom function type: takes AST arguments and the current evaluation context.
+// Atom function type: takes AST arguments, the current evaluation context,
+// and the span of the parent expression for better error reporting.
 // It returns a tuple containing the resulting Value and the new World state,
 // ensuring that all state changes are explicit and pure.
-pub type AtomFn =
-    fn(args: &[Expr], context: &mut EvalContext) -> Result<(Value, World), SutraError>;
+pub type AtomFn = fn(
+    args: &[Expr],
+    context: &mut EvalContext,
+    parent_span: &Span,
+) -> Result<(Value, World), SutraError>;
 
 // Output sink for `print`, etc., to make I/O testable and injectable.
 pub trait OutputSink {
