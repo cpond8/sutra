@@ -1,3 +1,9 @@
+---
+status: archived
+last-reviewed: 2024-07-03
+summary: Superseded file/module plan, retained for historical record.
+---
+
 # **Sutra Engine: Module/File Plan**
 
 _Last Updated: 2025-07-01_
@@ -302,7 +308,7 @@ _Last Updated: 2025-07-01_
 
 - **Good:** Houses only runtime data values.
 
-- **Potential Flaw:** Avoid putting world-specific logic here. All “world as a value tree” logic should live in world.rs.
+- **Potential Flaw:** Avoid putting world-specific logic here. All "world as a value tree" logic should live in world.rs.
 
 ---
 
@@ -312,9 +318,9 @@ _Last Updated: 2025-07-01_
 
   - Is all mutation (even helper functions) always pure, returning a new World?
 
-  - Should we add a `WorldDiff` or “undo” feature here for future “time travel” debugging? (Not for MVP, but don’t design it out.)
+  - Should we add a `WorldDiff` or "undo" feature here for future "time travel" debugging? (Not for MVP, but don't design it out.)
 
-- **Opportunity:** Make “path” navigation and updates idiomatic and safe.
+- **Opportunity:** Make "path" navigation and updates idiomatic and safe.
 
   - Eg, encapsulate world traversal in a small API so that you never have raw stringly-typed paths scattered through the code.
 
@@ -338,11 +344,11 @@ _Last Updated: 2025-07-01_
 
 - **Flaw to Watch:**
 
-  - Don’t allow “macro-only” atoms or “engine magic” atoms—ensure atom table is transparent, documented, and as small as possible.
+  - Don't allow "macro-only" atoms or "engine magic" atoms—ensure atom table is transparent, documented, and as small as possible.
 
 - **Opportunity:**
 
-  - Consider formalizing the “atom registry” as data, so user code can inspect what atoms exist (e.g., for help/CLI).
+  - Consider formalizing the "atom registry" as data, so user code can inspect what atoms exist (e.g., for help/CLI).
 
   - Design atom function signature so that all outputs—including errors, world updates, print/output events—are explicit. No hidden side-effects.
 
@@ -358,7 +364,7 @@ _Last Updated: 2025-07-01_
 
   - Avoid leaking macro implementation details (eg, expansion strategies, hygiene tricks) into AST or atom layer.
 
-  - Be wary of accidental “privilege escalation”: everything in macros*std.rs should be written \_in the macro language*, not as Rust.
+  - Be wary of accidental "privilege escalation": everything in macros*std.rs should be written \_in the macro language*, not as Rust.
 
 - **Opportunity:**
 
@@ -376,7 +382,7 @@ _Last Updated: 2025-07-01_
 
 - **Opportunity:**
 
-  - Consider a “linting” subsystem (optional), so best practices can be flagged without hard errors.
+  - Consider a "linting" subsystem (optional), so best practices can be flagged without hard errors.
 
 ---
 
@@ -402,7 +408,7 @@ _This section has been removed as `brace_translator.rs` is obsolete._
 
   - Golden tests for macroexpansion and world snapshots, not just CLI output.
 
-  - Encourage “living documentation”—all tested, all up to date with main engine.
+  - Encourage "living documentation"—all tested, all up to date with main engine.
 
 ---
 
@@ -422,7 +428,7 @@ _This section has been removed as `brace_translator.rs` is obsolete._
 
 - **Documentation:**
 
-  - Every module should have a short “purpose” doc comment at top, not just in README.
+  - Every module should have a short "purpose" doc comment at top, not just in README.
 
 ---
 
@@ -430,7 +436,7 @@ _This section has been removed as `brace_translator.rs` is obsolete._
 
 - **Hidden Coupling:**
 
-  - World “paths” as strings: fix by using a path struct or type-safe wrapper, to avoid typos.
+  - World "paths" as strings: fix by using a path struct or type-safe wrapper, to avoid typos.
 
   - Macro recursion/infinite expansion: fix with expansion depth counters and clear errors.
 
@@ -438,13 +444,13 @@ _This section has been removed as `brace_translator.rs` is obsolete._
 
 - **Future-Proofing:**
 
-  - Don’t overfit to current patterns (eg, “storylet” as a special case). Macro and atom systems must be pattern-agnostic.
+  - Don't overfit to current patterns (eg, "storylet" as a special case). Macro and atom systems must be pattern-agnostic.
 
 - **Maintainability:**
 
   - Every new macro, atom, or feature must have a test, a doc, and a golden example.
 
-  - Never “fast-path” a quick hack into atom or macro_std—always test real-world usage and maintain transparency.
+  - Never "fast-path" a quick hack into atom or macro_std—always test real-world usage and maintain transparency.
 
 ---
 

@@ -1,3 +1,9 @@
+---
+status: archived
+last-reviewed: 2024-07-03
+summary: Superseded per-file plan, retained for historical record.
+---
+
 Here is a **carefully considered, refined, per-file breakdown** for the Sutra core, with type sketches and public API signatures. Every aspect has been revisited for clarity, modularity, and future-proofing. Design notes are included at each step.
 
 _Last Updated: 2025-07-01_
@@ -422,7 +428,7 @@ pub fn validate_semantics(expr: &Expr) -> Vec<SutraError>;
 
 - **All logic is stateless, except world (which is persistently immutable).**
 
-- **No module depends on “upstream” logic.**
+- **No module depends on "upstream" logic.**
 
 - **Span-tracking enables best-possible error UX.**
 
@@ -440,7 +446,7 @@ pub fn validate_semantics(expr: &Expr) -> Vec<SutraError>;
 
 ---
 
-Here is a **careful, high-level system review**—evaluating not just the parts, but their emergent sum. The following is not a rote checklist, but a deep “zoom out” analysis for architectural wholeness, long-term maintainability, and fitness for your project philosophy.
+Here is a **careful, high-level system review**—evaluating not just the parts, but their emergent sum. The following is not a rote checklist, but a deep "zoom out" analysis for architectural wholeness, long-term maintainability, and fitness for your project philosophy.
 
 ---
 
@@ -452,7 +458,7 @@ Here is a **careful, high-level system review**—evaluating not just the parts,
 
 - Each component is independently testable, reusable, and replaceable.
 
-- The “single source of truth” principle is maintained: all state flows through `World`; all code through canonical AST.
+- The "single source of truth" principle is maintained: all state flows through `World`; all code through canonical AST.
 
 - Output, randomness, and error reporting are always explicit and never global/singleton.
 
@@ -475,7 +481,7 @@ Here is a **careful, high-level system review**—evaluating not just the parts,
 
 - PRNG inside `World` ensures all randomness is reproducible and serializable.
 
-- No step in the pipeline can “cheat” and affect anything except by explicit data flow.
+- No step in the pipeline can "cheat" and affect anything except by explicit data flow.
 
 **Potential Risk:**
 
@@ -501,7 +507,7 @@ Here is a **careful, high-level system review**—evaluating not just the parts,
 - If an error occurs after spans are dropped (eg, late in eval), you could lose some precision in reporting.
   **Mitigation:**
 
-- Always preserve span as far down the pipeline as possible, or “bubble up” context from last known node.
+- Always preserve span as far down the pipeline as possible, or "bubble up" context from last known node.
 
 ---
 
@@ -509,7 +515,7 @@ Here is a **careful, high-level system review**—evaluating not just the parts,
 
 **Strengths:**
 
-- Atoms and macros are not “hardcoded” into the engine; they’re registered in data structures, enabling future plugins/extensions.
+- Atoms and macros are not "hardcoded" into the engine; they're registered in data structures, enabling future plugins/extensions.
 
 - Author-facing language (storylet, pools, etc.) is all macros, never privileged engine code.
 
@@ -544,7 +550,7 @@ Here is a **careful, high-level system review**—evaluating not just the parts,
 | Minimalism                  | ✓       | Atoms are minimal; macros compose all else.                  |
 | Separation of Concerns      | ✓       | Parser, macro, eval, validate, world, CLI all isolated.      |
 | Pure Functions/Immutability | ✓       | All logic is pure or persistent.                             |
-| Modularity/Composability    | ✓       | Registry pattern everywhere; code is “plug-and-play.”        |
+| Modularity/Composability    | ✓       | Registry pattern everywhere; code is "plug-and-play."        |
 | Transparency/Traceability   | ✓       | Spans, macroexpansion trace, output sinks, explain features. |
 | Determinism                 | ✓       | PRNG in world, no global state.                              |
 | Extensibility               | ✓       | Macro/atom/user macro registries are open.                   |
@@ -577,7 +583,7 @@ Here is a **careful, high-level system review**—evaluating not just the parts,
 **But:**
 
 None of these are foundational flaws—**they are incremental refinements, not architectural shifts**.
-The overall design achieves the stated project goals, aligns fully with your principles, and has no hidden tight couplings, ambiguities, or risks of “tech debt” growth if faithfully maintained.
+The overall design achieves the stated project goals, aligns fully with your principles, and has no hidden tight couplings, ambiguities, or risks of "tech debt" growth if faithfully maintained.
 
 ---
 
@@ -585,7 +591,7 @@ The overall design achieves the stated project goals, aligns fully with your pri
 
 **This is a robust, principle-aligned, extensible foundation for Sutra.**
 
-- If you build exactly as above, you will have an engine that is easy to maintain, refactor, and extend, and that will never “paint you into a corner.”
+- If you build exactly as above, you will have an engine that is easy to maintain, refactor, and extend, and that will never "paint you into a corner."
 
 - All future features (editor, user macros, simulation) can grow organically, with no architectural regrets.
 

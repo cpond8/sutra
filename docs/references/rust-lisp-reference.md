@@ -1,3 +1,9 @@
+---
+status: reference
+last-reviewed: 2024-07-03
+summary: External reference: Rust Lisp implementation by Ben Lovy.
+---
+
 # Rust Your Own Lisp
 
 This is a reference copy of the guide by Ben Lovy: [Rust Your Own Lisp](https://dev.to/deciduously/rust-your-own-lisp-50an)

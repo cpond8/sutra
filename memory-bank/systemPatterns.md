@@ -37,20 +37,21 @@ parse → macro-expand → validate → evaluate → output/presentation
 
 **Atoms (Irreducible Core)**
 
-- `set!`, `add!`, `del!`, `push!`, `pull!` - state mutation
-- `+`, `-`, `*`, `/` - pure math operations
-- `eq?`, `gt?`, `lt?`, `has?` - predicates
-- `if` - conditional evaluation (native special form)
+- `core/set!`, `core/del!` - state mutation
+- `+`, `-`, `*`, `/`, `mod` - pure math operations
+- `eq?`, `gt?`, `lt?`, `gte?`, `lte?`, `not` - predicates
+- `if` - conditional evaluation (native special form in the AST)
 - `do` - sequential evaluation
-- `print` - output
-- `rand` - randomness
+- `print` - output (planned)
+- `rand` - randomness (planned)
 
 **Macros (Author-Facing Layer)**
 
-- All higher-level constructs built as macros
-- `storylet`, `choice`, `pool`, `select` - narrative patterns
-- `is?`, `over?`, `at-least?` - readable predicates
-- `inc!`, `dec!` - common mutations
+- All higher-level constructs are built as macros.
+- `set!`, `del!`, `add!`, `sub!`, `inc!`, `dec!` - ergonomic state mutation.
+- `is?`, `over?`, `under?` - readable predicates with auto-get.
+- `cond` - multi-branch conditional (to be re-implemented as a macro).
+- `storylet`, `choice`, `pool`, `select` - planned narrative patterns.
 
 ### Registry Pattern (Unified, DRY)
 

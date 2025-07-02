@@ -28,6 +28,11 @@
 - **`tests/`**: The entire test suite was corrected and now passes, confirming the stability of the core engine.
 - **Status**: The core engine is stable and architecturally sound.
 
+### Completed: Language Specification Synchronization
+
+- **`docs/A_LANGUAGE_SPEC.md`**: The language specification has been thoroughly reviewed and updated to be in complete synchronization with the canonical codebase.
+- **Status**: The specification is now a reliable, living document for developers.
+
 ### Completed: Comprehensive Design Phase
 
 - **Architectural Foundation**: Core philosophy, atom/macro specs, pipeline design are all documented and stable.
@@ -59,11 +64,11 @@
 
 ## What's Left to Build
 
-### Stage 5: Advanced Macro System (Immediate Priority)
+### Stage 5: Advanced Macro System (In Progress)
 
 **Major Components:**
 
-- **(Next) Re-implement `cond` as a Macro**: With the core evaluator now stable, the `cond` construct should be re-introduced as a macro that expands into a series of nested `if` expressions.
+- **(In Progress) Re-implement `cond` as a Macro**: With the core evaluator now stable, the `cond` construct is being re-introduced as a macro that expands into a series of nested `if` expressions.
 - **(Next) Complete `get` Atom**: The `get` atom must be extended to support collection access (lists, maps, strings) to fulfill its design contract.
 - Pattern-matching macro expansion
 - Hygiene system for variable scoping

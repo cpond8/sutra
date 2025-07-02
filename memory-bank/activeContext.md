@@ -2,30 +2,23 @@
 
 ## Current Work Focus
 
-**Phase**: Core Engine Hardening
+**Phase**: Advanced Macro System
 **Priority**: Re-implement `cond` as a macro.
 
-### Recent Changes (2025-07-01)
+### Recent Changes (2025-07-02)
 
-1.  **Comprehensive Code Review Completed**: A full audit of the codebase was performed against the principles in the memory bank.
-2.  **Critical Bugs Fixed**:
-    - Fixed a state propagation bug in `atoms_std.rs` where `eval_args` failed to thread the `World` state correctly.
-    - Fixed a macro expansion bug where `Expr::If` nodes were not being recursively expanded.
-3.  **Codebase Hardened**:
-    - Refactored `macros_std.rs` to eliminate redundant logic using a new helper macro.
-    - Simplified recursive `set` and `del` logic in `world.rs`.
-    - Corrected the entire test suite (`core_eval_tests`, `macro_expansion_tests`, `parser_tests`) to align with the current canonical architecture.
-4.  **Core Engine Stabilized**: All tests now pass, indicating the core evaluation and expansion pipelines are stable and correct.
-5.  **Unified Registry Pattern Implemented**: Atom and macro registry setup is now fully DRY. Both production and test code use canonical builder functions (`build_default_atom_registry`, `build_default_macro_registry`), eliminating all duplication and ensuring test/production parity.
-6.  **Doctest Audit and Documentation**: All public-facing modules have been reviewed for Rust doctest suitability. Doctests were added to `ast.rs`, `value.rs`, and all public macro expansion functions in `macros_std.rs`. For `atoms_std.rs`, a module-level comment documents why doctests are not appropriate. The registry builder functions in `registry.rs` have doc examples that compile and run, confirming the unified registry pattern is robust and testable.
+1.  **Language Specification Synchronized**: The official language specification (`docs/A_LANGUAGE_SPEC.md`) has been updated to be in full alignment with the canonical codebase, ensuring it is a reliable "living document".
+2.  **Core Engine Stabilized**: A full audit and hardening pass was completed, fixing critical bugs in state propagation and macro expansion, and bringing the entire test suite to a passing state.
+3.  **Unified Registry Pattern Implemented**: Atom and macro registry setup is now fully DRY. Both production and test code use canonical builder functions, eliminating all duplication.
+4.  **Doctest Audit and Documentation**: All public-facing modules have been reviewed and documented with doctests where appropriate.
 
 ## Next Steps (Immediate Priority)
 
-1.  **Re-implement `cond` as a Macro**:
-    - With the core evaluator now stable, the `cond` construct can be re-introduced as a macro that expands into a series of nested `if` expressions. This will restore full functionality as per the language specification.
+1.  **Implement `cond` as a Macro**:
+    - With the core evaluator now stable, the `cond` construct will be implemented as a macro that expands into a series of nested `if` expressions. This will restore full multi-branch conditional functionality.
 2.  **Complete `get` Atom**:
     - The `get` atom must be extended to support collection access (lists, maps, strings) to fulfill its design contract.
-3.  **Finalize and Document**: Once the above tasks are complete, the memory bank should be given a final review to ensure all documentation is consistent with the final, stable architecture.
+3.  **Finalize and Document**: Once the above tasks are complete, the memory bank will be given a final review to ensure all documentation is consistent with the final, stable architecture.
 
 ## Active Decisions and Considerations
 

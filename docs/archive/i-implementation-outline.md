@@ -1,3 +1,9 @@
+---
+status: archived
+last-reviewed: 2024-07-03
+summary: Superseded implementation outline, retained for historical record.
+---
+
 # **Sutra Engine Staged Implementation Plan (Refined)**
 
 _Last Updated: 2025-07-01_
@@ -8,17 +14,17 @@ _Last Updated: 2025-07-01_
 
 - **0.1:** **(✓)** Reaffirm guiding principles: **purity, immutability, minimalism, separation of concerns, compositionality, single source of truth, maximal testability**.
   - **(✓)** **Improvement:** Write a README/code comment with principles and pipeline summary at repo root.
-- **0.2:** **(✓)** Init project with CI/test harness and a “failing” test for the pipeline (TDD from the start).
-- **0.3:** **(✓)** Scaffold a “core” crate/library—no coupling to IO or CLI yet.
+- **0.2:** **(✓)** Init project with CI/test harness and a "failing" test for the pipeline (TDD from the start).
+- **0.3:** **(✓)** Scaffold a "core" crate/library—no coupling to IO or CLI yet.
 
 ---
 
 ## **Stage 1: Canonical AST and Data Types (COMPLETED)**
 
 - **1.1:** **(✓)** Define `Expr` enum (S-expression node: List, Symbol, String, Number, Bool).
-- **1.2:** **(✓)** Define `Value` (data: Number, String, Bool, List, Map, etc.)—make sure it’s _deeply_ cloneable or persistent for pure state transitions.
+- **1.2:** **(✓)** Define `Value` (data: Number, String, Bool, List, Map, etc.)—make sure it's _deeply_ cloneable or persistent for pure state transitions.
 - **1.3:** **(✓)** Define `World` as a deeply immutable persistent map (consider `im::HashMap` or similar).
-  - **(✓)** **Potential flaw:** Avoid custom “object” systems or non-uniform data. Keep World as “just data”—no methods beyond structural ops.
+  - **(✓)** **Potential flaw:** Avoid custom "object" systems or non-uniform data. Keep World as "just data"—no methods beyond structural ops.
 - **1.4:** **(✓)** Serialization/debug formatting for AST and World (useful immediately for tests).
 
 ---
@@ -41,7 +47,7 @@ _Last Updated: 2025-07-01_
 - **3.3:** **(✓)** Immutably update World on every mutation; track all randomness via explicit PRNG in World.
 - **3.4:** **(✓)** Make `print` atom an injectable callback, not hardwired to IO—this maximizes compositionality and testability.
 - **3.5:** **(✓)** Unit tests for each atom; golden tests for evaluation scenarios.
-  - **(✓)** **Flaw to avoid:** Don’t allow atoms to “cheat” by mutating data outside World; ensure all change flows through World and explicit returns.
+  - **(✓)** **Flaw to avoid:** Don't allow atoms to "cheat" by mutating data outside World; ensure all change flows through World and explicit returns.
 - **(✓)** **Optimization:** Structure the evaluator as a pure, tail-call optimized loop (for future unbounded recursion/macro loops).
 - **Note:** The "auto-get" feature, originally planned and implemented here, has been **refactored and moved to Stage 4**. The evaluator now rejects bare symbols.
 
@@ -59,9 +65,9 @@ _Last Updated: 2025-07-01_
 - **4.4:** **(Next)** Macro hygiene: name hygiene for locals, recursion limits to avoid runaway expansions.
 - **4.5:** **(✓)** Provide debug tracing for macroexpansion (author-inspectable at any step).
 - **4.6:** **(Next)** Write and test all standard macros (storylet, choice, etc.) as macros, not as atoms or engine logic.
-  - **Flaw to avoid:** Never let macro code “sneak” into atom engine—keep macro system and atoms fully layered.
-- **4.7:** **(✓)** Macroexpand “explain” CLI/test tool for authors (implemented as `macrotrace` command).
-- **Improvement:** Macro system should be generic: treat author, system, or future user macros identically (no “privileged” macros).
+  - **Flaw to avoid:** Never let macro code "sneak" into atom engine—keep macro system and atoms fully layered.
+- **4.7:** **(✓)** Macroexpand "explain" CLI/test tool for authors (implemented as `macrotrace` command).
+- **Improvement:** Macro system should be generic: treat author, system, or future user macros identically (no "privileged" macros).
 
 ---
 
@@ -72,8 +78,8 @@ _Last Updated: 2025-07-01_
   - Semantic validation: type mismatches, duplicate definitions, etc.
 - **5.2:** **(Next)** Integrate validation **before** macro expansion (parse-time) and **after** (expanded form).
 - **5.3:** **(✓)** Author-centric error reporting—The foundational `EvalError` system provides rich, contextual errors. This will be the model for validation errors.
-  - **Optimization:** Validation should be functional and stateless; emit all errors found, don’t stop at first.
-- **Principle:** Keep validator in its own crate/module; don’t couple to macro or atom implementations.
+  - **Optimization:** Validation should be functional and stateless; emit all errors found, don't stop at first.
+- **Principle:** Keep validator in its own crate/module; don't couple to macro or atom implementations.
 
 ---
 
@@ -81,17 +87,17 @@ _Last Updated: 2025-07-01_
 
 - **6.1:** **(✓)** Build a professional CLI to run scripts, macroexpand, etc. A new `src/cli` module now exists, using `clap`.
 - **6.2:** **(✓)** Provide macroexpansion traces for every test. The `macrotrace` command is implemented. The test harness in `tests/core_eval_tests.rs` has been updated to show how to use this on failure.
-  - **Flaw to avoid:** Don’t let CLI code pollute engine—engine is library-first.
+  - **Flaw to avoid:** Don't let CLI code pollute engine—engine is library-first.
 - **Improvement:** Add a `ScriptTest` trait or similar to easily compose test scripts, macroexpansion checks, and golden output.
 
 ---
 
 ## **Stage 7: History, Pools, and Selection (Macro Layer)**
 
-- **7.1:** Implement “history” tracking (seen events), pool selection, weighted/random selection as macros or as atom extensions (if truly irreducible).
+- **7.1:** Implement "history" tracking (seen events), pool selection, weighted/random selection as macros or as atom extensions (if truly irreducible).
 - **7.2:** Test against QBN, storylet, and pool selection patterns from design docs.
 - **7.3:** Document these as canonical usage patterns; provide macroexpansion for all.
-- **Optimization:** Make sure no part of “storylet selection” is privileged—macro-driven all the way.
+- **Optimization:** Make sure no part of "storylet selection" is privileged—macro-driven all the way.
 
 ---
 
@@ -122,8 +128,8 @@ _Last Updated: 2025-07-01_
 
 - **Pipeline is strictly layered and functional:** All stages are pure, pass data, and never cross layers.
 - **All code is testable, inspectable, and debuggable at every stage.**
-- **No privileged “magic” in atoms or macro system; everything is author-explorable.**
-- **Validation and error reporting prioritized early, not deferred to “cleanup.”**
+- **No privileged "magic" in atoms or macro system; everything is author-explorable.**
+- **Validation and error reporting prioritized early, not deferred to "cleanup."**
 - **World state is a single, persistent tree—no leaking state, no accidental mutation.**
 - **No dependencies between surface syntax and the core—engine can run on canonical s-expr only.**
 - **Macro and atom sets evolve only through test-driven, documented need—never preemptively.**
@@ -160,10 +166,10 @@ graph TD
 ## **Potential Flaws/Oversights to Avoid**
 
 - Do **not** entangle CLI/IO with any engine layer (library-first, always).
-- Do **not** let macro or atom sets become “fat” with rarely used or duplicate functionality.
-- Avoid “quick hacks” for authoring pain points—always macroize first, then promote to atom only if necessary.
-- Do **not** build in assumptions about pool structures, thread patterns, or “standard” game data; keep the engine truly generic.
-- Do **not** “leak” validation, macro, or parsing logic into the World state or evaluation loop.
+- Do **not** let macro or atom sets become "fat" with rarely used or duplicate functionality.
+- Avoid "quick hacks" for authoring pain points—always macroize first, then promote to atom only if necessary.
+- Do **not** build in assumptions about pool structures, thread patterns, or "standard" game data; keep the engine truly generic.
+- Do **not** "leak" validation, macro, or parsing logic into the World state or evaluation loop.
 - **Document everything** as you go; treat the engine as a model for other projects.
 
 ---

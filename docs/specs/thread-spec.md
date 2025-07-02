@@ -1,16 +1,22 @@
+---
+status: authoritative
+last-reviewed: 2024-07-03
+summary: Canonical thread system specification for modular narrative/game flows.
+---
+
 # Sutra Thread System — Canonical Specification
 
 ## Overview
 
-**Sutra threads** are modular, encapsulated, compositional narrative/game flows.  
+**Sutra threads** are modular, encapsulated, compositional narrative/game flows.
 A thread is a centralized, declarative controller that:
 
 - Defines the flow (“steps”) of a linear, branching, or hybrid narrative or gameplay module.
-    
+
 - Declares all local state and tags (metadata) in a single place.
-    
+
 - Keeps step implementations, state, and side-effects strictly encapsulated—no “narrative spaghetti.”
-    
+
 
 ---
 
@@ -42,31 +48,31 @@ define <name> thread {
 ### **Conventions**
 
 - **tags:**
-    
+
     - Declares key/value metadata for the thread (e.g., theme, difficulty, salience).
-        
+
     - Always uses parenthesized `(key value)` pairs.
-        
+
     - Tags are passive (for editor/system use) unless explicitly acted upon.
-        
+
 - **start / end:**
-    
+
     - Names of the entry and terminal steps (must correspond to declared step blocks).
-        
+
 - **state:**
-    
+
     - Declares all local thread variables (with initial values).
-        
+
     - Always present (use `state {}` or `state none` if empty).
-        
+
 - **step \[!\]:**
-    
+
     - Each step must be declared.
-        
+
     - `!` denotes steps that mutate local state (for author/readability/conventions).
-        
+
     - Step header contains no logic, only structure.
-        
+
 
 ---
 
@@ -96,11 +102,11 @@ step <step-name> [!] {
 ### **Conventions**
 
 - **Narrative, logic, and side-effects** all live here.
-    
+
 - **Choices** may be declared either in the thread header (preferred for API clarity) or within steps (for simple or override cases).
-    
-- **All step logic is scoped;** only the thread’s `end` step should touch global state (unless intentionally designed).
-    
+
+- **All step logic is scoped;** only the thread's `end` step should touch global state (unless intentionally designed).
+
 
 ---
 
@@ -136,37 +142,37 @@ choices {
 ```
 
 - **All forms are valid.** Prefer inline `if` and block `cond` for parser and author clarity.
-    
+
 
 ---
 
 ## State and Scoping
 
 - **Local state:**
-    
-    - Only accessible/mutable within the thread’s steps.
-        
+
+    - Only accessible/mutable within the thread's steps.
+
     - Declared in `state { ... }` block in the header.
-        
+
 - **Global state:**
-    
-    - Modified only in the thread’s `end` step, or through explicit “export” blocks if designed.
-        
+
+    - Modified only in the thread's `end` step, or through explicit "export" blocks if designed.
+
 - **No leakage:**
-    
+
     - Steps cannot change global state unless intentionally coded in `end`.
-        
+
 
 ---
 
 ## Tags
 
 - **Tags can be attached to threads, steps, or choices** as `(key value)` pairs.
-    
+
 - Used for editor tooling, search, analytics, or system-driven logic.
-    
+
 - Semantics are up to author-defined macros/systems.
-    
+
 
 ---
 
@@ -258,37 +264,37 @@ define tour thread {
 ## Macro Expansion / Engine Implementation
 
 - **Thread** becomes a closure/data module, with its own state, registry of steps, and pointer to current step.
-    
+
 - **At each step:**
-    
+
     - Executes step logic (`do` block with prints, state changes).
-        
+
     - Presents choices as defined in the header (with guard macros).
-        
+
     - On user selection, advances thread-local step pointer.
-        
-- **No “narrative spaghetti”:**
-    
+
+- **No "narrative spaghetti":**
+
     - All flow and structure are visible and editable from a single location.
-        
+
     - Step logic is never entangled with flow control.
-        
+
     - State is strictly local unless exported intentionally.
-        
+
 
 ---
 
 ## Best Practices
 
 - **Declare state, tags, and all step names in the thread header.**
-    
+
 - **Keep business logic in steps, not in the thread controller.**
-    
+
 - **Use guard macros (`if`, `cond`) for conditional choices, as these are parser-friendly and author-readable.**
-    
+
 - **Export to global state only at end, if possible.**
-    
+
 - **Keep tags simple and parenthesized for future-proofing.**
-    
+
 
 ---

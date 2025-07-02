@@ -1,3 +1,9 @@
+---
+status: authoritative
+last-reviewed: 2024-07-03
+summary: Project vision, philosophy, and guiding principles for the Sutra Engine.
+---
+
 # 01_SUTRA_ENGINE_PHILOSOPHY_AND_DESIGN_PRINCIPLES.md
 
 ---
@@ -6,7 +12,7 @@ LAST EDITED: 2025-06-30
 
 > **⚠️ LIVING DRAFT—NOT FINAL SPECIFICATION**
 >
-> This document is an evolving, *in-progress* record of Sutra’s design philosophy and guiding principles. It is **not a finalized or normative specification**. Everything described here (except the foundational philosophy and aims) is subject to ongoing exploration, questioning, and change.
+> This document is an evolving, *in-progress* record of Sutra's design philosophy and guiding principles. It is **not a finalized or normative specification**. Everything described here (except the foundational philosophy and aims) is subject to ongoing exploration, questioning, and change.
 >
 > The purpose of this file is to capture design intent, document our reasoning, support future iteration, and provide a north star for anyone (especially future-you) working on this project. Update liberally as the design evolves.
 
@@ -15,7 +21,7 @@ LAST EDITED: 2025-06-30
 ## 1. Preamble: Nature of This Document
 
 *   **Audience:** This file is intended as a private, internal design reference—not public documentation or marketing.
-*   **Purpose:** To capture the *why*, *what*, and *how* of Sutra’s evolving design philosophy and principles, to keep future work grounded and context-rich.
+*   **Purpose:** To capture the *why*, *what*, and *how* of Sutra's evolving design philosophy and principles, to keep future work grounded and context-rich.
 *   **Update policy:** Revise, annotate, and cross-reference as new insights arise. Note all major design changes in the appendices.
 
 ---
@@ -35,7 +41,7 @@ Sutra aspires to be a universal substrate for **compositional, emergent, and nar
 ### 2.2 Scope and Status
 
 *   Sutra is **early-stage and highly experimental**. Most decisions are provisional.
-*   This document, and all design artifacts, exist to **guide and record iterative evolution**—not to enforce a “final” architecture.
+*   This document, and all design artifacts, exist to **guide and record iterative evolution**—not to enforce a "final" architecture.
 
 ### 2.3 How to Use and Update This Document
 
@@ -50,27 +56,27 @@ Sutra aspires to be a universal substrate for **compositional, emergent, and nar
 ### 3.1 Scheme, Lisp, Lambda Calculus: Minimalism as Power
 
 *   **Scheme/Lisp** demonstrated that a *tiny set of core forms* can serve as the basis for an expressive, extensible, and Turing-complete language.
-*   The “everything is an s-expression” and “everything reducible to lambda” principles inspire Sutra’s “atoms and macros” approach.
+*   The "everything is an s-expression" and "everything reducible to lambda" principles inspire Sutra's "atoms and macros" approach.
 *   **Sutra takes this further:** all engine logic and narrative is canonically represented as nested lists (s-expressions), with both Lisp-style parentheses **and** block-brace syntax supported one-to-one, interchangeably.
 *   We are **not copying Scheme**, but embracing its spirit of simplicity, composability, and macro extensibility—while providing a surface syntax comfortable for authors beyond the Lisp community.
 
 ### 3.2 Logic Gates, Turing Machines, Physics
 
 *   The *logic gate* metaphor: all of digital computation comes from just a few simple gates—composition yields power.
-*   **Turing completeness** as a minimal standard: If our atoms + macros can simulate a Turing machine, we have “enough.”
+*   **Turing completeness** as a minimal standard: If our atoms + macros can simulate a Turing machine, we have "enough."
 *   Like the universe: from a handful of particles (or rules), emergent complexity arises.
 
 ### 3.3 Real-World Narrative Design (Emily Short, QBN, Storylets)
 
-*   The design patterns of **quality-based narrative (QBN)**, **storylets**, and **emergent systems** (see Emily Short’s writings) are used as a *testbed* for the engine’s expressiveness.
+*   The design patterns of **quality-based narrative (QBN)**, **storylets**, and **emergent systems** (see Emily Short's writings) are used as a *testbed* for the engine's expressiveness.
 *   We aim for Sutra to be the *substrate* for all these narrative patterns—not to bake in a single narrative structure.
 
 ### 3.4 Why Minimalism?
 
 *   **Transparency**: The smaller and more explicit the core, the easier it is to debug, reason about, and extend.
-*   **Robustness and flexibility**: Compositional engines resist “feature bloat” and privileged code.
-*   **Extensibility**: All “advanced” features can be built as macros or libraries atop the same core.
-*   **User empowerment**: Designers are not boxed in by rigid, “hard-coded” systems.
+*   **Robustness and flexibility**: Compositional engines resist "feature bloat" and privileged code.
+*   **Extensibility**: All "advanced" features can be built as macros or libraries atop the same core.
+*   **User empowerment**: Designers are not boxed in by rigid, "hard-coded" systems.
 
 ---
 
@@ -78,8 +84,8 @@ Sutra aspires to be a universal substrate for **compositional, emergent, and nar
 
 ### 4.1 Atoms and Macros: Our Core Model
 
-*   **Atoms**: The truly irreducible “micro-operations” (queries, mutations, control flow, output, randomness).
-*   **Macros**: Any higher-level language construct or feature—**including everything from “storylet” to “loop” to “choice”**—is built as a macro that expands to atoms and other macros.
+*   **Atoms**: The truly irreducible "micro-operations" (queries, mutations, control flow, output, randomness).
+*   **Macros**: Any higher-level language construct or feature—**including everything from "storylet" to "loop" to "choice"**—is built as a macro that expands to atoms and other macros.
 *   **Why?** This model allows for *arbitrary abstraction* and extension, with a minimal, stable foundation.
 
 ### 4.2 Uniform Syntax: S-Expressions and Brace-Block Equivalence
@@ -129,23 +135,23 @@ storylet "find-key" {
     *   Unbounded looping/recursion
     *   Simulation, scheduling, agent-based systems
     *   Emergent, system-driven narratives
-*   **Why?** Ensures the engine is never a “dead end” for any idea.
+*   **Why?** Ensures the engine is never a "dead end" for any idea.
 
 ---
 
 ## 5. Guiding Design Principles (Living List)
 
-This list is not a “constitution,” but a *current* set of touchstones—always open to refinement as the project evolves.
+This list is not a "constitution," but a *current* set of touchstones—always open to refinement as the project evolves.
 
 1.  **Minimal Irreducible Atom Set**
     *   Only include primitives that cannot be composed from others.
     *   Avoid redundancy or overlap.
 
 2.  **Maximal Compositionality**
-    *   All “features” beyond atoms are composed as macros.
-    *   No “privileged” constructs; even core narrative/game patterns are just macro libraries.
+    *   All "features" beyond atoms are composed as macros.
+    *   No "privileged" constructs; even core narrative/game patterns are just macro libraries.
 
-3.  **Implicit Value Resolution (“Auto-Get”)**
+3.  **Implicit Value Resolution ("Auto-Get")**
     *   Authors **never** write `get` to fetch a value.
     *   In any value context (math, comparison, etc.), a path is automatically resolved to its value.
     *   This creates a clean, spreadsheet-like authoring experience where names are used directly.
@@ -187,17 +193,17 @@ This list is not a “constitution,” but a *current* set of touchstones—alwa
 
 12. **Pragmatism Over Dogma**
     *   Every principle is subject to challenge and revision in the face of real authoring needs.
-    *   “Minimalism with a human face”—clarity and usability come first.
+    *   "Minimalism with a human face"—clarity and usability come first.
 
 ---
 
 ## 6. Pragmatism and Evolution
 
-### 6.1 “Pragmatic Minimalism”: A Policy for Extension
+### 6.1 "Pragmatic Minimalism": A Policy for Extension
 
 *   **Minimal core**: Start with as few atoms as possible.
 *   **Macros/libraries**: Build everything else as macros—test in real authoring scenarios.
-*   **Compromise**: If authoring pain or repeated boilerplate emerges, *consider* promoting common macro idioms to “standard macros” or, rarely, new atoms.
+*   **Compromise**: If authoring pain or repeated boilerplate emerges, *consider* promoting common macro idioms to "standard macros" or, rarely, new atoms.
 *   **All changes must be justified**: Each addition or extension should be documented here, with reasons and examples.
 
 ### 6.2 Iterative and Empirical Process
@@ -205,7 +211,7 @@ This list is not a “constitution,” but a *current* set of touchstones—alwa
 *   **Everything in these docs besides the core philosophy is provisional.**
 *   Each pattern, atom, or macro is open to refactoring or replacement.
 *   Use authoring exercises, test scripts, and feedback to guide improvements.
-*   Keep an “Open Questions and Next Steps” log in the appendices.
+*   Keep an "Open Questions and Next Steps" log in the appendices.
 
 ### 6.3 On Documentation and Reflection
 
@@ -230,14 +236,14 @@ This list is not a “constitution,” but a *current* set of touchstones—alwa
 
 ### 7.2 Macro Libraries and Patterns
 
-*   All user-facing “features” (storylets, choices, cost gates, cycles, etc.) are macro libraries built atop the atom set.
+*   All user-facing "features" (storylets, choices, cost gates, cycles, etc.) are macro libraries built atop the atom set.
 *   Authors are encouraged to use, extend, or rewrite these macros to fit their workflow.
 *   This empowers experimentation and rapid iteration.
 
 ### 7.3 Tooling and Feedback
 
 *   Tooling (macroexpansion, world diffing, debugging) is as important as the language itself.
-*   Authors (like your future self!) should always be able to “see what’s really happening” under the hood—in either syntax.
+*   Authors (like your future self!) should always be able to "see what's really happening" under the hood—in either syntax.
 *   Syntax, macro libraries, and error messages should *evolve* in response to real usage and test projects.
 
 ---
@@ -248,26 +254,26 @@ This list is not a “constitution,” but a *current* set of touchstones—alwa
 
 ## A. Mini-History of Minimalist Languages
 
-*   **Scheme and R5RS**: Proved a tiny, uniform core (lambda, quote, if, define) can support an entire programming paradigm; most other constructs (let, cond, and, or, etc.) are macros or “derived forms.”
+*   **Scheme and R5RS**: Proved a tiny, uniform core (lambda, quote, if, define) can support an entire programming paradigm; most other constructs (let, cond, and, or, etc.) are macros or "derived forms."
 *   **Other Minimal Cores**: Janet, PicoLisp, Forth, and others all exemplify how powerful abstraction emerges from composition.
 *   **Key lesson**: The smaller the core, the easier the language is to reason about, extend, and reimplement.
 
 ---
 
-## B. Emily Short’s QBN/Storylet Design Summarized
+## B. Emily Short's QBN/Storylet Design Summarized
 
-*   **Storylet model**: Narrative content is modular, eligibility-driven, and effectful; game state (“qualities”) is the central driver.
-*   **Why relevant?**: Sutra’s goal is to provide a foundation flexible enough to *express* (but not constrain) all these narrative and gameplay patterns.
+*   **Storylet model**: Narrative content is modular, eligibility-driven, and effectful; game state ("qualities") is the central driver.
+*   **Why relevant?**: Sutra's goal is to provide a foundation flexible enough to *express* (but not constrain) all these narrative and gameplay patterns.
 *   **See File 3 for implementation patterns mapped to Sutra macros/atoms.**
 
 ---
 
 ## C. Pitfalls and Anti-Patterns in Minimalism
 
-*   **“Too clever” minimalism**: Rejecting all sugar or abstraction for purity’s sake often results in inaccessible, impractical systems.
+*   **"Too clever" minimalism**: Rejecting all sugar or abstraction for purity's sake often results in inaccessible, impractical systems.
 *   **Complexity inversion**: If macros are so convoluted they hide logic, the gain in minimalism is lost.
-*   **Privilege in the macro layer**: Beware accidental “engine code” sneaking in through macros that become de facto required or too opaque.
-*   **Best practice**: Keep macro expansion transparent and approachable; avoid “macro hell.”
+*   **Privilege in the macro layer**: Beware accidental "engine code" sneaking in through macros that become de facto required or too opaque.
+*   **Best practice**: Keep macro expansion transparent and approachable; avoid "macro hell."
 
 ---
 
@@ -280,17 +286,17 @@ This list is not a “constitution,” but a *current* set of touchstones—alwa
     *   Committed to macroexpansion transparency for all features.
     *   Chose Turing-completeness as minimal bar for expressiveness.
     *   **Refined the authoring language based on key principles (2025-06-30):**
-        *   **No raw `get`:** All value fetching is implicit (“auto-get”).
+        *   **No raw `get`:** All value fetching is implicit ("auto-get").
         *   **Explicit mutation:** All state changes use `!` operators (`add!`, `set!`). Pure math operators (`+`, `-`) do not mutate.
         *   **Consistent predicates:** All boolean checks use `?` operators (`is?`, `>?`).
 *   **Ongoing debates:**
 
-    *   Which atoms are truly irreducible vs. which are “convenient.”
+    *   Which atoms are truly irreducible vs. which are "convenient."
     *   How best to balance minimalism and author comfort.
     *   How much surface syntax to provide before breaking regularity.
 *   **Unresolved/open:**
 
-    *   See “Open Questions and Loose Ends” in the appendices.
+    *   See "Open Questions and Loose Ends" in the appendices.
 
 ---
 
@@ -298,7 +304,7 @@ This list is not a “constitution,” but a *current* set of touchstones—alwa
 
 *   [Scheme (Wikipedia)](https://en.wikipedia.org/wiki/Scheme_%28programming_language%29)
 *   SICP: *Structure and Interpretation of Computer Programs*
-*   [Emily Short’s blog](https://emshort.blog/)
+*   [Emily Short's blog](https://emshort.blog/)
 *   [Failbetter Games: Quality-Based Narrative](https://www.failbettergames.com/)
 *   [Write Yourself a Scheme in 48 Hours (Haskell)](http://en.wikibooks.org/wiki/Write_Yourself_a_Scheme_in_48_Hours)
 *   [Build Your Own Lisp in Rust](https://fasterthanli.me/series/build-your-own-lisp-in-rust)
@@ -309,19 +315,19 @@ This list is not a “constitution,” but a *current* set of touchstones—alwa
 ## F. How to Use and Update This File
 
 *   **When to update:** After any significant insight, design change, or user/author test.
-*   **How to annotate:** Add rationale and date to “Design Notes and Reflections.” Mark unresolved questions with “TODO”.
+*   **How to annotate:** Add rationale and date to "Design Notes and Reflections." Mark unresolved questions with "TODO".
 *   **How to cross-reference:** Link to related sections/files for decisions affecting syntax, macro system, architecture, or authoring patterns.
 
 ---
 
-## G. Open Questions and “Loose Ends”
+## G. Open Questions and "Loose Ends"
 
 *   What atoms, if any, might be promoted or demoted as the macro library matures?
 *   How will large-scale simulation and agent-based systems stress-test the current macro system?
-*   Are there authoring “pain points” not yet fully addressed by the planned syntax and macro approach?
+*   Are there authoring "pain points" not yet fully addressed by the planned syntax and macro approach?
 *   What meta-features or tooling would most support authors and maintainers in long-term evolution?
 
 ---
 
 **END OF FILE 1**
-(Review, extend, and iterate—this is your evolving author’s lab notebook!)
+(Review, extend, and iterate—this is your evolving author's lab notebook!)

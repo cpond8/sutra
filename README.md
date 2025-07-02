@@ -1,49 +1,118 @@
 # Sutra Engine
 
-Sutra is a universal substrate for compositional, emergent, and narrative-rich game systems. It is designed from the ground up to be minimal, transparent, and infinitely extensible, allowing designers to build everything from interactive fiction to deep simulations from a tiny, powerful core.
+Sutra is a compositional, emergent, and narrative-rich game engine implemented in Rust.
+It provides a minimal, extensible core for authoring interactive fiction, simulations, and system-driven narratives.
 
-## Core Principles
+---
 
--   **Purity & Immutability**: All operations are pure functions. State changes are handled through immutable data structures, eliminating side effects and simplifying debugging.
--   **Minimalism**: A tiny set of irreducible "atoms" form the core of the language. All higher-level constructs are built as macros.
--   **Compositionality**: Complex systems are built by composing simpler parts.
--   **Separation of Concerns**: The engine is strictly layered. Parsing, macro expansion, validation, and evaluation are completely decoupled.
--   **Single Source of Truth**: All game state is held in a single, persistent `World` object. All language syntax is defined in a single, formal PEG grammar.
--   **Transparency**: The entire pipeline is inspectable. Macro expansions can be traced, and state changes can be diffed.
+## Design Philosophy and Purpose
 
-## Engine Pipeline
+Sutra is designed to provide a minimal, compositional, and extensible foundation for building interactive fiction, simulations, and system-driven narratives.
+The engine aims to resolve the following problems, as evidenced by code and documentation:
 
-Sutra processes code through a strict, sequential pipeline. This ensures that each stage is predictable, testable, and decoupled from the others.
+- **Fragmentation and Redundancy**:
+  By enforcing a single source of truth for all concepts and patterns, Sutra eliminates documentation and implementation drift.
 
-```mermaid
-graph TD
-    subgraph "Input"
-        A["S-Expr Script"]
-        B["Brace-Block Script"]
-    end
+- **Complexity and Inflexibility**:
+  The engine is built around a minimal set of irreducible "atoms" and a macro system, enabling maximal compositionality and extensibility without feature bloat.
 
-    subgraph "Pipeline"
-        C["Unified PEG Parser"]
-        D["Canonical AST"]
-        E["Validator (structural)"]
-        F["Macro System"]
-        G["Validator (expanded)"]
-        H["Atom Engine"]
-        I["World State / Output"]
-    end
+- **Opaque or Rigid Authoring**:
+  Sutra's uniform syntax (s-expressions and brace-blocks) and macro system empower authors to define new patterns and abstractions without modifying the engine core.
 
-    A --> C
-    B --> C
-    C --> D --> E --> F --> G --> H --> I
+- **Separation of Concerns**:
+  The architecture strictly separates parsing, macro-expansion, validation, evaluation, and presentation, supporting maintainability and testability.
+
+- **Transparency and Traceability**:
+  All computation, macro expansion, and world state changes are inspectable and debuggable.
+
+For a detailed statement of philosophy and guiding principles, see [`docs/philosophy/philosophy.md`](docs/philosophy/philosophy.md).
+
+---
+
+## Directory Structure
+
+```
+.
+├── src/                # Main implementation: engine, CLI, and modules
+│   ├── cli/            # Command-line interface (CLI) implementation
+│   └── ...             # Core modules: ast, atom, macros, parser, eval, etc.
+├── tests/              # Test suite: evaluation, parser, macro expansion
+├── docs/               # Modular documentation system (see below)
+├── memory-bank/        # Project and system context (not code)
+├── Cargo.toml          # Rust package manifest
+├── Cargo.lock          # Cargo dependency lockfile
+├── test.sutra          # Example/test script
+└── ...                 # Standard project/config files and build artifacts
 ```
 
-1.  **Parsing**: Source code (in either s-expression or brace-block syntax) is parsed by a unified PEG parser into a canonical Abstract Syntax Tree (AST).
-2.  **Validation (Structural)**: The initial AST is validated for correct structure.
-3.  **Macro Expansion**: The AST is walked, and any macros are recursively expanded into more primitive forms.
-4.  **Validation (Semantic)**: The expanded AST is validated to ensure it is semantically correct and uses only known atoms.
-5.  **Evaluation**: The final, validated AST is evaluated against the current `World` state. Atoms are executed, producing a result and a new, updated `World` state.
-6.  **Output**: Any output generated during evaluation (e.g., via a `print` atom) is emitted.
+---
 
-## Status
+## Build and Setup
 
-This project is currently in active development. The core data types, parser, and atom evaluator are complete. Work is underway on the macro expansion system.
+This project uses [Cargo](https://doc.rust-lang.org/cargo/) for building and testing.
+
+To build the project:
+```sh
+cargo build
+```
+
+To run the test suite:
+```sh
+cargo test
+```
+
+---
+
+## Codebase Overview
+
+- **Library Entry Point:**
+  `src/lib.rs` re-exports all main modules.
+
+- **CLI Entry Point:**
+  `src/main.rs` launches the command-line interface via `sutra::cli::run()`.
+
+- **Main Modules:**
+  - `ast.rs`, `atom.rs`, `atoms_std.rs`, `macros.rs`, `macros_std.rs`, `parser.rs`, `eval.rs`, `error.rs`, `value.rs`, `world.rs`, `registry.rs`, `path.rs`, `sutra.pest`
+  - `cli/` submodule: `mod.rs`, `args.rs`, `output.rs`
+
+- **Parser:**
+  Uses a PEG grammar (`sutra.pest`) to support both s-expression and brace-block syntax.
+
+---
+
+## Test Suite
+
+- `core_eval_tests.rs` — Core evaluation and integration tests
+- `parser_tests.rs` — Parser tests (s-expr, brace-block, error handling)
+- `macro_expansion_tests.rs` — Macro system expansion and error tests
+
+---
+
+## Documentation
+
+Canonical documentation is maintained in the `docs/` directory.
+See `docs/README.md` for structure, status, and navigation.
+
+---
+
+## Usage
+
+The Sutra engine is primarily used via its command-line interface.
+
+To run the CLI:
+```sh
+cargo run -- <command> [args]
+```
+
+Available commands (see `src/cli/args.rs` for full details):
+
+- `run <file>`: Full pipeline (parse, expand, validate, eval, output)
+- `macroexpand <file>`: Print fully macro-expanded code
+- `macrotrace <file>`: Show stepwise macro expansion trace with diffs
+- `validate <file>`: Validate a script and show errors/warnings
+- `format <file>`: Pretty-print and normalize a script
+- `test [path]`: Discover and run all test scripts in a directory (default: `tests`)
+- `listmacros`: List all available macros with documentation
+- `listatoms`: List all available atoms with documentation
+
+---
