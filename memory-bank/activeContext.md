@@ -2,8 +2,8 @@
 
 ## Current Work Focus
 
-**Phase**: Advanced Macro System
-**Priority**: Re-implement `cond` as a macro.
+**Phase**: Macro System Bootstrapping
+**Priority**: Enable all higher-level constructs to be implemented as macros in the native engine language (self-hosting). Focus on canonicalization as macro and data-driven macro registration/expansion.
 
 ### Recent Changes (2025-07-02)
 
@@ -14,13 +14,12 @@
 
 ## Next Steps (Immediate Priority)
 
-1.  **Implement `cond` as a Macro**:
-    - With the core evaluator now stable, the `cond` construct will be implemented as a macro that expands into a series of nested `if` expressions. This will restore full multi-branch conditional functionality.
-2.  **Complete `get` Atom**:
-    - The `get` atom must be extended to support collection access (lists, maps, strings) to fulfill its design contract.
-3.  **Finalize and Document**: Once the above tasks are complete, the memory bank will be given a final review to ensure all documentation is consistent with the final, stable architecture.
+1.  **Implement the `cond`-first conditional system.** This involves refactoring the `cond` and `if` macros in `src/macros_std.rs` and updating the relevant tests to match the new expansion logic.
+2.  **Update all relevant documentation** to reflect the new architecture, ensuring the memory bank is the single source of truth.
 
 ## Active Decisions and Considerations
+
+- The next phase is macro system bootstrapping, with the goal of self-hosting all macros and moving canonicalization and registration to the native language.
 
 ### Confirmed Design Decisions
 
@@ -40,6 +39,7 @@
 - **Macro hygiene**: How sophisticated to make the hygiene system for user-defined macros.
 - **Performance optimization**: When to implement lazy evaluation or other optimizations.
 - **`get` atom completion**: The `get` atom needs to be extended to support collection access (lists, maps) in addition to world paths.
+- **`cond`-first architecture**: The decision has been made to make `cond` the primary, variadic conditional macro, which expands into `if`. `if` is a simple, 3-arity macro that expands to the `Expr::If` primitive. This maintains a minimal core while providing a powerful and ergonomic authoring experience.
 
 ## Important Patterns and Preferences
 
@@ -91,4 +91,18 @@
 - **Author ergonomics matter**: Syntax and debugging tools are as important as functionality
 - **Modularity enables reuse**: Storylets, pools, and threads compose cleanly
 
+## 2025-07-02 Active Context Update
+- **Variadic Macro System Implemented:** A two-tiered macro system is now in place. `MacroTemplate` supports simple declarative macros, while `MacroFn` supports complex procedural macros.
+- **Architectural Plan Finalized:** After extensive analysis, a final plan for the conditional system has been approved. `cond` will be the primary, variadic conditional macro, expanding to the simpler `if` macro, which in turn creates the `Expr::If` primitive.
+- **Documentation Updated:** All relevant memory bank files (`systemPatterns.md`, `progress.md`) and the `system-reference.md` have been updated to reflect this final architecture.
+- **Next Step:** Implement the `cond`-first architecture.
+
 _Last Updated: 2025-07-01_
+
+## Current Focus
+- Documentation and test coverage for the `cond` macro are now complete.
+- All error and edge cases are robustly tested and documented.
+
+## Next Steps
+- Audit CLI/docs for macroexpansion trace and author help.
+- Monitor for macro system upgrades to enable migration of `cond` to user macro.

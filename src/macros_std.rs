@@ -9,7 +9,7 @@
 //! (e.g., `player.score` or `(player score)`) into a canonical `Expr::Path`
 //! node. This is the only place in the entire engine where path syntax is parsed.
 
-use crate::ast::Expr;
+use crate::ast::{Expr, Span};
 use crate::error::{SutraError, SutraErrorKind};
 use crate::macros::MacroRegistry;
 use crate::path::Path;
@@ -37,6 +37,7 @@ pub fn register_std_macros(registry: &mut MacroRegistry) {
     registry.register("sub!", expand_sub);
     registry.register("inc!", expand_inc);
     registry.register("dec!", expand_dec);
+    registry.register("cond", expand_cond); // TEMPORARY: see expand_cond for details
 }
 
 // ---
@@ -398,4 +399,120 @@ pub fn expand_if(expr: &Expr) -> Result<Expr, SutraError> {
             span: span.clone(),
         })
     })
+}
+
+/// TEMPORARY: Expands `(cond (test1 expr1) ... (else exprN))` to nested `if` expressions.
+///
+/// MIGRATION PLAN: This Rust-side macro must be replaced with a user-defined macro as soon as the macro system supports variadic, recursive user macros. No engine privilege or special case should ever be introduced here.
+///
+/// Limitations:
+/// - Only works because macros can inspect the full argument list as an Expr::List.
+/// - Not available to authors for custom variadic macros.
+/// - Should be removed once variadic macro support is in place.
+///
+/// # Migration Plan
+/// - When variadic macro support is added, port this macro to the native language and remove this Rust implementation.
+pub fn expand_cond(expr: &Expr) -> Result<Expr, SutraError> {
+    // Ensure this is a list and has at least one clause
+    let (items, span) = match expr {
+        Expr::List(items, span) => (items, span),
+        _ => {
+            return Err(SutraError {
+                kind: SutraErrorKind::Macro("`cond` macro must be a list.".to_string()),
+                span: Some(expr.span()),
+            })
+        }
+    };
+    if items.len() < 2 {
+        return Err(SutraError {
+            kind: SutraErrorKind::Macro("`cond` macro requires at least one clause.".to_string()),
+            span: Some(span.clone()),
+        });
+    }
+    let clauses = &items[1..];
+    // Check for multiple else clauses or misplaced else
+    let mut else_count = 0;
+    for (i, clause) in clauses.iter().enumerate() {
+        if let Expr::List(items, _) = clause {
+            if let Some(Expr::Symbol(s, _)) = items.get(0) {
+                if s == "else" {
+                    else_count += 1;
+                    if i != clauses.len() - 1 {
+                        return Err(SutraError {
+                            kind: SutraErrorKind::Macro("`else` clause must be the last clause in `cond`.".to_string()),
+                            span: Some(clause.span()),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    if else_count > 1 {
+        return Err(SutraError {
+            kind: SutraErrorKind::Macro("`cond` macro may have at most one `else` clause, and it must be last.".to_string()),
+            span: Some(span.clone()),
+        });
+    }
+    fn expand_clauses(clauses: &[Expr], span: &Span) -> Result<Expr, SutraError> {
+        if clauses.is_empty() {
+            return Err(SutraError {
+                kind: SutraErrorKind::Macro("`cond` macro requires at least one clause.".to_string()),
+                span: Some(span.clone()),
+            });
+        }
+        // If last clause is (else expr), treat as default
+        if clauses.len() == 1 {
+            match &clauses[0] {
+                Expr::List(items, clause_span) if !items.is_empty() => {
+                    if let Expr::Symbol(s, _) = &items[0] {
+                        if s == "else" {
+                            if items.len() != 2 {
+                                return Err(SutraError {
+                                    kind: SutraErrorKind::Macro("`else` clause must have exactly one expression.".to_string()),
+                                    span: Some(clause_span.clone()),
+                                });
+                            }
+                            return Ok(items[1].clone());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        // Otherwise, process first clause as (test expr)
+        match &clauses[0] {
+            Expr::List(items, clause_span) if items.len() == 2 => {
+                // Disallow 'else' in non-final position
+                if let Expr::Symbol(s, _) = &items[0] {
+                    if s == "else" {
+                        return Err(SutraError {
+                            kind: SutraErrorKind::Macro("`else` clause must be the last clause in `cond`.".to_string()),
+                            span: Some(clause_span.clone()),
+                        });
+                    }
+                }
+                let test = items[0].clone();
+                let expr = items[1].clone();
+                let else_branch = expand_clauses(&clauses[1..], span)?;
+                Ok(Expr::If {
+                    condition: Box::new(test),
+                    then_branch: Box::new(expr),
+                    else_branch: Box::new(else_branch),
+                    span: clause_span.clone(),
+                })
+            }
+            Expr::List(items, clause_span) => {
+                // Wrong arity
+                Err(SutraError {
+                    kind: SutraErrorKind::Macro("Each `cond` clause must be a list of two elements (test expr), or (else expr) as the last clause.".to_string()),
+                    span: Some(clause_span.clone()),
+                })
+            }
+            _ => Err(SutraError {
+                kind: SutraErrorKind::Macro("Each `cond` clause must be a list.".to_string()),
+                span: Some(clauses[0].span()),
+            })
+        }
+    }
+    expand_clauses(clauses, span)
 }

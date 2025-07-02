@@ -49,4 +49,9 @@ Sutra aspires to be a **universal substrate for compositional, emergent, and nar
 
 **Next**: Finalizing the test suite (`core_eval_tests.rs`) to validate the new architecture and ensure all systems are functioning as expected.
 
+## Core Requirements and Goals (addendum)
+- All variadic conditionals (e.g., `cond`) are implemented as macros, not as AST or evaluator primitives.
+- Only `if` exists as a primitive in the AST; all other control flow is macro sugar.
+- Future extensibility and migration plans must preserve this minimal, compositional, and macro-driven architecture.
+
 _Last Updated: 2025-07-01_

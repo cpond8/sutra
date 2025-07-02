@@ -518,5 +518,39 @@ storylet "meet-bishop" {
 
 ---
 
+## Authoring Patterns
+
+## Canonical Conditional: `cond`
+
+- `cond` is the author-facing, variadic conditional macro. It expands to nested `if` expressions, with only `if` as a primitive in the AST.
+- All control flow except `if` is macro sugar, defined in the macro library.
+- Error cases: no clauses, non-list clause, wrong arity, misplaced/multiple else, malformed else, empty clause, deeply nested cond (recursion limit).
+- Migration plan: When the macro system supports variadic/recursive user macros, `cond` will be ported to a user macro and the Rust implementation removed.
+- Authors can use `macroexpand` or `macrotrace` to see how their cond is rewritten.
+
+### Example
+
+Input:
+```lisp
+(cond
+  ((over? player.gold 10) (do (sub! player.gold 10) (print "You buy the artifact.")))
+  ((is? player.quest "started") (print "You have already begun your quest."))
+  (else (print "Not enough gold."))
+)
+```
+
+Expansion:
+```lisp
+(if (over? player.gold 10)
+    (do (sub! player.gold 10) (print "You buy the artifact."))
+    (if (is? player.quest "started")
+        (print "You have already begun your quest.")
+        (print "Not enough gold.")))
+```
+
+See CLI help for more details and macroexpansion tracing.
+
+---
+
 **END OF FILE 3**
 (Review, extend, and iterate—this is your evolving author's lab notebook!)

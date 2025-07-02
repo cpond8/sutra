@@ -54,13 +54,29 @@
 - All type and evaluation errors are explicit and contextual.
 - All related tests now pass.
 
-### Unified Registry Pattern (2025-07-01)
+### Completed: Registry Pattern Audit (2025-07-02)
 
-- **Canonical Registry Builder**: Atom and macro registry setup is now fully DRY. Both production and test code use canonical builder functions (`build_default_atom_registry`, `build_default_macro_registry` in `registry.rs`).
-- **No Duplication**: All standard atoms/macros are registered in one place; tests and production always share the same logic.
-- **Extensible**: Tests may further mutate the registry after construction for custom scenarios, but always start from the canonical builder.
-- **Contract**: All registration logic is centralized; new atoms/macros are added in one place and available everywhere.
-- **Status:** Registry unification is complete and all related tests pass.
+- The registry pattern for atoms and macros was audited. Both use canonical builder functions in `src/registry.rs`, with all registration logic centralized in the standard library modules. There is no duplication between production and test code. Naming, data flow, and extensibility are uniform. Test and production environments are guaranteed to be in sync.
+
+### Completed: Error Handling Audit (2025-07-02)
+
+- The error handling system was audited. All errors use structured, span-carrying types (`SutraError`, `EvalError`). Two-phase enrichment is implemented and used. Error construction and reporting are uniform across all pipeline stages. Test and production environments are in sync.
+
+### Completed: AST/Parser Audit (2025-07-02)
+
+- The AST and parser were audited. All AST nodes carry spans for source tracking. The parser uses a unified PEG grammar as the single source of truth for syntax. CST-to-AST conversion is uniform and preserves spans. Error handling and documentation are consistent and clear.
+
+### Completed: Atoms/Eval Audit (2025-07-02)
+
+- The atoms and evaluation engine were audited. All atoms follow uniform contracts and naming. State propagation is immutable and consistent. Error handling and span usage are uniform. Atoms are registered via a single registry. Documentation and test/production parity are maintained.
+
+### Completed: CLI/Output and Tests Audit (2025-07-02)
+
+- The CLI, output, and test suite were audited. The CLI is a pure orchestrator with output centralized in a dedicated module. Error handling and registry usage are consistent. All tests use the canonical pipeline and registry builders. Test/production parity and comprehensive coverage are maintained.
+
+### Stage 6: Macro System Bootstrapping (2025-07-02)
+
+- Transitioned from uniformity audit to macro bootstrapping. The goal is for all higher-level constructs (control flow, state mutation, narrative patterns) to be implemented as macros in the native engine language, not Rust. Focus is on self-hosting, canonicalization as macro, and data-driven macro registration/expansion.
 
 ## What's Left to Build
 
@@ -68,25 +84,23 @@
 
 **Major Components:**
 
-- **(In Progress) Re-implement `cond` as a Macro**: With the core evaluator now stable, the `cond` construct is being re-introduced as a macro that expands into a series of nested `if` expressions.
-- **(Next) Complete `get` Atom**: The `get` atom must be extended to support collection access (lists, maps, strings) to fulfill its design contract.
-- Pattern-matching macro expansion
-- Hygiene system for variable scoping
-- Standard macro library (storylet, choice, pool, etc.)
-- Recursion depth limiting
+- **(Done) Implement Two-Tiered Macro System**: A new declarative `MacroTemplate` system has been implemented to support simple, author-defined variadic macros. This coexists with the native `MacroFn` system used for complex procedural macros.
+- **(Next) Refactor `cond` and `if` Macros**: Refactor the conditional macros to establish `cond` as the primary, author-facing variadic macro. `cond` will be a native `MacroFn` that recursively expands into nested `if` calls. `if` will be a simple, 3-arity `MacroFn` that is the sole gateway to the `Expr::If` primitive. This change is isolated to `macros_std.rs` and tests, with no changes to the core AST or evaluator.
+- **(Future) Hygiene System**: Design and implement a hygiene system (e.g., `gensym`) to prevent accidental variable capture in macros.
+- **(Future) Expansion-Time Evaluation**: Explore adding a small, safe set of `template/...` functions that can be evaluated during macro expansion to allow for more powerful declarative macros.
 
-**Estimated Effort:** 3-4 weeks
+**Estimated Effort:** 1 week
 **Dependencies:** Stage 4
-**Risk:** Medium-High - macro hygiene and expansion can be complex
+**Risk:** Low - The refactor is isolated to the macro layer.
 
-### Stage 5: Advanced Macro System (Not Started)
+### Stage 6: Standard Library Expansion (Not Started)
 
 **Major Components:**
 
-- Pattern-matching macro expansion
-- Hygiene system for variable scoping
-- Standard macro library (storylet, choice, pool, etc.)
-- Recursion depth limiting
+- Implement Tier 2+ macros: `storylet`, `choice`, `pool`, `select`, etc.
+- Develop comprehensive example scripts and usage patterns.
+- Performance testing with realistic content.
+- Authoring documentation and tutorials.
 
 **Estimated Effort:** 3-4 weeks
 **Dependencies:** Stage 4
@@ -201,4 +215,20 @@
 - **User macro system design** - security and namespace management
 - **Advanced tooling requirements** - editor support, visual debugging
 
+## 2025-07-04 Progress Update
+- Implemented a temporary Rust macro expander for `(cond ...)`, with full tests and documentation. This allows Scheme-style multi-branch conditionals in author code, expanding to nested `if` expressions.
+- Confirmed that the 'auto-get' feature is obsolete; all macro expansion is now explicit and canonical.
+- All macro expansion tests, including for `cond`, now pass, confirming correct behavior.
+- Next step: implement proper variadic macro support in the macro system. This is required before beginning the macro bootstrapping phase, where all macros will be defined in the native authoring language.
+
 _Last Updated: 2025-07-01_
+
+## What Works
+- `cond` macro is robust, fully documented, and all error/edge cases are tested.
+
+## What's Next
+- Audit CLI/docs for macroexpansion trace and author help.
+- Monitor for macro system upgrades to migrate `cond` to user macro.
+
+## Current Status
+- Canonical implementation and coverage for `cond` macro are complete.

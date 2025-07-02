@@ -40,7 +40,6 @@ parse → macro-expand → validate → evaluate → output/presentation
 - `core/set!`, `core/del!` - state mutation
 - `+`, `-`, `*`, `/`, `mod` - pure math operations
 - `eq?`, `gt?`, `lt?`, `gte?`, `lte?`, `not` - predicates
-- `if` - conditional evaluation (native special form in the AST)
 - `do` - sequential evaluation
 - `print` - output (planned)
 - `rand` - randomness (planned)
@@ -48,10 +47,10 @@ parse → macro-expand → validate → evaluate → output/presentation
 **Macros (Author-Facing Layer)**
 
 - All higher-level constructs are built as macros.
-- `set!`, `del!`, `add!`, `sub!`, `inc!`, `dec!` - ergonomic state mutation.
-- `is?`, `over?`, `under?` - readable predicates with auto-get.
-- `cond` - multi-branch conditional (to be re-implemented as a macro).
-- `storylet`, `choice`, `pool`, `select` - planned narrative patterns.
+- **Conditional Logic:** `cond` is the primary, variadic conditional macro. `if` is a simpler, fixed-arity macro that expands to `cond`.
+- **State Mutation:** `set!`, `del!`, `add!`, `sub!`, `inc!`, `dec!`.
+- **Predicates:** `is?`, `over?`, `under?` (provide auto-get functionality).
+- **Future:** `storylet`, `choice`, `pool`, `select`.
 
 ### Registry Pattern (Unified, DRY)
 
@@ -106,6 +105,23 @@ parse → macro-expand → validate → evaluate → output/presentation
   3. **Simplified Evaluator**: The evaluator (`src/eval.rs`) is simplified and hardened. It operates only on the canonical AST and will throw a semantic error if it encounters a bare symbol, enforcing the contract with the macro layer.
 - **Benefit**: This architecture creates a highly predictable, transparent, and robust pipeline. It fully decouples syntax from evaluation, making the system easier to debug, test, and extend.
 
+### Macro System Architecture (The "Sutra Way")
+
+After extensive analysis, the Sutra engine has adopted a pragmatic, two-tiered macro system that balances author ergonomics with architectural purity. This system is built on one core primitive: the `Expr::If` special form.
+
+-   **`Expr::If` (The Primitive):** This is the one true conditional construct in the engine. It is a special form in the AST, not a macro, and is handled directly by the evaluator. It is the bedrock on which all other conditional logic is built.
+
+-   **`MacroFn` (Native Macros):**
+    -   **Mechanism:** A native Rust function that receives the raw AST of the macro call and has the full power of Rust to transform it.
+    -   **Use Case:** Reserved for core language features that require complex, procedural logic during expansion. The primary example is **`cond`**, which is implemented as a native, recursive `MacroFn` that expands into a series of nested `if` macro calls.
+
+-   **`MacroTemplate` (Declarative Macros):**
+    -   **Mechanism:** A simple, data-driven substitution system. Macros are defined as templates with named parameters (including a variadic `&rest` parameter) and an AST body.
+    -   **Use Case:** The primary way for authors to create new syntactic abstractions. Ideal for simple wrappers, logging utilities, and domain-specific language constructs.
+    -   **Limitation:** Purely syntactic. Cannot perform conditional logic or complex computations during expansion. This is a deliberate trade-off for safety and simplicity.
+
+This layered approach is a perfect example of the engine's philosophy: the powerful, variadic `cond` macro is built upon the simpler `if` macro, which in turn is a direct gateway to the single, minimal `Expr::If` primitive. This provides a safe and easy-to-use system for authors while retaining the power needed for the core language, all without compromising the strict `parse -> expand -> evaluate` pipeline.
+
 ## Module Boundaries
 
 ### Core Modules
@@ -116,7 +132,7 @@ parse → macro-expand → validate → evaluate → output/presentation
 - **sutra.pest** - Formal PEG grammar for all syntaxes
 - **parser.rs** - Unified PEG-based parser
 - **atom.rs** - Irreducible operations
-- **eval.rs** - Evaluation engine with TCO and native `if` special form
+- **eval.rs** - Evaluation engine (handles the `Expr::If` special form)
 - **macros.rs** - Macro expansion system
 - **macros_std.rs** - Standard macro library
 - **validate.rs** - Structural and semantic validation (planned)
@@ -184,5 +200,19 @@ parse → macro-expand → validate → evaluate → output/presentation
 - User-defined macros (future)
 - Plugin architecture through registries
 - No core engine modifications required for new features
+
+## Macro System as Sole Authority
+- All author-facing language constructs (including `cond`) are implemented as macros in the macro library (`src/macros_std.rs`).
+- Only `if` exists as a primitive in the AST; all other control flow (e.g., `cond`) is macro sugar, expanded to nested `if`.
+- Macro system is pure, stateless, and does not mutate the AST or world in place.
+- Strict layering: macro system is the only surface for author constructs; evaluator and AST remain minimal and pure.
+- Single source of truth: macro library defines all surface constructs.
+- All error and edge cases for `cond` macro are now tested and documented.
+- Macro system remains the single source of truth for all author-facing constructs.
+
+## Migration Path
+- `cond` macro is currently implemented in Rust for variadic support, but this is temporary.
+- As soon as the macro system supports variadic/recursive user macros, `cond` must be ported to a user macro and the Rust implementation removed.
+- This ensures no privileged logic or hidden complexity in the engine.
 
 _Last Updated: 2025-07-01_

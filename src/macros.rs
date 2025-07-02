@@ -28,8 +28,23 @@ pub struct TraceStep {
     pub ast: Expr,
 }
 
-// A macro function takes an expression and attempts to transform it into another expression.
+// A macro function is a native Rust function that transforms an AST.
 pub type MacroFn = fn(&Expr) -> Result<Expr, SutraError>;
+
+/// A declarative macro defined by a template.
+#[derive(Debug, Clone)]
+pub struct MacroTemplate {
+    pub params: Vec<String>,
+    pub variadic_param: Option<String>,
+    pub body: Box<Expr>,
+}
+
+/// An enum representing the two types of macros in the system.
+#[derive(Debug, Clone)]
+pub enum MacroDef {
+    Fn(MacroFn),
+    Template(MacroTemplate),
+}
 
 /// A registry for all known macros, both built-in and potentially user-defined.
 ///
@@ -37,7 +52,7 @@ pub type MacroFn = fn(&Expr) -> Result<Expr, SutraError>;
 /// and for driving the recursive expansion process.
 #[derive(Default)]
 pub struct MacroRegistry {
-    pub macros: HashMap<String, MacroFn>,
+    pub macros: HashMap<String, MacroDef>,
 }
 
 /// The main entry point for the macro expansion pipeline stage.
@@ -59,7 +74,7 @@ impl MacroRegistry {
 
     /// Registers a new macro with the given name.
     pub fn register(&mut self, name: &str, func: MacroFn) {
-        self.macros.insert(name.to_string(), func);
+        self.macros.insert(name.to_string(), MacroDef::Fn(func));
     }
 
     /// Recursively expands all macros in a given expression.
@@ -111,9 +126,14 @@ impl MacroRegistry {
 
         // Check if the head of the list is a registered macro.
         if let Some(Expr::Symbol(s, _)) = items.get(0) {
-            if let Some(macro_fn) = self.macros.get(s) {
+            if let Some(macro_def) = self.macros.get(s) {
                 // It's a macro call. Expand it once.
-                let expanded = macro_fn(expr)?;
+                let expanded = match macro_def {
+                    MacroDef::Fn(func) => func(expr)?,
+                    MacroDef::Template(template) => {
+                        self.expand_template(template, expr, depth)?
+                    }
+                };
                 // The result of the expansion might itself be another macro call,
                 // so we must recurse on the *new* expression.
                 return self.expand_recursive(&expanded, depth + 1);
@@ -156,6 +176,107 @@ impl MacroRegistry {
         }
 
         Ok(trace)
+    }
+
+    fn expand_template(
+        &self,
+        template: &MacroTemplate,
+        expr: &Expr,
+        depth: usize,
+    ) -> Result<Expr, SutraError> {
+        let (items, span) = match expr {
+            Expr::List(items, span) => (items, span),
+            _ => {
+                return Err(SutraError {
+                    kind: SutraErrorKind::Macro(
+                        "Template macro must be called as a list.".to_string(),
+                    ),
+                    span: Some(expr.span()),
+                });
+            }
+        };
+
+        let args = &items[1..];
+
+        // Arity check
+        if args.len() < template.params.len() {
+            return Err(SutraError {
+                kind: SutraErrorKind::Macro(format!(
+                    "Macro expects at least {} arguments, but got {}.",
+                    template.params.len(),
+                    args.len()
+                )),
+                span: Some(span.clone()),
+            });
+        }
+
+        if template.variadic_param.is_none() && args.len() > template.params.len() {
+            return Err(SutraError {
+                kind: SutraErrorKind::Macro(format!(
+                    "Macro expects exactly {} arguments, but got {}.",
+                    template.params.len(),
+                    args.len()
+                )),
+                span: Some(span.clone()),
+            });
+        }
+
+        let mut bindings = HashMap::new();
+        for (i, param_name) in template.params.iter().enumerate() {
+            bindings.insert(param_name.clone(), args[i].clone());
+        }
+
+        if let Some(variadic_name) = &template.variadic_param {
+            let rest_args = args[template.params.len()..].to_vec();
+            bindings.insert(
+                variadic_name.clone(),
+                Expr::List(rest_args, span.clone()),
+            );
+        }
+
+        let substituted_body = self.substitute(&template.body, &bindings)?;
+        self.expand_recursive(&substituted_body, depth + 1)
+    }
+
+    fn substitute(
+        &self,
+        expr: &Expr,
+        bindings: &HashMap<String, Expr>,
+    ) -> Result<Expr, SutraError> {
+        match expr {
+            Expr::Symbol(name, span) => {
+                if let Some(bound_expr) = bindings.get(name) {
+                    Ok(bound_expr.clone())
+                } else {
+                    Ok(Expr::Symbol(name.clone(), span.clone()))
+                }
+            }
+            Expr::List(items, span) => {
+                let new_items = items
+                    .iter()
+                    .map(|item| self.substitute(item, bindings))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(Expr::List(new_items, span.clone()))
+            }
+            Expr::If {
+                condition,
+                then_branch,
+                else_branch,
+                span,
+            } => {
+                let new_condition = self.substitute(condition, bindings)?;
+                let new_then = self.substitute(then_branch, bindings)?;
+                let new_else = self.substitute(else_branch, bindings)?;
+                Ok(Expr::If {
+                    condition: Box::new(new_condition),
+                    then_branch: Box::new(new_then),
+                    else_branch: Box::new(new_else),
+                    span: span.clone(),
+                })
+            }
+            // Literals and paths are returned as-is
+            _ => Ok(expr.clone()),
+        }
     }
 
     /// The recursive implementation for `macroexpand_trace`.
@@ -201,8 +322,11 @@ impl MacroRegistry {
         }
 
         if let Some(Expr::Symbol(s, _)) = items.get(0) {
-            if let Some(macro_fn) = self.macros.get(s) {
-                let expanded = macro_fn(expr)?;
+            if let Some(macro_def) = self.macros.get(s) {
+                let expanded = match macro_def {
+                    MacroDef::Fn(func) => func(expr)?,
+                    MacroDef::Template(template) => self.expand_template(template, expr, depth)?,
+                };
                 trace.push(TraceStep {
                     description: format!("Expanding macro `{}`", s),
                     ast: expanded.clone(),
