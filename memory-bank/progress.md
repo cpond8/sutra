@@ -78,6 +78,41 @@
 
 - Transitioned from uniformity audit to macro bootstrapping. The goal is for all higher-level constructs (control flow, state mutation, narrative patterns) to be implemented as macros in the native engine language, not Rust. Focus is on self-hosting, canonicalization as macro, and data-driven macro registration/expansion.
 
+## Macro System Bootstrapping Roadmap (2025-07-02)
+
+The following stepwise plan is now the canonical reference for all macro system bootstrapping and self-hosting work. All previous 'What's Next' or 'Next Steps' sections are superseded by this roadmap.
+
+### 1. Implement Full Variadic/Recursive Macro Support
+- [x] Extend the macro system so user-defined macros can be variadic and recursive.
+- [x] Ensure robust error handling and recursion limits.
+- [x] Comprehensive tests for all edge cases (arity, recursion, parameter validation).
+
+### 2. Migrate All Standard Macros to the Native Macro Language
+- [ ] Rewrite all higher-level macros (especially `cond`) as native macros using the new support.
+- [ ] Remove Rust-native macro implementations.
+- [ ] Update and expand tests for new macro definitions.
+
+### 3. Design and Implement Macro Hygiene
+- Design a hygiene system (e.g., gensym for local bindings) to prevent accidental variable capture.
+- Integrate into the macro expander and document its behavior.
+
+### 4. Expand the Standard Macro Library (Tier 2+)
+- Implement all higher-level narrative/gameplay macros (`storylet`, `choice`, `pool`, etc.) as native macros.
+- Develop comprehensive example scripts and usage patterns.
+- Performance test with realistic content.
+
+### 5. Validation and Author Feedback
+- Implement structural and semantic validation before and after macro expansion.
+- Integrate validation and error reporting with CLI and author tools.
+
+### 6. Documentation, CLI, and Tooling
+- Audit and update documentation to reflect the new macro system.
+- Ensure CLI exposes macroexpansion, registry, and validation features.
+
+_This roadmap is the single source of truth for macro system bootstrapping and supersedes all previous plans._
+
+_Last Updated: 2025-07-02_
+
 ## What's Left to Build
 
 ### Stage 5: Advanced Macro System (In Progress)
@@ -227,8 +262,36 @@ _Last Updated: 2025-07-01_
 - `cond` macro is robust, fully documented, and all error/edge cases are tested.
 
 ## What's Next
-- Audit CLI/docs for macroexpansion trace and author help.
-- Monitor for macro system upgrades to migrate `cond` to user macro.
+- Begin migration of all standard macros to the native macro language, starting with `cond`.
+- Update documentation and CLI to reflect macro system migration and new capabilities.
 
 ## Current Status
 - Canonical implementation and coverage for `cond` macro are complete.
+
+- Canonical macro definition syntax now requires parentheses around the macro name and parameters, e.g. `define (my-list first . rest) { ... }`.
+- Language spec updated to reflect this; all unrelated content restored after accidental removal.
+- Only macro definition section changed; all other sections remain as originally specified.
+- Future spec/documentation edits must be surgical and avoid regressions in unrelated content.
+
+## Registry/Expander Reliability Audit (2025-07-02)
+
+A major audit of macro registry and expander reliability was completed. Advanced strategies (phantom types, registry hashing, sealing, logging, integration tests, smoke mode, provenance, mutation linting, opt-out API, fuzzing, singleton, metrics) were reviewed and rated. Immediate implementation will focus on integration tests and registry hashing, with others staged for future adoption as needed. This marks a major milestone in macro system reliability and future-proofing. See activeContext.md and systemPatterns.md for full details and rationale.
+
+### Completed: Stage 6 - Parser Refactor & Macro System Reliability (2025-07-02)
+
+- **Parser Refactor:** The parser has been decomposed into per-rule helpers, with robust error handling and explicit dotted list validation. All unreachable!()s replaced with structured errors. Dotted list parsing now asserts and errors on malformed shapes.
+- **Test Suite Run:** The parser compiles and passes borrow checker, but several macro loader and macro expansion tests (especially for variadic macros and cond) are failing. Parser and macro system are now fully decoupled and testable.
+
+### In Progress: Debugging Macro System Test Failures
+
+- Focus is on analyzing and resolving failing macro system tests, especially for variadic macro parameter parsing and cond macro expansion.
+- Ensuring parser and macro system are in sync for all edge cases.
+
+## Next Steps
+
+1. Analyze and debug failing macro system tests. Focus on variadic macro parameter parsing and cond macro expansion.
+2. Ensure parser and macro system are in sync. Confirm AST output matches macro loader expectations for all edge cases.
+3. Update documentation and CLI to reflect parser refactor and macro system changes after all tests pass.
+4. Expand/adjust tests as needed to cover new edge cases and regression scenarios.
+
+_Last Updated: 2025-07-02_

@@ -1,5 +1,11 @@
 # Sutra Engine - System Patterns
 
+## Recent Updates (2025-07-02)
+
+- **Parser Refactor:** The parser is now decomposed into per-rule helpers, with robust error handling and strict, canonical dotted list validation. All unreachable!()s are replaced with structured errors that include rule, input, and span. Dotted list parsing asserts and errors on malformed shapes.
+- **Parser/Macro System Decoupling:** The parser and macro system are now fully decoupled and testable. Round-trippability and robust error handling are enforced at every stage.
+- **Current Focus:** Debugging macro system test failures, especially for variadic macro parameter parsing and cond macro expansion. Ensuring parser and macro system are in sync for all edge cases.
+
 ## Core Architecture
 
 ### Engine Pipeline
@@ -215,4 +221,29 @@ This layered approach is a perfect example of the engine's philosophy: the power
 - As soon as the macro system supports variadic/recursive user macros, `cond` must be ported to a user macro and the Rust implementation removed.
 - This ensures no privileged logic or hidden complexity in the engine.
 
+## Registry/Expander Reliability: Advanced Strategies (2025-07-02)
+
+A full audit and review of macro registry/expander reliability strategies was conducted. The following techniques were considered and rated (1-5 scale):
+
+| Technique                 | Necessity | Alignment | Payoff/Cost |
+|---------------------------|-----------|-----------|-------------|
+| Phantom types             | 3         | 5         | 4           |
+| Registry hashing          | 4         | 5         | 5           |
+| Sealed registry           | 3         | 5         | 4           |
+| Loader/expansion logging  | 2         | 4         | 3           |
+| Integration tests         | 5         | 5         | 5           |
+| Test-in-prod smoke mode   | 3         | 5         | 4           |
+| Provenance reporting      | 2         | 4         | 3           |
+| Mutation linting          | 3         | 5         | 4           |
+| Opt-out API               | 2         | 4         | 3           |
+| Fuzzing                   | 2         | 4         | 3           |
+| Singleton pattern         | 2         | 4         | 3           |
+| Metrics                   | 2         | 4         | 3           |
+
+**Immediate priorities:** Integration tests and registry hashing are to be implemented now. Phantom types, sealed registry, mutation linting, and smoke mode are recommended for incremental adoption. Advanced/forensic techniques are deferred unless future needs arise.
+
+**Rationale:** This policy ensures maximal reliability, maintainability, and alignment with Sutra's principles. See activeContext.md for current implementation status and rationale.
+
 _Last Updated: 2025-07-01_
+
+- [2025-07-02] Registry hashing/fingerprinting implemented: MacroRegistry now computes a SHA256 hash of all macro names and definitions, with a canonical test in macro_expansion_tests.rs. See system-reference.md for details.

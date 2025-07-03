@@ -11,13 +11,17 @@ pub struct EvalError {
     pub suggestion: Option<String>,
 }
 
+/// The kind of error that occurred in Sutra.
 #[derive(Debug, Clone)]
 pub enum SutraErrorKind {
-    Parse(String),
+    Parse(String), // User-facing parse errors (malformed input, syntax error)
     Macro(String),
     Validation(String),
     Eval(EvalError),
     Io(String),
+    // New error kinds for parser internal logic errors
+    MalformedAst(String), // Unexpected AST structure, likely a bug or grammar mismatch
+    InternalParse(String), // Internal parser state error, not user input
 }
 
 #[derive(Debug, Clone)]
@@ -64,6 +68,8 @@ impl std::fmt::Display for SutraError {
                 writeln!(f, "\nExpanded Code:")?;
                 write!(f, "  {}", e.expanded_code)
             }
+            SutraErrorKind::MalformedAst(s) => write!(f, "Malformed AST Error: {}", s),
+            SutraErrorKind::InternalParse(s) => write!(f, "Internal Parse Error: {}", s),
         }
     }
 }

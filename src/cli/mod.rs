@@ -4,7 +4,7 @@
 //! the core library functions.
 
 use crate::cli::args::{Command, SutraArgs};
-use crate::macros::MacroRegistry;
+use crate::macros::{MacroRegistry, load_macros_from_file, MacroDef};
 use crate::{macros_std, parser};
 use clap::Parser;
 use std::{fs, process};
@@ -60,6 +60,19 @@ fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::E
     let mut registry = MacroRegistry::new();
     // Centralized registration of all standard macros.
     macros_std::register_std_macros(&mut registry);
+
+    // Load user-defined/stdlib macros from macros.sutra
+    match load_macros_from_file("macros.sutra") {
+        Ok(macros) => {
+            for (name, template) in macros {
+                registry.macros.insert(name, MacroDef::Template(template));
+            }
+        }
+        Err(e) => {
+            eprintln!("Error loading macros from macros.sutra: {}", e);
+            std::process::exit(1);
+        }
+    }
 
     let trace = registry.macroexpand_trace(&program)?;
     output::print_trace(&trace);

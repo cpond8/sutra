@@ -2,24 +2,73 @@
 
 ## Current Work Focus
 
-**Phase**: Macro System Bootstrapping
-**Priority**: Enable all higher-level constructs to be implemented as macros in the native engine language (self-hosting). Focus on canonicalization as macro and data-driven macro registration/expansion.
+**Phase**: Macro System Bootstrapping & Parser Reliability
+**Priority**: Ensure parser, macro loader, and macro expander are robust, especially for variadic macro support and canonical macro authoring. Debug and resolve all macro system test failures.
+
+## Macro System Bootstrapping Roadmap (2025-07-02)
+
+This roadmap is the single source of truth for macro system bootstrapping and self-hosting. Each step is ordered to minimize risk, maximize architectural clarity, and ensure a robust, extensible macro system.
+
+### 1. Implement Full Variadic/Recursive Macro Support
+- Extend the macro system so user-defined macros can be variadic and recursive.
+- Ensure robust error handling and recursion limits.
+
+### 2. Migrate All Standard Macros to the Native Macro Language
+- Rewrite all higher-level macros (especially `cond`) as native macros using the new support.
+- Remove Rust-native macro implementations.
+- Update and expand tests for new macro definitions.
+
+### 3. Design and Implement Macro Hygiene
+- Design a hygiene system (e.g., gensym for local bindings) to prevent accidental variable capture.
+- Integrate into the macro expander and document its behavior.
+
+### 4. Expand the Standard Macro Library (Tier 2+)
+- Implement all higher-level narrative/gameplay macros (`storylet`, `choice`, `pool`, etc.) as native macros.
+- Develop comprehensive example scripts and usage patterns.
+- Performance test with realistic content.
+
+### 5. Validation and Author Feedback
+- Implement structural and semantic validation before and after macro expansion.
+- Integrate validation and error reporting with CLI and author tools.
+
+### 6. Documentation, CLI, and Tooling
+- Audit and update documentation to reflect the new macro system.
+- Ensure CLI exposes macroexpansion, registry, and validation features.
+
+## Rationale for Order
+- Variadic/recursive macro support is the key technical blocker for self-hosting.
+- Macro migration and hygiene must precede library expansion to avoid subtle bugs.
+- Validation and documentation are most effective once the macro system is stable and self-hosted.
+
+_This roadmap supersedes all previous immediate priorities for macro system bootstrapping. All planning and implementation should reference this plan as canonical._
+
+_Last Updated: 2025-07-02_
 
 ### Recent Changes (2025-07-02)
 
-1.  **Language Specification Synchronized**: The official language specification (`docs/A_LANGUAGE_SPEC.md`) has been updated to be in full alignment with the canonical codebase, ensuring it is a reliable "living document".
-2.  **Core Engine Stabilized**: A full audit and hardening pass was completed, fixing critical bugs in state propagation and macro expansion, and bringing the entire test suite to a passing state.
-3.  **Unified Registry Pattern Implemented**: Atom and macro registry setup is now fully DRY. Both production and test code use canonical builder functions, eliminating all duplication.
-4.  **Doctest Audit and Documentation**: All public-facing modules have been reviewed and documented with doctests where appropriate.
+1. **Variadic/Recursive Macro Support Complete:** MacroTemplate now supports variadic and mixed-arity macros. Argument binding and error handling are robust and explicit. Comprehensive tests for all edge cases (including recursion depth, arity, and parameter validation) are in place and passing.
+2. **Macro System Ready for Self-Hosting:** The macro system is now ready for migration of all standard macros to the native engine language.
+
+## Recent Changes (2025-07-02)
+
+- **Parser Refactor Complete:** The parser has been decomposed into per-rule helpers, with robust error handling and explicit dotted list validation. All unreachable!()s replaced with structured errors. Dotted list parsing now asserts and errors on malformed shapes.
+- **Test Suite Run:** The parser compiles and passes borrow checker, but several macro loader and macro expansion tests (especially for variadic macros and cond) are failing. Parser and macro system are now fully decoupled and testable.
 
 ## Next Steps (Immediate Priority)
 
-1.  **Implement the `cond`-first conditional system.** This involves refactoring the `cond` and `if` macros in `src/macros_std.rs` and updating the relevant tests to match the new expansion logic.
-2.  **Update all relevant documentation** to reflect the new architecture, ensuring the memory bank is the single source of truth.
+1. **Analyze and debug failing macro system tests.** Focus on variadic macro parameter parsing and cond macro expansion.
+2. **Ensure parser and macro system are in sync.** Confirm AST output matches macro loader expectations for all edge cases.
+3. **Update documentation and CLI** to reflect parser refactor and macro system changes after all tests pass.
+4. **Expand/adjust tests** as needed to cover new edge cases and regression scenarios.
 
 ## Active Decisions and Considerations
 
-- The next phase is macro system bootstrapping, with the goal of self-hosting all macros and moving canonicalization and registration to the native language.
+- Parser and macro system must be fully round-trippable and robust to malformed input.
+- All error returns must include rule, input, and span for debugging.
+- Dotted list parsing is now strict and canonical.
+- Macro system migration to native macros is on hold until parser/macro test failures are resolved.
+
+_Last Updated: 2025-07-02_
 
 ### Confirmed Design Decisions
 
@@ -100,9 +149,35 @@
 _Last Updated: 2025-07-01_
 
 ## Current Focus
-- Documentation and test coverage for the `cond` macro are now complete.
-- All error and edge cases are robustly tested and documented.
+- Macro migration: Begin rewriting standard macros as native macros using the new variadic/recursive system. Ensure all tests and documentation are updated accordingly.
 
 ## Next Steps
 - Audit CLI/docs for macroexpansion trace and author help.
 - Monitor for macro system upgrades to enable migration of `cond` to user macro.
+
+- Adopted new canonical macro definition syntax: macro definitions now require parentheses around the macro name and parameters, e.g. `define (my-list first . rest) { ... }`.
+- Language spec updated accordingly; all unrelated content restored after accidental removal.
+- Only macro definition section changed; all other sections remain as originally specified.
+- Future spec/documentation edits must be surgical and avoid regressions in unrelated content.
+
+## Registry/Expander Reliability: Advanced Strategies (2025-07-02)
+
+A comprehensive review of best-in-class strategies for preventing registry/expander/test drift in macro systems was conducted, including:
+- Phantom types for canonical registry
+- Registry hashing/fingerprinting
+- Sealed/immutable registry
+- Loader/expansion logging
+- Integration tests for loader/expander parity
+- Test-in-prod smoke mode
+- Provenance reporting
+- Registry mutation linting
+- Dangerous opt-out APIs for non-canonical registries
+- Fuzzing and order randomization in CI
+- Singleton pattern for canonical registry
+- Metrics collection
+
+Each was rated for necessity, alignment with project principles, and payoff vs. cost (see systemPatterns.md for full table). The highest-value, lowest-cost techniques (integration tests, registry hashing) are prioritized for immediate implementation. Others (phantom types, sealed registry, mutation linting, smoke mode) are recommended for incremental adoption as the codebase and team grow. Advanced/forensic techniques (provenance, logging, opt-out API, fuzzing, singleton, metrics) are deferred unless future needs arise.
+
+**Rationale:** This approach maximizes reliability and maintainability while upholding Sutra's principles of minimalism, compositionality, and single source of truth. All decisions and ratings are archived for future reference and onboarding.
+
+- [2025-07-02] Registry hashing/fingerprinting implemented: MacroRegistry now computes a SHA256 hash of all macro names and definitions, with a canonical test in macro_expansion_tests.rs. See system-reference.md for details.

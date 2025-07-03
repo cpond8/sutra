@@ -10,9 +10,11 @@
 
 ## Changelog
 
+- **2025-07-02** — Parser refactor complete: Decomposed into per-rule helpers, robust error handling, and strict, canonical dotted list validation. All unreachable!()s replaced with structured errors. Dotted list parsing now asserts and errors on malformed shapes. Parser and macro system are now fully decoupled and testable. Current focus: debugging macro system test failures, especially for variadic macros and cond expansion.
 - **2024-07-02** — Document created. Initial synthesis of architecture, patterns, and system structure from available documentation and directory structure.
 - **2025-07-02** — Temporary Rust macro expander for `(cond ...)` added. This is a stopgap until variadic macro support is implemented and `cond` can be defined in the native language. See Macro System section for details.
 - **2025-07-02** — Implemented a two-tiered, variadic macro system. Simple, declarative macros can be defined via `MacroTemplate`, while complex procedural macros (`cond`) are native `MacroFn`s. `cond` is now the primary conditional macro, and `if` is a simple macro that expands to it, using `Expr::If` as the underlying primitive.
+- **2025-07-02** — Registry/Expander Reliability Audit: Comprehensive review of advanced strategies for macro registry and expander reliability (phantom types, registry hashing, sealing, logging, integration tests, smoke mode, provenance, mutation linting, opt-out API, fuzzing, singleton, metrics). Immediate implementation will focus on integration tests and registry hashing, with others staged for future adoption. See memory-bank/activeContext.md and memory-bank/systemPatterns.md for full details and rationale.
 - [Add future entries here: date, summary]
 
 ---
@@ -394,6 +396,14 @@ parse → macro-expand → validate → evaluate → output/presentation
   ```
 - **Rationale:** This layered approach is highly robust and compositional. It keeps the core primitive minimal while providing a powerful and ergonomic authoring experience. It also provides a safe path for user-defined macros via `MacroTemplate` without exposing the full complexity of the evaluator.
 
+### Registry Hashing and Fingerprinting (2025-07-02)
+
+- The macro registry now implements a `hash()` method that computes a SHA256 fingerprint of all macro names and their definitions, sorted deterministically.
+- This hash is printed in the test suite (`macro_registry_hash_is_stable`) for CI traceability and can be asserted against a canonical value to prevent registry drift.
+- For template/user macros, the hash includes the parameter list, variadic parameter, and macro body (pretty-printed). For native Rust macros, a stable placeholder is used.
+- This approach ensures that any change to macro definitions (in code or user files) is immediately detectable in CI and review.
+- See memory-bank/activeContext.md and systemPatterns.md for rationale and policy.
+
 ---
 
 ## World State (Detailed)
@@ -503,3 +513,17 @@ parse → macro-expand → validate → evaluate → output/presentation
 - Error messages are clear, spanned, and author-facing.
 - Migration plan: When macro system supports variadic/recursive user macros, port `cond` to user macro and remove Rust implementation.
 - This approach is fully aligned with project principles: strict layering, compositionality, single source of truth, and transparency.
+
+---
+
+## Parser Refactor & Macro System Reliability (2025-07-02)
+
+### Summary
+- The parser is now decomposed into per-rule helpers, with robust error handling and strict, canonical dotted list validation. All unreachable!()s are replaced with structured errors that include rule, input, and span. Dotted list parsing asserts and errors on malformed shapes.
+- Parser and macro system are now fully decoupled and testable. Round-trippability and robust error handling are enforced at every stage.
+- Current focus: Debugging macro system test failures, especially for variadic macro parameter parsing and cond macro expansion. Ensuring parser and macro system are in sync for all edge cases.
+
+### Impact
+- The new parser structure makes subtle bugs easier to spot and fix, and supports future extensibility and onboarding.
+- Error messages are now more precise and contextual, aiding debugging and test coverage.
+- The strict, canonical handling of dotted lists ensures macro loader and expander reliability.

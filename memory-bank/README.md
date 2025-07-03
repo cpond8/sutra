@@ -79,5 +79,9 @@ The project is exceptionally well-prepared for implementation:
 - **Risk Mitigation**: Potential issues identified and addressed
 - **Timeline**: Realistic 15-20 week estimate for complete system
 
+## 2025-07-02: Registry/Expander Reliability Audit
+
+A comprehensive audit of macro registry and expander reliability was conducted. Advanced strategies (phantom types, registry hashing, sealing, logging, integration tests, smoke mode, provenance, mutation linting, opt-out API, fuzzing, singleton, metrics) were reviewed and rated. Immediate implementation will focus on integration tests and registry hashing, with others staged for future adoption. See activeContext.md and systemPatterns.md for canonical references and rationale.
+
 *Memory Bank Initialized: 2025-06-30*
 *Last Updated: 2025-06-30*

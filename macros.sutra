@@ -1,0 +1,67 @@
+;; macros.sutra - Standard Macro Library (Self-Hosted)
+;;
+;; This file contains canonical macro definitions written in the Sutra language.
+;; These macros are loaded at startup and registered into the macro system.
+
+;; Helper: cond-validate
+;; Returns false if valid, else an error message string
+(define (cond-validate clauses)
+  (let ((n (len clauses)))
+    (let ((found-else false))
+      (letrec
+        ((validate
+          (lambda (i)
+            (if (= i n)
+                false
+                (let ((clause (get clauses i)))
+                  (if (not (list? clause))
+                      (str "Each `cond` clause must be a list. Problematic clause: " clause)
+                      (if (not (= (len clause) 2))
+                          (str "Each `cond` clause must be a list of two elements. Problematic clause: " clause)
+                          (let ((test (car clause)))
+                            (if (eq? test 'else)
+                                (if found-else
+                                    (str "`else` clause must be unique. Clause heads: " (map car clauses))
+                                    (if (not (= i (- n 1)))
+                                        (str "`else` clause must be the last clause in `cond`. Clause heads: " (map car clauses))
+                                        (begin (set! found-else true) (validate (+ i 1)))))
+                                (validate (+ i 1)))))))))))
+        (validate 0)))))
+
+;; Helper: cond-expand recursively expands validated clauses
+(define (cond-expand clauses)
+  (if (null? clauses)
+      (error "`cond` macro requires at least one clause.")
+      (let ((first (car clauses))
+            (rest (cdr clauses)))
+        (let ((test (car first))
+              (expr (cadr first)))
+          (if (eq? test 'else)
+              expr
+              (list 'if test expr (cond-expand rest)))))))
+
+;; Canonical cond macro with up-front validation
+(define (cond . clauses)
+  (let ((err (cond-validate clauses)))
+    (if err
+        (error err)
+        (cond-expand clauses))))
+
+;; List and utility helpers for macro expansion
+(define (car lst)
+  (if (null? lst)
+      (error "car: empty list")
+      (get lst 0)))
+
+(define (cdr lst)
+  (if (null? lst)
+      (error "cdr: empty list")
+      (slice lst 1)))
+
+(define (cadr lst)
+  (car (cdr lst)))
+
+(define (null? lst)
+  (= (len lst) 0))
+
+;; TODO: Add/verify helpers: car, cdr, cadr, null?, error, len, eq?, not, =

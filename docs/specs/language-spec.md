@@ -1190,3 +1190,48 @@ tick {
 - **No reliance on alignment, indentation, or special separators for modifiers.**
 
 ---
+
+## **Canonical Macro Definition Syntax**
+
+### **Macro Definition**
+
+All macro definitions must use the following canonical form:
+
+```sutra
+define (macro-name param1 param2 ... [. variadic-param]) {
+  ; macro body (prefix expressions, statements, etc.)
+}
+```
+- The macro name and all parameters (including variadic, if any) are grouped in a single parenthesized list immediately after `define`.
+- The body is always a brace block.
+- The dot (`.`) before the last parameter indicates a variadic parameter, as in canonical Lisp/Scheme.
+- No braces or parentheses are used around the parameter list except for the single, required parenthesized header.
+
+#### **Examples**
+
+| Macro Type      | Syntax Example                                      | Notes                                 |
+|-----------------|-----------------------------------------------------|---------------------------------------|
+| Fixed arity     | `define (add3 a b c) { + a b c }`                   | No dot, all params required           |
+| Variadic        | `define (my-list first . rest) { list first rest }` | Dot before last param for variadic    |
+| Only variadic   | `define (collect . args) { list args }`             | Dot at start, all args to `args`      |
+
+#### **Macro Call**
+
+- Macro calls are always prefix, with no parentheses or braces unless a block body is required:
+  ```sutra
+  my-list 1 2 3 4
+  ; expands to: list 1 (2 3 4)
+  ```
+- If a block is required as an argument, braces are used for that argument only.
+
+#### **Rationale**
+- **Minimalism:** Only one set of parentheses for the header, one set of braces for the body.
+- **Clarity:** The macro’s “signature” is visually distinct and easy to scan.
+- **Unambiguity:** The parser can unambiguously identify the name and all parameters, including variadic, regardless of whitespace or line breaks.
+- **Lossless translation:** This form is trivially translatable to and from canonical s-expr (Lisp/Scheme).
+- **Consistency:** Matches the block/brace usage in threads, storylets, pools, etc. Parens are only used for grouping where grouping is semantically meaningful.
+- **Extensibility:** If you ever want to add metadata, docstrings, or type annotations, the parenthesized header is a natural place.
+
+---
+
+

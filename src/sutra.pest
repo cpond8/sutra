@@ -22,7 +22,9 @@ program = { SOI ~ expr* ~ EOI }
 expr = { list | block | atom }
 
 // `list` and `block` are the two equivalent forms for collections of expressions.
-list  = { "(" ~ expr* ~ ")" }
+list  = { "(" ~ (dotted_list | expr*) ~ ")" }
+// A dotted list allows for variadic macro parameters: (a b . rest)
+dotted_list = { expr* ~ "." ~ expr }
 block = { "{" ~ expr* ~ "}" }
 
 // An `atom` is any primitive, non-recursive value. The order of rules inside

@@ -41,6 +41,7 @@ pub fn register_std_atoms(registry: &mut AtomRegistry) {
     registry.register("do", ATOM_DO);
     registry.register("list", ATOM_LIST);
     registry.register("len", ATOM_LEN);
+    registry.register("error", ATOM_ERROR);
 }
 
 /*
@@ -376,5 +377,26 @@ pub const ATOM_MOD: AtomFn = |args, context, parent_span| {
                 b.type_name()
             )
         )),
+    }
+};
+
+/// (error <message>)
+pub const ATOM_ERROR: AtomFn = |args, context, parent_span| {
+    if args.len() != 1 {
+        return Err(eval_err!(arity, parent_span, args, "error", 1));
+    }
+    let (msg_val, _world) = context.eval(&args[0])?;
+    if let Value::String(msg) = msg_val {
+        Err(SutraError {
+            kind: SutraErrorKind::Eval(EvalError {
+                message: msg,
+                expanded_code: Expr::List(args.to_vec(), parent_span.clone()).pretty(),
+                original_code: None,
+                suggestion: None,
+            }),
+            span: Some(parent_span.clone()),
+        })
+    } else {
+        Err(eval_err!(type, &args[0], "error", "a String", msg_val))
     }
 };

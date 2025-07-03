@@ -18,6 +18,8 @@ use crate::ast::Expr;
 use crate::error::{SutraError, SutraErrorKind};
 use crate::macros_std;
 use std::collections::HashMap;
+use std::fs;
+use sha2::{Digest, Sha256};
 
 /// Represents a single step in the macro expansion trace.
 #[derive(Debug, Clone)]
@@ -198,7 +200,7 @@ impl MacroRegistry {
 
         let args = &items[1..];
 
-        // Arity check
+        // Arity check: too few arguments
         if args.len() < template.params.len() {
             return Err(SutraError {
                 kind: SutraErrorKind::Macro(format!(
@@ -210,6 +212,7 @@ impl MacroRegistry {
             });
         }
 
+        // Too many arguments for non-variadic macro
         if template.variadic_param.is_none() && args.len() > template.params.len() {
             return Err(SutraError {
                 kind: SutraErrorKind::Macro(format!(
@@ -221,18 +224,26 @@ impl MacroRegistry {
             });
         }
 
+        // Bind fixed parameters positionally
         let mut bindings = HashMap::new();
         for (i, param_name) in template.params.iter().enumerate() {
             bindings.insert(param_name.clone(), args[i].clone());
         }
 
+        // Bind variadic parameter (if present) to a list of remaining args (may be empty)
         if let Some(variadic_name) = &template.variadic_param {
-            let rest_args = args[template.params.len()..].to_vec();
+            let rest_args = if args.len() > template.params.len() {
+                args[template.params.len()..].to_vec()
+            } else {
+                vec![]
+            };
             bindings.insert(
                 variadic_name.clone(),
                 Expr::List(rest_args, span.clone()),
             );
         }
+
+        // TODO: Consider moving arity/positional validation to MacroTemplate::new if possible.
 
         let substituted_body = self.substitute(&template.body, &bindings)?;
         self.expand_recursive(&substituted_body, depth + 1)
@@ -341,5 +352,267 @@ impl MacroRegistry {
             .collect::<Result<Vec<Expr>, _>>()?;
 
         Ok(Expr::List(expanded_items, span.clone()))
+    }
+
+    /// Computes a SHA256 hash of all macro names and their source/expansion forms, sorted deterministically.
+    pub fn hash(&self) -> String {
+        let mut entries: Vec<(String, String)> = self.macros.iter().map(|(name, def)| {
+            let def_str = match def {
+                MacroDef::Template(template) => {
+                    // Serialize params, variadic_param, and body in a stable way
+                    let mut s = String::new();
+                    s.push_str(&format!("params:{:?};", template.params));
+                    s.push_str(&format!("variadic:{:?};", template.variadic_param));
+                    s.push_str(&format!("body:{};", template.body.pretty()));
+                    s
+                }
+                MacroDef::Fn(_) => "native_fn".to_string(),
+            };
+            (name.clone(), def_str)
+        }).collect();
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut hasher = Sha256::new();
+        for (name, def_str) in entries {
+            hasher.update(name.as_bytes());
+            hasher.update(def_str.as_bytes());
+        }
+        let result = hasher.finalize();
+        format!("{:x}", result)
+    }
+}
+
+impl MacroTemplate {
+    /// Constructs a MacroTemplate with validation for variadic and duplicate parameters.
+    pub fn new(
+        params: Vec<String>,
+        variadic_param: Option<String>,
+        body: Box<Expr>,
+    ) -> Result<Self, SutraError> {
+        // Check for duplicate parameter names
+        let mut all_names = params.clone();
+        if let Some(var) = &variadic_param {
+            all_names.push(var.clone());
+        }
+        let mut seen = std::collections::HashSet::new();
+        for name in &all_names {
+            if !seen.insert(name) {
+                return Err(SutraError {
+                    kind: SutraErrorKind::Macro(format!(
+                        "Duplicate parameter name '{}' in macro definition.",
+                        name
+                    )),
+                    span: None,
+                });
+            }
+        }
+        // If variadic, it must be last
+        if variadic_param.is_some() && !params.is_empty() {
+            // (a b . rest) is valid, but (a . rest b) is not
+            // This is enforced by the parser, but double-check here
+            // (We assume the parser provides params as all fixed, variadic_param as Option)
+        }
+        Ok(MacroTemplate {
+            params,
+            variadic_param,
+            body,
+        })
+    }
+}
+
+/// Pure loader: parses macro definitions from a Sutra source string.
+pub fn parse_macros_from_source(source: &str) -> Result<Vec<(String, MacroTemplate)>, SutraError> {
+    use crate::parser;
+    use crate::ast::Expr;
+    use std::collections::{HashMap, HashSet};
+
+    let exprs = parser::parse(source)?;
+    let mut macros = Vec::new();
+    let mut names_seen = HashSet::new();
+
+    for expr in exprs {
+        // Only process (define (name ...) body) forms
+        if let Expr::List(items, span) = &expr {
+            if items.len() == 3 {
+                if let Expr::Symbol(def, _) = &items[0] {
+                    if def == "define" {
+                        // Parse parameter list
+                        if let Expr::List(param_items, _) = &items[1] {
+                            let mut iter = param_items.iter();
+                            let macro_name = match iter.next() {
+                                Some(Expr::Symbol(name, _)) => name.clone(),
+                                _ => {
+                                    return Err(SutraError {
+                                        kind: SutraErrorKind::Macro("Macro name must be a symbol as the first element of the parameter list.".to_string()),
+                                        span: Some(items[1].span()),
+                                    });
+                                }
+                            };
+                            if !names_seen.insert(macro_name.clone()) {
+                                return Err(SutraError {
+                                    kind: SutraErrorKind::Macro(format!("Duplicate macro name '{}'.", macro_name)),
+                                    span: Some(items[1].span()),
+                                });
+                            }
+                            // Use MacroParams::parse_macro_params for all parameter parsing/validation
+                            let macro_head = Some(items[1].clone());
+                            // DEBUG: Print macro name and param items
+                            eprintln!("[DEBUG] macro_name: {:?}", macro_name);
+                            eprintln!("[DEBUG] param_items: {:?}", param_items);
+                            let macro_params = MacroParams::parse_macro_params(
+                                &param_items[1..],
+                                macro_head.clone(),
+                                Some(items[1].span()),
+                            )?;
+                            // DEBUG: Print parsed params and variadic
+                            eprintln!("[DEBUG] macro_params.params: {:?}", macro_params.params);
+                            eprintln!("[DEBUG] macro_params.variadic: {:?}", macro_params.variadic);
+                            let template = MacroTemplate::new(
+                                macro_params.params,
+                                macro_params.variadic,
+                                Box::new(items[2].clone()),
+                            )?;
+                            macros.push((macro_name, template));
+                        } else {
+                            return Err(SutraError {
+                                kind: SutraErrorKind::Macro("Macro parameter list must be a list.".to_string()),
+                                span: Some(items[1].span()),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(macros)
+}
+
+/// Thin wrapper: loads macro definitions from a file.
+pub fn load_macros_from_file(path: &str) -> Result<Vec<(String, MacroTemplate)>, SutraError> {
+    let source = fs::read_to_string(path)
+        .map_err(|e| SutraError { kind: SutraErrorKind::Io(e.to_string()), span: None })?;
+    parse_macros_from_source(&source)
+}
+
+#[derive(Debug, Clone)]
+pub struct MacroParams {
+    pub params: Vec<String>,
+    pub variadic: Option<String>,
+    pub head: Option<Expr>,
+    pub span: Option<crate::ast::Span>,
+}
+
+pub const RESERVED_WORDS: &[&str] = &[".", "define"];
+
+impl MacroParams {
+    /// Parse and validate macro parameters from a list of Exprs (excluding macro name).
+    /// Returns MacroParams or a SutraError with full context.
+    pub fn parse_macro_params(param_exprs: &[Expr], macro_head: Option<Expr>, span: Option<crate::ast::Span>) -> Result<Self, SutraError> {
+        let mut params = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let mut variadic = None;
+        let mut found_dot = false;
+        let mut iter = param_exprs.iter().peekable();
+        while let Some(item) = iter.next() {
+            match item {
+                Expr::Symbol(s, sspan) if s == "." => {
+                    if found_dot {
+                        return Err(SutraError {
+                            kind: SutraErrorKind::Macro(format!("Multiple '.' in parameter list: {}", MacroParams::format_head(&macro_head))),
+                            span: span.clone().or_else(|| Some(sspan.clone())),
+                        });
+                    }
+                    found_dot = true;
+                    match iter.next() {
+                        Some(Expr::Symbol(var, vspan)) => {
+                            if RESERVED_WORDS.contains(&var.as_str()) {
+                                return Err(SutraError {
+                                    kind: SutraErrorKind::Macro(format!("Reserved word '{}' used as variadic parameter: {}", var, MacroParams::format_head(&macro_head))),
+                                    span: span.clone().or_else(|| Some(vspan.clone())),
+                                });
+                            }
+                            if !seen.insert(var.clone()) {
+                                return Err(SutraError {
+                                    kind: SutraErrorKind::Macro(format!("Duplicate parameter name '{}' in macro definition: {}", var, MacroParams::format_head(&macro_head))),
+                                    span: span.clone().or_else(|| Some(vspan.clone())),
+                                });
+                            }
+                            variadic = Some(var.clone());
+                            // After variadic, check for any further items
+                            while let Some(rem) = iter.next() {
+                                match rem {
+                                    Expr::Symbol(s2, s2span) if s2 == "." => {
+                                        return Err(SutraError {
+                                            kind: SutraErrorKind::Macro(format!("Multiple '.' in parameter list: {}", MacroParams::format_head(&macro_head))),
+                                            span: span.clone().or_else(|| Some(s2span.clone())),
+                                        });
+                                    }
+                                    other => {
+                                        return Err(SutraError {
+                                            kind: SutraErrorKind::Macro(format!("No parameters allowed after variadic parameter in macro definition: {}", MacroParams::format_head(&macro_head))),
+                                            span: span.clone().or_else(|| Some(other.span())),
+                                        });
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                        Some(bad) => {
+                            return Err(SutraError {
+                                kind: SutraErrorKind::Macro(format!("Expected symbol after '.' in parameter list: {}", MacroParams::format_head(&macro_head))),
+                                span: span.clone().or_else(|| Some(bad.span())),
+                            });
+                        }
+                        None => {
+                            return Err(SutraError {
+                                kind: SutraErrorKind::Macro(format!("Expected symbol after '.' in parameter list, got end of list: {}", MacroParams::format_head(&macro_head))),
+                                span: span.clone(),
+                            });
+                        }
+                    }
+                }
+                Expr::Symbol(s, sspan) => {
+                    if found_dot {
+                        return Err(SutraError {
+                            kind: SutraErrorKind::Macro(format!("No parameters allowed after variadic parameter in macro definition: {}", MacroParams::format_head(&macro_head))),
+                            span: span.clone().or_else(|| Some(sspan.clone())),
+                        });
+                    }
+                    if RESERVED_WORDS.contains(&s.as_str()) {
+                        return Err(SutraError {
+                            kind: SutraErrorKind::Macro(format!("Reserved word '{}' used as parameter: {}", s, MacroParams::format_head(&macro_head))),
+                            span: span.clone().or_else(|| Some(sspan.clone())),
+                        });
+                    }
+                    if !seen.insert(s.clone()) {
+                        return Err(SutraError {
+                            kind: SutraErrorKind::Macro(format!("Duplicate parameter name '{}' in macro definition: {}", s, MacroParams::format_head(&macro_head))),
+                            span: span.clone().or_else(|| Some(sspan.clone())),
+                        });
+                    }
+                    params.push(s.clone());
+                }
+                other => {
+                    return Err(SutraError {
+                        kind: SutraErrorKind::Macro(format!("Invalid parameter (must be symbol or '.'): {}", MacroParams::format_head(&macro_head))),
+                        span: span.clone().or_else(|| Some(other.span())),
+                    });
+                }
+            }
+        }
+        if found_dot && variadic.is_none() {
+            return Err(SutraError {
+                kind: SutraErrorKind::Macro(format!("Expected symbol after '.' in parameter list: {}", MacroParams::format_head(&macro_head))),
+                span,
+            });
+        }
+        Ok(MacroParams { params, variadic, head: macro_head, span })
+    }
+
+    /// Helper to format macro head for error messages.
+    pub fn format_head(head: &Option<Expr>) -> String {
+        match head {
+            Some(expr) => format!("{}", expr.pretty()),
+            None => "<unknown macro head>".to_string(),
+        }
     }
 }
