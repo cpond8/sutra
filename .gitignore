@@ -35,6 +35,6 @@ coverage/
 *.bak
 
 # Project-specific/infra
-.clinerules
-.cursor
-
+.clinerules/
+.cursor/
+.cursorrules

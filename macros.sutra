@@ -11,7 +11,7 @@
       (letrec
         ((validate
           (lambda (i)
-            (if (= i n)
+            (if (>= i n)
                 false
                 (let ((clause (get clauses i)))
                   (if (not (list? clause))
@@ -28,7 +28,7 @@
                                 (validate (+ i 1)))))))))))
         (validate 0)))))
 
-;; Helper: cond-expand recursively expands validated clauses
+;; Helper: cond-expand recursively expands validated clauses to nested ifs
 (define (cond-expand clauses)
   (if (null? clauses)
       (error "`cond` macro requires at least one clause.")
@@ -40,12 +40,14 @@
               expr
               (list 'if test expr (cond-expand rest)))))))
 
-;; Canonical cond macro with up-front validation
+;; Canonical cond macro with up-front validation and always expands to nested ifs
 (define (cond . clauses)
-  (let ((err (cond-validate clauses)))
-    (if err
-        (error err)
-        (cond-expand clauses))))
+  (if (null? clauses)
+      (error "`cond` macro requires at least one clause.")
+      (let ((err (cond-validate clauses)))
+        (if err
+            (error err)
+            (cond-expand clauses)))))
 
 ;; List and utility helpers for macro expansion
 (define (car lst)

@@ -2,91 +2,57 @@
 
 ## Why This Project Exists
 
-Sutra addresses fundamental limitations in current game and narrative engines:
+Sutra addresses fundamental limitations in current game and narrative engines by providing a compositional, transparent, and extensible substrate for interactive systems.
 
 ### Problems Being Solved
 
-**1. Rigid, Inflexible Narrative Systems**
-- Most engines bake in specific narrative patterns (linear, branching, etc.)
-- Difficult to experiment with emergent or system-driven narratives
-- Authors constrained by engine assumptions
+1. **Rigid, Inflexible Narrative Systems**
+   - Most engines bake in specific narrative patterns (linear, branching, etc.), making it difficult to experiment with emergent or system-driven narratives.
+   - Authors are constrained by engine assumptions and cannot easily extend or combine systems.
 
-**2. Non-Compositional Game Logic**
-- Features implemented as monolithic, hard-coded systems
-- Cannot combine or extend systems in novel ways
-- "Feature bloat" makes engines complex and brittle
+2. **Non-Compositional Game Logic**
+   - Features are often implemented as monolithic, hard-coded systems, leading to feature bloat and brittle architectures.
+   - Sutra enables novel combinations and extensions through compositional atoms and macros.
 
-**3. Poor Authoring Transparency**
-- Authors can't inspect or debug underlying engine logic
-- Macro systems are opaque or non-existent
-- Difficult to understand why content behaves in certain ways
+3. **Poor Authoring Transparency**
+   - Authors struggle to inspect, debug, or understand how their content is processed.
+   - Sutra prioritizes transparency, with inspectable state, macro expansion, and error reporting.
 
-**4. Limited Extensibility**
-- Adding new features requires engine modifications
-- No clear path for user-defined constructs or patterns
-- Coupling between content and engine implementation
+4. **Limited Extensibility**
+   - Adding new features in traditional engines often requires modifying the core or forking the codebase.
+   - Sutra's registry and macro system allow new features to be added without core changes.
 
-## How Sutra Should Work
+## Product Goals
 
-### For Game Designers and Authors
+- **Empower authors** to build any narrative or simulation system, from interactive fiction to complex emergent worlds.
+- **Lower the barrier to experimentation** by making all systems compositional and extensible.
+- **Provide full transparency** into all authoring, debugging, and state changes.
+- **Enable robust, testable, and maintainable content** through pure functions and immutable data.
 
-**Clean, Accessible Syntax**
-- Choice between brace-block (familiar) and s-expression (powerful) syntax
-- One-to-one mapping ensures no loss of structure or semantics
-- Auto-resolution of values eliminates boilerplate
+## User Experience Principles
 
-**Compositional Building Blocks**
-- Start with simple atoms for basic operations
-- Compose macros for complex narrative patterns
-- Build custom constructs without touching engine code
+- **Compositionality**: Authors build from small, orthogonal primitives.
+- **Transparency**: All computation and state are inspectable and debuggable.
+- **Extensibility**: New atoms/macros can be added without modifying the core.
+- **Minimalism**: The engine exposes only what is necessary, avoiding feature bloat.
+- **Portability**: Works across platforms and frontends.
 
-**Full Transparency**
-- Inspect macro expansions at any level
-- Debug world state changes step by step
-- Understand exactly why content fired or didn't fire
+## Alignment with Current Codebase
 
-### For Engine Developers
+- The codebase implements these principles through a modular Rust architecture, pure functions, and a registry-driven macro/atom system.
+- Macro expansion and evaluation are fully transparent and testable.
+- The CLI and documentation are designed for author ergonomics and onboarding.
 
-**Minimal, Stable Core**
-- Small set of irreducible operations (atoms)
-- All features built as composable macros
-- No privileged or hard-coded game logic
+## Cross-References
 
-**Pure, Testable Architecture**
-- Strict separation between parsing, expansion, validation, and evaluation
-- Immutable world state with explicit change tracking
-- Every component testable in isolation
+- See `memory-bank/projectbrief.md` for project vision and aspirations.
+- See `memory-bank/systemPatterns.md` for architectural and design patterns.
+- See `memory-bank/techContext.md` for technical stack and constraints.
+- See `memory-bank/activeContext.md` for current work focus and priorities.
+- See `memory-bank/progress.md` for completed work and next steps.
+- See `.cursor/rules/memory-bank.mdc` for update protocol and overlays.
 
-## User Experience Goals
+## Changelog
 
-### Immediate Experience (First Hour)
-- Author can write simple storylets and choices
-- Clear error messages guide towards correct syntax
-- Macro expansion helps understand what's happening
-
-### Intermediate Experience (First Week)
-- Compose complex narrative patterns from simple building blocks
-- Debug failing conditions with macro expansion traces
-- Create custom helper macros for common patterns
-
-### Advanced Experience (First Month)
-- Build sophisticated emergent systems
-- Extend engine with domain-specific constructs
-- Understand and modify the entire system
-
-## Target Audiences
-
-**Primary**: Independent game developers and interactive fiction authors who want maximum creative flexibility
-
-**Secondary**: Educational users learning about programming language design and compositional systems
-
-**Tertiary**: Researchers exploring emergent narrative and agent-based storytelling
-
-## Success Metrics
-
-- Authors can implement any Emily Short QBN pattern as macros
-- New narrative techniques can be prototyped without engine changes
-- System is learnable and teachable to non-programmers
-- Performance scales to substantial games (thousands of entities/storylets)
-
-*Last Updated: 2025-06-30*
+- 2025-07-03: Updated to resolve all audit TODOs, clarify product context, and align with current codebase and guidelines.
+- 2025-06-30: Initial synthesis from legacy documentation.

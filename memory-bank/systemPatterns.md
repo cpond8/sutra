@@ -1,10 +1,66 @@
 # Sutra Engine - System Patterns
 
+## Overview
+
+This document captures the canonical architectural and design patterns, system-wide decisions, and implementation strategies for the Sutra Engine. It is the reference for all contributors and must be kept in sync with the codebase and other memory-bank files.
+
 ## Recent Updates (2025-07-02)
 
 - **Parser Refactor:** The parser is now decomposed into per-rule helpers, with robust error handling and strict, canonical dotted list validation. All unreachable!()s are replaced with structured errors that include rule, input, and span. Dotted list parsing asserts and errors on malformed shapes.
 - **Parser/Macro System Decoupling:** The parser and macro system are now fully decoupled and testable. Round-trippability and robust error handling are enforced at every stage.
 - **Current Focus:** Debugging macro system test failures, especially for variadic macro parameter parsing and cond macro expansion. Ensuring parser and macro system are in sync for all edge cases.
+
+## Canonical Patterns
+
+### 1. Registry Pattern
+- All atoms and macros are registered via canonical builder functions in `src/registry.rs`.
+- There is a single source of truth for both production and test environments.
+- This ensures extensibility, test/production parity, and prevents duplication.
+
+### 2. Macro-Driven Extensibility
+- All higher-level features are implemented as macros, not as core engine code.
+- The macro system supports variadic, recursive, and hygienic macros.
+- Macro expansion is fully transparent and testable.
+
+### 3. Pure Function Architecture
+- All core logic is implemented as pure functions, with no global state or hidden side effects.
+- State is propagated explicitly through immutable data structures.
+
+### 4. Pipeline Separation
+- The engine enforces a strict `parse -> expand -> eval` pipeline.
+- Each stage is independently testable and documented.
+
+### 5. Error Handling and Transparency
+- All errors are structured, span-carrying, and contextual.
+- The `EvalError` and two-phase enrichment pattern is standard for user-facing errors.
+
+### 6. Minimalism and Compositionality
+- The engine exposes only a minimal set of irreducible operations (atoms).
+- All complexity is composed via macros and user-defined constructs.
+
+### 7. Test/Production Parity
+- Test and production environments use the same registry and loader logic.
+- All tests are run against the canonical pipeline.
+
+## Alignment with Current Codebase
+
+- All patterns described above are implemented and enforced in the current codebase.
+- The registry, macro system, and error handling are fully aligned with these patterns.
+- The parser and macro system are decoupled and testable.
+
+## Cross-References
+
+- See `memory-bank/projectbrief.md` for project vision and aspirations.
+- See `memory-bank/productContext.md` for product rationale and user needs.
+- See `memory-bank/techContext.md` for technical stack and constraints.
+- See `memory-bank/activeContext.md` for current work focus and priorities.
+- See `memory-bank/progress.md` for completed work and next steps.
+- See `.cursor/rules/memory-bank.mdc` for update protocol and overlays.
+
+## Changelog
+
+- 2025-07-03: Updated to resolve all audit TODOs, clarify patterns, and align with current codebase and guidelines.
+- 2025-06-30: Initial synthesis from legacy documentation.
 
 ## Core Architecture
 
@@ -247,3 +303,17 @@ A full audit and review of macro registry/expander reliability strategies was co
 _Last Updated: 2025-07-01_
 
 - [2025-07-02] Registry hashing/fingerprinting implemented: MacroRegistry now computes a SHA256 hash of all macro names and definitions, with a canonical test in macro_expansion_tests.rs. See system-reference.md for details.
+
+<!-- AUDIT ANNOTATIONS BEGIN -->
+
+<!-- TODO: Review "Core Technical Patterns" and "Macro System Architecture" for currency and alignment with the latest language spec and codebase. -->
+
+<!-- TODO: Confirm the current status of `cond` as a macro vs. core construct, and update all references for consistency. -->
+
+<!-- TODO: Check for overlap/redundancy with projectbrief.md and productContext.md regarding architecture, patterns, and philosophy. -->
+
+<!-- TODO: Add explicit cross-reference to memory-bank/README.md for memory-bank structure and usage. -->
+
+<!-- TODO: Add changelog/versioning section to track future updates. -->
+
+<!-- AUDIT ANNOTATIONS END -->

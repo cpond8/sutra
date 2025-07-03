@@ -538,21 +538,13 @@ impl MacroParams {
                             }
                             variadic = Some(var.clone());
                             // After variadic, check for any further items
-                            while let Some(rem) = iter.next() {
-                                match rem {
-                                    Expr::Symbol(s2, s2span) if s2 == "." => {
-                                        return Err(SutraError {
-                                            kind: SutraErrorKind::Macro(format!("Multiple '.' in parameter list: {}", MacroParams::format_head(&macro_head))),
-                                            span: span.clone().or_else(|| Some(s2span.clone())),
-                                        });
-                                    }
-                                    other => {
-                                        return Err(SutraError {
-                                            kind: SutraErrorKind::Macro(format!("No parameters allowed after variadic parameter in macro definition: {}", MacroParams::format_head(&macro_head))),
-                                            span: span.clone().or_else(|| Some(other.span())),
-                                        });
-                                    }
-                                }
+                            if iter.peek().is_some() {
+                                // There are parameters after the variadic
+                                let rem = iter.next().unwrap();
+                                return Err(SutraError {
+                                    kind: SutraErrorKind::Macro(format!("No parameters allowed after variadic parameter in macro definition: {}", MacroParams::format_head(&macro_head))),
+                                    span: span.clone().or_else(|| Some(rem.span())),
+                                });
                             }
                             break;
                         }

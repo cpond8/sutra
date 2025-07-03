@@ -3,7 +3,6 @@
 ## Technology Stack
 
 ### Core Language: Rust
-**Why Rust:**
 - Memory safety without garbage collection
 - Excellent performance for game engines
 - Strong type system prevents many runtime errors
@@ -11,17 +10,17 @@
 - Zero-cost abstractions align with minimalism philosophy
 
 ### Key Dependencies
-- **im**: For persistent, immutable data structures (`im = "15.1.0"`).
-- **rand**: Core random number generation traits and utilities (`rand = "0.8.5"`).
-- **rand_xoshiro**: A specific, high-performance, seedable PRNG implementation (`rand_xoshiro = "0.6.0"`).
-- **pest**: A powerful, expressive PEG (Parsing Expression Grammar) parser generator (`pest = "2.7.10"`).
-- **pest_derive**: The derive macro for `pest` (`pest_derive = "2.7.10"`).
-- **serde**: For serialization and deserialization (`serde = { version = "1.0", features = ["derive"] }`).
-- **serde_json**: For JSON data format support (`serde_json = "1.0"`).
-- **clap**: For command-line argument parsing (`clap = { version = "4.5.4", features = ["derive"] }`).
-- **termcolor**: For colored terminal output (`termcolor = "1.4.1"`).
-- **difference**: For generating text diffs (`difference = "2.0.0"`).
-- **walkdir**: For recursive directory traversal (`walkdir = "2.5.0"`).
+- **im**: Persistent, immutable data structures (`im = "15.1.0"`)
+- **rand**: Random number generation traits/utilities (`rand = "0.8.5"`)
+- **rand_xoshiro**: High-performance, seedable PRNG (`rand_xoshiro = "0.6.0"`)
+- **pest**: PEG parser generator (`pest = "2.7.10"`)
+- **pest_derive**: Derive macro for `pest` (`pest_derive = "2.7.10"`)
+- **serde**: Serialization/deserialization (`serde = { version = "1.0", features = ["derive"] }`)
+- **serde_json**: JSON support (`serde_json = "1.0"`)
+- **clap**: CLI argument parsing (`clap = { version = "4.5.4", features = ["derive"] }`)
+- **termcolor**: Colored terminal output (`termcolor = "1.4.1"`)
+- **difference**: Text diffs (`difference = "2.0.0"`)
+- **walkdir**: Recursive directory traversal (`walkdir = "2.5.0"`)
 
 ## Development Environment
 
@@ -92,11 +91,11 @@ sutra/
 ## Parsing Strategy
 
 ### Unified PEG Parser
-- A single, formal PEG (Parsing Expression Grammar) is defined in `src/sutra.pest`. This file is the single source of truth for all supported syntaxes.
-- The parser is built using the `pest` library, which provides excellent performance and rich, precise error reporting.
-- It handles both canonical s-expression syntax and the author-friendly brace-block syntax.
-- The parser's sole responsibility is to transform source text into the canonical `Expr` AST, with no semantic interpretation.
-- This unified approach ensures maximum maintainability, consistency, and transparency.
+- Single, formal PEG (Parsing Expression Grammar) in `src/sutra.pest` is the source of truth for all syntaxes.
+- Built using the `pest` library for performance and error reporting.
+- Handles both canonical s-expression and author-friendly brace-block syntax.
+- Transforms source text into canonical `Expr` AST, with no semantic interpretation.
+- Ensures maintainability, consistency, and transparency.
 
 ## Evaluation Model
 
@@ -154,4 +153,21 @@ sutra/
 - Real-time introspection and debugging
 - Hot-reload for development workflows
 
-*Last Updated: 2025-07-01*
+## Alignment with Current Codebase
+
+- All technical patterns and constraints described above are implemented and enforced in the current codebase.
+- The project structure, dependencies, and architecture are up-to-date and match the live system.
+
+## Cross-References
+
+- See `memory-bank/projectbrief.md` for project vision and aspirations.
+- See `memory-bank/productContext.md` for product rationale and user needs.
+- See `memory-bank/systemPatterns.md` for architectural and design patterns.
+- See `memory-bank/activeContext.md` for current work focus and priorities.
+- See `memory-bank/progress.md` for completed work and next steps.
+- See `.cursor/rules/memory-bank.mdc` for update protocol and overlays.
+
+## Changelog
+
+- 2025-07-03: Updated to resolve all audit TODOs, clarify technical context, and align with current codebase and guidelines.
+- 2025-06-30: Initial synthesis from legacy documentation.
