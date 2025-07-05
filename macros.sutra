@@ -41,7 +41,7 @@
               (list 'if test expr (cond-expand rest)))))))
 
 ;; Canonical cond macro with up-front validation and always expands to nested ifs
-(define (cond . clauses)
+(define (cond ...clauses)
   (if (null? clauses)
       (error "`cond` macro requires at least one clause.")
       (let ((err (cond-validate clauses)))

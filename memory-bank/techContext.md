@@ -167,7 +167,16 @@ sutra/
 - See `memory-bank/progress.md` for completed work and next steps.
 - See `.cursor/rules/memory-bank.mdc` for update protocol and overlays.
 
+## Parsing Pipeline: Technical Rationale (2025-07-04)
+
+- The new parsing pipeline is designed for Rust ergonomics: enums for core types, trait objects for extensibility, and serde-compatible serialization for all public types and errors.
+- Diagnostics are unified and serializable, supporting CLI tools and editor integration.
+- The architecture supports incremental/partial parsing and golden tests with real-world content.
+
+See `docs/architecture/parsing-pipeline-plan.md` for the full plan and technical context.
+
 ## Changelog
 
 - 2025-07-03: Updated to resolve all audit TODOs, clarify technical context, and align with current codebase and guidelines.
 - 2025-06-30: Initial synthesis from legacy documentation.
+- 2025-07-04: Added section on parsing pipeline technical rationale and requirements.

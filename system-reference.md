@@ -10,11 +10,14 @@
 
 ## Changelog
 
+- **2025-07-04** — Macro loader/parser modernization in progress: Batch-based, test-driven updates to resolve test failures related to parameter list struct migration, macro definition parsing, and error handling. Focus on strict test/production parity, robust error messages, and full alignment between parser, grammar, loader, and tests. See activeContext.md for current priorities and guidance for future contributors.
 - **2025-07-02** — Parser refactor complete: Decomposed into per-rule helpers, robust error handling, and strict, canonical dotted list validation. All unreachable!()s replaced with structured errors. Dotted list parsing now asserts and errors on malformed shapes. Parser and macro system are now fully decoupled and testable. Current focus: debugging macro system test failures, especially for variadic macros and cond expansion.
 - **2024-07-02** — Document created. Initial synthesis of architecture, patterns, and system structure from available documentation and directory structure.
 - **2025-07-02** — Temporary Rust macro expander for `(cond ...)` added. This is a stopgap until variadic macro support is implemented and `cond` can be defined in the native language. See Macro System section for details.
 - **2025-07-02** — Implemented a two-tiered, variadic macro system. Simple, declarative macros can be defined via `MacroTemplate`, while complex procedural macros (`cond`) are native `MacroFn`s. `cond` is now the primary conditional macro, and `if` is a simple macro that expands to it, using `Expr::If` as the underlying primitive.
 - **2025-07-02** — Registry/Expander Reliability Audit: Comprehensive review of advanced strategies for macro registry and expander reliability (phantom types, registry hashing, sealing, logging, integration tests, smoke mode, provenance, mutation linting, opt-out API, fuzzing, singleton, metrics). Immediate implementation will focus on integration tests and registry hashing, with others staged for future adoption. See memory-bank/activeContext.md and memory-bank/systemPatterns.md for full details and rationale.
+- **2025-07-04** — Added parsing pipeline refactor summary, rationale, and migration strategy.
+- **2025-07-05** — Migration to proper-list-only and ...rest-only architecture complete. All legacy code, tests, and documentation for improper/dotted lists and legacy variadic syntax have been removed. The codebase, tests, and docs are now fully compliant and clean.
 - [Add future entries here: date, summary]
 
 ---
@@ -527,3 +530,18 @@ parse → macro-expand → validate → evaluate → output/presentation
 - The new parser structure makes subtle bugs easier to spot and fix, and supports future extensibility and onboarding.
 - Error messages are now more precise and contextual, aiding debugging and test coverage.
 - The strict, canonical handling of dotted lists ensures macro loader and expander reliability.
+
+---
+
+## Parsing Pipeline Refactor (2025-07-04)
+
+A major, multi-phase refactor of the parsing pipeline has been adopted. The new architecture is modular, interface-driven, and maximally explicit, with each stage (CST parser, AST builder, macroexpander, validator, etc.) as a pure, swappable module. This plan is the result of extensive review and synthesis, and is now the canonical direction for all parser and macro system work.
+
+- **Rationale:** Ensures maintainability, testability, and future extensibility. Supports robust diagnostics, editor integration, and authoring ergonomics. Aligns with Sutra's core values.
+- **Migration Strategy:**
+  1. Ship interfaces and trivial implementations with golden tests.
+  2. Document and review contracts as a first-class citizen.
+  3. Implement and test each module in isolation before integration.
+  4. Incrementally migrate and integrate with the existing codebase.
+
+See `docs/architecture/parsing-pipeline-plan.md` for the full plan, context, and changelog. All memory bank files have been updated to reference this plan.

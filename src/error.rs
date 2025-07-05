@@ -1,6 +1,7 @@
 use crate::ast::Span;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvalError {
     pub message: String,
     // The fully expanded code that was being executed when the error occurred.
@@ -12,7 +13,7 @@ pub struct EvalError {
 }
 
 /// The kind of error that occurred in Sutra.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SutraErrorKind {
     Parse(String), // User-facing parse errors (malformed input, syntax error)
     Macro(String),
@@ -24,7 +25,7 @@ pub enum SutraErrorKind {
     InternalParse(String), // Internal parser state error, not user input
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SutraError {
     pub kind: SutraErrorKind,
     pub span: Option<Span>,

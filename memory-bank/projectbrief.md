@@ -61,10 +61,23 @@ Sutra aspires to be a **universal substrate for compositional, emergent, and nar
 - See `memory-bank/progress.md` for completed work and next steps.
 - See `.cursor/rules/memory-bank.mdc` for update protocol and overlays.
 
+## Parsing Pipeline Refactor: Vision and Strategic Importance (2025-07-04)
+
+A major, multi-phase refactor of the Sutra parsing pipeline has been planned and approved. This new architecture is modular, interface-driven, and maximally explicit, designed to ensure maintainability, testability, and future extensibility. The plan is the result of extensive critical review and synthesis, and is now the canonical direction for all future parser and macro system work.
+
+- **Strategic Importance:**
+  - Ensures long-term maintainability and onboarding for new contributors.
+  - Enables robust, testable, and auditable parsing and macroexpansion.
+  - Aligns with Sutra's core values: compositionality, transparency, and extensibility.
+  - Provides a foundation for future features (editor integration, diagnostics, incremental parsing).
+
+See the full plan and context in `docs/architecture/parsing-pipeline-plan.md` (archival document).
+
 ## Changelog
 
 - 2025-07-03: Updated to resolve all audit TODOs, clarify vision, and align with current codebase and guidelines.
 - 2025-06-30: Initial synthesis from legacy documentation.
+- 2025-07-04: Added summary and cross-reference for the new parsing pipeline plan.
 
 ## Current Development Phase
 

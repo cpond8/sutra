@@ -2,18 +2,58 @@
 
 ## Current Work Focus
 
-**Phase:** Macro System Canonicalization & Loader/Parser Hardening
-**Priority:** Ensure macro expansion always fully canonicalizes all author-facing forms (especially `cond`) to core forms (`if`), with no `cond` left in the expanded AST. Macro parameter parsing (especially for variadic/dotted forms) must be strict, with error messages matching the canonical spec and test suite. All error handling must be robust, contextual, and span-aware. Test and production environments must use the same registry and loader logic.
+**Phase:** Macro System Canonicalization, Loader/Parser Hardening, and Test Modernization
 
-## Macro System Bootstrapping Roadmap (2025-07-02)
+**Priority:**
+- Debug and resolve all macro loader and macro expansion test failures, especially those related to parameter list handling and macro definition parsing.
+- Ensure the parser, PEG grammar, and macro loader are fully aligned and robust to all valid and invalid forms.
+- Complete the migration to explicit, structured parameter list handling (`ParamList` struct) throughout the parser, AST, macro loader, and all tests.
+- Harden error handling and error message checks to match canonical spec and test suite.
+- Maintain strict test/production parity: all registry, loader, and macro expansion logic must be identical in both environments.
+- Use a batch-based, test-driven approach: after each change, re-run the test suite and only proceed when the current batch is passing.
 
-This roadmap is the single source of truth for macro system bootstrapping and self-hosting. Each step is ordered to minimize risk, maximize architectural clarity, and ensure a robust, extensible macro system.
+## Macro System Bootstrapping Roadmap (2025-07-02, updated 2025-07-04)
 
-1. Migrate all standard macros to the native macro language.
+1. Migrate all standard macros to the native macro language (pending full test pass).
 2. Design and implement macro hygiene.
 3. Expand the standard macro library (Tier 2+).
 4. Validation and author feedback.
 5. Documentation, CLI, and tooling.
+
+## Current Complexities and Context
+
+- The macro system and parser have been refactored for explicit, robust parameter list handling, but legacy test cases and loader logic may not be fully updated.
+- Many macro loader and macro expansion tests are failing due to mismatches in expected AST structure, error messages, or parameter list representation.
+- The PEG grammar, parser, and loader must be audited and updated in lockstep to ensure all valid macro definitions are parsed and loaded correctly, and all invalid forms are rejected with clear, author-facing errors.
+- The test suite is being modernized in batches: each batch updates a set of tests or logic, then re-runs the suite to confirm correctness before proceeding.
+- All error handling must be robust, contextual, and span-aware, with error messages matching the canonical spec and test suite.
+- Documentation and memory bank files must be updated after every significant change or insight.
+
+## Next Steps (Immediate Priority)
+
+1. Continue batch-based modernization of macro loader and macro expansion tests, updating for new parameter list struct and error handling.
+2. Audit and update the PEG grammar and parser logic for full alignment with loader/test expectations.
+3. Update documentation and memory bank after each significant change.
+4. Maintain strict test/production parity and round-trippability.
+5. Run the full test suite after each batch and only proceed when all updated tests pass.
+
+## Key Lessons and Guidance for Future Contributors
+
+- Always ensure the parser, grammar, loader, and tests are updated together when making changes to core syntax or AST structure.
+- Use batch-based, test-driven development to isolate and resolve failures incrementally.
+- Maintain strict separation of concerns: parser only parses, macro loader only loads, macro expander only expands.
+- All error messages must be clear, actionable, and span-carrying.
+- Update documentation and memory bank files after every significant change.
+- Review this file and system-reference.md before making or reviewing changes.
+
+## Changelog
+
+- 2025-07-04: Updated for batch-based macro loader/parser/test modernization, parameter list struct migration, and current debugging context.
+- 2025-07-03: Updated to resolve all audit TODOs, clarify active context, and align with current codebase and guidelines.
+- 2025-06-30: Initial synthesis from legacy documentation.
+- 2025-07-04: Updated for parsing pipeline refactor as current focus and added cross-reference to plan.
+- 2025-07-04: src/atoms_std.rs is now fully span-carrying compliant. All error macros and atom logic use WithSpan<Expr> throughout. All linter/type errors resolved. Canonical error macro pattern enforced. See parsing-pipeline-plan.md and macroexpander migration for context.
+- 2025-07-05: Codebase, tests, and documentation are now fully compliant with the proper-list-only and ...rest-only architecture. All legacy dotted/improper list handling and legacy variadic syntax have been removed.
 
 ## Rationale for Order
 
@@ -26,14 +66,6 @@ This roadmap is the single source of truth for macro system bootstrapping and se
 - **Macro System Ready for Self-Hosting:** The macro system is now ready for migration of all standard macros to the native engine language.
 - **Parser Refactor Complete:** The parser has been decomposed into per-rule helpers, with robust error handling and explicit dotted list validation. All unreachable!()s replaced with structured errors. Dotted list parsing now asserts and errors on malformed shapes.
 - **Test Suite Run:** The parser compiles and passes borrow checker, but several macro loader and macro expansion tests (especially for variadic macros and cond) are failing. Parser and macro system are now fully decoupled and testable.
-
-## Next Steps (Immediate Priority)
-
-1. Refactor macro expansion for recursive, exhaustive expansion (no `cond` left after expansion).
-2. Harden macro parameter parsing and error reporting to match canonical spec and test suite.
-3. Update/expand tests to assert canonicalization and error handling.
-4. Update documentation and Memory Bank after code changes.
-5. Run full test suite and review.
 
 ## Active Decisions and Considerations
 
@@ -139,7 +171,25 @@ The highest-value, lowest-cost techniques (integration tests, registry hashing) 
 - See `memory-bank/progress.md` for completed work and next steps.
 - See `.cursor/rules/memory-bank.mdc` for update protocol and overlays.
 
-## Changelog
+## Parsing Pipeline Refactor: Current Focus (2025-07-04)
 
-- 2025-07-03: Updated to resolve all audit TODOs, clarify active context, and align with current codebase and guidelines.
-- 2025-06-30: Initial synthesis from legacy documentation.
+- The modular parsing pipeline refactor is now the primary focus. All work should proceed in alignment with the canonical plan in `docs/architecture/parsing-pipeline-plan.md`.
+- Immediate next steps: Ship interfaces and trivial implementations, write golden tests, document contracts, and review each module in isolation before integration.
+
+## Macroexpander Refactor and AST Invariant Migration (2025-07-04)
+
+- Migrated Expr::List to Vec<WithSpan<Expr>> in all core modules: ast.rs, macros_std.rs, macros.rs, parser.rs, eval.rs, validate.rs.
+- All macroexpander logic, helpers, and registry now operate on WithSpan<Expr> throughout the pipeline.
+- Issues encountered:
+  - Linter/type errors due to mixed Expr/WithSpan<Expr> usage, especially in pattern matches and list construction.
+  - Macro_rules! and error helper macros in atoms_std.rs require explicit, line-by-line fixes for delimiter and type safety.
+  - Some macro contexts and test helpers still need a final audit for span-carrying compliance.
+- Current status: Macroexpander and helpers are type-safe and span-carrying. Atoms_std.rs and some macro contexts need a final audit.
+- Remaining work:
+  - Complete audit and fix in atoms_std.rs (especially macro_rules! and error helpers).
+  - Update all tests and doc examples for new AST invariant.
+  - Perform a final integration test of the pipeline.
+- Context for future contributors:
+  - All new code must use WithSpan<Expr> for AST lists and macroexpander logic.
+  - Legacy API is deprecated and should not be used.
+  - See parsing-pipeline-plan.md for canonical contracts and migration rationale.

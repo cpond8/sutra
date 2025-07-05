@@ -65,7 +65,35 @@ This roadmap is the single source of truth for macro system bootstrapping and se
 - See `memory-bank/activeContext.md` for current work focus and priorities.
 - See `.cursor/rules/memory-bank.mdc` for update protocol and overlays.
 
+## Parsing Pipeline Refactor: Progress Log (2025-07-04)
+
+- Decision: Adopted the modular, interface-driven parsing pipeline as the canonical architecture.
+- Status: Plan and context fully documented and archived. Interfaces and trivial implementations to be shipped next.
+- Milestones: (1) Interfaces and golden tests, (2) Module-by-module implementation, (3) Integration and migration, (4) Full test suite pass.
+
+See `docs/architecture/parsing-pipeline-plan.md` for the full plan and changelog.
+
+## Progress Log: Macroexpander Refactor & AST Invariant (2025-07-04)
+
+- Completed:
+  - Migrated Expr::List to Vec<WithSpan<Expr>> in ast.rs, macros_std.rs, macros.rs, parser.rs, eval.rs, validate.rs.
+  - Macroexpander and helpers now operate exclusively on WithSpan<Expr>.
+  - src/atoms_std.rs is now fully span-carrying compliant. All error macros and atom logic use WithSpan<Expr> throughout. All linter/type errors resolved. Canonical error macro pattern enforced. See parsing-pipeline-plan.md and macroexpander migration for context.
+- Issues:
+  - Linter/type errors from mixed Expr/WithSpan<Expr> usage.
+  - Macro_rules! and error helpers in atoms_std.rs require explicit, line-by-line fixes.
+  - Some macro contexts and test helpers need a final audit.
+- Next steps:
+  - Complete audit and fix in atoms_std.rs.
+  - Update all tests and doc examples for new AST invariant.
+  - Run final integration test of the pipeline.
+- Blockers/Lessons:
+  - Automated batch edits are insufficient for macro_rules! and error helpers; manual review is required.
+  - Enforcing span-carrying invariants across all modules is nontrivial and must be maintained going forward.
+
 ## Changelog
 
 - 2025-07-03: Updated to resolve all audit TODOs, clarify progress, and align with current codebase and guidelines.
 - 2025-06-30: Initial synthesis from legacy documentation.
+- 2025-07-04: Added parsing pipeline refactor progress log and cross-reference to plan.
+- 2025-07-05: Migration to proper-list-only and ...rest-only architecture complete. All legacy code, tests, and documentation for improper/dotted lists and legacy variadic syntax have been removed. The codebase, tests, and docs are now fully compliant and clean.

@@ -42,6 +42,12 @@ This document captures the canonical architectural and design patterns, system-w
 - Test and production environments use the same registry and loader logic.
 - All tests are run against the canonical pipeline.
 
+### 8. Modular Parsing Pipeline (2025-07-04)
+- The parsing pipeline is now a canonical, interface-driven, modular architecture. Each stage (CST parser, AST builder, macroexpander, validator, etc.) is a pure, swappable module with a documented contract.
+- Rationale: Ensures maintainability, testability, and future extensibility. Supports robust diagnostics, editor integration, and authoring ergonomics.
+- Best practices: Use enums for core types, trait objects only for extensibility, unified diagnostics, and serialization for all public types.
+- See `docs/architecture/parsing-pipeline-plan.md` for the full plan and context.
+
 ## Alignment with Current Codebase
 
 - All patterns described above are implemented and enforced in the current codebase.
@@ -61,6 +67,8 @@ This document captures the canonical architectural and design patterns, system-w
 
 - 2025-07-03: Updated to resolve all audit TODOs, clarify patterns, and align with current codebase and guidelines.
 - 2025-06-30: Initial synthesis from legacy documentation.
+- 2025-07-04: Added modular parsing pipeline as a canonical system pattern.
+- 2025-07-05: Migration to proper-list-only and ...rest-only architecture complete. All legacy code, tests, and documentation for improper/dotted lists and legacy variadic syntax have been removed.
 
 ## Core Architecture
 

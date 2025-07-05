@@ -36,7 +36,13 @@ The memory bank consists of the following files:
 - All planning, design, and implementation must reference the memory bank as the source of truth.
 - Any new patterns, preferences, or workflow intelligence must be added to `.cursorrules`.
 
+## Parsing Pipeline Plan (2025-07-04)
+
+- The canonical plan and context for the modular parsing pipeline refactor are archived in `docs/architecture/parsing-pipeline-plan.md`.
+- All contributors must review this document before working on parser or macro system code.
+
 ## Changelog
 
 - 2025-07-03: Updated to resolve all audit TODOs, clarify structure, and align with current codebase and guidelines.
 - 2025-06-30: Initial synthesis from legacy documentation.
+- 2025-07-04: Added reference to parsing pipeline plan and archival location.

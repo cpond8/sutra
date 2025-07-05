@@ -4,7 +4,7 @@
 //! the core library functions.
 
 use crate::cli::args::{Command, SutraArgs};
-use crate::macros::{MacroRegistry, load_macros_from_file, MacroDef};
+use crate::macros::{MacroRegistry, load_macros_from_file, MacroDef, MacroExpander, SutraMacroContext, SutraMacroExpander};
 use crate::{macros_std, parser};
 use clap::Parser;
 use std::{fs, process};
@@ -32,7 +32,7 @@ pub fn run() {
     }
 }
 
-use crate::ast::{Expr, Span};
+use crate::ast::{Expr, Span, WithSpan};
 
 /// Handles the `macrotrace` subcommand.
 fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -40,21 +40,24 @@ fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::E
     let source = fs::read_to_string(filename)?;
     let ast_nodes = parser::parse(&source).map_err(|e| e.with_source(&source))?;
 
-    let program = if ast_nodes.len() == 1 {
+    let program: WithSpan<Expr> = if ast_nodes.len() == 1 {
         ast_nodes.into_iter().next().unwrap()
     } else {
         let span = Span {
             start: 0,
             end: source.len(),
         };
-        Expr::List(
-            {
-                let mut vec = vec![Expr::Symbol("do".to_string(), span.clone())];
-                vec.extend(ast_nodes);
-                vec
-            },
+        let do_symbol = WithSpan {
+            value: Expr::Symbol("do".to_string(), span.clone()),
+            span: span.clone(),
+        };
+        let mut items = Vec::with_capacity(ast_nodes.len() + 1);
+        items.push(do_symbol);
+        items.extend(ast_nodes);
+        WithSpan {
+            value: Expr::List(items, span.clone()),
             span,
-        )
+        }
     };
 
     let mut registry = MacroRegistry::new();
@@ -74,8 +77,11 @@ fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::E
         }
     }
 
-    let trace = registry.macroexpand_trace(&program)?;
-    output::print_trace(&trace);
+    let mut context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let expanded = expander.expand_macros(program.clone(), &context)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{:?}", e)))?;
+    println!("{}", expanded.value.pretty());
 
     Ok(())
 }

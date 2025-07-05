@@ -19,12 +19,10 @@ COMMENT    = _{ ";" ~ (!"\n" ~ ANY)* }
 program = { SOI ~ expr* ~ EOI }
 
 // An `expr` (expression) is the fundamental recursive unit of the language.
-expr = { list | block | atom }
+expr = { define_form | quote | list | block | atom }
 
 // `list` and `block` are the two equivalent forms for collections of expressions.
-list  = { "(" ~ (dotted_list | expr*) ~ ")" }
-// A dotted list allows for variadic macro parameters: (a b . rest)
-dotted_list = { expr* ~ "." ~ expr }
+list  = { "(" ~ expr* ~ ")" } // Only proper lists are supported; improper/dotted lists are not allowed.
 block = { "{" ~ expr* ~ "}" }
 
 // An `atom` is any primitive, non-recursive value. The order of rules inside
@@ -76,3 +74,12 @@ symbol = @{
     // ...and can be followed by zero or more characters from `symbol_inner`.
     symbol_inner*
 }
+
+quote = { "'" ~ expr }
+
+// -- Parameter List Rules --
+param_list = { "(" ~ param_items ~ ")" }
+param_items = { symbol* ~ ("..." ~ symbol)? } // Only ...rest is supported for variadics.
+
+// Macro/function definition: (define (name ... [ ...rest ]) body)
+define_form = { "(" ~ "define" ~ param_list ~ expr ~ ")" }

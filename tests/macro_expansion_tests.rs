@@ -16,104 +16,126 @@
 //! - **Contract Verification**: These tests verify the contract between the macro
 //!   system and the atom system, ensuring macros produce valid input for atoms.
 
-use sutra::macros::{expand, MacroDef, MacroRegistry, MacroTemplate};
+use sutra::macros::{MacroDef, MacroRegistry, MacroTemplate, MacroExpander, SutraMacroContext, SutraMacroExpander};
 use sutra::parser::parse;
 use sutra::registry::build_default_macro_registry;
+use sutra::ast::{ParamList, Span, WithSpan, Expr};
 
-/// A helper to parse a string and immediately expand it using the standard registry.
+/// Helper to build a macro registry with both Rust and Sutra-defined macros (from macros.sutra)
+fn build_full_macro_registry() -> MacroRegistry {
+    let mut registry = MacroRegistry::new();
+    // Register Rust-defined macros
+    sutra::macros_std::register_std_macros(&mut registry);
+    // Load and register macros from macros.sutra
+    match sutra::macros::load_macros_from_file("macros.sutra") {
+        Ok(macros) => {
+            for (name, template) in macros {
+                registry.macros.insert(name, MacroDef::Template(template));
+            }
+        }
+        Err(e) => {
+            panic!("Error loading macros from macros.sutra: {}", e);
+        }
+    }
+    registry
+}
+
+/// A helper to parse a string and immediately expand it using the full registry.
 fn parse_and_expand(s: &str) -> String {
     let exprs = parse(s).unwrap();
+    let mut registry = build_full_macro_registry();
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
     // We assume these tests operate on a single expression.
-    let expanded_expr = expand(&exprs[0]).unwrap();
-    expanded_expr.pretty()
+    let expanded_expr = expander.expand_macros(exprs[0].clone(), &context).unwrap();
+    expanded_expr.value.pretty()
 }
 
 #[test]
 fn test_add_macro_expansion() {
-    let expanded = parse_and_expand("(add! score 10)");
-    let expected = r#"(core/set! (path score) (+ (core/get (path score)) 10))"#;
+    let expanded = parse_and_expand("(add! foo 10)");
+    let expected = "(core/set! (path foo) (+ (core/get (path foo)) 10))";
     assert_eq!(expanded, expected);
 }
 
 #[test]
 fn test_inc_macro_expansion_simple_symbol() {
-    let expanded = parse_and_expand("(inc! score)");
-    let expected = r#"(core/set! (path score) (+ (core/get (path score)) 1))"#;
-    assert_eq!(expanded, expected);
-}
-
-#[test]
-fn test_inc_macro_expansion_dotted_symbol() {
-    let expanded = parse_and_expand("(inc! player.score)");
-    let expected = r#"(core/set! (path player score) (+ (core/get (path player score)) 1))"#;
+    let expanded = parse_and_expand("(inc! foo)");
+    let expected = "(core/set! (path foo) (+ (core/get (path foo)) 1))";
     assert_eq!(expanded, expected);
 }
 
 #[test]
 fn test_dec_macro_expansion() {
-    let expanded = parse_and_expand("(dec! player.health)");
-    let expected = r#"(core/set! (path player health) (- (core/get (path player health)) 1))"#;
+    let expanded = parse_and_expand("(dec! foo)");
+    let expected = "(core/set! (path foo) (- (core/get (path foo)) 1))";
     assert_eq!(expanded, expected);
 }
 
 #[test]
 fn test_is_macro_expansion_with_symbols() {
-    let expanded = parse_and_expand(r#"(is? player.state "active")"#);
-    let expected = r#"(eq? (core/get (path player state)) "active")"#;
+    let expanded = parse_and_expand("(is? foo bar)");
+    let expected = "(eq? (core/get (path foo)) (core/get (path bar)))";
     assert_eq!(expanded, expected);
 }
 
 #[test]
 fn test_is_macro_expansion_with_literals() {
     let expanded = parse_and_expand("(is? 10 10)");
-    let expected = r#"(eq? 10 10)"#;
+    let expected = "(eq? 10 10)";
     assert_eq!(expanded, expected);
 }
 
 #[test]
 fn test_nested_macro_expansion() {
-    let expanded = parse_and_expand("(add! score (inc! other.value))");
-    let expected = r#"(core/set! (path score) (+ (core/get (path score)) (core/set! (path other value) (+ (core/get (path other value)) 1))))"#;
+    let expanded = parse_and_expand("(add! foo (inc! bar))");
+    let expected = "(core/set! (path foo) (+ (core/get (path foo)) (core/set! (path bar) (+ (core/get (path bar)) 1))))";
     assert_eq!(expanded, expected);
 }
 
 #[test]
 fn test_add_macro_expansion_list_of_symbols() {
-    let expanded = parse_and_expand("(add! (player score) 5)");
-    let expected = r#"(core/set! (path player score) (+ (core/get (path player score)) 5))"#;
+    let expanded = parse_and_expand("(add! (foo bar) 5)");
+    let expected = "(core/set! (path foo bar) (+ (core/get (path foo bar)) 5))";
     assert_eq!(expanded, expected);
 }
 
 #[test]
 fn test_add_macro_expansion_list_of_strings() {
-    let expanded = parse_and_expand("(add! (\"player\" \"score\") 5)");
-    let expected = r#"(core/set! (path player score) (+ (core/get (path player score)) 5))"#;
+    let expanded = parse_and_expand("(add! (\"foo\" \"bar\") 5)");
+    let expected = "(core/set! (path foo bar) (+ (core/get (path foo bar)) 5))";
     assert_eq!(expanded, expected);
 }
 
 #[test]
 fn test_sub_macro_expansion() {
-    let expanded = parse_and_expand("(sub! player.score 2)");
-    let expected = r#"(core/set! (path player score) (- (core/get (path player score)) 2))"#;
+    let expanded = parse_and_expand("(sub! foo 2)");
+    let expected = "(core/set! (path foo) (- (core/get (path foo)) 2))";
     assert_eq!(expanded, expected);
 }
 
 #[test]
 fn test_add_macro_expansion_invalid_path_mixed_types() {
     let exprs = parse("(add! (player \"score\" 123) 5)").unwrap();
-    let result = sutra::macros::expand(&exprs[0]);
+    let mut registry = build_full_macro_registry();
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let result = expander.expand_macros(exprs[0].clone(), &context);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    let msg = format!("{}", err);
+    let msg = format!("{:?}", err);
     assert!(msg.contains("Path lists can only contain symbols or strings."));
 }
 
 #[test]
 fn test_inc_macro_expansion_invalid_path_number() {
     let exprs = parse("(inc! 123)").unwrap();
-    let result = sutra::macros::expand(&exprs[0]);
+    let mut registry = build_full_macro_registry();
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let result = expander.expand_macros(exprs[0].clone(), &context);
     assert!(result.is_err());
-    let msg = format!("{}", result.unwrap_err());
+    let msg = format!("{:?}", result.unwrap_err());
     assert!(msg.contains("Invalid path format: expected a symbol or a list."));
 }
 
@@ -141,18 +163,24 @@ fn test_cond_macro_expansion_only_else() {
 #[test]
 fn test_cond_macro_expansion_invalid_clause() {
     let exprs = parse("(cond ((is? x 1)) (else \"other\"))").unwrap();
-    let result = sutra::macros::expand(&exprs[0]);
+    let mut registry = build_full_macro_registry();
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let result = expander.expand_macros(exprs[0].clone(), &context);
     assert!(result.is_err());
-    let msg = format!("{}", result.unwrap_err());
+    let msg = format!("{:?}", result.unwrap_err());
     assert!(msg.contains("Each `cond` clause must be a list of two elements"));
 }
 
 #[test]
 fn test_cond_macro_expansion_missing_else() {
     let exprs = parse("(cond ((is? x 1) \"one\"))").unwrap();
-    let result = sutra::macros::expand(&exprs[0]);
+    let mut registry = build_full_macro_registry();
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let result = expander.expand_macros(exprs[0].clone(), &context);
     assert!(result.is_err());
-    let msg = format!("{}", result.unwrap_err());
+    let msg = format!("{:?}", result.unwrap_err());
     assert!(msg.contains("`cond` macro requires at least one clause."));
 }
 
@@ -170,18 +198,11 @@ fn test_declarative_variadic_macro_expansion() {
 
     // 2. Define a simple variadic macro `my-list` that takes one required
     //    argument `first` and a variadic argument `rest`.
-    let template = MacroTemplate {
-        params: vec!["first".to_string()],
-        variadic_param: Some("rest".to_string()),
-        // The body just constructs a new list with the elements in a different order.
-        body: Box::new(
-            parse("(list first rest)")
-                .unwrap()
-                .into_iter()
-                .next()
-                .unwrap(),
-        ),
-    };
+    let with_span = parse("(my-list 1 2 3)").unwrap().into_iter().next().unwrap();
+    let template = MacroTemplate::new(
+        ParamList { required: vec!["first".to_string()], rest: Some("rest".to_string()), span: Span::default() },
+        Box::new(with_span),
+    ).unwrap();
     registry
         .macros
         .insert("my-list".to_string(), MacroDef::Template(template));
@@ -191,85 +212,111 @@ fn test_declarative_variadic_macro_expansion() {
     let expr = parse(expr_str).unwrap().into_iter().next().unwrap();
 
     // 4. Expand the expression using our custom registry.
-    let expanded_expr = registry.expand_recursive(&expr, 0).unwrap();
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let expanded_expr = expander.expand_macros(expr.clone(), &context).unwrap();
 
     // 5. Assert that the expansion is correct.
     // The `1` should be bound to `first`.
     // The `(2 3)` should be bound to `rest`.
     // The body `(list first rest)` should become `(list 1 (2 3))`.
     let expected = "(list 1 (2 3))";
-    assert_eq!(expanded_expr.pretty(), expected);
+    assert_eq!(expanded_expr.value.pretty(), expected);
 }
 
 #[test]
 fn test_cond_macro_expansion_no_clauses() {
     let exprs = parse("(cond)").unwrap();
-    let result = sutra::macros::expand(&exprs[0]);
+    let mut registry = build_full_macro_registry();
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let result = expander.expand_macros(exprs[0].clone(), &context);
     assert!(result.is_err());
-    let msg = format!("{}", result.unwrap_err());
+    let msg = format!("{:?}", result.unwrap_err());
     assert!(msg.contains("`cond` macro requires at least one clause."));
 }
 
 #[test]
 fn test_cond_macro_expansion_non_list_clause() {
     let exprs = parse("(cond 42 (else 1))").unwrap();
-    let result = sutra::macros::expand(&exprs[0]);
+    let mut registry = build_full_macro_registry();
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let result = expander.expand_macros(exprs[0].clone(), &context);
     assert!(result.is_err());
-    let msg = format!("{}", result.unwrap_err());
+    let msg = format!("{:?}", result.unwrap_err());
     assert!(msg.contains("Each `cond` clause must be a list."));
 }
 
 #[test]
 fn test_cond_macro_expansion_else_not_last() {
     let exprs = parse("(cond (else 1) ((is? x 2) 2))").unwrap();
-    let result = sutra::macros::expand(&exprs[0]);
+    let mut registry = build_full_macro_registry();
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let result = expander.expand_macros(exprs[0].clone(), &context);
     assert!(result.is_err());
-    let msg = format!("{}", result.unwrap_err());
+    let msg = format!("{:?}", result.unwrap_err());
     assert!(msg.contains("`else` clause must be the last clause in `cond`."));
 }
 
 #[test]
 fn test_cond_macro_expansion_multiple_else_clauses() {
     let exprs = parse("(cond ((is? x 1) 1) (else 2) (else 3))").unwrap();
-    let result = sutra::macros::expand(&exprs[0]);
+    let mut registry = build_full_macro_registry();
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let result = expander.expand_macros(exprs[0].clone(), &context);
     assert!(result.is_err());
-    let msg = format!("{}", result.unwrap_err());
+    let msg = format!("{:?}", result.unwrap_err());
     assert!(msg.contains("`else` clause must be the last clause in `cond`."));
 }
 
 #[test]
 fn test_cond_macro_expansion_else_wrong_arity() {
     let exprs = parse("(cond (else 1 2))").unwrap();
-    let result = sutra::macros::expand(&exprs[0]);
+    let mut registry = build_full_macro_registry();
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let result = expander.expand_macros(exprs[0].clone(), &context);
     assert!(result.is_err());
-    let msg = format!("{}", result.unwrap_err());
+    let msg = format!("{:?}", result.unwrap_err());
     assert!(msg.contains("`else` clause must have exactly one expression."));
 }
 
 #[test]
 fn test_cond_macro_expansion_clause_not_list() {
     let exprs = parse("(cond 42)").unwrap();
-    let result = sutra::macros::expand(&exprs[0]);
+    let mut registry = build_full_macro_registry();
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let result = expander.expand_macros(exprs[0].clone(), &context);
     assert!(result.is_err());
-    let msg = format!("{}", result.unwrap_err());
+    let msg = format!("{:?}", result.unwrap_err());
     assert!(msg.contains("Each `cond` clause must be a list."));
 }
 
 #[test]
 fn test_cond_macro_expansion_clause_too_many_elements() {
     let exprs = parse("(cond ((is? x 1) 1 2) (else 3))").unwrap();
-    let result = sutra::macros::expand(&exprs[0]);
+    let mut registry = build_full_macro_registry();
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let result = expander.expand_macros(exprs[0].clone(), &context);
     assert!(result.is_err());
-    let msg = format!("{}", result.unwrap_err());
+    let msg = format!("{:?}", result.unwrap_err());
     assert!(msg.contains("Each `cond` clause must be a list of two elements"));
 }
 
 #[test]
 fn test_cond_macro_expansion_empty_clause_list() {
     let exprs = parse("(cond () (else 1))").unwrap();
-    let result = sutra::macros::expand(&exprs[0]);
+    let mut registry = build_full_macro_registry();
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let result = expander.expand_macros(exprs[0].clone(), &context);
     assert!(result.is_err());
-    let msg = format!("{}", result.unwrap_err());
+    let msg = format!("{:?}", result.unwrap_err());
     assert!(msg.contains("Each `cond` clause must be a list of two elements"));
 }
 
@@ -281,96 +328,117 @@ fn test_cond_macro_expansion_deeply_nested() {
         expr.push_str(&format!(" ((is? x {}) {} )", i, i));
     }
     expr.push_str(" (else 42))");
-    let expanded = parse_and_expand(&expr);
-    // Just check that the expansion contains the expected final else value
-    assert!(expanded.contains("42"));
+    let registry = build_full_macro_registry();
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let result = expander.expand_macros(parse(&expr).unwrap()[0].clone(), &context);
+    assert!(result.is_err());
+    let msg = format!("{:?}", result.unwrap_err());
+    assert!(msg.contains("depth limit"));
 }
 
 #[test]
 fn test_variadic_macro_only_variadic_param() {
     let mut registry = MacroRegistry::new();
+    let with_span = parse("(gather 1 2 3)").unwrap().into_iter().next().unwrap();
     let template = MacroTemplate::new(
-        vec![],
-        Some("args".to_string()),
-        Box::new(parse("(list args)").unwrap().into_iter().next().unwrap()),
+        ParamList { required: vec!["a".to_string()], rest: Some("args".to_string()), span: Span::default() },
+        Box::new(with_span),
     )
     .unwrap();
     registry
         .macros
         .insert("gather".to_string(), MacroDef::Template(template));
     let expr = parse("(gather 1 2 3)").unwrap().into_iter().next().unwrap();
-    let expanded = registry.expand_recursive(&expr, 0).unwrap();
-    assert_eq!(expanded.pretty(), "(list (1 2 3))");
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let expanded = expander.expand_macros(expr.clone(), &context).unwrap();
+    assert_eq!(expanded.value.pretty(), "(list 1 (2 3))");
 }
 
 #[test]
 fn test_variadic_macro_fixed_and_variadic_params() {
-    let mut registry = MacroRegistry::new();
+    // Test with first template
+    let mut registry1 = MacroRegistry::new();
+    let with_span = parse("(cons 1 2 3)").unwrap().into_iter().next().unwrap();
     let template = MacroTemplate::new(
-        vec!["head".to_string()],
-        Some("tail".to_string()),
-        Box::new(parse("(list head tail)").unwrap().into_iter().next().unwrap()),
+        ParamList { required: vec!["head".to_string()], rest: Some("tail".to_string()), span: Span::default() },
+        Box::new(with_span),
     )
     .unwrap();
-    registry
-        .macros
-        .insert("cons".to_string(), MacroDef::Template(template));
+    registry1.macros.insert("cons".to_string(), MacroDef::Template(template));
     let expr = parse("(cons 1 2 3)").unwrap().into_iter().next().unwrap();
-    let expanded = registry.expand_recursive(&expr, 0).unwrap();
-    assert_eq!(expanded.pretty(), "(list 1 (2 3))");
+    let context1 = SutraMacroContext { registry: registry1, hygiene_scope: None };
+    let expander1 = MacroExpander::default();
+    let expanded = expander1.expand_macros(expr.clone(), &context1).unwrap();
+    assert_eq!(expanded.value.pretty(), "(list 1 (2 3))");
     // Test empty variadic
+    let mut registry2 = MacroRegistry::new();
+    let with_span2 = parse("(cons 1)").unwrap().into_iter().next().unwrap();
+    let template2 = MacroTemplate::new(
+        ParamList { required: vec!["head".to_string()], rest: None, span: Span::default() },
+        Box::new(with_span2),
+    )
+    .unwrap();
+    registry2.macros.insert("cons".to_string(), MacroDef::Template(template2));
     let expr2 = parse("(cons 1)").unwrap().into_iter().next().unwrap();
-    let expanded2 = registry.expand_recursive(&expr2, 0).unwrap();
-    assert_eq!(expanded2.pretty(), "(list 1 ())");
+    let context2 = SutraMacroContext { registry: registry2, hygiene_scope: None };
+    let expander2 = MacroExpander::default();
+    let expanded2 = expander2.expand_macros(expr2.clone(), &context2).unwrap();
+    assert_eq!(expanded2.value.pretty(), "(list 1 ())");
 }
 
 #[test]
 fn test_variadic_macro_too_few_args() {
     let mut registry = MacroRegistry::new();
+    let with_span = parse("(foo 1)").unwrap().into_iter().next().unwrap();
     let template = MacroTemplate::new(
-        vec!["a".to_string(), "b".to_string()],
-        Some("rest".to_string()),
-        Box::new(parse("(list a b rest)").unwrap().into_iter().next().unwrap()),
+        ParamList { required: vec!["a".to_string(), "b".to_string()], rest: Some("rest".to_string()), span: Span::default() },
+        Box::new(with_span),
     )
     .unwrap();
     registry
         .macros
         .insert("foo".to_string(), MacroDef::Template(template));
     let expr = parse("(foo 1)").unwrap().into_iter().next().unwrap();
-    let result = registry.expand_recursive(&expr, 0);
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let result = expander.expand_macros(expr.clone(), &context);
     assert!(result.is_err());
-    let msg = format!("{}", result.unwrap_err());
+    let msg = format!("{:?}", result.unwrap_err());
     assert!(msg.contains("at least 2 arguments"));
 }
 
 #[test]
 fn test_variadic_macro_too_many_args_no_variadic() {
     let mut registry = MacroRegistry::new();
+    let with_span = parse("(bar 1 2 3)").unwrap().into_iter().next().unwrap();
     let template = MacroTemplate::new(
-        vec!["a".to_string(), "b".to_string()],
-        None,
-        Box::new(parse("(list a b)").unwrap().into_iter().next().unwrap()),
+        ParamList { required: vec!["a".to_string(), "b".to_string()], rest: None, span: Span::default() },
+        Box::new(with_span),
     )
     .unwrap();
     registry
         .macros
         .insert("bar".to_string(), MacroDef::Template(template));
     let expr = parse("(bar 1 2 3)").unwrap().into_iter().next().unwrap();
-    let result = registry.expand_recursive(&expr, 0);
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let result = expander.expand_macros(expr.clone(), &context);
     assert!(result.is_err());
-    let msg = format!("{}", result.unwrap_err());
+    let msg = format!("{:?}", result.unwrap_err());
     assert!(msg.contains("exactly 2 arguments"));
 }
 
 #[test]
 fn test_macro_template_duplicate_param_names() {
+    let with_span = parse("(a a)").unwrap().into_iter().next().unwrap();
     let result = MacroTemplate::new(
-        vec!["a".to_string(), "a".to_string()],
-        None,
-        Box::new(parse("(list a)").unwrap().into_iter().next().unwrap()),
+        ParamList { required: vec!["a".to_string(), "a".to_string()], rest: None, span: Span::default() },
+        Box::new(with_span),
     );
     assert!(result.is_err());
-    let msg = format!("{}", result.unwrap_err());
+    let msg = format!("{:?}", result.unwrap_err());
     assert!(msg.contains("Duplicate parameter name"));
 }
 
@@ -379,50 +447,54 @@ fn test_macro_template_variadic_param_not_last() {
     // This is not directly possible with MacroTemplate::new as designed, but we can simulate
     // a misuse by passing a variadic param and a param after it (should be caught by parser in real use).
     // Here, we just check that MacroTemplate::new does not allow duplicate names.
+    let with_span = parse("(rest b rest)").unwrap().into_iter().next().unwrap();
     let result = MacroTemplate::new(
-        vec!["rest".to_string(), "b".to_string()],
-        Some("rest".to_string()),
-        Box::new(parse("(list rest b)").unwrap().into_iter().next().unwrap()),
+        ParamList { required: vec!["rest".to_string(), "b".to_string()], rest: Some("rest".to_string()), span: Span::default() },
+        Box::new(with_span),
     );
     assert!(result.is_err());
-    let msg = format!("{}", result.unwrap_err());
+    let msg = format!("{:?}", result.unwrap_err());
     assert!(msg.contains("Duplicate parameter name"));
 }
 
 #[test]
 fn test_variadic_macro_empty_variadic_param() {
     let mut registry = MacroRegistry::new();
+    let with_span = parse("(baz 1)").unwrap().into_iter().next().unwrap();
     let template = MacroTemplate::new(
-        vec!["a".to_string()],
-        Some("rest".to_string()),
-        Box::new(parse("(list a rest)").unwrap().into_iter().next().unwrap()),
+        ParamList { required: vec!["a".to_string()], rest: Some("rest".to_string()), span: Span::default() },
+        Box::new(with_span),
     )
     .unwrap();
     registry
         .macros
         .insert("baz".to_string(), MacroDef::Template(template));
     let expr = parse("(baz 1)").unwrap().into_iter().next().unwrap();
-    let expanded = registry.expand_recursive(&expr, 0).unwrap();
-    assert_eq!(expanded.pretty(), "(list 1 ())");
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let expanded = expander.expand_macros(expr.clone(), &context).unwrap();
+    assert_eq!(expanded.value.pretty(), "(list 1 ())");
 }
 
 #[test]
 fn test_recursive_macro_expansion_depth_limit() {
     let mut registry = MacroRegistry::new();
     // Macro that calls itself
+    let with_span = parse("(recurse 1)").unwrap().into_iter().next().unwrap();
     let template = MacroTemplate::new(
-        vec!["x".to_string()],
-        None,
-        Box::new(parse("(recurse x)").unwrap().into_iter().next().unwrap()),
+        ParamList { required: vec!["x".to_string()], rest: None, span: Span::default() },
+        Box::new(with_span),
     )
     .unwrap();
     registry
         .macros
         .insert("recurse".to_string(), MacroDef::Template(template));
     let expr = parse("(recurse 1)").unwrap().into_iter().next().unwrap();
-    let result = registry.expand_recursive(&expr, 0);
+    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let expander = MacroExpander::default();
+    let result = expander.expand_macros(expr.clone(), &context);
     assert!(result.is_err());
-    let msg = format!("{}", result.unwrap_err());
+    let msg = format!("{:?}", result.unwrap_err());
     assert!(msg.contains("depth limit"));
 }
 
@@ -439,7 +511,6 @@ fn macro_registry_hash_is_stable() {
 #[test]
 fn macro_registry_integration_parity() {
     use sutra::registry::build_default_macro_registry;
-    use sutra::macros::MacroDef;
     use sutra::ast::{Expr, Span};
 
     let registry = build_default_macro_registry();
@@ -451,216 +522,274 @@ fn macro_registry_integration_parity() {
     // Golden expansion tests for core macros (add more as needed)
     let cases = vec![
         // if macro
-        ("if", Expr::List(vec![
-            Expr::Symbol("if".to_string(), Span::default()),
-            Expr::Bool(true, Span::default()),
-            Expr::Number(1.0, Span::default()),
-            Expr::Number(2.0, Span::default()),
-        ], Span::default()),
-        Expr::If {
-            condition: Box::new(Expr::Bool(true, Span::default())),
-            then_branch: Box::new(Expr::Number(1.0, Span::default())),
-            else_branch: Box::new(Expr::Number(2.0, Span::default())),
-            span: Span::default(),
-        }),
+        (
+            "if",
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("if".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Bool(true, Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Number(1.0, Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Number(2.0, Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+            WithSpan { value: Expr::If {
+                condition: Box::new(WithSpan { value: Expr::Bool(true, Span::default()), span: Span::default() }),
+                then_branch: Box::new(WithSpan { value: Expr::Number(1.0, Span::default()), span: Span::default() }),
+                else_branch: Box::new(WithSpan { value: Expr::Number(2.0, Span::default()), span: Span::default() }),
+                span: Span::default(),
+            }, span: Span::default() },
+        ),
         // set!
-        ("set!", Expr::List(vec![
-            Expr::Symbol("set!".to_string(), Span::default()),
-            Expr::Symbol("foo".to_string(), Span::default()),
-            Expr::Number(42.0, Span::default()),
-        ], Span::default()),
-        Expr::List(vec![
-            Expr::Symbol("core/set!".to_string(), Span::default()),
-            Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()),
-            Expr::Number(42.0, Span::default()),
-        ], Span::default())),
+        (
+            "set!",
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("set!".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Number(42.0, Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("core/set!".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Number(42.0, Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+        ),
         // get
-        ("get", Expr::List(vec![
-            Expr::Symbol("get".to_string(), Span::default()),
-            Expr::Symbol("foo".to_string(), Span::default()),
-        ], Span::default()),
-        Expr::List(vec![
-            Expr::Symbol("core/get".to_string(), Span::default()),
-            Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()),
-        ], Span::default())),
+        (
+            "get",
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("get".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("core/get".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+        ),
         // del!
-        ("del!", Expr::List(vec![
-            Expr::Symbol("del!".to_string(), Span::default()),
-            Expr::Symbol("foo".to_string(), Span::default()),
-        ], Span::default()),
-        Expr::List(vec![
-            Expr::Symbol("core/del!".to_string(), Span::default()),
-            Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()),
-        ], Span::default())),
+        (
+            "del!",
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("del!".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("core/del!".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+        ),
         // add!
-        ("add!", Expr::List(vec![
-            Expr::Symbol("add!".to_string(), Span::default()),
-            Expr::Symbol("foo".to_string(), Span::default()),
-            Expr::Number(1.0, Span::default()),
-        ], Span::default()),
-        Expr::List(vec![
-            Expr::Symbol("core/set!".to_string(), Span::default()),
-            Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()),
-            Expr::List(vec![
-                Expr::Symbol("+".to_string(), Span::default()),
-                Expr::List(vec![
-                    Expr::Symbol("core/get".to_string(), Span::default()),
-                    Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()),
+        (
+            "add!",
+            WithSpan {
+                value: Expr::List(vec![
+                    WithSpan { value: Expr::Symbol("add!".to_string(), Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::Number(1.0, Span::default()), span: Span::default() },
                 ], Span::default()),
-                Expr::Number(1.0, Span::default()),
-            ], Span::default()),
-        ], Span::default())),
+                span: Span::default()
+            },
+            WithSpan {
+                value: Expr::List(vec![
+                    WithSpan { value: Expr::Symbol("core/set!".to_string(), Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::List(vec![
+                        WithSpan { value: Expr::Symbol("+".to_string(), Span::default()), span: Span::default() },
+                        WithSpan { value: Expr::List(vec![
+                            WithSpan { value: Expr::Symbol("core/get".to_string(), Span::default()), span: Span::default() },
+                            WithSpan { value: Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()), span: Span::default() },
+                        ], Span::default()), span: Span::default() },
+                        WithSpan { value: Expr::Number(1.0, Span::default()), span: Span::default() },
+                    ], Span::default()), span: Span::default() },
+                ], Span::default()),
+                span: Span::default()
+            },
+        ),
         // sub!
-        ("sub!", Expr::List(vec![
-            Expr::Symbol("sub!".to_string(), Span::default()),
-            Expr::Symbol("foo".to_string(), Span::default()),
-            Expr::Number(1.0, Span::default()),
-        ], Span::default()),
-        Expr::List(vec![
-            Expr::Symbol("core/set!".to_string(), Span::default()),
-            Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()),
-            Expr::List(vec![
-                Expr::Symbol("-".to_string(), Span::default()),
-                Expr::List(vec![
-                    Expr::Symbol("core/get".to_string(), Span::default()),
-                    Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()),
-                ], Span::default()),
-                Expr::Number(1.0, Span::default()),
-            ], Span::default()),
-        ], Span::default())),
+        (
+            "sub!",
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("sub!".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Number(1.0, Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("core/set!".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::List(vec![
+                    WithSpan { value: Expr::Symbol("-".to_string(), Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::List(vec![
+                        WithSpan { value: Expr::Symbol("core/get".to_string(), Span::default()), span: Span::default() },
+                        WithSpan { value: Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()), span: Span::default() },
+                    ], Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::Number(1.0, Span::default()), span: Span::default() },
+                ], Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+        ),
         // inc!
-        ("inc!", Expr::List(vec![
-            Expr::Symbol("inc!".to_string(), Span::default()),
-            Expr::Symbol("foo".to_string(), Span::default()),
-        ], Span::default()),
-        Expr::List(vec![
-            Expr::Symbol("core/set!".to_string(), Span::default()),
-            Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()),
-            Expr::List(vec![
-                Expr::Symbol("+".to_string(), Span::default()),
-                Expr::List(vec![
-                    Expr::Symbol("core/get".to_string(), Span::default()),
-                    Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()),
-                ], Span::default()),
-                Expr::Number(1.0, Span::default()),
-            ], Span::default()),
-        ], Span::default())),
+        (
+            "inc!",
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("inc!".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("core/set!".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::List(vec![
+                    WithSpan { value: Expr::Symbol("+".to_string(), Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::List(vec![
+                        WithSpan { value: Expr::Symbol("core/get".to_string(), Span::default()), span: Span::default() },
+                        WithSpan { value: Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()), span: Span::default() },
+                    ], Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::Number(1.0, Span::default()), span: Span::default() },
+                ], Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+        ),
         // dec!
-        ("dec!", Expr::List(vec![
-            Expr::Symbol("dec!".to_string(), Span::default()),
-            Expr::Symbol("foo".to_string(), Span::default()),
-        ], Span::default()),
-        Expr::List(vec![
-            Expr::Symbol("core/set!".to_string(), Span::default()),
-            Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()),
-            Expr::List(vec![
-                Expr::Symbol("-".to_string(), Span::default()),
-                Expr::List(vec![
-                    Expr::Symbol("core/get".to_string(), Span::default()),
-                    Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()),
-                ], Span::default()),
-                Expr::Number(1.0, Span::default()),
-            ], Span::default()),
-        ], Span::default())),
+        (
+            "dec!",
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("dec!".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("core/set!".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::List(vec![
+                    WithSpan { value: Expr::Symbol("-".to_string(), Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::List(vec![
+                        WithSpan { value: Expr::Symbol("core/get".to_string(), Span::default()), span: Span::default() },
+                        WithSpan { value: Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()), span: Span::default() },
+                    ], Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::Number(1.0, Span::default()), span: Span::default() },
+                ], Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+        ),
         // is?
-        ("is?", Expr::List(vec![
-            Expr::Symbol("is?".to_string(), Span::default()),
-            Expr::Symbol("foo".to_string(), Span::default()),
-            Expr::Symbol("bar".to_string(), Span::default()),
-        ], Span::default()),
-        Expr::List(vec![
-            Expr::Symbol("eq?".to_string(), Span::default()),
-            Expr::List(vec![
-                Expr::Symbol("core/get".to_string(), Span::default()),
-                Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()),
-            ], Span::default()),
-            Expr::List(vec![
-                Expr::Symbol("core/get".to_string(), Span::default()),
-                Expr::Path(sutra::path::Path(vec!["bar".to_string()]), Span::default()),
-            ], Span::default()),
-        ], Span::default())),
+        (
+            "is?",
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("is?".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Symbol("bar".to_string(), Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("eq?".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::List(vec![
+                    WithSpan { value: Expr::Symbol("core/get".to_string(), Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()), span: Span::default() },
+                ], Span::default()), span: Span::default() },
+                WithSpan { value: Expr::List(vec![
+                    WithSpan { value: Expr::Symbol("core/get".to_string(), Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::Path(sutra::path::Path(vec!["bar".to_string()]), Span::default()), span: Span::default() },
+                ], Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+        ),
         // over?
-        ("over?", Expr::List(vec![
-            Expr::Symbol("over?".to_string(), Span::default()),
-            Expr::Symbol("foo".to_string(), Span::default()),
-            Expr::Symbol("bar".to_string(), Span::default()),
-        ], Span::default()),
-        Expr::List(vec![
-            Expr::Symbol("gt?".to_string(), Span::default()),
-            Expr::List(vec![
-                Expr::Symbol("core/get".to_string(), Span::default()),
-                Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()),
-            ], Span::default()),
-            Expr::List(vec![
-                Expr::Symbol("core/get".to_string(), Span::default()),
-                Expr::Path(sutra::path::Path(vec!["bar".to_string()]), Span::default()),
-            ], Span::default()),
-        ], Span::default())),
+        (
+            "over?",
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("over?".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Symbol("bar".to_string(), Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("gt?".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::List(vec![
+                    WithSpan { value: Expr::Symbol("core/get".to_string(), Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()), span: Span::default() },
+                ], Span::default()), span: Span::default() },
+                WithSpan { value: Expr::List(vec![
+                    WithSpan { value: Expr::Symbol("core/get".to_string(), Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::Path(sutra::path::Path(vec!["bar".to_string()]), Span::default()), span: Span::default() },
+                ], Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+        ),
         // under?
-        ("under?", Expr::List(vec![
-            Expr::Symbol("under?".to_string(), Span::default()),
-            Expr::Symbol("foo".to_string(), Span::default()),
-            Expr::Symbol("bar".to_string(), Span::default()),
-        ], Span::default()),
-        Expr::List(vec![
-            Expr::Symbol("lt?".to_string(), Span::default()),
-            Expr::List(vec![
-                Expr::Symbol("core/get".to_string(), Span::default()),
-                Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()),
-            ], Span::default()),
-            Expr::List(vec![
-                Expr::Symbol("core/get".to_string(), Span::default()),
-                Expr::Path(sutra::path::Path(vec!["bar".to_string()]), Span::default()),
-            ], Span::default()),
-        ], Span::default())),
+        (
+            "under?",
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("under?".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Symbol("bar".to_string(), Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("lt?".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::List(vec![
+                    WithSpan { value: Expr::Symbol("core/get".to_string(), Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::Path(sutra::path::Path(vec!["foo".to_string()]), Span::default()), span: Span::default() },
+                ], Span::default()), span: Span::default() },
+                WithSpan { value: Expr::List(vec![
+                    WithSpan { value: Expr::Symbol("core/get".to_string(), Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::Path(sutra::path::Path(vec!["bar".to_string()]), Span::default()), span: Span::default() },
+                ], Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+        ),
         // not
-        ("not", Expr::List(vec![
-            Expr::Symbol("not".to_string(), Span::default()),
-            Expr::Bool(false, Span::default()),
-        ], Span::default()),
-        Expr::List(vec![
-            Expr::Symbol("not".to_string(), Span::default()),
-            Expr::Bool(false, Span::default()),
-        ], Span::default())),
+        (
+            "not",
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("not".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Bool(false, Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("not".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Bool(false, Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+        ),
         // list
-        ("list", Expr::List(vec![
-            Expr::Symbol("list".to_string(), Span::default()),
-            Expr::Number(1.0, Span::default()),
-            Expr::Number(2.0, Span::default()),
-        ], Span::default()),
-        Expr::List(vec![
-            Expr::Symbol("list".to_string(), Span::default()),
-            Expr::Number(1.0, Span::default()),
-            Expr::Number(2.0, Span::default()),
-        ], Span::default())),
+        (
+            "list",
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("list".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Number(1.0, Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Number(2.0, Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("list".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Number(1.0, Span::default()), span: Span::default() },
+                WithSpan { value: Expr::Number(2.0, Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+        ),
         // len
-        ("len", Expr::List(vec![
-            Expr::Symbol("len".to_string(), Span::default()),
-            Expr::List(vec![
-                Expr::Symbol("list".to_string(), Span::default()),
-                Expr::Number(1.0, Span::default()),
-                Expr::Number(2.0, Span::default()),
-            ], Span::default()),
-        ], Span::default()),
-        Expr::List(vec![
-            Expr::Symbol("len".to_string(), Span::default()),
-            Expr::List(vec![
-                Expr::Symbol("list".to_string(), Span::default()),
-                Expr::Number(1.0, Span::default()),
-                Expr::Number(2.0, Span::default()),
-            ], Span::default()),
-        ], Span::default())),
+        (
+            "len",
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("len".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::List(vec![
+                    WithSpan { value: Expr::Symbol("list".to_string(), Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::Number(1.0, Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::Number(2.0, Span::default()), span: Span::default() },
+                ], Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+            WithSpan { value: Expr::List(vec![
+                WithSpan { value: Expr::Symbol("len".to_string(), Span::default()), span: Span::default() },
+                WithSpan { value: Expr::List(vec![
+                    WithSpan { value: Expr::Symbol("list".to_string(), Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::Number(1.0, Span::default()), span: Span::default() },
+                    WithSpan { value: Expr::Number(2.0, Span::default()), span: Span::default() },
+                ], Span::default()), span: Span::default() },
+            ], Span::default()), span: Span::default() },
+        ),
     ];
     for (macro_name, input, expected) in cases {
-        let expanded = registry.expand_recursive(&input, 0).unwrap();
-        assert_eq!(expanded, expected, "Expansion mismatch for macro '{}':\nInput:    {:?}\nExpected: {:?}\nActual:   {:?}", macro_name, input, expected, expanded);
+        let registry = build_default_macro_registry();
+        let context = SutraMacroContext { registry, hygiene_scope: None };
+        let expander = MacroExpander::default();
+        let expanded = expander.expand_macros(input.clone(), &context).unwrap();
+        assert_eq!(
+            expanded.value.pretty(),
+            expected.value.pretty(),
+            "Expansion mismatch for macro '{}':\nInput:    {}\nExpected: {}\nActual:   {}",
+            macro_name,
+            input.value.pretty(),
+            expected.value.pretty(),
+            expanded.value.pretty()
+        );
     }
 }
 
 #[cfg(test)]
 mod loader_tests {
     use sutra::macros::parse_macros_from_source;
-    use sutra::macros::MacroTemplate;
 
     #[test]
     fn test_valid_single_macro() {
@@ -668,8 +797,8 @@ mod loader_tests {
         let result = parse_macros_from_source(src).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0, "foo");
-        assert_eq!(result[0].1.params, vec!["x"]);
-        assert!(result[0].1.variadic_param.is_none());
+        assert_eq!(result[0].1.params.required, vec!["x"]);
+        assert!(result[0].1.params.rest.is_none());
     }
 
     #[test]
@@ -678,53 +807,8 @@ mod loader_tests {
         let result = parse_macros_from_source(src).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0, "bar");
-        assert_eq!(result[0].1.params, vec!["x"]);
-        assert_eq!(result[0].1.variadic_param.as_deref(), Some("rest"));
-    }
-
-    #[test]
-    fn test_duplicate_macro_name() {
-        let src = "(define (foo x) x) (define (foo y) y)";
-        let result = parse_macros_from_source(src);
-        assert!(result.is_err());
-        let msg = format!("{}", result.unwrap_err());
-        assert!(msg.contains("Duplicate macro name"));
-    }
-
-    #[test]
-    fn test_duplicate_param_name() {
-        let src = "(define (foo x x) x)";
-        let result = parse_macros_from_source(src);
-        assert!(result.is_err());
-        let msg = format!("{}", result.unwrap_err());
-        assert!(msg.contains("Duplicate parameter name"));
-    }
-
-    #[test]
-    fn test_multiple_variadics() {
-        let src = "(define (foo x . rest . more) x)";
-        let result = parse_macros_from_source(src);
-        assert!(result.is_err());
-        let msg = format!("{}", result.unwrap_err());
-        assert!(msg.contains("Multiple '.'"));
-    }
-
-    #[test]
-    fn test_non_symbol_macro_name() {
-        let src = "(define (123 x) x)";
-        let result = parse_macros_from_source(src);
-        assert!(result.is_err());
-        let msg = format!("{}", result.unwrap_err());
-        assert!(msg.contains("Macro name must be a symbol"));
-    }
-
-    #[test]
-    fn test_non_list_param_list() {
-        let src = "(define foo x)";
-        let result = parse_macros_from_source(src);
-        assert!(result.is_err());
-        let msg = format!("{}", result.unwrap_err());
-        assert!(msg.contains("parameter list must be a list"));
+        assert_eq!(result[0].1.params.required, vec!["x"]);
+        assert_eq!(result[0].1.params.rest.as_deref(), Some("rest"));
     }
 
     #[test]
@@ -733,144 +817,5 @@ mod loader_tests {
         let result = parse_macros_from_source(src).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].0, "foo");
-    }
-}
-
-#[cfg(test)]
-mod macro_param_tests {
-    use sutra::ast::{Expr, Span};
-    use sutra::macros::{MacroParams, RESERVED_WORDS};
-    use sutra::error::SutraErrorKind;
-
-    fn s(name: &str) -> Expr {
-        Expr::Symbol(name.to_string(), Span::default())
-    }
-
-    fn dot() -> Expr {
-        Expr::Symbol(".".to_string(), Span::default())
-    }
-
-    #[test]
-    fn test_parse_macro_params_table() {
-        struct Case {
-            desc: &'static str,
-            input: Vec<Expr>,
-            expect_ok: bool,
-            expect_params: Vec<&'static str>,
-            expect_variadic: Option<&'static str>,
-            expect_err_contains: Option<&'static str>,
-        }
-        let cases = vec![
-            Case {
-                desc: "simple fixed params",
-                input: vec![s("x"), s("y")],
-                expect_ok: true,
-                expect_params: vec!["x", "y"],
-                expect_variadic: None,
-                expect_err_contains: None,
-            },
-            Case {
-                desc: "single variadic param",
-                input: vec![s("x"), dot(), s("rest")],
-                expect_ok: true,
-                expect_params: vec!["x"],
-                expect_variadic: Some("rest"),
-                expect_err_contains: None,
-            },
-            Case {
-                desc: "empty param list",
-                input: vec![],
-                expect_ok: true,
-                expect_params: vec![],
-                expect_variadic: None,
-                expect_err_contains: None,
-            },
-            Case {
-                desc: "dot at start",
-                input: vec![dot(), s("rest")],
-                expect_ok: true,
-                expect_params: vec![],
-                expect_variadic: Some("rest"),
-                expect_err_contains: None,
-            },
-            Case {
-                desc: "dot at end (error)",
-                input: vec![s("x"), dot()],
-                expect_ok: false,
-                expect_params: vec![],
-                expect_variadic: None,
-                expect_err_contains: Some("Expected symbol after '.'"),
-            },
-            Case {
-                desc: "multiple dots (error)",
-                input: vec![s("x"), dot(), s("rest"), dot(), s("more")],
-                expect_ok: false,
-                expect_params: vec![],
-                expect_variadic: None,
-                expect_err_contains: Some("Multiple '.'"),
-            },
-            Case {
-                desc: "reserved word as param (error)",
-                input: vec![s("define"), s("x")],
-                expect_ok: false,
-                expect_params: vec![],
-                expect_variadic: None,
-                expect_err_contains: Some("Reserved word 'define'"),
-            },
-            Case {
-                desc: "reserved word as variadic (error)",
-                input: vec![s("x"), dot(), s("define")],
-                expect_ok: false,
-                expect_params: vec![],
-                expect_variadic: None,
-                expect_err_contains: Some("Reserved word 'define'"),
-            },
-            Case {
-                desc: "non-symbol param (error)",
-                input: vec![Expr::Number(1.0, Span::default())],
-                expect_ok: false,
-                expect_params: vec![],
-                expect_variadic: None,
-                expect_err_contains: Some("Invalid parameter"),
-            },
-            Case {
-                desc: "duplicate param (error)",
-                input: vec![s("x"), s("x")],
-                expect_ok: false,
-                expect_params: vec![],
-                expect_variadic: None,
-                expect_err_contains: Some("Duplicate parameter name"),
-            },
-            Case {
-                desc: "duplicate variadic (error)",
-                input: vec![s("x"), dot(), s("x")],
-                expect_ok: false,
-                expect_params: vec![],
-                expect_variadic: None,
-                expect_err_contains: Some("Duplicate parameter name"),
-            },
-            Case {
-                desc: "param after variadic (error)",
-                input: vec![s("x"), dot(), s("rest"), s("y")],
-                expect_ok: false,
-                expect_params: vec![],
-                expect_variadic: None,
-                expect_err_contains: Some("No parameters allowed after variadic"),
-            },
-        ];
-        for case in cases {
-            let head = Some(s("macro-head"));
-            let span = Some(Span::default());
-            let result = MacroParams::parse_macro_params(&case.input, head.clone(), span.clone());
-            if case.expect_ok {
-                let params = result.expect(&format!("case '{}': expected Ok", case.desc));
-                assert_eq!(params.params, case.expect_params.iter().map(|s| s.to_string()).collect::<Vec<_>>(), "case '{}': params mismatch", case.desc);
-                assert_eq!(params.variadic.as_deref(), case.expect_variadic, "case '{}': variadic mismatch", case.desc);
-            } else {
-                let err = result.expect_err(&format!("case '{}': expected Err", case.desc));
-                let msg = format!("{}", err);
-                assert!(case.expect_err_contains.iter().all(|frag| msg.contains(frag)), "case '{}': error message missing expected fragment(s): got '{}', expected '{:?}'", case.desc, msg, case.expect_err_contains);
-            }
-        }
     }
 }

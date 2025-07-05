@@ -1,4 +1,4 @@
-use crate::ast::Expr;
+use crate::ast::{Expr, WithSpan};
 use crate::atom::{AtomRegistry, OutputSink};
 use crate::error::{EvalError, SutraError, SutraErrorKind};
 use crate::value::Value;
@@ -19,18 +19,18 @@ pub struct EvalContext<'a, 'o> {
 
 impl<'a, 'o> EvalContext<'a, 'o> {
     /// A helper method to recursively call the evaluator with the context's current world.
-    pub fn eval(&mut self, expr: &Expr) -> Result<(Value, World), SutraError> {
+    pub fn eval(&mut self, expr: &WithSpan<Expr>) -> Result<(Value, World), SutraError> {
         eval_expr(expr, self.world, self.output, self.opts, self.depth + 1)
     }
 
     /// A helper method to recursively call the evaluator with a new world state.
-    pub fn eval_in(&mut self, world: &World, expr: &Expr) -> Result<(Value, World), SutraError> {
+    pub fn eval_in(&mut self, world: &World, expr: &WithSpan<Expr>) -> Result<(Value, World), SutraError> {
         eval_expr(expr, world, self.output, self.opts, self.depth + 1)
     }
 }
 
 pub fn eval(
-    expr: &Expr,
+    expr: &WithSpan<Expr>,
     world: &World,
     output: &mut dyn OutputSink,
     opts: &EvalOptions,
@@ -39,7 +39,7 @@ pub fn eval(
 }
 
 fn eval_expr(
-    expr: &Expr,
+    expr: &WithSpan<Expr>,
     world: &World,
     output: &mut dyn OutputSink,
     opts: &EvalOptions,
@@ -49,15 +49,15 @@ fn eval_expr(
         return Err(SutraError {
             kind: SutraErrorKind::Eval(EvalError {
                 message: "Recursion depth limit exceeded.".to_string(),
-                expanded_code: expr.pretty(),
+                expanded_code: expr.value.pretty(),
                 original_code: None,
                 suggestion: None,
             }),
-            span: Some(expr.span()),
+            span: Some(expr.span.clone()),
         });
     }
 
-    match expr {
+    match &expr.value {
         Expr::List(items, span) => {
             if items.is_empty() {
                 // An empty list evaluates to an empty list value.
@@ -69,17 +69,17 @@ fn eval_expr(
             let head = &items[0];
             let tail = &items[1..];
 
-            let atom_name = if let Expr::Symbol(s, _) = head {
+            let atom_name = if let Expr::Symbol(s, _) = &head.value {
                 s
             } else {
                 return Err(SutraError {
                     kind: SutraErrorKind::Eval(EvalError {
                         message: "The first element of a list to be evaluated must be a symbol naming an atom.".to_string(),
-                        expanded_code: expr.pretty(),
+                        expanded_code: expr.value.pretty(),
                         original_code: None,
                         suggestion: None,
                     }),
-                    span: Some(head.span()),
+                    span: Some(head.span.clone()),
                 });
             };
 
@@ -89,11 +89,11 @@ fn eval_expr(
                 return Err(SutraError {
                     kind: SutraErrorKind::Eval(EvalError {
                         message: format!("Atom '{}' not found.", atom_name),
-                        expanded_code: expr.pretty(),
+                        expanded_code: expr.value.pretty(),
                         original_code: None,
                         suggestion: None,
                     }),
-                    span: Some(head.span()),
+                    span: Some(head.span.clone()),
                 });
             };
 
@@ -106,17 +106,66 @@ fn eval_expr(
 
             atom_fn(tail, &mut context, span)
         }
-        // Literals evaluate to themselves.
-        // A bare symbol at this stage is a semantic error, as all legitimate
-        // world lookups should have been transformed into `(get ...)` calls
-        // by the macro expansion phase.
+        Expr::Quote(inner, _) => {
+            // Evaluate to the quoted value as a Value variant
+            match &inner.value {
+                Expr::Symbol(s, _) => Ok((Value::String(s.clone()), world.clone())),
+                Expr::List(exprs, _) => {
+                    let vals: Result<Vec<_>, SutraError> = exprs.iter().map(|e| match &e.value {
+                        Expr::Symbol(s, _) => Ok(Value::String(s.clone())),
+                        Expr::Number(n, _) => Ok(Value::Number(*n)),
+                        Expr::Bool(b, _) => Ok(Value::Bool(*b)),
+                        Expr::String(s, _) => Ok(Value::String(s.clone())),
+                        Expr::ParamList(_) => Err(SutraError {
+                            kind: SutraErrorKind::Eval(EvalError {
+                                message: "Cannot evaluate parameter list (ParamList AST node) inside quote".to_string(),
+                                expanded_code: inner.value.pretty(),
+                                original_code: None,
+                                suggestion: None,
+                            }),
+                            span: Some(inner.span.clone()),
+                        }),
+                        _ => Ok(Value::Nil),
+                    }).collect();
+                    Ok((Value::List(vals?), world.clone()))
+                }
+                Expr::Number(n, _) => Ok((Value::Number(*n), world.clone())),
+                Expr::Bool(b, _) => Ok((Value::Bool(*b), world.clone())),
+                Expr::String(s, _) => Ok((Value::String(s.clone()), world.clone())),
+                Expr::Path(p, _) => Ok((Value::Path(p.clone()), world.clone())),
+                Expr::If { .. } => Ok((Value::Nil, world.clone())),
+                Expr::Quote(_, _) => Ok((Value::Nil, world.clone())),
+                Expr::ParamList(_) => {
+                    return Err(SutraError {
+                        kind: SutraErrorKind::Eval(EvalError {
+                            message: "Cannot evaluate parameter list (ParamList AST node) at runtime".to_string(),
+                            expanded_code: expr.value.pretty(),
+                            original_code: None,
+                            suggestion: None,
+                        }),
+                        span: Some(expr.span.clone()),
+                    });
+                }
+            }
+        }
+        Expr::ParamList(_) => {
+            return Err(SutraError {
+                kind: SutraErrorKind::Eval(EvalError {
+                    message: "Cannot evaluate parameter list (ParamList AST node) at runtime".to_string(),
+                    expanded_code: expr.value.pretty(),
+                    original_code: None,
+                    suggestion: None,
+                }),
+                span: Some(expr.span.clone()),
+            });
+        }
         Expr::Symbol(s, span) => Err(SutraError {
             kind: SutraErrorKind::Eval(EvalError {
                 message: format!(
                     "Unexpected bare symbol '{}' found during evaluation. All value lookups must be explicit `(get ...)` calls.",
                     s
                 ),
-                expanded_code: expr.pretty(),
+                expanded_code: expr.value.pretty(),
                 original_code: None,
                 suggestion: Some("Did you mean to use `(get ...)`?".to_string()),
             }),
@@ -126,10 +175,10 @@ fn eval_expr(
         Expr::String(s, _) => Ok((Value::String(s.clone()), world.clone())),
         Expr::Number(n, _) => Ok((Value::Number(*n), world.clone())),
         Expr::Bool(b, _) => Ok((Value::Bool(*b), world.clone())),
-        &Expr::If {
-            ref condition,
-            ref then_branch,
-            ref else_branch,
+        Expr::If {
+            condition,
+            then_branch,
+            else_branch,
             ..
         } => {
             let (cond_val, next_world) = eval_expr(condition, world, output, opts, depth + 1)?;
@@ -144,11 +193,11 @@ fn eval_expr(
                     kind: SutraErrorKind::Eval(EvalError {
                         message: "The condition for an `if` expression must evaluate to a Boolean."
                             .to_string(),
-                        expanded_code: condition.pretty(),
+                        expanded_code: condition.value.pretty(),
                         original_code: None,
                         suggestion: None,
                     }),
-                    span: Some(condition.span()),
+                    span: Some(condition.span.clone()),
                 })
             }
         }

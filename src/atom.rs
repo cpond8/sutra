@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Span};
+use crate::ast::{Expr, Span, WithSpan};
 use crate::error::SutraError;
 use crate::eval::EvalContext;
 use crate::value::Value;
@@ -10,7 +10,7 @@ use std::collections::HashMap;
 // It returns a tuple containing the resulting Value and the new World state,
 // ensuring that all state changes are explicit and pure.
 pub type AtomFn = fn(
-    args: &[Expr],
+    args: &[WithSpan<Expr>],
     context: &mut EvalContext,
     parent_span: &Span,
 ) -> Result<(Value, World), SutraError>;

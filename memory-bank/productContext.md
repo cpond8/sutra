@@ -43,6 +43,15 @@ Sutra addresses fundamental limitations in current game and narrative engines by
 - Macro expansion and evaluation are fully transparent and testable.
 - The CLI and documentation are designed for author ergonomics and onboarding.
 
+## Parsing Pipeline and Product Goals (2025-07-04)
+
+The new modular parsing pipeline directly supports Sutra's product goals:
+- **Transparency:** Every stage is explicit, auditable, and debuggable, making authoring and debugging easier for users.
+- **Extensibility:** The architecture is designed for easy extension and evolution, supporting new syntax, macros, and validation features.
+- **Authoring Ergonomics:** Clear error reporting, diagnostics, and round-trippability ensure a smooth authoring experience.
+
+See `docs/architecture/parsing-pipeline-plan.md` for the full plan and rationale.
+
 ## Cross-References
 
 - See `memory-bank/projectbrief.md` for project vision and aspirations.
@@ -56,3 +65,4 @@ Sutra addresses fundamental limitations in current game and narrative engines by
 
 - 2025-07-03: Updated to resolve all audit TODOs, clarify product context, and align with current codebase and guidelines.
 - 2025-06-30: Initial synthesis from legacy documentation.
+- 2025-07-04: Added section on parsing pipeline and product goals.
