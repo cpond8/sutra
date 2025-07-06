@@ -255,10 +255,10 @@ fn build_ast_from_cst(
             } else if s == "false" {
                 false
             } else {
-                return Err(SutraAstBuildError::InvalidShape {
+                Err(SutraAstBuildError::InvalidShape {
                     span: cst.span.clone(),
                     message: format!("Invalid boolean: {}", s),
-                });
+                })?
             };
             Ok(WithSpan {
                 value: Expr::Bool(b, cst.span.clone()),

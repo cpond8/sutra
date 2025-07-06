@@ -109,6 +109,7 @@ See `docs/architecture/parsing-pipeline-plan.md` for the full plan and changelog
   - All tests pass; the codebase is clean and up to date.
   - Outdated or failing tests have been removed or updated.
   - Documentation and memory bank files have been reviewed and are being updated for protocol compliance.
+- 2025-07-06: Batch refactor for Rust idiom compliance (implicit/explicit return style), match exhaustiveness, and error handling completed. Explicit returns for early exits restored. All match arms for Expr variants in eval_expr restored. Protocol-driven, batch-based, test-first approach enforced. All tests pass. Lesson: Always enumerate all functions for audit, not just those surfaced by search.
 
 ## Macro System Refactor Progress
 
@@ -132,3 +133,34 @@ See `docs/architecture/parsing-pipeline-plan.md` for the full plan and changelog
     - Inspectable expansion trace for debugging and auditing.
 - **Status:**
     - To be prototyped in a new branch after incremental improvements are validated.
+
+## Progress Update: Parser Parameter List Refactor
+
+## Context
+The `build_param_list` function in `src/parser.rs` was identified as overly complex, imperative, and nested, with state managed by flags and error handling interleaved with parsing logic. This did not fully align with project protocols, Rust best practices, or functional programming principles.
+
+## Actions Taken
+- **Decomposed** the function into pure, single-responsibility helpers.
+- **Introduced** a custom enum (`ParamListParts`) to represent valid parameter list states, making illegal states unrepresentable.
+- **Replaced** all mutation and manual loops with iterator combinators and pattern matching.
+- **Centralized** all error handling, making it explicit and precise.
+- **Documented** all invariants and error cases in doc comments.
+- **Ensured** the main function is a declarative pipeline, not a loop.
+
+## Rationale
+- **Functional, type-driven design**: All logic is now expressed in terms of pure functions and type-checked invariants.
+- **Protocol compliance**: All project and Rust protocols are strictly enforced, with no unreachable! or ad-hoc state.
+- **Maintainability**: The new structure is highly readable, auditable, and testable.
+- **Model implementation**: This function now serves as a model for future functional, idiomatic, and protocol-compliant Rust in the codebase.
+
+## Next Steps
+- Add targeted unit tests for the new helpers.
+- Use this pattern as a reference for future refactors.
+
+# Progress Log
+
+- Macro expansion engine in src/macros.rs fully refactored (June 2024):
+  - Decomposed into pure, single-responsibility, composable functions.
+  - All lints, unit tests, integration tests, and doc tests pass (with one intentionally ignored example for documentation context).
+  - Documentation and code follow @Rust best practices and workspace protocol.
+  - Codebase is in a clean, fully-audited state.

@@ -56,6 +56,7 @@
 - 2025-07-04: src/atoms_std.rs is now fully span-carrying compliant. All error macros and atom logic use WithSpan<Expr> throughout. All linter/type errors resolved. Canonical error macro pattern enforced. See parsing-pipeline-plan.md and macroexpander migration for context.
 - 2025-07-05: Codebase, tests, and documentation are now fully compliant with the proper-list-only and ...rest-only architecture. All legacy dotted/improper list handling and legacy variadic syntax have been removed.
 - 2025-07-05: Macro system, CLI, and test harness refactor completed. Session summary and next steps added.
+- 2025-07-06: Batch refactor completed for Rust idiom compliance (implicit/explicit return style), match exhaustiveness, and error handling. All explicit returns for early exits restored where required. All match arms for Expr variants in eval_expr restored. Protocol-driven, batch-based, test-first approach enforced. All tests pass. Lesson: Always enumerate all functions for audit, not just those surfaced by search.
 
 ## Rationale for Order
 
@@ -243,3 +244,15 @@ The highest-value, lowest-cost techniques (integration tests, registry hashing) 
 **Next Steps:**
 - Continue to update documentation and memory bank files after any further significant changes.
 - Maintain strict protocol compliance and batch-based, test-driven development.
+
+## Active Context Update: Parser Refactor
+
+- `build_param_list` in `src/parser.rs` is now a maximally functional, type-driven, protocol-compliant example.
+- Uses a custom enum (`ParamListParts`) to encode invariants and eliminate illegal states.
+- All logic is expressed with iterator combinators, pattern matching, and pure helpers.
+- No mutation, flags, or unreachable! macros remain.
+- This is now the reference pattern for parameter parsing and similar logic in the project.
+
+- Macro expansion engine is now refactored for purity, composability, and protocol compliance.
+- Macro expansion is handled by pure, single-responsibility functions.
+- All tests and lints pass; documentation is up to date and follows @Rust best practices.

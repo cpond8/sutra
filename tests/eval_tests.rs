@@ -55,7 +55,7 @@ mod tests {
     fn eval_state_mutation_set_get() {
         use sutra::atom::{AtomRegistry, NullSink};
         use sutra::eval::{eval, EvalOptions};
-        use sutra::macros::{MacroRegistry, MacroEnv, expand_macros};
+        use sutra::macros::{expand_macros, MacroEnv, MacroRegistry};
         use sutra::parser::parse;
         use sutra::world::World;
         // Macro expansion required for set! and get
@@ -92,7 +92,7 @@ mod tests {
     fn eval_special_form_if() {
         use sutra::atom::{AtomRegistry, NullSink};
         use sutra::eval::{eval, EvalOptions};
-        use sutra::macros::{MacroRegistry, MacroEnv, expand_macros};
+        use sutra::macros::{expand_macros, MacroEnv, MacroRegistry};
         use sutra::parser::parse;
         use sutra::world::World;
         // Macro expansion required for eq? in if condition
@@ -123,7 +123,7 @@ mod tests {
     fn eval_do_block() {
         use sutra::atom::{AtomRegistry, NullSink};
         use sutra::eval::{eval, EvalOptions};
-        use sutra::macros::{MacroRegistry, MacroEnv, expand_macros};
+        use sutra::macros::{expand_macros, MacroEnv, MacroRegistry};
         use sutra::parser::parse;
         use sutra::world::World;
         // Macro expansion required for do, set!, get
@@ -217,7 +217,7 @@ mod tests {
     fn eval_nil_fallback_handling() {
         use sutra::atom::{AtomRegistry, NullSink};
         use sutra::eval::{eval, EvalOptions};
-        use sutra::macros::{MacroRegistry, MacroEnv, expand_macros};
+        use sutra::macros::{expand_macros, MacroEnv, MacroRegistry};
         use sutra::parser::parse;
         use sutra::world::World;
         // Macro expansion required for get

@@ -3,7 +3,10 @@
 #[cfg(test)]
 mod tests {
     // Helper for macro expansion in tests
-    fn must_expand_ok(expr: sutra::ast::WithSpan<sutra::ast::Expr>, env: &mut sutra::macros::MacroEnv) -> sutra::ast::WithSpan<sutra::ast::Expr> {
+    fn must_expand_ok(
+        expr: sutra::ast::WithSpan<sutra::ast::Expr>,
+        env: &mut sutra::macros::MacroEnv,
+    ) -> sutra::ast::WithSpan<sutra::ast::Expr> {
         let result = sutra::macros::expand_macros(expr, env);
         assert!(result.is_ok(), "Macro expansion failed: {:?}", result);
         result.unwrap()
@@ -36,7 +39,7 @@ mod tests {
     #[test]
     fn expand_core_macro_add() {
         use sutra::ast::{Expr, WithSpan};
-        use sutra::macros::{MacroRegistry, MacroEnv, expand_macros};
+        use sutra::macros::{MacroEnv, MacroRegistry};
         use sutra::parser::parse;
         // Setup: register a simple add! macro as a template (add! x y) => (+ x y)
         let mut registry = MacroRegistry::default();
@@ -94,7 +97,7 @@ mod tests {
     fn expand_macro_with_list_path() {
         // This test assumes add! macro supports a list path as first argument
         use sutra::ast::{Expr, WithSpan};
-        use sutra::macros::{MacroRegistry, MacroEnv, expand_macros};
+        use sutra::macros::{MacroEnv, MacroRegistry};
         use sutra::parser::parse;
         let mut registry = MacroRegistry::default();
         let params = sutra::ast::ParamList {
@@ -159,7 +162,7 @@ mod tests {
     fn expand_macro_with_string_path() {
         // This test assumes add! macro supports a string path as first argument
         use sutra::ast::{Expr, WithSpan};
-        use sutra::macros::{MacroRegistry, MacroEnv, expand_macros};
+        use sutra::macros::{MacroEnv, MacroRegistry};
         use sutra::parser::parse;
         let mut registry = MacroRegistry::default();
         let params = sutra::ast::ParamList {
@@ -249,7 +252,7 @@ mod tests {
         // This is a placeholder for a golden test: known macro input -> known canonical output
         // For now, just check that expansion is deterministic and matches expected output
         use sutra::ast::{Expr, WithSpan};
-        use sutra::macros::{MacroRegistry, MacroEnv, expand_macros};
+        use sutra::macros::{MacroEnv, MacroRegistry};
         use sutra::parser::parse;
         let mut registry = MacroRegistry::default();
         let params = sutra::ast::ParamList {
@@ -313,7 +316,7 @@ mod tests {
 
     #[test]
     fn expand_macro_with_too_few_arguments_should_error() {
-        use sutra::macros::{MacroRegistry, MacroEnv, expand_macros};
+        use sutra::macros::{MacroEnv, MacroRegistry};
         use sutra::parser::parse;
         let mut registry = MacroRegistry::default();
         let params = sutra::ast::ParamList {
@@ -340,13 +343,16 @@ mod tests {
         };
         let input = "(add! foo)"; // Only one argument
         let ast = parse(input).unwrap().remove(0);
-        let result = expand_macros(ast.clone(), &mut env);
-        assert!(result.is_err(), "Macro expansion should fail due to too few arguments");
+        let result = sutra::macros::expand_macros(ast.clone(), &mut env);
+        assert!(
+            result.is_err(),
+            "Macro expansion should fail due to too few arguments"
+        );
     }
 
     #[test]
     fn expand_macro_with_too_many_arguments_should_error() {
-        use sutra::macros::{MacroRegistry, MacroEnv, expand_macros};
+        use sutra::macros::{MacroEnv, MacroRegistry};
         use sutra::parser::parse;
         let mut registry = MacroRegistry::default();
         let params = sutra::ast::ParamList {
@@ -373,14 +379,17 @@ mod tests {
         };
         let input = "(add! foo 1 2)"; // Three arguments
         let ast = parse(input).unwrap().remove(0);
-        let result = expand_macros(ast.clone(), &mut env);
-        assert!(result.is_err(), "Macro expansion should fail due to too many arguments");
+        let result = sutra::macros::expand_macros(ast.clone(), &mut env);
+        assert!(
+            result.is_err(),
+            "Macro expansion should fail due to too many arguments"
+        );
     }
 
     #[test]
     fn expand_macro_with_recursion_depth_limit_should_error() {
         use sutra::ast::{Expr, WithSpan};
-        use sutra::macros::{MacroRegistry, MacroEnv, expand_macros};
+        use sutra::macros::{MacroEnv, MacroRegistry};
         use sutra::parser::parse;
         // Register a macro that expands to itself
         let mut registry = MacroRegistry::default();
@@ -420,7 +429,10 @@ mod tests {
         };
         let input = "(recur! foo)";
         let ast = parse(input).unwrap().remove(0);
-        let result = expand_macros(ast.clone(), &mut env);
-        assert!(result.is_err(), "Macro expansion should fail due to recursion depth limit");
+        let result = sutra::macros::expand_macros(ast.clone(), &mut env);
+        assert!(
+            result.is_err(),
+            "Macro expansion should fail due to recursion depth limit"
+        );
     }
 }

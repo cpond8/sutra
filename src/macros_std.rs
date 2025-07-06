@@ -58,12 +58,12 @@ fn expr_to_path(expr: &WithSpan<Expr>) -> Result<Path, SutraError> {
                     Expr::Symbol(s, _) => segments.push(s.clone()),
                     Expr::String(s, _) => segments.push(s.clone()),
                     _ => {
-                        return Err(SutraError {
+                        Err(SutraError {
                             kind: SutraErrorKind::Macro(
                                 "Path lists can only contain symbols or strings.".to_string(),
                             ),
                             span: Some(item.span.clone()),
-                        });
+                        })?
                     }
                 }
             }
@@ -113,14 +113,14 @@ fn create_binary_predicate_macro(
     match &expr.value {
         Expr::List(items, span) => {
             if items.len() != 3 {
-                return Err(SutraError {
+                Err(SutraError {
                     kind: SutraErrorKind::Macro(format!(
                         "Macro '{}' expects 2 arguments, but got {}",
                         macro_name,
                         items.len() - 1
                     )),
                     span: Some(span.clone()),
-                });
+                })?
             }
             let atom_symbol = WithSpan {
                 value: Expr::Symbol(atom_name.to_string(), items[0].span.clone()),
@@ -152,14 +152,14 @@ fn create_assignment_macro(
     match &expr.value {
         Expr::List(items, span) => {
             if items.len() != 3 {
-                return Err(SutraError {
+                Err(SutraError {
                     kind: SutraErrorKind::Macro(format!(
                         "Macro '{}' expects 2 arguments, but got {}",
                         macro_name,
                         items.len() - 1
                     )),
                     span: Some(span.clone()),
-                });
+                })?
             }
             let set_symbol = WithSpan {
                 value: Expr::Symbol("core/set!".to_string(), items[0].span.clone()),
@@ -332,13 +332,13 @@ pub fn expand_inc(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     match &expr.value {
         Expr::List(items, span) => {
             if items.len() != 2 {
-                return Err(SutraError {
+                Err(SutraError {
                     kind: SutraErrorKind::Macro(format!(
                         "Macro 'inc!' expects 1 argument, but got {}",
                         items.len() - 1
                     )),
                     span: Some(span.clone()),
-                });
+                })?
             }
             let set_symbol = WithSpan {
                 value: Expr::Symbol("core/set!".to_string(), items[0].span.clone()),
@@ -394,13 +394,13 @@ pub fn expand_dec(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     match &expr.value {
         Expr::List(items, span) => {
             if items.len() != 2 {
-                return Err(SutraError {
+                Err(SutraError {
                     kind: SutraErrorKind::Macro(format!(
                         "Macro 'dec!' expects 1 argument, but got {}",
                         items.len() - 1
                     )),
                     span: Some(span.clone()),
-                });
+                })?
             }
             let set_symbol = WithSpan {
                 value: Expr::Symbol("core/set!".to_string(), items[0].span.clone()),
@@ -457,13 +457,13 @@ pub fn expand_set(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     match &expr.value {
         Expr::List(items, span) => {
             if items.len() != 3 {
-                return Err(SutraError {
+                Err(SutraError {
                     kind: SutraErrorKind::Macro(format!(
                         "Macro 'set!' expects 2 arguments, but got {}",
                         items.len() - 1
                     )),
                     span: Some(span.clone()),
-                });
+                })?
             }
             let atom_symbol = WithSpan {
                 value: Expr::Symbol("core/set!".to_string(), items[0].span.clone()),
@@ -508,13 +508,13 @@ pub fn expand_get(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     match &expr.value {
         Expr::List(items, span) => {
             if items.len() != 2 {
-                return Err(SutraError {
+                Err(SutraError {
                     kind: SutraErrorKind::Macro(format!(
                         "Macro 'get' expects 1 argument, but got {}",
                         items.len() - 1
                     )),
                     span: Some(span.clone()),
-                });
+                })?
             }
             let atom_symbol = WithSpan {
                 value: Expr::Symbol("core/get".to_string(), items[0].span.clone()),
@@ -558,13 +558,13 @@ pub fn expand_del(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     match &expr.value {
         Expr::List(items, span) => {
             if items.len() != 2 {
-                return Err(SutraError {
+                Err(SutraError {
                     kind: SutraErrorKind::Macro(format!(
                         "Macro 'del!' expects 1 argument, but got {}",
                         items.len() - 1
                     )),
                     span: Some(span.clone()),
-                });
+                })?
             }
             let atom_symbol = WithSpan {
                 value: Expr::Symbol("core/del!".to_string(), items[0].span.clone()),
@@ -614,13 +614,13 @@ pub fn expand_if(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     match &expr.value {
         Expr::List(items, span) => {
             if items.len() != 4 {
-                return Err(SutraError {
+                Err(SutraError {
                     kind: SutraErrorKind::Macro(format!(
                         "Macro 'if' expects 3 arguments, but got {}",
                         items.len() - 1
                     )),
                     span: Some(span.clone()),
-                });
+                })?
             }
             Ok(WithSpan {
                 value: Expr::If {

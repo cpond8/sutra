@@ -5,7 +5,7 @@
 
 use crate::cli::args::{Command, SutraArgs};
 use crate::macros::{
-    load_macros_from_file, MacroDef, MacroRegistry, MacroEnv, MacroExpansionStep, expand_macros,
+    expand_macros, load_macros_from_file, MacroDef, MacroEnv, MacroRegistry,
 };
 use crate::{macros_std, parser};
 use clap::Parser;
@@ -71,7 +71,9 @@ fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::E
     match load_macros_from_file("macros.sutra") {
         Ok(macros) => {
             for (name, template) in macros {
-                user_macros.macros.insert(name, MacroDef::Template(template));
+                user_macros
+                    .macros
+                    .insert(name, MacroDef::Template(template));
             }
         }
         Err(e) => {

@@ -194,78 +194,108 @@ fn build_list(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     )
 }
 
+/// Enum representing the partitioned parameter list: either only required parameters, or required plus a single rest parameter.
+#[derive(Debug)]
+enum ParamListParts<'a> {
+    RequiredOnly(Vec<&'a Pair<'a, Rule>>),
+    RequiredAndRest(Vec<&'a Pair<'a, Rule>>, &'a Pair<'a, Rule>),
+}
+
+/// Parses a parameter list into an Expr::ParamList using a maximally functional, type-driven approach.
+///
+/// # Invariants
+/// - All required parameters (symbols) must come before any rest parameter ("... rest").
+/// - Only one rest parameter is allowed, and it must be the last.
+/// - Any violation results in a precise error.
+///
+/// # Errors
+/// - Required parameter after rest: error.
+/// - Multiple rest parameters: error.
+/// - Non-symbol after ...: error.
+/// - Invalid parameter type: error.
+///
+/// # Example
+/// ```ignore
+/// let pair = SutraParser::parse(Rule::param_list, "x y ...rest").unwrap().next().unwrap();
+/// let result = build_param_list(pair).unwrap();
+/// assert!(matches!(result.value, Expr::ParamList(_)));
+/// ```
 fn build_param_list(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     let span = get_span(&pair);
-    let mut inner = pair.clone().into_inner().peekable();
-    let mut required = Vec::new();
-    let mut rest: Option<String> = None;
-    while let Some(p) = inner.next() {
-        if p.as_rule() == Rule::symbol {
-            let sym = match build_symbol(p)? {
-                WithSpan {
-                    value: Expr::Symbol(s, _),
-                    ..
-                } => s,
-                _ => unreachable!("build_symbol must return Expr::Symbol for Rule::symbol"),
-            };
-            if rest.is_some() {
-                // No required params after ...rest
-                return Err(SutraError {
+    let pairs: Vec<_> = pair.clone().into_inner().collect();
+    let parts = partition_param_list(&pairs, &span)?;
+    let (required, rest) = match parts {
+        ParamListParts::RequiredOnly(req) => (req, None),
+        ParamListParts::RequiredAndRest(req, rest) => (req, Some(rest)),
+    };
+    let required_syms = required
+        .into_iter()
+        .map(as_symbol)
+        .collect::<Result<Vec<_>, _>>()?;
+    let rest_sym = rest.map(as_symbol).transpose()?;
+    Ok(WithSpan {
+        value: Expr::ParamList(crate::ast::ParamList {
+            required: required_syms,
+            rest: rest_sym,
+            span: span.clone(),
+        }),
+        span,
+    })
+}
+
+/// Partitions the parameter list into required and rest parameters using iterator combinators and type-driven invariants.
+/// Returns a ParamListParts enum, making illegal states unrepresentable.
+fn partition_param_list<'a>(
+    pairs: &'a [Pair<Rule>],
+    span: &Span,
+) -> Result<ParamListParts<'a>, SutraError> {
+    match pairs.iter().position(|p| p.as_str() == "...") {
+        Some(idx) => {
+            // "..." must be followed by a symbol and be the last two elements
+            if idx + 2 != pairs.len() {
+                Err(SutraError {
                     kind: SutraErrorKind::Parse(
                         "Required parameter after ...rest in parameter list".to_string(),
                     ),
                     span: Some(span.clone()),
-                });
+                })?
             }
-            required.push(sym);
-        } else if p.as_str() == "..." {
-            // Next must be a symbol
-            let next = inner.next().ok_or_else(|| SutraError {
+            let rest_pair = pairs.get(idx + 1).ok_or_else(|| SutraError {
                 kind: SutraErrorKind::Parse(
                     "Expected symbol after ... in parameter list".to_string(),
                 ),
                 span: Some(span.clone()),
             })?;
-            if next.as_rule() != Rule::symbol {
-                return Err(SutraError {
+            if rest_pair.as_rule() != Rule::symbol {
+                Err(SutraError {
                     kind: SutraErrorKind::Parse(
                         "Expected symbol after ... in parameter list".to_string(),
                     ),
                     span: Some(span.clone()),
-                });
+                })?
             }
-            let sym = match build_symbol(next)? {
-                WithSpan {
-                    value: Expr::Symbol(s, _),
-                    ..
-                } => s,
-                _ => unreachable!("build_symbol must return Expr::Symbol for Rule::symbol"),
-            };
-            if rest.is_some() {
-                return Err(SutraError {
-                    kind: SutraErrorKind::Parse("Multiple ...rest in parameter list".to_string()),
-                    span: Some(span.clone()),
-                });
-            }
-            rest = Some(sym);
-        } else {
-            return Err(SutraError {
-                kind: SutraErrorKind::Parse(format!(
-                    "Invalid parameter: expected symbol or ...rest, found '{}'.",
-                    p.as_str()
-                )),
-                span: Some(span.clone()),
-            });
+            Ok(ParamListParts::RequiredAndRest(
+                pairs[..idx].iter().collect(),
+                rest_pair,
+            ))
         }
+        None => Ok(ParamListParts::RequiredOnly(pairs.iter().collect())),
     }
-    Ok(WithSpan {
-        value: Expr::ParamList(crate::ast::ParamList {
-            required,
-            rest,
-            span: span.clone(),
+}
+
+/// Converts a Pair<Rule> to a symbol string, erroring if not a symbol.
+fn as_symbol(pair: &Pair<Rule>) -> Result<String, SutraError> {
+    let span = get_span(pair);
+    match build_symbol(pair.clone())? {
+        WithSpan {
+            value: Expr::Symbol(s, _),
+            ..
+        } => Ok(s),
+        _ => Err(SutraError {
+            kind: SutraErrorKind::Parse("Expected symbol in parameter list".to_string()),
+            span: Some(span),
         }),
-        span,
-    })
+    }
 }
 
 /// Handles block rule (brace blocks).

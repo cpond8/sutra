@@ -66,3 +66,4 @@ See `docs/architecture/parsing-pipeline-plan.md` for the full plan and rationale
 - 2025-07-03: Updated to resolve all audit TODOs, clarify product context, and align with current codebase and guidelines.
 - 2025-06-30: Initial synthesis from legacy documentation.
 - 2025-07-04: Added section on parsing pipeline and product goals.
+- 2025-07-06: Batch refactor for Rust idiom compliance (implicit/explicit return style), match exhaustiveness, and error handling. Explicit returns for early exits restored. All match arms for Expr variants in eval_expr restored. Protocol-driven, batch-based, test-first approach enforced. All tests pass. Lesson: Always enumerate all functions for audit, not just those surfaced by search.

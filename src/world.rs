@@ -98,7 +98,6 @@ fn set_recursive(current: &Value, path_segments: &[String], val: Value) -> Value
         let new_child = set_recursive(child, remaining_segments, val);
         map.insert(key.clone(), new_child);
     }
-
     Value::Map(map)
 }
 

@@ -73,6 +73,7 @@ This document captures the canonical architectural and design patterns, system-w
 - 2025-07-04: Added modular parsing pipeline as a canonical system pattern.
 - 2025-07-05: Migration to proper-list-only and ...rest-only architecture complete. All legacy code, tests, and documentation for improper/dotted lists and legacy variadic syntax have been removed.
 - 2025-07-05: Macro system, CLI, and test harness refactor system patterns and changelog updated.
+- 2025-07-06: Batch refactor for Rust idiom compliance (implicit/explicit return style), match exhaustiveness, and error handling. Explicit returns for early exits restored. All match arms for Expr variants in eval_expr restored. Protocol-driven, batch-based, test-first approach enforced. All tests pass. Lesson: Always enumerate all functions for audit, not just those surfaced by search.
 
 ## Core Architecture
 

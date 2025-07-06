@@ -50,7 +50,7 @@ fn eval_expr(
     depth: usize,
 ) -> Result<(Value, World), SutraError> {
     if depth > opts.max_depth {
-        return Err(SutraError {
+        Err(SutraError {
             kind: SutraErrorKind::Eval(EvalError {
                 message: "Recursion depth limit exceeded.".to_string(),
                 expanded_code: expr.value.pretty(),
@@ -58,7 +58,7 @@ fn eval_expr(
                 suggestion: None,
             }),
             span: Some(expr.span.clone()),
-        });
+        })?
     }
 
     match &expr.value {
@@ -76,7 +76,7 @@ fn eval_expr(
             let atom_name = if let Expr::Symbol(s, _) = &head.value {
                 s
             } else {
-                return Err(SutraError {
+                Err(SutraError {
                     kind: SutraErrorKind::Eval(EvalError {
                         message: "The first element of a list to be evaluated must be a symbol naming an atom.".to_string(),
                         expanded_code: expr.value.pretty(),
@@ -84,13 +84,13 @@ fn eval_expr(
                         suggestion: None,
                     }),
                     span: Some(head.span.clone()),
-                });
+                })?
             };
 
             let atom_fn = if let Some(f) = opts.atom_registry.get(atom_name) {
                 f
             } else {
-                return Err(SutraError {
+                Err(SutraError {
                     kind: SutraErrorKind::Eval(EvalError {
                         message: format!("Atom '{}' not found.", atom_name),
                         expanded_code: expr.value.pretty(),
@@ -98,7 +98,7 @@ fn eval_expr(
                         suggestion: None,
                     }),
                     span: Some(head.span.clone()),
-                });
+                })?
             };
 
             let mut context = EvalContext {
@@ -137,7 +137,26 @@ fn eval_expr(
                 Expr::Bool(b, _) => Ok((Value::Bool(*b), world.clone())),
                 Expr::String(s, _) => Ok((Value::String(s.clone()), world.clone())),
                 Expr::Path(p, _) => Ok((Value::Path(p.clone()), world.clone())),
-                Expr::If { .. } => Ok((Value::Nil, world.clone())),
+                Expr::If { condition, then_branch, else_branch, .. } => {
+                    let (cond_val, next_world) = eval_expr(condition, world, output, opts, depth + 1)?;
+                    if let Value::Bool(b) = cond_val {
+                        if b {
+                            eval_expr(then_branch, &next_world, output, opts, depth + 1)
+                        } else {
+                            eval_expr(else_branch, &next_world, output, opts, depth + 1)
+                        }
+                    } else {
+                        Err(SutraError {
+                            kind: SutraErrorKind::Eval(EvalError {
+                                message: "The condition for an `if` expression must evaluate to a Boolean.".to_string(),
+                                expanded_code: condition.value.pretty(),
+                                original_code: None,
+                                suggestion: None,
+                            }),
+                            span: Some(condition.span.clone()),
+                        })
+                    }
+                }
                 Expr::Quote(_, _) => Ok((Value::Nil, world.clone())),
                 Expr::ParamList(_) => {
                     Err(SutraError {
@@ -148,7 +167,7 @@ fn eval_expr(
                             suggestion: None,
                         }),
                         span: Some(expr.span.clone()),
-                    })
+                    })?
                 }
             }
         }
@@ -161,7 +180,7 @@ fn eval_expr(
                     suggestion: None,
                 }),
                 span: Some(expr.span.clone()),
-            })
+            })?
         }
         Expr::Symbol(s, span) => Err(SutraError {
             kind: SutraErrorKind::Eval(EvalError {
@@ -175,16 +194,11 @@ fn eval_expr(
             }),
             span: Some(span.clone()),
         }),
-        Expr::Path(path, _) => Ok((Value::Path(path.clone()), world.clone())),
+        Expr::Path(p, _) => Ok((Value::Path(p.clone()), world.clone())),
         Expr::String(s, _) => Ok((Value::String(s.clone()), world.clone())),
         Expr::Number(n, _) => Ok((Value::Number(*n), world.clone())),
         Expr::Bool(b, _) => Ok((Value::Bool(*b), world.clone())),
-        Expr::If {
-            condition,
-            then_branch,
-            else_branch,
-            ..
-        } => {
+        Expr::If { condition, then_branch, else_branch, .. } => {
             let (cond_val, next_world) = eval_expr(condition, world, output, opts, depth + 1)?;
             if let Value::Bool(b) = cond_val {
                 if b {
@@ -195,8 +209,7 @@ fn eval_expr(
             } else {
                 Err(SutraError {
                     kind: SutraErrorKind::Eval(EvalError {
-                        message: "The condition for an `if` expression must evaluate to a Boolean."
-                            .to_string(),
+                        message: "The condition for an `if` expression must evaluate to a Boolean.".to_string(),
                         expanded_code: condition.value.pretty(),
                         original_code: None,
                         suggestion: None,

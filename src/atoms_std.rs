@@ -157,7 +157,7 @@ macro_rules! eval_binary_op {
 /// (core/set! <path> <value>)
 pub const ATOM_CORE_SET: AtomFn = |args, context, parent_span| {
     if args.len() != 2 {
-        return Err(eval_err!(arity, parent_span, args, "core/set!", 2));
+        Err(eval_err!(arity, parent_span, args, "core/set!", 2))?
     }
     let (path_val, world1) = context.eval(&args[0])?;
     let (value, world2) = context.eval_in(&world1, &args[1])?;
@@ -166,42 +166,42 @@ pub const ATOM_CORE_SET: AtomFn = |args, context, parent_span| {
         let new_world = world2.set(&path, value);
         Ok((Value::default(), new_world))
     } else {
-        Err(eval_err!(type, &args[0], "core/set!", "a Path", &path_val))
+        Err(eval_err!(type, &args[0], "core/set!", "a Path", &path_val))?
     }
 };
 
 /// (core/get <path>)
 pub const ATOM_CORE_GET: AtomFn = |args, context, parent_span| {
     if args.len() != 1 {
-        return Err(eval_err!(arity, parent_span, args, "core/get", 1));
+        Err(eval_err!(arity, parent_span, args, "core/get", 1))?
     }
     let (path_val, world) = context.eval(&args[0])?;
     if let Value::Path(path) = path_val {
         let value = world.get(&path).cloned().unwrap_or_default();
         Ok((value, world))
     } else {
-        Err(eval_err!(type, &args[0], "core/get", "a Path", &path_val))
+        Err(eval_err!(type, &args[0], "core/get", "a Path", &path_val))?
     }
 };
 
 /// (core/del! <path>)
 pub const ATOM_CORE_DEL: AtomFn = |args, context, parent_span| {
     if args.len() != 1 {
-        return Err(eval_err!(arity, parent_span, args, "core/del!", 1));
+        Err(eval_err!(arity, parent_span, args, "core/del!", 1))?
     }
     let (path_val, world) = context.eval(&args[0])?;
     if let Value::Path(path) = path_val {
         let new_world = world.del(&path);
         Ok((Value::default(), new_world))
     } else {
-        Err(eval_err!(type, &args[0], "core/del!", "a Path", &path_val))
+        Err(eval_err!(type, &args[0], "core/del!", "a Path", &path_val))?
     }
 };
 
 /// (+ <args...>)
 pub const ATOM_ADD: AtomFn = |args, context, parent_span| {
     if args.len() < 2 {
-        return Err(eval_err!(arity, parent_span, args, "+", "at least 2"));
+        Err(eval_err!(arity, parent_span, args, "+", "at least 2"))?
     }
     let (values, world) = eval_args(args, context)?;
     let mut sum = 0.0;
@@ -209,7 +209,7 @@ pub const ATOM_ADD: AtomFn = |args, context, parent_span| {
         if let Value::Number(n) = v {
             sum += n;
         } else {
-            return Err(eval_err!(
+            Err(eval_err!(
                 type,
                 &WithSpan {
                     value: Expr::List(args.to_vec(), parent_span.clone()),
@@ -218,7 +218,7 @@ pub const ATOM_ADD: AtomFn = |args, context, parent_span| {
                 "+",
                 "a Number",
                 v
-            ));
+            ))?
         }
     }
     Ok((Value::Number(sum), world))
@@ -227,7 +227,7 @@ pub const ATOM_ADD: AtomFn = |args, context, parent_span| {
 /// (eq? <a> <b>)
 pub const ATOM_EQ: AtomFn = |args, context, parent_span| {
     if args.len() != 2 {
-        return Err(eval_err!(arity, parent_span, args, "eq?", 2));
+        Err(eval_err!(arity, parent_span, args, "eq?", 2))?
     }
     let (v1, w1) = context.eval(&args[0])?;
     let (v2, w2) = context.eval_in(&w1, &args[1])?;
