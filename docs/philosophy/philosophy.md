@@ -151,10 +151,12 @@ This list is not a "constitution," but a *current* set of touchstones—always o
     *   All "features" beyond atoms are composed as macros.
     *   No "privileged" constructs; even core narrative/game patterns are just macro libraries.
 
-3.  **Implicit Value Resolution ("Auto-Get")**
-    *   Authors **never** write `get` to fetch a value.
-    *   In any value context (math, comparison, etc.), a path is automatically resolved to its value.
-    *   This creates a clean, spreadsheet-like authoring experience where names are used directly.
+3.  **Explicit Value Lookup (No More "Auto-Get")**
+    *   Authors **must now use** `(get ...)` or `core/get` to fetch a value from a path.
+    *   In any value context (math, comparison, etc.), a path **is not automatically resolved**; explicit value lookup is required.
+    *   **Rationale:** This change avoids ambiguity and hidden state, makes all value access explicit and debuggable, and aligns with the canonical language spec and macro system.
+    *   This replaces the previous "auto-get" principle.
+    *   See: `docs/specs/language-spec.md` and macro system documentation for details.
 
 4.  **Explicit and Intentional Mutation**
     *   State-changing operations are **always** explicit and visually distinct, marked with a `!` suffix (e.g., `set!`, `add!`, `sub!`).
@@ -331,3 +333,9 @@ This list is not a "constitution," but a *current* set of touchstones—always o
 
 **END OF FILE 1**
 (Review, extend, and iterate—this is your evolving author's lab notebook!)
+
+---
+
+## Changelog
+
+- 2025-07-05: Updated Section 5.3 to require explicit value lookup (no more auto-get). Clarified rationale and cross-referenced language spec and macro system docs.

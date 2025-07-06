@@ -48,6 +48,9 @@ This document captures the canonical architectural and design patterns, system-w
 - Best practices: Use enums for core types, trait objects only for extensibility, unified diagnostics, and serialization for all public types.
 - See `docs/architecture/parsing-pipeline-plan.md` for the full plan and context.
 
+### 9. Code Audit Protocol (2025-07-05)
+- Automated or search-based code review tools must be paired with explicit, protocol-driven manual review for critical code quality checks (e.g., never-nester, complexity). All code audit protocols should require explicit enumeration and review of every function in a file, not just those surfaced by search.
+
 ## Alignment with Current Codebase
 
 - All patterns described above are implemented and enforced in the current codebase.

@@ -14,8 +14,9 @@ use im::HashMap;
 /// let nil = Value::default();
 /// assert!(nil.is_nil());
 /// ```
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum Value {
+    #[default]
     Nil,
     Number(f64),
     String(String),
@@ -94,11 +95,5 @@ impl Value {
             Value::Bool(b) => Some(*b),
             _ => None,
         }
-    }
-}
-
-impl Default for Value {
-    fn default() -> Self {
-        Value::Nil
     }
 }

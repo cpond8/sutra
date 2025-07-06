@@ -1,0 +1,41 @@
+# rustfmt.toml – Clean, Strict, Community Best Practices
+
+# Core formatting style
+edition = "2021"
+max_width = 100                 # Widely used in community; adjust to 80 if you want even stricter
+hard_tabs = false               # Use spaces for indentation (default in Rust)
+tab_spaces = 4                  # Standard indentation
+
+# Function and block style
+fn_single_line = false          # Always format functions with block style, never single-line
+brace_style = "AlwaysNextLine"  # Open braces on next line for items (functions, impls, etc.)
+control_brace_style = "AlwaysSameLine" # Control braces (if/else/for) on same line as condition
+
+# Wrapping and imports
+reorder_imports = true          # Alphabetize and group imports for clarity
+imports_granularity = "Crate"   # Use 'crate' granularity for grouping imports
+group_imports = "StdExternalCrate" # Standard, external, and crate imports are grouped
+
+# Expression and statement formatting
+combine_control_expr = false    # Avoid combining multiple control expressions on one line
+struct_lit_single_line = false  # Do not put struct literals on a single line if fields > 1
+force_multiline_blocks = true   # Force blocks to be multi-line if they have more than 1 statement
+
+# Misc style
+use_field_init_shorthand = true # Use shorthand where possible (e.g., Foo { x } instead of Foo { x: x })
+normalize_doc_attributes = true # Use `///` doc comments consistently
+blank_lines_upper_bound = 2     # Max two blank lines in a row for readability
+blank_lines_lower_bound = 0     # No required blank lines
+format_code_in_doc_comments = true # Format code blocks in documentation
+
+# Enforcement
+wrap_comments = true            # Wrap comments to max_width for consistency
+format_macro_matchers = true    # Format macro rules consistently
+format_macro_bodies = true      # Format macro bodies as code
+
+# Optional: make formatting stricter (uncomment if you want even less “freedom”)
+# use_small_heuristics = "Max"   # Minimizes single-line formatting for blocks/arrays/etc.
+
+# Deny warnings on format errors (useful in CI)
+error_on_line_overflow = true
+error_on_unformatted = true

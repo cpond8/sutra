@@ -17,7 +17,7 @@ pub struct EvalContext<'a, 'o> {
     pub depth: usize,
 }
 
-impl<'a, 'o> EvalContext<'a, 'o> {
+impl EvalContext<'_, '_> {
     /// A helper method to recursively call the evaluator with the context's current world.
     pub fn eval(&mut self, expr: &WithSpan<Expr>) -> Result<(Value, World), SutraError> {
         eval_expr(expr, self.world, self.output, self.opts, self.depth + 1)
@@ -136,7 +136,7 @@ fn eval_expr(
                 Expr::If { .. } => Ok((Value::Nil, world.clone())),
                 Expr::Quote(_, _) => Ok((Value::Nil, world.clone())),
                 Expr::ParamList(_) => {
-                    return Err(SutraError {
+                    Err(SutraError {
                         kind: SutraErrorKind::Eval(EvalError {
                             message: "Cannot evaluate parameter list (ParamList AST node) at runtime".to_string(),
                             expanded_code: expr.value.pretty(),
@@ -144,12 +144,12 @@ fn eval_expr(
                             suggestion: None,
                         }),
                         span: Some(expr.span.clone()),
-                    });
+                    })
                 }
             }
         }
         Expr::ParamList(_) => {
-            return Err(SutraError {
+            Err(SutraError {
                 kind: SutraErrorKind::Eval(EvalError {
                     message: "Cannot evaluate parameter list (ParamList AST node) at runtime".to_string(),
                     expanded_code: expr.value.pretty(),
@@ -157,7 +157,7 @@ fn eval_expr(
                     suggestion: None,
                 }),
                 span: Some(expr.span.clone()),
-            });
+            })
         }
         Expr::Symbol(s, span) => Err(SutraError {
             kind: SutraErrorKind::Eval(EvalError {

@@ -115,10 +115,7 @@ macro_rules! eval_err {
     };
 }
 
-fn eval_args<'a>(
-    args: &'a [WithSpan<Expr>],
-    context: &mut EvalContext<'_, '_>,
-) -> Result<(Vec<Value>, crate::world::World), SutraError> {
+fn eval_args(args: &[WithSpan<Expr>], context: &mut EvalContext<'_, '_>) -> Result<(Vec<Value>, crate::world::World), SutraError> {
     // Use try_fold to create a functional pipeline that threads the world
     // state through the evaluation of each argument. This is the canonical
     // pattern for safe, sequential evaluation in Sutra.

@@ -36,6 +36,7 @@
 3. Update documentation and memory bank after each significant change.
 4. Maintain strict test/production parity and round-trippability.
 5. Run the full test suite after each batch and only proceed when all updated tests pass.
+6. Update code review protocols and checklists to require explicit function enumeration for complexity/nesting audits, not just semantic search. (2025-07-05)
 
 ## Key Lessons and Guidance for Future Contributors
 
@@ -193,3 +194,12 @@ The highest-value, lowest-cost techniques (integration tests, registry hashing) 
   - All new code must use WithSpan<Expr> for AST lists and macroexpander logic.
   - Legacy API is deprecated and should not be used.
   - See parsing-pipeline-plan.md for canonical contracts and migration rationale.
+
+## 2025-07-05: Documentation Audit
+
+- All major documentation (architecture, parsing pipeline, language spec, authoring patterns, storylet spec) was reviewed on July 5, 2025.
+- All docs are up to date, accurate, and fully aligned with the current codebase and recent progress.
+- Canonical parsing pipeline, language spec, macro/atom boundaries, and authoring patterns are all current and use proper-list-only and ...rest conventions.
+- Changelogs and review dates are present and recent in all docs.
+- No legacy or deprecated patterns remain in the main documentation.
+- See: `docs/architecture/parsing-pipeline-plan.md`, `docs/specs/language-spec.md`, `docs/architecture/authoring-patterns.md`, `docs/specs/storylet-spec.md`, `docs/architecture/architecture.md`.

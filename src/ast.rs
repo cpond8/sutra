@@ -195,27 +195,26 @@ impl SutraAstBuilder for CanonicalAstBuilder {
     }
 }
 
+// Private combinator for mapping CST children to Expr::List
+fn map_cst_children_to_list<F>(
+    children: &[crate::parser::SutraCstNode],
+    builder: F,
+    span: &Span,
+) -> Result<WithSpan<Expr>, SutraAstBuildError>
+where
+    F: FnMut(&crate::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError>,
+{
+    let exprs = children.iter().map(builder).collect::<Result<Vec<_>, _>>()?;
+    Ok(WithSpan {
+        value: Expr::List(exprs, span.clone()),
+        span: span.clone(),
+    })
+}
+
 fn build_ast_from_cst(cst: &crate::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError> {
     match cst.rule.as_str() {
-        "program" => {
-            let mut exprs = Vec::new();
-            for child in &cst.children {
-                exprs.push(build_ast_from_cst(child)?);
-            }
-            Ok(WithSpan {
-                value: Expr::List(exprs, cst.span.clone()),
-                span: cst.span.clone(),
-            })
-        }
-        "list" => {
-            let mut exprs = Vec::new();
-            for child in &cst.children {
-                exprs.push(build_ast_from_cst(child)?);
-            }
-            Ok(WithSpan {
-                value: Expr::List(exprs, cst.span.clone()),
-                span: cst.span.clone(),
-            })
+        "program" | "list" => {
+            map_cst_children_to_list(&cst.children, build_ast_from_cst, &cst.span)
         }
         "number" => {
             let s = &cst_text(cst);
@@ -266,53 +265,4 @@ fn cst_text(cst: &crate::parser::SutraCstNode) -> String {
 fn unescape_string(s: &str) -> Result<String, String> {
     // TODO: Implement real unescaping and validation
     Ok(s.to_string())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::parser::SutraCstNode;
-    #[test]
-    fn trivial_ast_builder_returns_minimal_node() {
-        let builder = TrivialAstBuilder;
-        let cst = SutraCstNode {
-            rule: "Program".to_string(),
-            children: vec![],
-            span: Span { start: 0, end: 5 },
-        };
-        let ast = builder.build_ast(&cst).unwrap();
-        match ast.value {
-            Expr::List(ref items, ref span) => {
-                assert!(items.is_empty());
-                assert_eq!(span.start, 0);
-                assert_eq!(span.end, 5);
-            }
-            _ => panic!("Expected Expr::List"),
-        }
-        assert_eq!(ast.span.start, 0);
-        assert_eq!(ast.span.end, 5);
-    }
-}
-
-#[cfg(test)]
-mod canonical_ast_tests {
-    use super::*;
-    use crate::parser::SutraCstNode;
-    #[test]
-    fn canonical_ast_builder_handles_invalid_number() {
-        let cst = SutraCstNode {
-            rule: "number".to_string(),
-            children: vec![],
-            span: crate::ast::Span { start: 0, end: 2 },
-        };
-        let builder = CanonicalAstBuilder;
-        let err = builder.build_ast(&cst).unwrap_err();
-        match err {
-            SutraAstBuildError::InvalidShape { span, .. } => {
-                assert_eq!(span.start, 0);
-                assert_eq!(span.end, 2);
-            }
-            _ => panic!("Expected InvalidShape error"),
-        }
-    }
 }

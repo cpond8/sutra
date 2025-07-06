@@ -38,12 +38,8 @@ impl SutraError {
         if let Some(span) = &self.span {
             let original_code = source.get(span.start..span.end).map(|s| s.to_string());
 
-            match &mut self.kind {
-                SutraErrorKind::Eval(eval_error) => {
-                    eval_error.original_code = original_code;
-                }
-                // This can be extended for other error kinds later.
-                _ => {}
+            if let SutraErrorKind::Eval(eval_error) = &mut self.kind {
+                eval_error.original_code = original_code;
             }
         }
         self

@@ -139,22 +139,30 @@ fn build_ast_from_pair(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
         (pair)
 }
 
+// Private combinator for mapping children to Expr::List
+fn map_children_to_list<'a>(
+    children: Box<dyn Iterator<Item = Pair<Rule>> + 'a>,
+    builder: AstBuilderFn,
+    span: Span,
+) -> Result<WithSpan<Expr>, SutraError> {
+    let exprs = children.map(builder).collect::<Result<Vec<_>, _>>()?;
+    Ok(WithSpan {
+        value: Expr::List(exprs, span.clone()),
+        span,
+    })
+}
+
 /// Handles the top-level program rule.
 ///
 /// Note: Returns an `Expr::List` for internal uniformity, but the public `parse` API collects top-level forms as a `Vec<Expr>`.
 /// If a canonical program node is ever needed, update this convention and document accordingly.
 fn build_program(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     let span = get_span(&pair);
-    let exprs = pair
-        .clone()
-        .into_inner()
-        .filter(|p| p.as_rule() != Rule::EOI)
-        .map(build_ast_from_pair)
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(WithSpan {
-        value: Expr::List(exprs, span.clone()),
+    map_children_to_list(
+        Box::new(pair.clone().into_inner().filter(|p| p.as_rule() != Rule::EOI)),
+        build_ast_from_pair,
         span,
-    })
+    )
 }
 
 /// Handles expr rule (delegates to subrules).
@@ -174,11 +182,7 @@ fn build_expr(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
 /// Handles list rule (proper lists only).
 fn build_list(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     let span = get_span(&pair);
-    let items = pair.clone().into_inner().map(build_ast_from_pair).collect::<Result<Vec<_>, _>>()?;
-    Ok(WithSpan {
-        value: Expr::List(items, span.clone()),
-        span,
-    })
+    map_children_to_list(Box::new(pair.clone().into_inner()), build_ast_from_pair, span)
 }
 
 fn build_param_list(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
@@ -243,11 +247,7 @@ fn build_param_list(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
 /// Handles block rule (brace blocks).
 fn build_block(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     let span = get_span(&pair);
-    let items = pair.clone().into_inner().map(build_ast_from_pair).collect::<Result<Vec<_>, _>>()?;
-    Ok(WithSpan {
-        value: Expr::List(items, span.clone()),
-        span,
-    })
+    map_children_to_list(Box::new(pair.clone().into_inner()), build_ast_from_pair, span)
 }
 
 /// Handles atom rule (delegates to subrules).
@@ -394,7 +394,7 @@ impl SutraCstParser for TrivialCstParser {
             span: crate::ast::Span { start: 0, end: input.len() },
         })
     }
-    fn traverse<'a>(&'a self, node: &'a SutraCstNode) -> SutraCstTraversal<'a> {
+    fn traverse<'a>(&'a self, _node: &'a SutraCstNode) -> SutraCstTraversal<'a> {
         SutraCstTraversal { _phantom: std::marker::PhantomData }
     }
     fn visit<'a, F: FnMut(&'a SutraCstNode)>(&'a self, _node: &'a SutraCstNode, _visitor: F, _order: TraversalOrder) {

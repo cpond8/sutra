@@ -43,6 +43,7 @@ This roadmap is the single source of truth for macro system bootstrapping and se
 - **Performance characteristics** not yet validated with large-scale content.
 - **Macro system feature creep** and **performance optimization pressure** are ongoing risks.
 - **User macro system** and **editor integration** will require careful design.
+- (2025-07-05) Incident: A function with excessive nesting (`parse_macros_from_source`) was missed in an initial audit due to over-reliance on semantic search. Corrective action: Protocol updated to require explicit function enumeration and review in all future complexity/nesting audits.
 
 ## Evolution of Project Decisions
 
@@ -97,3 +98,8 @@ See `docs/architecture/parsing-pipeline-plan.md` for the full plan and changelog
 - 2025-06-30: Initial synthesis from legacy documentation.
 - 2025-07-04: Added parsing pipeline refactor progress log and cross-reference to plan.
 - 2025-07-05: Migration to proper-list-only and ...rest-only architecture complete. All legacy code, tests, and documentation for improper/dotted lists and legacy variadic syntax have been removed. The codebase, tests, and docs are now fully compliant and clean.
+- 2025-07-05: Documentation Audit
+  - Completed a full audit of all major documentation files.
+  - All docs are up to date, accurate, and fully aligned with the codebase and recent progress.
+  - Canonical parsing pipeline, language spec, macro/atom boundaries, and authoring patterns are all current.
+  - See: `docs/architecture/parsing-pipeline-plan.md`, `docs/specs/language-spec.md`, `docs/architecture/authoring-patterns.md`, `docs/specs/storylet-spec.md`, `docs/architecture/architecture.md`.

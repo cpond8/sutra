@@ -9,9 +9,9 @@
 //! (e.g., `player.score` or `(player score)`) into a canonical `Expr::Path`
 //! node. This is the only place in the entire engine where path syntax is parsed.
 
-use crate::ast::{Expr, Span, WithSpan};
+use crate::ast::{Expr, WithSpan};
 use crate::error::{SutraError, SutraErrorKind};
-use crate::macros::{MacroRegistry, MacroDef, MacroTemplate};
+use crate::macros::MacroRegistry;
 use crate::path::Path;
 
 // ---

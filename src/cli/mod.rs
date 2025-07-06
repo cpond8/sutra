@@ -77,7 +77,7 @@ fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::E
         }
     }
 
-    let mut context = SutraMacroContext { registry, hygiene_scope: None };
+    let context = SutraMacroContext { registry, hygiene_scope: None };
     let expander = MacroExpander::default();
     let expanded = expander.expand_macros(program.clone(), &context)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{:?}", e)))?;
