@@ -4,9 +4,7 @@
 //! the core library functions.
 
 use crate::cli::args::{Command, SutraArgs};
-use crate::macros::{
-    expand_macros, load_macros_from_file, MacroDef, MacroEnv, MacroRegistry,
-};
+use crate::macros::{expand_macros, load_macros_from_file, MacroDef, MacroEnv, MacroRegistry};
 use crate::{macros_std, parser};
 use clap::Parser;
 use std::{fs, process};

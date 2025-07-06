@@ -75,3 +75,4 @@ This file is the canonical, living intelligence log for the Sutra project. It re
 ## Changelog
 - 2025-07-05: Macro system, CLI, and test harness refactor patterns and meta-decision added.
 - 2025-07-06: Batch refactor for Rust idiom compliance (implicit/explicit return style), match exhaustiveness, and error handling. Explicit returns for early exits restored. All match arms for Expr variants in eval_expr restored. Protocol-driven, batch-based, test-first approach enforced. All tests pass. Lesson: Always enumerate all functions for audit, not just those surfaced by search.
+- 2025-07-06: Macro system helpers (arity, binding, expansion, duplicate check) refactored for protocol compliance: pure, linear, early-return, and fully documented. Protocol-driven audit and batch-based, test-driven modernization enforced.

@@ -57,6 +57,7 @@
 - 2025-07-05: Codebase, tests, and documentation are now fully compliant with the proper-list-only and ...rest-only architecture. All legacy dotted/improper list handling and legacy variadic syntax have been removed.
 - 2025-07-05: Macro system, CLI, and test harness refactor completed. Session summary and next steps added.
 - 2025-07-06: Batch refactor completed for Rust idiom compliance (implicit/explicit return style), match exhaustiveness, and error handling. All explicit returns for early exits restored where required. All match arms for Expr variants in eval_expr restored. Protocol-driven, batch-based, test-first approach enforced. All tests pass. Lesson: Always enumerate all functions for audit, not just those surfaced by search.
+- 2025-07-06: Macro system helpers refactored for protocol compliance (pure, linear, documented, no deep nesting). Full protocol-driven audit performed. All tests and docs updated. Memory bank changelogs updated per protocol.
 
 ## Rationale for Order
 

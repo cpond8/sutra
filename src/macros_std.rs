@@ -57,14 +57,12 @@ fn expr_to_path(expr: &WithSpan<Expr>) -> Result<Path, SutraError> {
                 match &item.value {
                     Expr::Symbol(s, _) => segments.push(s.clone()),
                     Expr::String(s, _) => segments.push(s.clone()),
-                    _ => {
-                        Err(SutraError {
-                            kind: SutraErrorKind::Macro(
-                                "Path lists can only contain symbols or strings.".to_string(),
-                            ),
-                            span: Some(item.span.clone()),
-                        })?
-                    }
+                    _ => Err(SutraError {
+                        kind: SutraErrorKind::Macro(
+                            "Path lists can only contain symbols or strings.".to_string(),
+                        ),
+                        span: Some(item.span.clone()),
+                    })?,
                 }
             }
             Ok(Path(segments))
