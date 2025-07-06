@@ -18,6 +18,7 @@
 - **2025-07-02** — Registry/Expander Reliability Audit: Comprehensive review of advanced strategies for macro registry and expander reliability (phantom types, registry hashing, sealing, logging, integration tests, smoke mode, provenance, mutation linting, opt-out API, fuzzing, singleton, metrics). Immediate implementation will focus on integration tests and registry hashing, with others staged for future adoption. See memory-bank/activeContext.md and memory-bank/systemPatterns.md for full details and rationale.
 - **2025-07-04** — Added parsing pipeline refactor summary, rationale, and migration strategy.
 - **2025-07-05** — Migration to proper-list-only and ...rest-only architecture complete. All legacy code, tests, and documentation for improper/dotted lists and legacy variadic syntax have been removed. The codebase, tests, and docs are now fully compliant and clean.
+- **2025-07-06** — Prioritized Action Plan: Native-Language Test Suite Blockers (2025-07-06). This section is the single source of truth for the dependency-ordered plan to resolve all blockers to a fully native-language (s-expr and brace/block) test suite. Each step must be completed before the next can proceed. See memory-bank/activeContext.md and progress.md for canonical status and updates.
 - [Add future entries here: date, summary]
 
 ---
@@ -545,3 +546,34 @@ A major, multi-phase refactor of the parsing pipeline has been adopted. The new 
   4. Incrementally migrate and integrate with the existing codebase.
 
 See `docs/architecture/parsing-pipeline-plan.md` for the full plan, context, and changelog. All memory bank files have been updated to reference this plan.
+
+# Prioritized Action Plan: Native-Language Test Suite Blockers (2025-07-06)
+
+This section is the single source of truth for the dependency-ordered plan to resolve all blockers to a fully native-language (s-expr and brace/block) test suite. Each step must be completed before the next can proceed. See memory-bank/activeContext.md and progress.md for canonical status and updates.
+
+**1. Macro System Modernization (Highest Priority)**
+- Migrate all standard macros to native macro language (remove Rust-native macro implementations).
+- Complete macro loader and macro expansion test modernization (parameter list, error handling, edge cases).
+- Implement macro hygiene (gensym, hygiene scope, provenance tracking).
+
+**2. Parser and Syntax Alignment**
+- Audit and update PEG grammar and parser logic for full alignment with macro loader/test expectations.
+- Finalize parameter list struct migration in parser, AST, macro loader, and all tests.
+- Ensure both s-expr and brace/block forms are parsed identically into canonical AST.
+
+**3. Atoms and Core Engine Audit**
+- Audit and fix all atoms for span-carrying compliance (esp. macro_rules! and error helpers in atoms_std.rs).
+- Ensure all core atoms and macro expansion patterns match the canonical spec (see language-spec.md).
+
+**4. Error Handling and Validation**
+- Harden error handling and error message checks to match canonical spec and test suite.
+- Implement structural and semantic validation before/after macro expansion.
+
+**5. Test Suite Rewrite and Documentation**
+- Rewrite all tests as user-facing Sutra scripts (s-expr or braced), asserting only on observable output, world queries, or errors.
+- Update all tests and doc examples for new AST invariant (WithSpan<Expr>).
+- Audit and update documentation and memory bank after each significant change.
+
+**Batch-based, test-driven iteration is required:** After each batch, re-run the full test suite and only proceed when all updated tests pass. Documentation and memory bank must be updated after each batch.
+
+This plan supersedes all previous sequencing or roadmap statements regarding macro migration, parser refactor, or test suite status. All architectural rationale and references in this document have been updated to reflect this plan. For current status and next steps, see memory-bank/activeContext.md and progress.md.

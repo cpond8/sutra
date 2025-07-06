@@ -167,3 +167,32 @@ The `build_param_list` function in `src/parser.rs` was identified as overly comp
   - All lints, unit tests, integration tests, and doc tests pass (with one intentionally ignored example for documentation context).
   - Documentation and code follow @Rust best practices and workspace protocol.
   - Codebase is in a clean, fully-audited state.
+
+# BLOCKERS: Native-Language Test Suite (2025-07-06)
+
+See activeContext.md for the canonical, timestamped list of explicit gaps blocking a fully native-language (s-expr and brace/block) test suite. All blockers must be resolved before the test suite rewrite can proceed.
+
+Summary of current blockers:
+- Macro migration to native language (no Rust-native macro implementations)
+- Macro loader/expander test modernization (parameter list, error handling, edge cases)
+- Macro hygiene (gensym, hygiene scope, provenance tracking)
+- Parser/PEG grammar and loader/test alignment
+- Canonical AST for both s-expr and brace/block forms
+- Parameter list struct migration
+- Atom span-carrying compliance
+- Core atom/macro expansion pattern audit
+- Error handling and validation hardening
+- Test suite rewrite as user-facing Sutra scripts
+- Documentation and memory bank audit after each change
+
+# PRIORITIZED ACTION PLAN: Native-Language Test Suite Blockers (2025-07-06)
+
+See activeContext.md for the canonical, dependency-ordered plan for resolving all blockers to a fully native-language (s-expr and brace/block) test suite. Each step must be completed before the next can proceed. See system-reference.md for architectural rationale.
+
+1. Macro System Modernization: Migrate macros, modernize loader/tests, implement hygiene.
+2. Parser and Syntax Alignment: Audit PEG/parser, finalize param struct, ensure canonical AST for both syntaxes.
+3. Atoms and Core Engine Audit: Audit/fix atoms for span-carrying, ensure spec compliance.
+4. Error Handling and Validation: Harden error handling, implement validation.
+5. Test Suite Rewrite and Documentation: Rewrite tests as Sutra scripts, update docs/memory bank.
+
+Batch-based, test-driven iteration is required. Documentation and memory bank must be updated after each batch.

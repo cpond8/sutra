@@ -1,6 +1,62 @@
 # TEST SUITE REWRITE REQUIRED
 # All tests must be rewritten to use only user-facing Sutra scripts (s-expr or braced), asserting only on observable output, world queries, or errors as surfaced to the user. No direct Rust API or internal data structure manipulation is permitted. See systemPatterns.md and README.md for protocol.
 
+# BLOCKERS: Native-Language Test Suite (2025-07-06)
+
+The following explicit gaps must be resolved before a fully native-language (s-expr and brace/block) test suite is possible:
+
+## A. Macro System
+- [ ] Migrate all standard macros to native macro language (no Rust-native macro implementations).
+- [ ] Complete macro loader and macro expansion test modernization (parameter list, error handling, edge cases).
+- [ ] Implement macro hygiene (gensym, hygiene scope, provenance tracking).
+
+## B. Parser and Syntax
+- [ ] Audit and update PEG grammar and parser logic for full alignment with macro loader/test expectations.
+- [ ] Ensure both s-expr and brace/block forms are parsed identically into canonical AST.
+- [ ] Finalize parameter list struct migration in parser, AST, macro loader, and all tests.
+
+## C. Atoms and Core Engine
+- [ ] Audit and fix all atoms for span-carrying compliance (esp. macro_rules! and error helpers in atoms_std.rs).
+- [ ] Ensure all core atoms and macro expansion patterns match the canonical spec (see language-spec.md).
+
+## D. Error Handling and Validation
+- [ ] Harden error handling and error message checks to match canonical spec and test suite.
+- [ ] Implement structural and semantic validation before/after macro expansion.
+
+## E. Test Suite and Documentation
+- [ ] Rewrite all tests as user-facing Sutra scripts (s-expr or braced), asserting only on observable output, world queries, or errors.
+- [ ] Update all tests and doc examples for new AST invariant (WithSpan<Expr>).
+- [ ] Audit and update documentation and memory bank after each significant change.
+
+# PRIORITIZED ACTION PLAN: Native-Language Test Suite Blockers (2025-07-06)
+
+This is the canonical, dependency-ordered plan for resolving all blockers to a fully native-language (s-expr and brace/block) test suite. Each step must be completed before the next can proceed. See progress.md and system-reference.md for cross-references and rationale.
+
+## 1. Macro System Modernization (Highest Priority)
+- Migrate all standard macros to native macro language (remove Rust-native macro implementations).
+- Complete macro loader and macro expansion test modernization (parameter list, error handling, edge cases).
+- Implement macro hygiene (gensym, hygiene scope, provenance tracking).
+
+## 2. Parser and Syntax Alignment
+- Audit and update PEG grammar and parser logic for full alignment with macro loader/test expectations.
+- Finalize parameter list struct migration in parser, AST, macro loader, and all tests.
+- Ensure both s-expr and brace/block forms are parsed identically into canonical AST.
+
+## 3. Atoms and Core Engine Audit
+- Audit and fix all atoms for span-carrying compliance (esp. macro_rules! and error helpers in atoms_std.rs).
+- Ensure all core atoms and macro expansion patterns match the canonical spec (see language-spec.md).
+
+## 4. Error Handling and Validation
+- Harden error handling and error message checks to match canonical spec and test suite.
+- Implement structural and semantic validation before/after macro expansion.
+
+## 5. Test Suite Rewrite and Documentation
+- Rewrite all tests as user-facing Sutra scripts (s-expr or braced), asserting only on observable output, world queries, or errors.
+- Update all tests and doc examples for new AST invariant (WithSpan<Expr>).
+- Audit and update documentation and memory bank after each significant change.
+
+Batch-based, test-driven iteration is required: after each batch, re-run the full test suite and only proceed when all updated tests pass. Documentation and memory bank must be updated after each batch.
+
 # Sutra Engine - Active Context
 
 ## Current Work Focus

@@ -87,3 +87,11 @@ See the full plan and context in `docs/architecture/parsing-pipeline-plan.md` (a
 ## Current Development Phase
 
 **Architectural Refactoring (Completed)**: A major overhaul was completed to introduce a canonical `Path`
+
+## Native-Language Test Suite Blockers (2025-07-06)
+
+See activeContext.md and progress.md for the canonical, timestamped list of explicit gaps blocking a fully native-language (s-expr and brace/block) test suite. All blockers must be resolved before the test suite rewrite can proceed.
+
+## Prioritized Action Plan: Native-Language Test Suite Blockers (2025-07-06)
+
+See activeContext.md and progress.md for the canonical, dependency-ordered plan for resolving all blockers to a fully native-language (s-expr and brace/block) test suite. Each step must be completed before the next can proceed. See system-reference.md for architectural rationale.
