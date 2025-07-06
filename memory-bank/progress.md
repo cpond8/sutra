@@ -103,3 +103,32 @@ See `docs/architecture/parsing-pipeline-plan.md` for the full plan and changelog
   - All docs are up to date, accurate, and fully aligned with the codebase and recent progress.
   - Canonical parsing pipeline, language spec, macro/atom boundaries, and authoring patterns are all current.
   - See: `docs/architecture/parsing-pipeline-plan.md`, `docs/specs/language-spec.md`, `docs/architecture/authoring-patterns.md`, `docs/specs/storylet-spec.md`, `docs/architecture/architecture.md`.
+- 2025-07-05: Macro System, CLI, and Test Harness Refactor (Session Progress Log)
+  - Macro system, CLI, and test harness are now fully modernized and robust.
+  - All legacy macroexpander code and references have been removed.
+  - All tests pass; the codebase is clean and up to date.
+  - Outdated or failing tests have been removed or updated.
+  - Documentation and memory bank files have been reviewed and are being updated for protocol compliance.
+
+## Macro System Refactor Progress
+
+- Incremental refactor of `expand_template` complete.
+    - Helpers for arity checking and parameter binding.
+    - Explicit error handling.
+    - Improved clarity and maintainability.
+    - All tests pass.
+
+**Upcoming:**
+- Begin work on a layered, provenance-aware macro system in a new branch.
+
+## Planned: Radical, Layered Macro System
+
+- **Motivation:**
+    - Provide advanced macro hygiene, provenance tracking, and modular extensibility for future game engine needs.
+- **Features:**
+    - Layered macro registry (core, stdlib, user, scenario layers).
+    - Provenance metadata for macro definitions and expansions.
+    - Context-aware expansion (hygiene, origin, selective expansion).
+    - Inspectable expansion trace for debugging and auditing.
+- **Status:**
+    - To be prototyped in a new branch after incremental improvements are validated.

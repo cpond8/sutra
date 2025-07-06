@@ -568,5 +568,14 @@ storylet "open-door" {
 
 ---
 
+## 2025-07-05: Macro System, CLI, and Test Harness Refactor (Changelog)
+- Removed all references to legacy macroexpander types (`MacroExpander`, `SutraMacroContext`, `SutraMacroExpander`).
+- Documented the new macro system, CLI, and test harness architecture.
+- Added details on recursion depth enforcement (limit: 128) in macro expansion.
+- Updated error handling and output patterns for CLI and macro expansion trace.
+- All code examples and explanations now match the current implementation.
+
+---
+
 **END OF FILE 2**
 (Review, extend, and iterate—this is your evolving author's lab notebook!)

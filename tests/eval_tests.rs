@@ -55,7 +55,7 @@ mod tests {
     fn eval_state_mutation_set_get() {
         use sutra::atom::{AtomRegistry, NullSink};
         use sutra::eval::{eval, EvalOptions};
-        use sutra::macros::{MacroExpander, MacroRegistry, SutraMacroContext, SutraMacroExpander};
+        use sutra::macros::{MacroRegistry, MacroEnv, expand_macros};
         use sutra::parser::parse;
         use sutra::world::World;
         // Macro expansion required for set! and get
@@ -65,13 +65,13 @@ mod tests {
         let get_ast = parse(get_input).unwrap().remove(0);
         let mut macro_registry = MacroRegistry::default();
         sutra::macros_std::register_std_macros(&mut macro_registry);
-        let macro_context = SutraMacroContext {
-            registry: macro_registry,
-            hygiene_scope: None,
+        let mut env = MacroEnv {
+            user_macros: macro_registry.macros,
+            core_macros: MacroRegistry::default().macros,
+            trace: Vec::new(),
         };
-        let expander = MacroExpander::default();
-        let set_ast = expander.expand_macros(set_ast, &macro_context).unwrap();
-        let get_ast = expander.expand_macros(get_ast, &macro_context).unwrap();
+        let set_ast = expand_macros(set_ast, &mut env).unwrap();
+        let get_ast = expand_macros(get_ast, &mut env).unwrap();
         let mut registry = AtomRegistry::new();
         sutra::atoms_std::register_std_atoms(&mut registry);
         let opts = EvalOptions {
@@ -92,7 +92,7 @@ mod tests {
     fn eval_special_form_if() {
         use sutra::atom::{AtomRegistry, NullSink};
         use sutra::eval::{eval, EvalOptions};
-        use sutra::macros::{MacroExpander, MacroRegistry, SutraMacroContext, SutraMacroExpander};
+        use sutra::macros::{MacroRegistry, MacroEnv, expand_macros};
         use sutra::parser::parse;
         use sutra::world::World;
         // Macro expansion required for eq? in if condition
@@ -100,12 +100,12 @@ mod tests {
         let ast = parse(input).unwrap().remove(0);
         let mut macro_registry = MacroRegistry::default();
         sutra::macros_std::register_std_macros(&mut macro_registry);
-        let macro_context = SutraMacroContext {
-            registry: macro_registry,
-            hygiene_scope: None,
+        let mut env = MacroEnv {
+            user_macros: macro_registry.macros,
+            core_macros: MacroRegistry::default().macros,
+            trace: Vec::new(),
         };
-        let expander = MacroExpander::default();
-        let ast = expander.expand_macros(ast, &macro_context).unwrap();
+        let ast = expand_macros(ast, &mut env).unwrap();
         let mut registry = AtomRegistry::new();
         sutra::atoms_std::register_std_atoms(&mut registry);
         let opts = EvalOptions {
@@ -123,7 +123,7 @@ mod tests {
     fn eval_do_block() {
         use sutra::atom::{AtomRegistry, NullSink};
         use sutra::eval::{eval, EvalOptions};
-        use sutra::macros::{MacroExpander, MacroRegistry, SutraMacroContext, SutraMacroExpander};
+        use sutra::macros::{MacroRegistry, MacroEnv, expand_macros};
         use sutra::parser::parse;
         use sutra::world::World;
         // Macro expansion required for do, set!, get
@@ -131,12 +131,12 @@ mod tests {
         let ast = parse(input).unwrap().remove(0);
         let mut macro_registry = MacroRegistry::default();
         sutra::macros_std::register_std_macros(&mut macro_registry);
-        let macro_context = SutraMacroContext {
-            registry: macro_registry,
-            hygiene_scope: None,
+        let mut env = MacroEnv {
+            user_macros: macro_registry.macros,
+            core_macros: MacroRegistry::default().macros,
+            trace: Vec::new(),
         };
-        let expander = MacroExpander::default();
-        let ast = expander.expand_macros(ast, &macro_context).unwrap();
+        let ast = expand_macros(ast, &mut env).unwrap();
         let mut registry = AtomRegistry::new();
         sutra::atoms_std::register_std_atoms(&mut registry);
         let opts = EvalOptions {
@@ -217,7 +217,7 @@ mod tests {
     fn eval_nil_fallback_handling() {
         use sutra::atom::{AtomRegistry, NullSink};
         use sutra::eval::{eval, EvalOptions};
-        use sutra::macros::{MacroExpander, MacroRegistry, SutraMacroContext, SutraMacroExpander};
+        use sutra::macros::{MacroRegistry, MacroEnv, expand_macros};
         use sutra::parser::parse;
         use sutra::world::World;
         // Macro expansion required for get
@@ -225,12 +225,12 @@ mod tests {
         let ast = parse(input).unwrap().remove(0);
         let mut macro_registry = MacroRegistry::default();
         sutra::macros_std::register_std_macros(&mut macro_registry);
-        let macro_context = SutraMacroContext {
-            registry: macro_registry,
-            hygiene_scope: None,
+        let mut env = MacroEnv {
+            user_macros: macro_registry.macros,
+            core_macros: MacroRegistry::default().macros,
+            trace: Vec::new(),
         };
-        let expander = MacroExpander::default();
-        let ast = expander.expand_macros(ast, &macro_context).unwrap();
+        let ast = expand_macros(ast, &mut env).unwrap();
         let mut registry = AtomRegistry::new();
         sutra::atoms_std::register_std_atoms(&mut registry);
         let opts = EvalOptions {

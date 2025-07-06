@@ -5,8 +5,7 @@
 
 use crate::cli::args::{Command, SutraArgs};
 use crate::macros::{
-    load_macros_from_file, MacroDef, MacroExpander, MacroRegistry, SutraMacroContext,
-    SutraMacroExpander,
+    load_macros_from_file, MacroDef, MacroRegistry, MacroEnv, MacroExpansionStep, expand_macros,
 };
 use crate::{macros_std, parser};
 use clap::Parser;
@@ -63,15 +62,16 @@ fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::E
         }
     };
 
-    let mut registry = MacroRegistry::new();
-    // Centralized registration of all standard macros.
-    macros_std::register_std_macros(&mut registry);
+    // Build core macro registry
+    let mut core_macros = MacroRegistry::new();
+    macros_std::register_std_macros(&mut core_macros);
 
     // Load user-defined/stdlib macros from macros.sutra
+    let mut user_macros = MacroRegistry::new();
     match load_macros_from_file("macros.sutra") {
         Ok(macros) => {
             for (name, template) in macros {
-                registry.macros.insert(name, MacroDef::Template(template));
+                user_macros.macros.insert(name, MacroDef::Template(template));
             }
         }
         Err(e) => {
@@ -80,15 +80,14 @@ fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::E
         }
     }
 
-    let context = SutraMacroContext {
-        registry,
-        hygiene_scope: None,
+    let mut env = MacroEnv {
+        user_macros: user_macros.macros,
+        core_macros: core_macros.macros,
+        trace: Vec::new(),
     };
-    let expander = MacroExpander::default();
-    let expanded = expander
-        .expand_macros(program.clone(), &context)
+    let expanded = expand_macros(program.clone(), &mut env)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{:?}", e)))?;
     println!("{}", expanded.value.pretty());
-
+    // Optionally print trace here if desired
     Ok(())
 }

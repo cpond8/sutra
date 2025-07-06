@@ -55,6 +55,7 @@
 - 2025-07-04: Updated for parsing pipeline refactor as current focus and added cross-reference to plan.
 - 2025-07-04: src/atoms_std.rs is now fully span-carrying compliant. All error macros and atom logic use WithSpan<Expr> throughout. All linter/type errors resolved. Canonical error macro pattern enforced. See parsing-pipeline-plan.md and macroexpander migration for context.
 - 2025-07-05: Codebase, tests, and documentation are now fully compliant with the proper-list-only and ...rest-only architecture. All legacy dotted/improper list handling and legacy variadic syntax have been removed.
+- 2025-07-05: Macro system, CLI, and test harness refactor completed. Session summary and next steps added.
 
 ## Rationale for Order
 
@@ -203,3 +204,42 @@ The highest-value, lowest-cost techniques (integration tests, registry hashing) 
 - Changelogs and review dates are present and recent in all docs.
 - No legacy or deprecated patterns remain in the main documentation.
 - See: `docs/architecture/parsing-pipeline-plan.md`, `docs/specs/language-spec.md`, `docs/architecture/authoring-patterns.md`, `docs/specs/storylet-spec.md`, `docs/architecture/architecture.md`.
+
+## Macro System Refactor (Incremental Phase)
+
+- Completed incremental refactor of `expand_template` in `src/macros.rs`.
+    - Arity checking and parameter binding are now handled by dedicated helper functions.
+    - All error cases are explicit and robust.
+    - The function is clearer, easier to maintain, and fully tested.
+- No changes to public API or behavior.
+- All tests pass, including edge cases.
+
+**Next step:**
+- Explore and prototype a radical, layered, provenance-aware macro system in a new branch.
+
+## Planned: Radical, Layered, Provenance-Aware Macro System
+
+- **Motivation:**
+    - Enable advanced macro hygiene, debugging, and modularity for complex authoring scenarios and future game engine extensibility.
+    - Support provenance tracking for macro definitions and expansions, making macro origin and transformation history inspectable.
+- **Key Features:**
+    - **Layered Macro Registry:** Macros are registered in layers (e.g., core, standard library, user, scenario), supporting shadowing and modular extension.
+    - **Provenance Metadata:** Every macro definition and expansion carries metadata about its origin (file, line, author, etc.) and transformation path.
+    - **Context-Aware Expansion:** Macro expansion context includes provenance, hygiene scope, and layer, enabling advanced features like macro hygiene and selective expansion.
+    - **Inspectable Expansion Trace:** The system records a trace of macro expansions, allowing authors to debug and audit macro transformations.
+- **Next Step:**
+    - Prototype this architecture in a new branch, iterating on design and integration with the existing pipeline after validating incremental improvements.
+
+## 2025-07-05: Macro System, CLI, and Test Harness Refactor (Session Summary)
+
+- Completed a comprehensive refactor and modernization of the macro system, CLI, and test harness.
+- Removed all legacy macroexpander logic (`MacroExpander`, `SutraMacroContext`, `SutraMacroExpander`) from the codebase.
+- Refactored the CLI to use the new `MacroEnv` and `expand_macros` API, and updated the output module for the new macro expansion trace format.
+- Updated all tests to use the new macro system, introduced the `must_expand_ok` helper, and enforced correct error/result handling.
+- Fixed architectural issues with recursion depth tracking in macro expansion, enforcing a strict limit (128) on all expansion paths.
+- Pruned and updated the test suite, ensuring all tests pass and removing outdated or irrelevant tests.
+- Performed a full documentation and memory bank audit, confirming protocol compliance and identifying areas for update.
+
+**Next Steps:**
+- Continue to update documentation and memory bank files after any further significant changes.
+- Maintain strict protocol compliance and batch-based, test-driven development.

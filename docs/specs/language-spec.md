@@ -24,6 +24,12 @@ This update brings the language specification in line with the canonical impleme
 - **Atoms & Macros:** Correctly categorized all items based on the codebase. Marked `gte?`, `lte?`, and `mod` as `Implemented`.
 - **Aspirational Tiers (2+):** Added a prominent note clarifying that **Tier 2 and 3 features are design concepts and are NOT YET IMPLEMENTED**.
 
+### **2025-07-05: Macro System, CLI, and Test Harness Refactor (Changelog)**
+- Removed references to legacy macroexpander types and updated macro system documentation.
+- Documented recursion depth enforcement (limit: 128) in macro expansion.
+- Updated CLI and test harness documentation and examples.
+- All code examples and explanations now match the current implementation.
+
 ---
 
 # Sutra Macro Library — Tier 1: Canonical Specification
@@ -1226,7 +1232,7 @@ define (macro-name param1 param2 ... [. variadic-param]) {
 
 #### **Rationale**
 - **Minimalism:** Only one set of parentheses for the header, one set of braces for the body.
-- **Clarity:** The macro’s “signature” is visually distinct and easy to scan.
+- **Clarity:** The macro's "signature" is visually distinct and easy to scan.
 - **Unambiguity:** The parser can unambiguously identify the name and all parameters, including variadic, regardless of whitespace or line breaks.
 - **Lossless translation:** This form is trivially translatable to and from canonical s-expr (Lisp/Scheme).
 - **Consistency:** Matches the block/brace usage in threads, storylets, pools, etc. Parens are only used for grouping where grouping is semantically meaningful.

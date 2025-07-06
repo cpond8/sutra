@@ -46,3 +46,31 @@ This file is the canonical, living intelligence log for the Sutra project. It re
 - Confirmed that all major documentation is up to date, accurate, and fully aligned with the codebase and recent progress.
 - Canonical parsing pipeline, language spec, macro/atom boundaries, and authoring patterns are all current.
 - See: `docs/architecture/parsing-pipeline-plan.md`, `docs/specs/language-spec.md`, `docs/architecture/authoring-patterns.md`, `docs/specs/storylet-spec.md`, `docs/architecture/architecture.md`.
+
+## Macro System Patterns
+
+- Adopt helper-driven, guard-first decomposition for macro expansion logic (e.g., `expand_template`).
+    - Each logical step (arity check, parameter binding, substitution) should be a named helper.
+    - All error cases must be explicit and robust.
+- For major architectural changes (layered/provenance macro system), always prototype in a separate branch after incremental improvements are validated.
+
+## Pattern: Layered, Provenance-Aware Macro System
+
+- Use a layered macro registry (core, stdlib, user, scenario) to support modularity and shadowing.
+- Attach provenance metadata (origin, author, file, line) to all macro definitions and expansions.
+- Expansion context should include provenance, hygiene, and layer for advanced features.
+- Record and expose expansion traces for debugging and auditing.
+- Prototype radical changes in a separate branch after incremental improvements are validated.
+
+## 2025-07-05: Macro System, CLI, and Test Harness Refactor (Session Patterns)
+
+- Batch-based, test-driven modernization is the standard for all core system changes.
+- Recursion depth enforcement is now explicit and robust in macro expansion.
+- All legacy code and tests must be removed or updated immediately after refactor.
+- Protocol requires immediate documentation and memory bank updates after significant changes.
+
+## Meta-Decision
+- This session's work sets a precedent for future refactors: all architectural, CLI, and test changes must be reflected in both code and documentation, with protocol-driven audits.
+
+## Changelog
+- 2025-07-05: Macro system, CLI, and test harness refactor patterns and meta-decision added.

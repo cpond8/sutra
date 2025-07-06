@@ -552,5 +552,12 @@ See CLI help for more details and macroexpansion tracing.
 
 ---
 
+## 2025-07-05: Macro System, CLI, and Test Harness Refactor (Changelog)
+- Removed references to legacy macroexpander types and patterns.
+- Updated all macro system, CLI, and error handling patterns and examples to match the current implementation.
+- Documented recursion depth enforcement and new macro expansion trace format.
+
+---
+
 **END OF FILE 3**
 (Review, extend, and iterate—this is your evolving author's lab notebook!)

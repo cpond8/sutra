@@ -41,8 +41,12 @@ The memory bank consists of the following files:
 - The canonical plan and context for the modular parsing pipeline refactor are archived in `docs/architecture/parsing-pipeline-plan.md`.
 - All contributors must review this document before working on parser or macro system code.
 
+## 2025-07-05: Milestone Update
+- Macro system, CLI, and test harness refactor completed. Memory bank and documentation are current and protocol-compliant as of this session.
+
 ## Changelog
 
 - 2025-07-03: Updated to resolve all audit TODOs, clarify structure, and align with current codebase and guidelines.
 - 2025-06-30: Initial synthesis from legacy documentation.
 - 2025-07-04: Added reference to parsing pipeline plan and archival location.
+- 2025-07-05: Milestone and protocol compliance update for macro system, CLI, and test harness refactor.

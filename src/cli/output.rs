@@ -4,21 +4,21 @@
 //! formatting errors, and generating JSON. By centralizing output logic here,
 //! we ensure a consistent user experience across all commands.
 
-use crate::macros::TraceStep;
+use crate::macros::MacroExpansionStep;
 use difference::Changeset;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 /// Prints a macro expansion trace to the console with colored diffs.
-pub fn print_trace(trace: &[TraceStep]) {
+pub fn print_trace(trace: &[MacroExpansionStep]) {
     let mut stdout = StandardStream::stdout(ColorChoice::Auto);
     let mut last_ast_str = String::new();
 
     for (i, step) in trace.iter().enumerate() {
         let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Yellow)).set_bold(true));
-        println!("--- Step {}: {} ---", i, step.description);
+        println!("--- Step {}: {} ---", i, step.macro_name);
         let _ = stdout.reset();
 
-        let current_ast_str = step.ast.pretty();
+        let current_ast_str = step.output.value.pretty();
 
         if i > 0 {
             let changeset = Changeset::new(&last_ast_str, &current_ast_str, "\n");

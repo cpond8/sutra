@@ -72,6 +72,7 @@ This document captures the canonical architectural and design patterns, system-w
 - 2025-06-30: Initial synthesis from legacy documentation.
 - 2025-07-04: Added modular parsing pipeline as a canonical system pattern.
 - 2025-07-05: Migration to proper-list-only and ...rest-only architecture complete. All legacy code, tests, and documentation for improper/dotted lists and legacy variadic syntax have been removed.
+- 2025-07-05: Macro system, CLI, and test harness refactor system patterns and changelog updated.
 
 ## Core Architecture
 
@@ -178,22 +179,14 @@ parse → macro-expand → validate → evaluate → output/presentation
   3. **Simplified Evaluator**: The evaluator (`src/eval.rs`) is simplified and hardened. It operates only on the canonical AST and will throw a semantic error if it encounters a bare symbol, enforcing the contract with the macro layer.
 - **Benefit**: This architecture creates a highly predictable, transparent, and robust pipeline. It fully decouples syntax from evaluation, making the system easier to debug, test, and extend.
 
-### Macro System Architecture (The "Sutra Way")
+### Macro System Architecture
 
-After extensive analysis, the Sutra engine has adopted a pragmatic, two-tiered macro system that balances author ergonomics with architectural purity. This system is built on one core primitive: the `Expr::If` special form.
-
--   **`Expr::If` (The Primitive):** This is the one true conditional construct in the engine. It is a special form in the AST, not a macro, and is handled directly by the evaluator. It is the bedrock on which all other conditional logic is built.
-
--   **`MacroFn` (Native Macros):**
-    -   **Mechanism:** A native Rust function that receives the raw AST of the macro call and has the full power of Rust to transform it.
-    -   **Use Case:** Reserved for core language features that require complex, procedural logic during expansion. The primary example is **`cond`**, which is implemented as a native, recursive `MacroFn` that expands into a series of nested `if` macro calls.
-
--   **`MacroTemplate` (Declarative Macros):**
-    -   **Mechanism:** A simple, data-driven substitution system. Macros are defined as templates with named parameters (including a variadic `&rest` parameter) and an AST body.
-    -   **Use Case:** The primary way for authors to create new syntactic abstractions. Ideal for simple wrappers, logging utilities, and domain-specific language constructs.
-    -   **Limitation:** Purely syntactic. Cannot perform conditional logic or complex computations during expansion. This is a deliberate trade-off for safety and simplicity.
-
-This layered approach is a perfect example of the engine's philosophy: the powerful, variadic `cond` macro is built upon the simpler `if` macro, which in turn is a direct gateway to the single, minimal `Expr::If` primitive. This provides a safe and easy-to-use system for authors while retaining the power needed for the core language, all without compromising the strict `parse -> expand -> evaluate` pipeline.
+- Macro expansion is a purely syntactic, pure transformation pipeline stage.
+- All macroexpander logic, macro functions, and recursive expansion operate on `WithSpan<Expr>` (never bare `Expr`).
+- Macro system is layered, runs after parsing and before validation/evaluation.
+- Expansion process is inspectable and traceable.
+- Incremental refactor: `expand_template` now uses helpers for arity and parameter binding, with explicit error handling.
+- Next: Explore a layered, provenance-aware macro system in a new branch.
 
 ## Module Boundaries
 
@@ -314,6 +307,21 @@ A full audit and review of macro registry/expander reliability strategies was co
 _Last Updated: 2025-07-01_
 
 - [2025-07-02] Registry hashing/fingerprinting implemented: MacroRegistry now computes a SHA256 hash of all macro names and definitions, with a canonical test in macro_expansion_tests.rs. See system-reference.md for details.
+
+## Planned: Radical, Layered Macro System
+
+- Macro registry will be layered (core, stdlib, user, scenario) for modularity and shadowing.
+- Provenance tracking will attach origin metadata to all macro definitions and expansions.
+- Expansion context will include provenance, hygiene, and layer for advanced features.
+- Expansion trace will be recorded and inspectable for debugging and auditing.
+- To be prototyped in a new branch after incremental improvements are validated.
+
+## 2025-07-05: Macro System, CLI, and Test Harness Refactor (Session System Patterns)
+
+- Macro expansion now enforces a strict recursion depth limit (128) on every expansion step.
+- CLI output and macro expansion trace format have been updated for clarity and protocol compliance.
+- Test harness and error handling patterns have been modernized and documented.
+- All recursive macro expansion logic must increment and check recursion depth, with a default limit of 128.
 
 <!-- AUDIT ANNOTATIONS BEGIN -->
 

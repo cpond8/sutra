@@ -43,6 +43,11 @@ This document archives the full, detailed plan for the modular, interface-driven
 
 ## Changelog
 - 2025-07-04: Initial creation. Full plan, context, and best practices archived.
+- 2025-07-05: Macro System, CLI, and Test Harness Refactor (Changelog)
+  - Removed references to legacy macroexpander types and updated all macroexpander interface documentation.
+  - Documented recursion depth enforcement (limit: 128) in macro expansion.
+  - Updated macro system patterns and CLI output documentation.
+  - All interface and contract sections now reflect the current implementation.
 - [Add future updates here.]
 
 ## Canonical Interface Contracts
