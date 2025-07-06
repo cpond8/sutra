@@ -42,6 +42,10 @@ This document captures the canonical architectural and design patterns, system-w
 - Test and production environments use the same registry and loader logic.
 - All tests are run against the canonical pipeline.
 
+### Test Suite Protocol (2025-07-06)
+
+> **Protocol Requirement:** All tests must be written as user-facing Sutra scripts (s-expr or braced), asserting only on observable output, world queries, or errors as surfaced to the user. No direct Rust API or internal data structure manipulation is permitted. A full test suite rewrite is required. See `memory-bank/README.md` and `memory-bank/activeContext.md` for details.
+
 ### 8. Modular Parsing Pipeline (2025-07-04)
 - The parsing pipeline is now a canonical, interface-driven, modular architecture. Each stage (CST parser, AST builder, macroexpander, validator, etc.) is a pure, swappable module with a documented contract.
 - Rationale: Ensures maintainability, testability, and future extensibility. Supports robust diagnostics, editor integration, and authoring ergonomics.

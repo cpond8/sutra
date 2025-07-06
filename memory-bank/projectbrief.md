@@ -17,6 +17,10 @@ Sutra aspires to be a **universal substrate for compositional, emergent, and nar
 - Key architectural decisions validated through implementation.
 - Built in Rust for performance and type safety.
 
+## Test Suite Protocol (2025-07-06)
+
+> **Protocol Requirement:** All tests must be written as user-facing Sutra scripts (s-expr or braced), asserting only on observable output, world queries, or errors as surfaced to the user. No direct Rust API or internal data structure manipulation is permitted. A full test suite rewrite is required to comply with this protocol. See `memory-bank/README.md` and `memory-bank/activeContext.md` for details.
+
 ## Key Design Philosophy
 
 **Minimalism as Power**: Following Scheme/Lisp tradition where a tiny set of core forms serves as the basis for an expressive, extensible, and Turing-complete language.

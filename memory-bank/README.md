@@ -1,8 +1,16 @@
 # Sutra Engine - Memory Bank
 
+> **MAXIMALLY IMPORTANT: Throughout this project, “memory bank” ALWAYS refers to the files in the `memory-bank/` directory (as described in `memory-bank.mdc`). It NEVER refers to any built-in, agent, or AI memory. All project context, decisions, and updates MUST be recorded here, not in any external or ephemeral memory.**
+
 ## Purpose
 
 The memory bank is the canonical, living knowledge base for the Sutra project. It encodes all project context, design decisions, architectural patterns, technical constraints, and current work status. It is the single source of truth for onboarding, planning, and all major decisions.
+
+## TEST SUITE PROTOCOL & REQUIRED REWRITE
+
+> **All tests must be written as user-facing Sutra scripts (s-expr or braced), asserting only on observable output, world queries, or errors as surfaced to the user. No direct Rust API or internal data structure manipulation is permitted.**
+>
+> **A full test suite rewrite is required to comply with this protocol.**
 
 ## Structure
 

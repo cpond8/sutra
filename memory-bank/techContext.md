@@ -139,6 +139,8 @@ sutra/
 - Performance benchmarking on larger worlds
 - Cross-platform compatibility testing
 
+- **Protocol Requirement:** All tests must be written as user-facing Sutra scripts (s-expr or braced), asserting only on observable output, world queries, or errors as surfaced to the user. No direct Rust API or internal data structure manipulation is permitted. A full test suite rewrite is required. See `memory-bank/README.md` and `memory-bank/activeContext.md` for details.
+
 ## Deployment Considerations
 
 ### Library-First Design

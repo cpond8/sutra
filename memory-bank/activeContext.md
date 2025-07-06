@@ -1,3 +1,6 @@
+# TEST SUITE REWRITE REQUIRED
+# All tests must be rewritten to use only user-facing Sutra scripts (s-expr or braced), asserting only on observable output, world queries, or errors as surfaced to the user. No direct Rust API or internal data structure manipulation is permitted. See systemPatterns.md and README.md for protocol.
+
 # Sutra Engine - Active Context
 
 ## Current Work Focus

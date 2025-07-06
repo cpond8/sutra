@@ -31,6 +31,7 @@ This roadmap is the single source of truth for macro system bootstrapping and se
 - **Standard Macro Library Expansion:** Implement all higher-level narrative/gameplay macros (`storylet`, `choice`, `pool`, etc.) as native macros. Develop comprehensive example scripts and usage patterns. Performance test with realistic content.
 - **Validation and Author Feedback:** Implement structural and semantic validation before and after macro expansion. Integrate validation and error reporting with CLI and author tools.
 - **Documentation, CLI, and Tooling:** Audit and update documentation to reflect the new macro system. Ensure CLI exposes macroexpansion, registry, and validation features.
+- **Test Suite Rewrite Required:** All tests must be rewritten to use only user-facing Sutra scripts (s-expr or braced), asserting only on observable output, world queries, or errors as surfaced to the user. No direct Rust API or internal data structure manipulation is permitted. See `memory-bank/README.md` and `memory-bank/activeContext.md` for protocol.
 
 ## Current Status Assessment
 
@@ -44,6 +45,7 @@ This roadmap is the single source of truth for macro system bootstrapping and se
 - **Macro system feature creep** and **performance optimization pressure** are ongoing risks.
 - **User macro system** and **editor integration** will require careful design.
 - (2025-07-05) Incident: A function with excessive nesting (`parse_macros_from_source`) was missed in an initial audit due to over-reliance on semantic search. Corrective action: Protocol updated to require explicit function enumeration and review in all future complexity/nesting audits.
+- **Test Suite Rewrite Required:** All tests must be rewritten to use only user-facing Sutra scripts (s-expr or braced), asserting only on observable output, world queries, or errors as surfaced to the user. No direct Rust API or internal data structure manipulation is permitted. See `memory-bank/README.md` and `memory-bank/activeContext.md` for protocol.
 
 ## Evolution of Project Decisions
 
