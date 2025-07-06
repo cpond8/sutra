@@ -5,6 +5,5 @@ mod tests {
     #[test]
     fn placeholder() {
         // TODO: Implement validator contract tests
-        assert!(true);
     }
 }

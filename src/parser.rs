@@ -42,10 +42,10 @@
 
 use crate::ast::{Expr, Span, WithSpan};
 use crate::error::{SutraError, SutraErrorKind};
+use once_cell::sync::Lazy;
 use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
 // This derive macro generates the parser implementation from our grammar file.
@@ -102,7 +102,10 @@ pub fn parse(source: &str) -> Result<Vec<WithSpan<Expr>>, SutraError> {
 
 // Utility function for consistent span extraction
 fn get_span(pair: &pest::iterators::Pair<Rule>) -> Span {
-    Span { start: pair.as_span().start(), end: pair.as_span().end() }
+    Span {
+        start: pair.as_span().start(),
+        end: pair.as_span().end(),
+    }
 }
 
 // Type alias for AST builder functions
@@ -128,15 +131,16 @@ pub static AST_BUILDERS: Lazy<HashMap<Rule, AstBuilderFn>> = Lazy::new(|| {
 
 // Dispatcher: looks up the handler in the map and calls it
 fn build_ast_from_pair(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
-    AST_BUILDERS.get(&pair.as_rule())
+    AST_BUILDERS
+        .get(&pair.as_rule())
         .ok_or_else(|| SutraError {
             kind: SutraErrorKind::InternalParse(format!(
                 "No AST builder registered for rule: {:?} (input: '{}')",
-                pair.as_rule(), pair.as_str()
+                pair.as_rule(),
+                pair.as_str()
             )),
             span: Some(get_span(&pair)),
-        })?
-        (pair)
+        })?(pair)
 }
 
 // Private combinator for mapping children to Expr::List
@@ -159,7 +163,11 @@ fn map_children_to_list<'a>(
 fn build_program(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     let span = get_span(&pair);
     map_children_to_list(
-        Box::new(pair.clone().into_inner().filter(|p| p.as_rule() != Rule::EOI)),
+        Box::new(
+            pair.clone()
+                .into_inner()
+                .filter(|p| p.as_rule() != Rule::EOI),
+        ),
         build_ast_from_pair,
         span,
     )
@@ -170,10 +178,7 @@ fn build_expr(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     let span = get_span(&pair);
     let mut inner = pair.clone().into_inner();
     let sub = inner.next().ok_or_else(|| SutraError {
-        kind: SutraErrorKind::MalformedAst(format!(
-            "Empty expr pair (input: '{}')",
-            pair.as_str()
-        )),
+        kind: SutraErrorKind::MalformedAst(format!("Empty expr pair (input: '{}')", pair.as_str())),
         span: Some(span),
     })?;
     build_ast_from_pair(sub)
@@ -182,7 +187,11 @@ fn build_expr(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
 /// Handles list rule (proper lists only).
 fn build_list(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     let span = get_span(&pair);
-    map_children_to_list(Box::new(pair.clone().into_inner()), build_ast_from_pair, span)
+    map_children_to_list(
+        Box::new(pair.clone().into_inner()),
+        build_ast_from_pair,
+        span,
+    )
 }
 
 fn build_param_list(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
@@ -193,13 +202,18 @@ fn build_param_list(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     while let Some(p) = inner.next() {
         if p.as_rule() == Rule::symbol {
             let sym = match build_symbol(p)? {
-                WithSpan { value: Expr::Symbol(s, _), .. } => s,
+                WithSpan {
+                    value: Expr::Symbol(s, _),
+                    ..
+                } => s,
                 _ => unreachable!("build_symbol must return Expr::Symbol for Rule::symbol"),
             };
             if rest.is_some() {
                 // No required params after ...rest
                 return Err(SutraError {
-                    kind: SutraErrorKind::Parse("Required parameter after ...rest in parameter list".to_string()),
+                    kind: SutraErrorKind::Parse(
+                        "Required parameter after ...rest in parameter list".to_string(),
+                    ),
                     span: Some(span.clone()),
                 });
             }
@@ -207,17 +221,24 @@ fn build_param_list(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
         } else if p.as_str() == "..." {
             // Next must be a symbol
             let next = inner.next().ok_or_else(|| SutraError {
-                kind: SutraErrorKind::Parse("Expected symbol after ... in parameter list".to_string()),
+                kind: SutraErrorKind::Parse(
+                    "Expected symbol after ... in parameter list".to_string(),
+                ),
                 span: Some(span.clone()),
             })?;
             if next.as_rule() != Rule::symbol {
                 return Err(SutraError {
-                    kind: SutraErrorKind::Parse("Expected symbol after ... in parameter list".to_string()),
+                    kind: SutraErrorKind::Parse(
+                        "Expected symbol after ... in parameter list".to_string(),
+                    ),
                     span: Some(span.clone()),
                 });
             }
             let sym = match build_symbol(next)? {
-                WithSpan { value: Expr::Symbol(s, _), .. } => s,
+                WithSpan {
+                    value: Expr::Symbol(s, _),
+                    ..
+                } => s,
                 _ => unreachable!("build_symbol must return Expr::Symbol for Rule::symbol"),
             };
             if rest.is_some() {
@@ -229,7 +250,10 @@ fn build_param_list(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
             rest = Some(sym);
         } else {
             return Err(SutraError {
-                kind: SutraErrorKind::Parse(format!("Invalid parameter: expected symbol or ...rest, found '{}'.", p.as_str())),
+                kind: SutraErrorKind::Parse(format!(
+                    "Invalid parameter: expected symbol or ...rest, found '{}'.",
+                    p.as_str()
+                )),
                 span: Some(span.clone()),
             });
         }
@@ -247,7 +271,11 @@ fn build_param_list(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
 /// Handles block rule (brace blocks).
 fn build_block(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     let span = get_span(&pair);
-    map_children_to_list(Box::new(pair.clone().into_inner()), build_ast_from_pair, span)
+    map_children_to_list(
+        Box::new(pair.clone().into_inner()),
+        build_ast_from_pair,
+        span,
+    )
 }
 
 /// Handles atom rule (delegates to subrules).
@@ -255,10 +283,7 @@ fn build_atom(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     let span = get_span(&pair);
     let mut inner = pair.clone().into_inner();
     let sub = inner.next().ok_or_else(|| SutraError {
-        kind: SutraErrorKind::MalformedAst(format!(
-            "Empty atom pair (input: '{}')",
-            pair.as_str()
-        )),
+        kind: SutraErrorKind::MalformedAst(format!("Empty atom pair (input: '{}')", pair.as_str())),
         span: Some(span),
     })?;
     build_ast_from_pair(sub)
@@ -269,7 +294,10 @@ fn build_number(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     let span = get_span(&pair);
     let s = pair.as_str();
     let n = s.parse().map_err(|e| SutraError {
-        kind: SutraErrorKind::Parse(format!("number: Invalid number: expected numeric literal, found '{}', error: {}", s, e)),
+        kind: SutraErrorKind::Parse(format!(
+            "number: Invalid number: expected numeric literal, found '{}', error: {}",
+            s, e
+        )),
         span: Some(span.clone()),
     })?;
     Ok(WithSpan {
@@ -283,10 +311,19 @@ fn build_boolean(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     let span = get_span(&pair);
     let s = pair.as_str();
     match s {
-        "true" => Ok(WithSpan { value: Expr::Bool(true, span.clone()), span }),
-        "false" => Ok(WithSpan { value: Expr::Bool(false, span.clone()), span }),
+        "true" => Ok(WithSpan {
+            value: Expr::Bool(true, span.clone()),
+            span,
+        }),
+        "false" => Ok(WithSpan {
+            value: Expr::Bool(false, span.clone()),
+            span,
+        }),
         _ => Err(SutraError {
-            kind: SutraErrorKind::Parse(format!("boolean: Invalid boolean: expected 'true' or 'false', found '{}'", s)),
+            kind: SutraErrorKind::Parse(format!(
+                "boolean: Invalid boolean: expected 'true' or 'false', found '{}'",
+                s
+            )),
             span: Some(span),
         }),
     }
@@ -362,8 +399,14 @@ pub struct SutraCstNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SutraCstParseError {
-    Syntax { span: crate::ast::Span, message: String },
-    Incomplete { span: crate::ast::Span, message: String },
+    Syntax {
+        span: crate::ast::Span,
+        message: String,
+    },
+    Incomplete {
+        span: crate::ast::Span,
+        message: String,
+    },
     // ...
 }
 
@@ -371,7 +414,12 @@ pub enum SutraCstParseError {
 pub trait SutraCstParser {
     fn parse(&self, input: &str) -> Result<SutraCstNode, SutraCstParseError>;
     fn traverse<'a>(&'a self, node: &'a SutraCstNode) -> SutraCstTraversal<'a>;
-    fn visit<'a, F: FnMut(&'a SutraCstNode)>(&'a self, node: &'a SutraCstNode, visitor: F, order: TraversalOrder);
+    fn visit<'a, F: FnMut(&'a SutraCstNode)>(
+        &'a self,
+        node: &'a SutraCstNode,
+        visitor: F,
+        order: TraversalOrder,
+    );
 }
 
 /// Iterator for CST traversal (DFS/BFS).
@@ -381,7 +429,10 @@ pub struct SutraCstTraversal<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TraversalOrder { DepthFirst, BreadthFirst }
+pub enum TraversalOrder {
+    DepthFirst,
+    BreadthFirst,
+}
 
 /// Trivial CST parser for pipeline scaffolding (Sprint 2).
 pub struct TrivialCstParser;
@@ -391,13 +442,23 @@ impl SutraCstParser for TrivialCstParser {
         Ok(SutraCstNode {
             rule: "Program".to_string(),
             children: vec![],
-            span: crate::ast::Span { start: 0, end: input.len() },
+            span: crate::ast::Span {
+                start: 0,
+                end: input.len(),
+            },
         })
     }
     fn traverse<'a>(&'a self, _node: &'a SutraCstNode) -> SutraCstTraversal<'a> {
-        SutraCstTraversal { _phantom: std::marker::PhantomData }
+        SutraCstTraversal {
+            _phantom: std::marker::PhantomData,
+        }
     }
-    fn visit<'a, F: FnMut(&'a SutraCstNode)>(&'a self, _node: &'a SutraCstNode, _visitor: F, _order: TraversalOrder) {
+    fn visit<'a, F: FnMut(&'a SutraCstNode)>(
+        &'a self,
+        _node: &'a SutraCstNode,
+        _visitor: F,
+        _order: TraversalOrder,
+    ) {
         // No-op for trivial impl
     }
 }
@@ -407,24 +468,39 @@ pub struct PestCstParser;
 
 impl SutraCstParser for PestCstParser {
     fn parse(&self, input: &str) -> Result<SutraCstNode, SutraCstParseError> {
-        let pairs = SutraParser::parse(Rule::program, input)
-            .map_err(|e| {
-                let span = match e.location {
-                    pest::error::InputLocation::Pos(pos) => crate::ast::Span { start: pos, end: pos },
-                    pest::error::InputLocation::Span((start, end)) => crate::ast::Span { start, end },
-                };
-                SutraCstParseError::Syntax { span, message: e.to_string() }
-            })?;
+        let pairs = SutraParser::parse(Rule::program, input).map_err(|e| {
+            let span = match e.location {
+                pest::error::InputLocation::Pos(pos) => crate::ast::Span {
+                    start: pos,
+                    end: pos,
+                },
+                pest::error::InputLocation::Span((start, end)) => crate::ast::Span { start, end },
+            };
+            SutraCstParseError::Syntax {
+                span,
+                message: e.to_string(),
+            }
+        })?;
         let root_pair = pairs.peek().ok_or_else(|| SutraCstParseError::Incomplete {
-            span: crate::ast::Span { start: 0, end: input.len() },
+            span: crate::ast::Span {
+                start: 0,
+                end: input.len(),
+            },
             message: "Parser generated an empty tree, this should not happen.".to_string(),
         })?;
         Ok(build_cst_from_pair(root_pair))
     }
     fn traverse<'a>(&'a self, _node: &'a SutraCstNode) -> SutraCstTraversal<'a> {
-        SutraCstTraversal { _phantom: std::marker::PhantomData }
+        SutraCstTraversal {
+            _phantom: std::marker::PhantomData,
+        }
     }
-    fn visit<'a, F: FnMut(&'a SutraCstNode)>(&'a self, _node: &'a SutraCstNode, _visitor: F, _order: TraversalOrder) {
+    fn visit<'a, F: FnMut(&'a SutraCstNode)>(
+        &'a self,
+        _node: &'a SutraCstNode,
+        _visitor: F,
+        _order: TraversalOrder,
+    ) {
         // Not implemented for now
     }
 }
@@ -436,7 +512,11 @@ fn build_cst_from_pair(pair: Pair<Rule>) -> SutraCstNode {
     };
     let rule = format!("{:?}", pair.as_rule());
     let children: Vec<SutraCstNode> = pair.clone().into_inner().map(build_cst_from_pair).collect();
-    SutraCstNode { rule, children, span }
+    SutraCstNode {
+        rule,
+        children,
+        span,
+    }
 }
 
 #[cfg(test)]
@@ -495,19 +575,26 @@ fn build_define_form(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     // Expect: define, param_list, expr
     let _define_kw = inner.next(); // "define" symbol (skip)
     let param_list_pair = inner.next().ok_or_else(|| SutraError {
-        kind: SutraErrorKind::MalformedAst("define_form: Missing param_list in define_form (expected param_list)".to_string()),
+        kind: SutraErrorKind::MalformedAst(
+            "define_form: Missing param_list in define_form (expected param_list)".to_string(),
+        ),
         span: Some(span.clone()),
     })?;
     let param_list_expr = build_ast_from_pair(param_list_pair)?;
     let body_pair = inner.next().ok_or_else(|| SutraError {
-        kind: SutraErrorKind::MalformedAst("define_form: Missing body expr in define_form (expected expr)".to_string()),
+        kind: SutraErrorKind::MalformedAst(
+            "define_form: Missing body expr in define_form (expected expr)".to_string(),
+        ),
         span: Some(span.clone()),
     })?;
     let body_expr = build_ast_from_pair(body_pair)?;
     Ok(WithSpan {
         value: Expr::List(
             vec![
-                WithSpan { value: Expr::Symbol("define".to_string(), span.clone()), span: span.clone() },
+                WithSpan {
+                    value: Expr::Symbol("define".to_string(), span.clone()),
+                    span: span.clone(),
+                },
                 param_list_expr,
                 body_expr,
             ],

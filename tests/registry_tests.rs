@@ -5,6 +5,5 @@ mod tests {
     #[test]
     fn placeholder() {
         // TODO: Implement registry contract tests
-        assert!(true);
     }
 }

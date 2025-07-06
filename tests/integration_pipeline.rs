@@ -5,6 +5,5 @@ mod tests {
     #[test]
     fn placeholder() {
         // TODO: Implement end-to-end pipeline integration tests
-        assert!(true);
     }
 }

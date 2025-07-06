@@ -8,6 +8,6 @@ pub mod macros;
 pub mod macros_std;
 pub mod parser;
 pub mod path;
+pub mod registry;
 pub mod value;
 pub mod world;
-pub mod registry;

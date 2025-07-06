@@ -69,39 +69,41 @@ macro_rules! eval_err {
                 expanded_code: WithSpan {
                     value: Expr::List($args.to_vec(), $span.clone()),
                     span: $span.clone(),
-                }.value.pretty(),
+                }
+                .value
+                .pretty(),
                 original_code: None,
                 suggestion: None,
             }),
             span: Some($span.clone()),
         }
     };
-    (type, $expr:expr, $name:expr, $expected:expr, $actual:expr) => {
-        {
-            let span = $expr.span.clone();
-            let pretty = match &$expr.value {
-                Expr::List(items, span) => WithSpan {
-                    value: Expr::List(items.to_vec(), span.clone()),
-                    span: span.clone(),
-                }.value.pretty(),
-                _ => $expr.value.pretty(),
-            };
-            SutraError {
-                kind: SutraErrorKind::Eval(EvalError {
-                    message: format!(
-                        "`{}` expects {}, got {}",
-                        $name,
-                        $expected,
-                        $actual.type_name()
-                    ),
-                    expanded_code: pretty,
-                    original_code: None,
-                    suggestion: None,
-                }),
-                span: Some(span),
+    (type, $expr:expr, $name:expr, $expected:expr, $actual:expr) => {{
+        let span = $expr.span.clone();
+        let pretty = match &$expr.value {
+            Expr::List(items, span) => WithSpan {
+                value: Expr::List(items.to_vec(), span.clone()),
+                span: span.clone(),
             }
+            .value
+            .pretty(),
+            _ => $expr.value.pretty(),
+        };
+        SutraError {
+            kind: SutraErrorKind::Eval(EvalError {
+                message: format!(
+                    "`{}` expects {}, got {}",
+                    $name,
+                    $expected,
+                    $actual.type_name()
+                ),
+                expanded_code: pretty,
+                original_code: None,
+                suggestion: None,
+            }),
+            span: Some(span),
         }
-    };
+    }};
     (general, $expr:expr, $msg:expr) => {
         SutraError {
             kind: SutraErrorKind::Eval(EvalError {
@@ -115,7 +117,10 @@ macro_rules! eval_err {
     };
 }
 
-fn eval_args(args: &[WithSpan<Expr>], context: &mut EvalContext<'_, '_>) -> Result<(Vec<Value>, crate::world::World), SutraError> {
+fn eval_args(
+    args: &[WithSpan<Expr>],
+    context: &mut EvalContext<'_, '_>,
+) -> Result<(Vec<Value>, crate::world::World), SutraError> {
     // Use try_fold to create a functional pipeline that threads the world
     // state through the evaluation of each argument. This is the canonical
     // pattern for safe, sequential evaluation in Sutra.
@@ -204,7 +209,16 @@ pub const ATOM_ADD: AtomFn = |args, context, parent_span| {
         if let Value::Number(n) = v {
             sum += n;
         } else {
-            return Err(eval_err!(type, &WithSpan { value: Expr::List(args.to_vec(), parent_span.clone()), span: parent_span.clone() }, "+", "a Number", v));
+            return Err(eval_err!(
+                type,
+                &WithSpan {
+                    value: Expr::List(args.to_vec(), parent_span.clone()),
+                    span: parent_span.clone()
+                },
+                "+",
+                "a Number",
+                v
+            ));
         }
     }
     Ok((Value::Number(sum), world))
@@ -244,7 +258,16 @@ pub const ATOM_MUL: AtomFn = |args, context, parent_span| {
         if let Value::Number(n) = v {
             product *= n;
         } else {
-            return Err(eval_err!(type, &WithSpan { value: Expr::List(args.to_vec(), parent_span.clone()), span: parent_span.clone() }, "*", "a Number", v));
+            return Err(eval_err!(
+                type,
+                &WithSpan {
+                    value: Expr::List(args.to_vec(), parent_span.clone()),
+                    span: parent_span.clone()
+                },
+                "*",
+                "a Number",
+                v
+            ));
         }
     }
     Ok((Value::Number(product), world))
@@ -262,7 +285,18 @@ pub const ATOM_DIV: AtomFn = |args, context, parent_span| {
         (Value::Number(_), Value::Number(n2)) if n2 == 0.0 => {
             Err(eval_err!(general, &args[1], "Division by zero"))
         }
-        (a, b) => Err(eval_err!(general, &WithSpan { value: Expr::List(args.to_vec(), parent_span.clone()), span: parent_span.clone() }, &format!("`/` expects two Numbers, got {} and {}", a.type_name(), b.type_name()))),
+        (a, b) => Err(eval_err!(
+            general,
+            &WithSpan {
+                value: Expr::List(args.to_vec(), parent_span.clone()),
+                span: parent_span.clone()
+            },
+            &format!(
+                "`/` expects two Numbers, got {} and {}",
+                a.type_name(),
+                b.type_name()
+            )
+        )),
     }
 };
 
@@ -342,11 +376,31 @@ pub const ATOM_MOD: AtomFn = |args, context, parent_span| {
                 return Err(eval_err!(general, &args[1], "Modulo by zero"));
             }
             if n1.fract() != 0.0 || n2.fract() != 0.0 {
-                return Err(eval_err!(type, &WithSpan { value: Expr::List(args.to_vec(), parent_span.clone()), span: parent_span.clone() }, "mod", "two Integers", &Value::Number(n1)));
+                return Err(eval_err!(
+                    type,
+                    &WithSpan {
+                        value: Expr::List(args.to_vec(), parent_span.clone()),
+                        span: parent_span.clone()
+                    },
+                    "mod",
+                    "two Integers",
+                    &Value::Number(n1)
+                ));
             }
             Ok((Value::Number((n1 as i64 % n2 as i64) as f64), w2))
         }
-        (a, b) => Err(eval_err!(general, &WithSpan { value: Expr::List(args.to_vec(), parent_span.clone()), span: parent_span.clone() }, &format!("`mod` expects two Integers, got {} and {}", a.type_name(), b.type_name()))),
+        (a, b) => Err(eval_err!(
+            general,
+            &WithSpan {
+                value: Expr::List(args.to_vec(), parent_span.clone()),
+                span: parent_span.clone()
+            },
+            &format!(
+                "`mod` expects two Integers, got {} and {}",
+                a.type_name(),
+                b.type_name()
+            )
+        )),
     }
 };
 
@@ -363,7 +417,9 @@ pub const ATOM_ERROR: AtomFn = |args, context, parent_span| {
                 expanded_code: WithSpan {
                     value: Expr::List(args.to_vec(), parent_span.clone()),
                     span: parent_span.clone(),
-                }.value.pretty(),
+                }
+                .value
+                .pretty(),
                 original_code: None,
                 suggestion: None,
             }),

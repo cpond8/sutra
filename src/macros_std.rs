@@ -176,7 +176,10 @@ fn create_assignment_macro(
                 span: items[0].span.clone(),
             };
             let inner_expr = WithSpan {
-                value: Expr::List(vec![atom_symbol, wrap_in_get(path_arg), value_arg], span.clone()),
+                value: Expr::List(
+                    vec![atom_symbol, wrap_in_get(path_arg), value_arg],
+                    span.clone(),
+                ),
                 span: span.clone(),
             };
             Ok(WithSpan {

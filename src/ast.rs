@@ -9,7 +9,7 @@
 /// assert_eq!(span.start, 0);
 /// assert_eq!(span.end, 5);
 /// ```
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Span {
@@ -119,7 +119,12 @@ impl Expr {
             Expr::String(s, _) => format!("\"{}\"", s),
             Expr::Number(n, _) => n.to_string(),
             Expr::Bool(b, _) => b.to_string(),
-            Expr::If { condition, then_branch, else_branch, .. } => {
+            Expr::If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
                 format!(
                     "(if {} {} {})",
                     condition.value.pretty(),
@@ -158,7 +163,10 @@ pub struct ParamList {
 
 /// Canonical AST builder trait for the modular pipeline.
 pub trait SutraAstBuilder {
-    fn build_ast(&self, cst: &crate::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError>;
+    fn build_ast(
+        &self,
+        cst: &crate::parser::SutraCstNode,
+    ) -> Result<WithSpan<Expr>, SutraAstBuildError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -178,7 +186,10 @@ pub struct WithSpan<T> {
 pub struct TrivialAstBuilder;
 
 impl SutraAstBuilder for TrivialAstBuilder {
-    fn build_ast(&self, cst: &crate::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError> {
+    fn build_ast(
+        &self,
+        cst: &crate::parser::SutraCstNode,
+    ) -> Result<WithSpan<Expr>, SutraAstBuildError> {
         Ok(WithSpan {
             value: Expr::List(vec![], cst.span.clone()),
             span: cst.span.clone(),
@@ -190,7 +201,10 @@ impl SutraAstBuilder for TrivialAstBuilder {
 pub struct CanonicalAstBuilder;
 
 impl SutraAstBuilder for CanonicalAstBuilder {
-    fn build_ast(&self, cst: &crate::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError> {
+    fn build_ast(
+        &self,
+        cst: &crate::parser::SutraCstNode,
+    ) -> Result<WithSpan<Expr>, SutraAstBuildError> {
         build_ast_from_cst(cst)
     }
 }
@@ -204,25 +218,35 @@ fn map_cst_children_to_list<F>(
 where
     F: FnMut(&crate::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError>,
 {
-    let exprs = children.iter().map(builder).collect::<Result<Vec<_>, _>>()?;
+    let exprs = children
+        .iter()
+        .map(builder)
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(WithSpan {
         value: Expr::List(exprs, span.clone()),
         span: span.clone(),
     })
 }
 
-fn build_ast_from_cst(cst: &crate::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError> {
+fn build_ast_from_cst(
+    cst: &crate::parser::SutraCstNode,
+) -> Result<WithSpan<Expr>, SutraAstBuildError> {
     match cst.rule.as_str() {
         "program" | "list" => {
             map_cst_children_to_list(&cst.children, build_ast_from_cst, &cst.span)
         }
         "number" => {
             let s = &cst_text(cst);
-            let n = s.parse::<f64>().map_err(|_| SutraAstBuildError::InvalidShape {
+            let n = s
+                .parse::<f64>()
+                .map_err(|_| SutraAstBuildError::InvalidShape {
+                    span: cst.span.clone(),
+                    message: format!("Invalid number: {}", s),
+                })?;
+            Ok(WithSpan {
+                value: Expr::Number(n, cst.span.clone()),
                 span: cst.span.clone(),
-                message: format!("Invalid number: {}", s),
-            })?;
-            Ok(WithSpan { value: Expr::Number(n, cst.span.clone()), span: cst.span.clone() })
+            })
         }
         "boolean" => {
             let s = &cst_text(cst);
@@ -236,7 +260,10 @@ fn build_ast_from_cst(cst: &crate::parser::SutraCstNode) -> Result<WithSpan<Expr
                     message: format!("Invalid boolean: {}", s),
                 });
             };
-            Ok(WithSpan { value: Expr::Bool(b, cst.span.clone()), span: cst.span.clone() })
+            Ok(WithSpan {
+                value: Expr::Bool(b, cst.span.clone()),
+                span: cst.span.clone(),
+            })
         }
         "string" => {
             let s = &cst_text(cst);
@@ -245,14 +272,23 @@ fn build_ast_from_cst(cst: &crate::parser::SutraCstNode) -> Result<WithSpan<Expr
                 span: cst.span.clone(),
                 message: msg,
             })?;
-            Ok(WithSpan { value: Expr::String(unescaped, cst.span.clone()), span: cst.span.clone() })
+            Ok(WithSpan {
+                value: Expr::String(unescaped, cst.span.clone()),
+                span: cst.span.clone(),
+            })
         }
         "symbol" => {
             let s = &cst_text(cst);
-            Ok(WithSpan { value: Expr::Symbol(s.clone(), cst.span.clone()), span: cst.span.clone() })
+            Ok(WithSpan {
+                value: Expr::Symbol(s.clone(), cst.span.clone()),
+                span: cst.span.clone(),
+            })
         }
         // Add more rules as needed (block, quote, define_form, etc.)
-        _ => Err(SutraAstBuildError::UnknownRule { span: cst.span.clone(), rule: cst.rule.clone() }),
+        _ => Err(SutraAstBuildError::UnknownRule {
+            span: cst.span.clone(),
+            rule: cst.rule.clone(),
+        }),
     }
 }
 

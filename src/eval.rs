@@ -24,7 +24,11 @@ impl EvalContext<'_, '_> {
     }
 
     /// A helper method to recursively call the evaluator with a new world state.
-    pub fn eval_in(&mut self, world: &World, expr: &WithSpan<Expr>) -> Result<(Value, World), SutraError> {
+    pub fn eval_in(
+        &mut self,
+        world: &World,
+        expr: &WithSpan<Expr>,
+    ) -> Result<(Value, World), SutraError> {
         eval_expr(expr, world, self.output, self.opts, self.depth + 1)
     }
 }

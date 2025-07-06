@@ -1,5 +1,5 @@
 use crate::ast::Span;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvalError {

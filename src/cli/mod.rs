@@ -4,7 +4,10 @@
 //! the core library functions.
 
 use crate::cli::args::{Command, SutraArgs};
-use crate::macros::{MacroRegistry, load_macros_from_file, MacroDef, MacroExpander, SutraMacroContext, SutraMacroExpander};
+use crate::macros::{
+    load_macros_from_file, MacroDef, MacroExpander, MacroRegistry, SutraMacroContext,
+    SutraMacroExpander,
+};
 use crate::{macros_std, parser};
 use clap::Parser;
 use std::{fs, process};
@@ -77,9 +80,13 @@ fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::E
         }
     }
 
-    let context = SutraMacroContext { registry, hygiene_scope: None };
+    let context = SutraMacroContext {
+        registry,
+        hygiene_scope: None,
+    };
     let expander = MacroExpander::default();
-    let expanded = expander.expand_macros(program.clone(), &context)
+    let expanded = expander
+        .expand_macros(program.clone(), &context)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{:?}", e)))?;
     println!("{}", expanded.value.pretty());
 
