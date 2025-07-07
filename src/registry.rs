@@ -22,10 +22,9 @@ use crate::macros_std;
 pub fn build_default_atom_registry() -> AtomRegistry {
     let mut registry = AtomRegistry::new();
     atoms_std::register_std_atoms(&mut registry);
-    #[cfg(feature = "test-atom")]
+    #[cfg(any(test, feature = "test-atom"))]
     {
-        // Regression: Ensure test atoms are only registered when the 'test-atom' feature is enabled.
-        // This proves the single source of truth registry is used by all pipeline stages.
+        // Regression: Ensure test atoms are only registered when the 'test-atom' feature is enabled or during tests.
         atoms_std::register_test_atoms(&mut registry);
     }
     registry

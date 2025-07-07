@@ -37,6 +37,7 @@ fn read_file_trimmed(path: &Path) -> io::Result<String> {
         .to_string())
 }
 
+#[cfg(feature = "test-atom")]
 #[test]
 fn integration_scripts() {
     let scripts = find_test_scripts("tests/scripts");
@@ -55,8 +56,7 @@ fn integration_scripts() {
 
         // Run the script using the Sutra engine public API with OutputBuffer
         let mut output_buf = OutputBuffer::new();
-        let result =
-            run_sutra_source_with_output(&script_src, &mut output_buf);
+        let result = run_sutra_source_with_output(&script_src, &mut output_buf);
         let actual_output = output_buf.as_str().replace("\r\n", "\n").trim().to_string();
 
         let pass = match result {

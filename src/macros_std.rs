@@ -54,18 +54,17 @@ fn expr_to_path(expr: &WithSpan<Expr>) -> Result<Path, SutraError> {
         Expr::Symbol(s, _) => Ok(Path(s.split('.').map(String::from).collect())),
         // List syntax: `(player score)`
         Expr::List(items, _) => {
-            let mut segments = Vec::new();
-            for item in items {
-                match &item.value {
-                    Expr::Symbol(s, _) => segments.push(s.clone()),
-                    Expr::String(s, _) => segments.push(s.clone()),
+            let segments: Result<Vec<_>, _> = items
+                .iter()
+                .map(|item| match &item.value {
+                    Expr::Symbol(s, _) | Expr::String(s, _) => Ok(s.clone()),
                     _ => Err(validation_error(
                         "Path lists can only contain symbols or strings.",
                         Some(item.span.clone()),
-                    ))?,
-                }
-            }
-            Ok(Path(segments))
+                    )),
+                })
+                .collect();
+            Ok(Path(segments?))
         }
         _ => Err(validation_error(
             "Invalid path format: expected a symbol or a list.",
@@ -100,40 +99,48 @@ fn wrap_in_get(expr: &WithSpan<Expr>) -> WithSpan<Expr> {
 // Macro Helpers
 // ---
 
+/// Validates that the given expression is a list with the expected number of arguments.
+/// Returns the items and span if valid, or a SutraError otherwise.
+fn expect_list_with_n_args<'a>(
+    expr: &'a WithSpan<Expr>,
+    n: usize,
+    macro_name: &str,
+) -> Result<(&'a [WithSpan<Expr>], &'a crate::ast::Span), SutraError> {
+    match &expr.value {
+        Expr::List(items, span) if items.len() == n => Ok((items, span)),
+        Expr::List(items, span) => Err(validation_error(
+            format!(
+                "Macro '{}' expects {} arguments, but got {}",
+                macro_name,
+                n - 1,
+                items.len() - 1
+            ),
+            Some(span.clone()),
+        )),
+        _ => Err(validation_error(
+            format!("Macro '{}' can only be applied to a list.", macro_name),
+            Some(expr.span.clone()),
+        )),
+    }
+}
+
 /// Helper for binary predicate macros like `is?`, `over?`, etc.
 fn create_binary_predicate_macro(
     expr: &WithSpan<Expr>,
     macro_name: &str,
     atom_name: &str,
 ) -> Result<WithSpan<Expr>, SutraError> {
-    match &expr.value {
-        Expr::List(items, span) => {
-            if items.len() != 3 {
-                Err(validation_error(
-                    format!(
-                        "Macro '{}' expects 2 arguments, but got {}",
-                        macro_name,
-                        items.len() - 1
-                    ),
-                    Some(span.clone()),
-                ))?
-            }
-            let atom_symbol = WithSpan {
-                value: Expr::Symbol(atom_name.to_string(), items[0].span.clone()),
-                span: items[0].span.clone(),
-            };
-            let arg1 = wrap_in_get(&items[1]);
-            let arg2 = wrap_in_get(&items[2]);
-            Ok(WithSpan {
-                value: Expr::List(vec![atom_symbol, arg1, arg2], span.clone()),
-                span: span.clone(),
-            })
-        }
-        _ => Err(validation_error(
-            format!("Macro '{}' can only be applied to a list.", macro_name),
-            Some(expr.span.clone()),
-        )),
-    }
+    let (items, span) = expect_list_with_n_args(expr, 3, macro_name)?;
+    let atom_symbol = WithSpan {
+        value: Expr::Symbol(atom_name.to_string(), items[0].span.clone()),
+        span: items[0].span.clone(),
+    };
+    let arg1 = wrap_in_get(&items[1]);
+    let arg2 = wrap_in_get(&items[2]);
+    Ok(WithSpan {
+        value: Expr::List(vec![atom_symbol, arg1, arg2], span.clone()),
+        span: span.clone(),
+    })
 }
 
 /// Helper for assignment macros like `add!`, `sub!`, etc.
@@ -142,49 +149,32 @@ fn create_assignment_macro(
     macro_name: &str,
     op_symbol: &str,
 ) -> Result<WithSpan<Expr>, SutraError> {
-    match &expr.value {
-        Expr::List(items, span) => {
-            if items.len() != 3 {
-                Err(validation_error(
-                    format!(
-                        "Macro '{}' expects 2 arguments, but got {}",
-                        macro_name,
-                        items.len() - 1
-                    ),
-                    Some(span.clone()),
-                ))?
-            }
-            let set_symbol = WithSpan {
-                value: Expr::Symbol("core/set!".to_string(), items[0].span.clone()),
-                span: items[0].span.clone(),
-            };
-            let path_arg = &items[1];
-            let canonical_path = WithSpan {
-                value: Expr::Path(expr_to_path(path_arg)?, path_arg.span.clone()),
-                span: path_arg.span.clone(),
-            };
-            let value_arg = items[2].clone();
-            let atom_symbol = WithSpan {
-                value: Expr::Symbol(op_symbol.to_string(), items[0].span.clone()),
-                span: items[0].span.clone(),
-            };
-            let inner_expr = WithSpan {
-                value: Expr::List(
-                    vec![atom_symbol, wrap_in_get(path_arg), value_arg],
-                    span.clone(),
-                ),
-                span: span.clone(),
-            };
-            Ok(WithSpan {
-                value: Expr::List(vec![set_symbol, canonical_path, inner_expr], span.clone()),
-                span: span.clone(),
-            })
-        }
-        _ => Err(validation_error(
-            format!("Macro '{}' can only be applied to a list.", macro_name),
-            Some(expr.span.clone()),
-        )),
-    }
+    let (items, span) = expect_list_with_n_args(expr, 3, macro_name)?;
+    let set_symbol = WithSpan {
+        value: Expr::Symbol("core/set!".to_string(), items[0].span.clone()),
+        span: items[0].span.clone(),
+    };
+    let path_arg = &items[1];
+    let canonical_path = WithSpan {
+        value: Expr::Path(expr_to_path(path_arg)?, path_arg.span.clone()),
+        span: path_arg.span.clone(),
+    };
+    let value_arg = items[2].clone();
+    let atom_symbol = WithSpan {
+        value: Expr::Symbol(op_symbol.to_string(), items[0].span.clone()),
+        span: items[0].span.clone(),
+    };
+    let inner_expr = WithSpan {
+        value: Expr::List(
+            vec![atom_symbol, wrap_in_get(path_arg), value_arg],
+            span.clone(),
+        ),
+        span: span.clone(),
+    };
+    Ok(WithSpan {
+        value: Expr::List(vec![set_symbol, canonical_path, inner_expr], span.clone()),
+        span: span.clone(),
+    })
 }
 
 // ---
@@ -298,48 +288,32 @@ pub fn expand_add(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
 /// assert!(matches!(expanded.value, Expr::List(_, _)));
 /// ```
 pub fn expand_sub(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
-    match &expr.value {
-        Expr::List(items, span) => {
-            if items.len() != 3 {
-                Err(validation_error(
-                    format!(
-                        "Macro 'sub!' expects 2 arguments, but got {}",
-                        items.len() - 1
-                    ),
-                    Some(span.clone()),
-                ))?
-            }
-            let set_symbol = WithSpan {
-                value: Expr::Symbol("core/set!".to_string(), items[0].span.clone()),
-                span: items[0].span.clone(),
-            };
-            let path_arg = &items[1];
-            let canonical_path = WithSpan {
-                value: Expr::Path(expr_to_path(path_arg)?, path_arg.span.clone()),
-                span: path_arg.span.clone(),
-            };
-            let value_arg = items[2].clone();
-            let atom_symbol = WithSpan {
-                value: Expr::Symbol("-".to_string(), items[0].span.clone()),
-                span: items[0].span.clone(),
-            };
-            let inner_expr = WithSpan {
-                value: Expr::List(
-                    vec![atom_symbol, wrap_in_get(path_arg), value_arg],
-                    span.clone(),
-                ),
-                span: span.clone(),
-            };
-            Ok(WithSpan {
-                value: Expr::List(vec![set_symbol, canonical_path, inner_expr], span.clone()),
-                span: span.clone(),
-            })
-        }
-        _ => Err(validation_error(
-            "Macro 'sub!' can only be applied to a list.".to_string(),
-            Some(expr.span.clone()),
-        )),
-    }
+    let (items, span) = expect_list_with_n_args(expr, 3, "sub!")?;
+    let set_symbol = WithSpan {
+        value: Expr::Symbol("core/set!".to_string(), items[0].span.clone()),
+        span: items[0].span.clone(),
+    };
+    let path_arg = &items[1];
+    let canonical_path = WithSpan {
+        value: Expr::Path(expr_to_path(path_arg)?, path_arg.span.clone()),
+        span: path_arg.span.clone(),
+    };
+    let value_arg = items[2].clone();
+    let atom_symbol = WithSpan {
+        value: Expr::Symbol("-".to_string(), items[0].span.clone()),
+        span: items[0].span.clone(),
+    };
+    let inner_expr = WithSpan {
+        value: Expr::List(
+            vec![atom_symbol, wrap_in_get(path_arg), value_arg],
+            span.clone(),
+        ),
+        span: span.clone(),
+    };
+    Ok(WithSpan {
+        value: Expr::List(vec![set_symbol, canonical_path, inner_expr], span.clone()),
+        span: span.clone(),
+    })
 }
 
 /// Expands `(inc! foo)` to `(core/set! (path foo) (+ (core/get foo) 1))`.
@@ -360,48 +334,32 @@ pub fn expand_sub(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
 /// assert!(matches!(expanded.value, Expr::List(_, _)));
 /// ```
 pub fn expand_inc(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
-    match &expr.value {
-        Expr::List(items, span) => {
-            if items.len() != 2 {
-                Err(validation_error(
-                    format!(
-                        "Macro 'inc!' expects 1 argument, but got {}",
-                        items.len() - 1
-                    ),
-                    Some(span.clone()),
-                ))?
-            }
-            let set_symbol = WithSpan {
-                value: Expr::Symbol("core/set!".to_string(), items[0].span.clone()),
-                span: items[0].span.clone(),
-            };
-            let path_arg = &items[1];
-            let canonical_path = WithSpan {
-                value: Expr::Path(expr_to_path(path_arg)?, path_arg.span.clone()),
-                span: path_arg.span.clone(),
-            };
-            let add_symbol = WithSpan {
-                value: Expr::Symbol("+".to_string(), items[0].span.clone()),
-                span: items[0].span.clone(),
-            };
-            let one = WithSpan {
-                value: Expr::Number(1.0, items[0].span.clone()),
-                span: items[0].span.clone(),
-            };
-            let inner_expr = WithSpan {
-                value: Expr::List(vec![add_symbol, wrap_in_get(path_arg), one], span.clone()),
-                span: span.clone(),
-            };
-            Ok(WithSpan {
-                value: Expr::List(vec![set_symbol, canonical_path, inner_expr], span.clone()),
-                span: span.clone(),
-            })
-        }
-        _ => Err(validation_error(
-            "Macro 'inc!' can only be applied to a list.".to_string(),
-            Some(expr.span.clone()),
-        )),
-    }
+    let (items, span) = expect_list_with_n_args(expr, 2, "inc!")?;
+    let set_symbol = WithSpan {
+        value: Expr::Symbol("core/set!".to_string(), items[0].span.clone()),
+        span: items[0].span.clone(),
+    };
+    let path_arg = &items[1];
+    let canonical_path = WithSpan {
+        value: Expr::Path(expr_to_path(path_arg)?, path_arg.span.clone()),
+        span: path_arg.span.clone(),
+    };
+    let add_symbol = WithSpan {
+        value: Expr::Symbol("+".to_string(), items[0].span.clone()),
+        span: items[0].span.clone(),
+    };
+    let one = WithSpan {
+        value: Expr::Number(1.0, items[0].span.clone()),
+        span: items[0].span.clone(),
+    };
+    let inner_expr = WithSpan {
+        value: Expr::List(vec![add_symbol, wrap_in_get(path_arg), one], span.clone()),
+        span: span.clone(),
+    };
+    Ok(WithSpan {
+        value: Expr::List(vec![set_symbol, canonical_path, inner_expr], span.clone()),
+        span: span.clone(),
+    })
 }
 
 /// Expands `(dec! foo)` to `(core/set! (path foo) (- (core/get foo) 1))`.
@@ -422,48 +380,32 @@ pub fn expand_inc(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
 /// assert!(matches!(expanded.value, Expr::List(_, _)));
 /// ```
 pub fn expand_dec(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
-    match &expr.value {
-        Expr::List(items, span) => {
-            if items.len() != 2 {
-                Err(validation_error(
-                    format!(
-                        "Macro 'dec!' expects 1 argument, but got {}",
-                        items.len() - 1
-                    ),
-                    Some(span.clone()),
-                ))?
-            }
-            let set_symbol = WithSpan {
-                value: Expr::Symbol("core/set!".to_string(), items[0].span.clone()),
-                span: items[0].span.clone(),
-            };
-            let path_arg = &items[1];
-            let canonical_path = WithSpan {
-                value: Expr::Path(expr_to_path(path_arg)?, path_arg.span.clone()),
-                span: path_arg.span.clone(),
-            };
-            let sub_symbol = WithSpan {
-                value: Expr::Symbol("-".to_string(), items[0].span.clone()),
-                span: items[0].span.clone(),
-            };
-            let one = WithSpan {
-                value: Expr::Number(1.0, items[0].span.clone()),
-                span: items[0].span.clone(),
-            };
-            let inner_expr = WithSpan {
-                value: Expr::List(vec![sub_symbol, wrap_in_get(path_arg), one], span.clone()),
-                span: span.clone(),
-            };
-            Ok(WithSpan {
-                value: Expr::List(vec![set_symbol, canonical_path, inner_expr], span.clone()),
-                span: span.clone(),
-            })
-        }
-        _ => Err(validation_error(
-            "Macro 'dec!' can only be applied to a list.".to_string(),
-            Some(expr.span.clone()),
-        )),
-    }
+    let (items, span) = expect_list_with_n_args(expr, 2, "dec!")?;
+    let set_symbol = WithSpan {
+        value: Expr::Symbol("core/set!".to_string(), items[0].span.clone()),
+        span: items[0].span.clone(),
+    };
+    let path_arg = &items[1];
+    let canonical_path = WithSpan {
+        value: Expr::Path(expr_to_path(path_arg)?, path_arg.span.clone()),
+        span: path_arg.span.clone(),
+    };
+    let sub_symbol = WithSpan {
+        value: Expr::Symbol("-".to_string(), items[0].span.clone()),
+        span: items[0].span.clone(),
+    };
+    let one = WithSpan {
+        value: Expr::Number(1.0, items[0].span.clone()),
+        span: items[0].span.clone(),
+    };
+    let inner_expr = WithSpan {
+        value: Expr::List(vec![sub_symbol, wrap_in_get(path_arg), one], span.clone()),
+        span: span.clone(),
+    };
+    Ok(WithSpan {
+        value: Expr::List(vec![set_symbol, canonical_path, inner_expr], span.clone()),
+        span: span.clone(),
+    })
 }
 
 /// Expands `(set! foo 42)` to `(core/set! (path foo) 42)`.
@@ -485,37 +427,21 @@ pub fn expand_dec(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
 /// assert!(matches!(expanded.value, Expr::List(_, _)));
 /// ```
 pub fn expand_set(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
-    match &expr.value {
-        Expr::List(items, span) => {
-            if items.len() != 3 {
-                Err(validation_error(
-                    format!(
-                        "Macro 'set!' expects 2 arguments, but got {}",
-                        items.len() - 1
-                    ),
-                    Some(span.clone()),
-                ))?
-            }
-            let atom_symbol = WithSpan {
-                value: Expr::Symbol("core/set!".to_string(), items[0].span.clone()),
-                span: items[0].span.clone(),
-            };
-            let path_arg = &items[1];
-            let canonical_path = WithSpan {
-                value: Expr::Path(expr_to_path(path_arg)?, path_arg.span.clone()),
-                span: path_arg.span.clone(),
-            };
-            let value_arg = items[2].clone();
-            Ok(WithSpan {
-                value: Expr::List(vec![atom_symbol, canonical_path, value_arg], span.clone()),
-                span: span.clone(),
-            })
-        }
-        _ => Err(validation_error(
-            "Macro 'set!' can only be applied to a list.".to_string(),
-            Some(expr.span.clone()),
-        )),
-    }
+    let (items, span) = expect_list_with_n_args(expr, 3, "set!")?;
+    let atom_symbol = WithSpan {
+        value: Expr::Symbol("core/set!".to_string(), items[0].span.clone()),
+        span: items[0].span.clone(),
+    };
+    let path_arg = &items[1];
+    let canonical_path = WithSpan {
+        value: Expr::Path(expr_to_path(path_arg)?, path_arg.span.clone()),
+        span: path_arg.span.clone(),
+    };
+    let value_arg = items[2].clone();
+    Ok(WithSpan {
+        value: Expr::List(vec![atom_symbol, canonical_path, value_arg], span.clone()),
+        span: span.clone(),
+    })
 }
 
 /// Expands `(get foo)` to `(core/get (path foo))`.
@@ -536,36 +462,20 @@ pub fn expand_set(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
 /// assert!(matches!(expanded.value, Expr::List(_, _)));
 /// ```
 pub fn expand_get(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
-    match &expr.value {
-        Expr::List(items, span) => {
-            if items.len() != 2 {
-                Err(validation_error(
-                    format!(
-                        "Macro 'get' expects 1 argument, but got {}",
-                        items.len() - 1
-                    ),
-                    Some(span.clone()),
-                ))?
-            }
-            let atom_symbol = WithSpan {
-                value: Expr::Symbol("core/get".to_string(), items[0].span.clone()),
-                span: items[0].span.clone(),
-            };
-            let path_arg = &items[1];
-            let canonical_path = WithSpan {
-                value: Expr::Path(expr_to_path(path_arg)?, path_arg.span.clone()),
-                span: path_arg.span.clone(),
-            };
-            Ok(WithSpan {
-                value: Expr::List(vec![atom_symbol, canonical_path], span.clone()),
-                span: span.clone(),
-            })
-        }
-        _ => Err(validation_error(
-            "Macro 'get' can only be applied to a list.".to_string(),
-            Some(expr.span.clone()),
-        )),
-    }
+    let (items, span) = expect_list_with_n_args(expr, 2, "get")?;
+    let atom_symbol = WithSpan {
+        value: Expr::Symbol("core/get".to_string(), items[0].span.clone()),
+        span: items[0].span.clone(),
+    };
+    let path_arg = &items[1];
+    let canonical_path = WithSpan {
+        value: Expr::Path(expr_to_path(path_arg)?, path_arg.span.clone()),
+        span: path_arg.span.clone(),
+    };
+    Ok(WithSpan {
+        value: Expr::List(vec![atom_symbol, canonical_path], span.clone()),
+        span: span.clone(),
+    })
 }
 
 /// Expands `(del! <path>)` to `(core/del! (path <...>))`.
@@ -586,90 +496,45 @@ pub fn expand_get(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
 /// assert!(matches!(expanded.value, Expr::List(_, _)));
 /// ```
 pub fn expand_del(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
-    match &expr.value {
-        Expr::List(items, span) => {
-            if items.len() != 2 {
-                Err(validation_error(
-                    format!(
-                        "Macro 'del!' expects 1 argument, but got {}",
-                        items.len() - 1
-                    ),
-                    Some(span.clone()),
-                ))?
-            }
-            let atom_symbol = WithSpan {
-                value: Expr::Symbol("core/del!".to_string(), items[0].span.clone()),
-                span: items[0].span.clone(),
-            };
-            let path_arg = &items[1];
-            let canonical_path = WithSpan {
-                value: Expr::Path(expr_to_path(path_arg)?, path_arg.span.clone()),
-                span: path_arg.span.clone(),
-            };
-            Ok(WithSpan {
-                value: Expr::List(vec![atom_symbol, canonical_path], span.clone()),
-                span: span.clone(),
-            })
-        }
-        _ => Err(validation_error(
-            "Macro 'del!' can only be applied to a list.".to_string(),
-            Some(expr.span.clone()),
-        )),
-    }
+    let (items, span) = expect_list_with_n_args(expr, 2, "del!")?;
+    let atom_symbol = WithSpan {
+        value: Expr::Symbol("core/del!".to_string(), items[0].span.clone()),
+        span: items[0].span.clone(),
+    };
+    let path_arg = &items[1];
+    let canonical_path = WithSpan {
+        value: Expr::Path(expr_to_path(path_arg)?, path_arg.span.clone()),
+        span: path_arg.span.clone(),
+    };
+    Ok(WithSpan {
+        value: Expr::List(vec![atom_symbol, canonical_path], span.clone()),
+        span: span.clone(),
+    })
 }
 
 /// Expands `(if <cond> <then> <else>)` to a canonical `Expr::If` node.
 pub fn expand_if(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
-    match &expr.value {
-        Expr::List(items, span) => {
-            if items.len() != 4 {
-                return Err(validation_error(
-                    format!(
-                        "Macro 'if' expects 3 arguments, but got {}",
-                        items.len() - 1
-                    ),
-                    Some(span.clone()),
-                ));
-            }
-            Ok(WithSpan {
-                value: Expr::If {
-                    condition: Box::new(items[1].clone()),
-                    then_branch: Box::new(items[2].clone()),
-                    else_branch: Box::new(items[3].clone()),
-                    span: span.clone(),
-                },
-                span: span.clone(),
-            })
-        }
-        _ => Err(validation_error(
-            "Macro 'if' can only be applied to a list.".to_string(),
-            Some(expr.span.clone()),
-        )),
-    }
+    let (items, span) = expect_list_with_n_args(expr, 4, "if")?;
+    Ok(WithSpan {
+        value: Expr::If {
+            condition: Box::new(items[1].clone()),
+            then_branch: Box::new(items[2].clone()),
+            else_branch: Box::new(items[3].clone()),
+            span: span.clone(),
+        },
+        span: span.clone(),
+    })
 }
 
 /// Expands `(print <expr>)` to `(core/print <expr>)`.
 pub fn expand_print(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
-    match &expr.value {
-        Expr::List(items, span) => {
-            if items.len() != 2 {
-                return Err(validation_error(
-                    format!("Macro 'print' expects 1 argument, got {}", items.len() - 1),
-                    Some(span.clone()),
-                ));
-            }
-            let atom_symbol = WithSpan {
-                value: Expr::Symbol("core/print".to_string(), items[0].span.clone()),
-                span: items[0].span.clone(),
-            };
-            Ok(WithSpan {
-                value: Expr::List(vec![atom_symbol, items[1].clone()], span.clone()),
-                span: span.clone(),
-            })
-        }
-        _ => Err(validation_error(
-            "Macro 'print' can only be applied to a list.".to_string(),
-            Some(expr.span.clone()),
-        )),
-    }
+    let (items, span) = expect_list_with_n_args(expr, 2, "print")?;
+    let atom_symbol = WithSpan {
+        value: Expr::Symbol("core/print".to_string(), items[0].span.clone()),
+        span: items[0].span.clone(),
+    };
+    Ok(WithSpan {
+        value: Expr::List(vec![atom_symbol, items[1].clone()], span.clone()),
+        span: span.clone(),
+    })
 }

@@ -34,9 +34,8 @@ pub fn run_sutra_source_with_output(
     let ast_nodes = parser::parse(source).map_err(|e| e.with_source(source))?;
 
     // 2. Partition AST nodes: macro definitions vs user code
-    let (macro_defs, user_code): (Vec<_>, Vec<_>) = ast_nodes
-        .into_iter()
-        .partition(is_macro_definition);
+    let (macro_defs, user_code): (Vec<_>, Vec<_>) =
+        ast_nodes.into_iter().partition(is_macro_definition);
 
     // 3. Build macro registry from macro_defs
     let mut user_macros = MacroRegistry::new();
@@ -77,7 +76,9 @@ pub fn run_sutra_source_with_output(
     let atom_registry = build_default_atom_registry();
     validate(&expanded, &env, &atom_registry).inspect_err(|e| {
         let span = match e {
-            SutraError { span: Some(span), .. } => Some(span.clone()),
+            SutraError {
+                span: Some(span), ..
+            } => Some(span.clone()),
             _ => None,
         };
         output.emit(&e.to_string(), span.as_ref());

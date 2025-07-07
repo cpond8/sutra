@@ -155,31 +155,25 @@ pub fn eval_expr(
                     }
                 }
                 Expr::Quote(_, _) => Ok((Value::Nil, world.clone())),
-                Expr::ParamList(_) => {
-                    Err(eval_general_error(
-                        Some(expr.span.clone()),
-                        expr,
-                        "Cannot evaluate parameter list (ParamList AST node) at runtime",
-                    ))
-                }
+                Expr::ParamList(_) => Err(eval_general_error(
+                    Some(expr.span.clone()),
+                    expr,
+                    "Cannot evaluate parameter list (ParamList AST node) at runtime",
+                )),
             }
         }
-        Expr::ParamList(_) => {
-            Err(eval_general_error(
-                Some(expr.span.clone()),
-                expr,
-                "Cannot evaluate parameter list (ParamList AST node) at runtime",
-            ))
-        }
-        Expr::Symbol(s, span) => {
-            Err(eval_type_error(
-                Some(span.clone()),
-                expr,
-                "eval",
-                "explicit (get ...) call",
-                &Value::String(s.clone()),
-            ))
-        }
+        Expr::ParamList(_) => Err(eval_general_error(
+            Some(expr.span.clone()),
+            expr,
+            "Cannot evaluate parameter list (ParamList AST node) at runtime",
+        )),
+        Expr::Symbol(s, span) => Err(eval_type_error(
+            Some(span.clone()),
+            expr,
+            "eval",
+            "explicit (get ...) call",
+            &Value::String(s.clone()),
+        )),
         Expr::Path(p, _) => Ok((Value::Path(p.clone()), world.clone())),
         Expr::String(s, _) => Ok((Value::String(s.clone()), world.clone())),
         Expr::Number(n, _) => Ok((Value::Number(*n), world.clone())),

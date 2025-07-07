@@ -47,7 +47,7 @@ pub fn register_std_atoms(registry: &mut AtomRegistry) {
     registry.register("core/print", ATOM_PRINT);
 }
 
-#[cfg(feature = "test-atom")]
+#[cfg(any(test, feature = "test-atom", debug_assertions))]
 pub fn register_test_atoms(registry: &mut crate::atom::AtomRegistry) {
     use crate::ast::Expr;
     use crate::ast::Span;

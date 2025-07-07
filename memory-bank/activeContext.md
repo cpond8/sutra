@@ -537,3 +537,10 @@ The highest-value, lowest-cost techniques (integration tests, registry hashing) 
 - See progress.md for project-wide status and blockers.
 
 ---
+
+# 2025-07-07: Macro/Atom Registry, Test System, and Rust Idiom Audit Complete
+
+- Macro/atom registry and test system are now fully Rust-idiomatic, with explicit anti-nesting audits and iterator combinator refactors complete.
+- Feature-gated (`test-atom`) and debug-assertion-based test atom registration is in place; integration tests that require test-only atoms are now feature-gated and optional.
+- Protocol for feature-gated/optional integration tests is documented in systemPatterns.md.
+- All code, tests, and documentation are up to date and compliant as of this session.

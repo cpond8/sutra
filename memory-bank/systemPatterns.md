@@ -83,6 +83,7 @@ This document captures the canonical architectural and design patterns, system-w
 - 2025-07-05: Macro system, CLI, and test harness refactor system patterns and changelog updated.
 - 2025-07-06: Batch refactor for Rust idiom compliance (implicit/explicit return style), match exhaustiveness, and error handling. Explicit returns for early exits restored. All match arms for Expr variants in eval_expr restored. Protocol-driven, batch-based, test-first approach enforced. All tests pass. Lesson: Always enumerate all functions for audit, not just those surfaced by search. Macro system helpers refactored for protocol compliance (pure, linear, early-return, documented, no deep nesting). Protocol-driven audit and batch-based, test-driven modernization enforced. Memory bank updated per protocol.
 - 2024-07-07: Added registry invariant regression test note.
+- 2025-07-07: Macro/atom registry and test system are now fully Rust-idiomatic, with anti-nesting audits and iterator combinator refactors complete. Feature-gated (test-atom) and debug-assertion-based test atom registration is in place; integration tests that require test-only atoms are now feature-gated and optional. Protocol for feature-gated/optional integration tests is documented here and in activeContext.md. All code, tests, and documentation are up to date and compliant as of this session.
 
 ## Core Architecture
 
@@ -340,6 +341,18 @@ _Last Updated: 2025-07-01_
 
 ### Registry Invariant Regression Test (2024-07-07)
 - Milestone complete: registry invariant is enforced, output pipeline is robust, and all integration tests pass.
+
+## Test Atom Registration Policy
+
+Test atoms (e.g., `test/echo`) are always registered in dev/debug builds (`cfg(debug_assertions)`), as well as for tests and the `test-atom` feature. This ensures integration tests and dev builds always have test atoms available, but they are not present in release builds. This policy is intentional to support seamless integration testing without requiring feature flags.
+
+## 2025-07-07: Feature-Gated and Optional Integration Test Protocol
+
+- Macro/atom registry and test system are now fully Rust-idiomatic, with explicit anti-nesting audits and iterator combinator refactors complete.
+- Test atoms (e.g., `test/echo`) are registered in dev/debug builds (`cfg(debug_assertions)`), for tests (`cfg(test)`), and when the `test-atom` feature is enabled.
+- Integration tests that require test-only atoms are now feature-gated and optional, using `#[cfg(feature = "test-atom")]` on the test function or file.
+- If the feature is not enabled, the test is skipped and does not fail.
+- This protocol is documented here and in activeContext.md, and is now the canonical approach for optional, feature-gated integration tests in the Sutra project.
 
 <!-- AUDIT ANNOTATIONS BEGIN -->
 

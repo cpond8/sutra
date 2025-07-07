@@ -120,6 +120,7 @@ See `docs/architecture/parsing-pipeline-plan.md` for the full plan and changelog
   - Documentation and memory bank files have been reviewed and are being updated for protocol compliance.
 - 2025-07-06: Batch refactor for Rust idiom compliance (implicit/explicit return style), match exhaustiveness, and error handling completed. Explicit returns for early exits restored. All match arms for Expr variants in eval_expr restored. Protocol-driven, batch-based, test-first approach enforced. All tests pass. Lesson: Always enumerate all functions for audit, not just those surfaced by search.
 - 2025-07-06: Macro system helpers (`check_arity`, `bind_macro_params`, `expand_template`, `substitute_template`, and `MacroTemplate::new`) refactored for maximal protocol compliance: pure, linear, early-return style, no deep nesting, and full documentation. All changes fully tested and audited. Memory bank and documentation updated per protocol.
+- 2025-07-07: Macro/atom registry and test system are now fully Rust-idiomatic, with anti-nesting audits and iterator combinator refactors complete. Feature-gated (test-atom) and debug-assertion-based test atom registration is in place; integration tests that require test-only atoms are now feature-gated and optional. Protocol for feature-gated/optional integration tests is documented in systemPatterns.md. All code, tests, and documentation are up to date and compliant as of this session.
 
 ## Macro System Refactor Progress
 
