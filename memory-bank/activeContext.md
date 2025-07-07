@@ -1,3 +1,6 @@
+# TOP PRIORITY: IMPLEMENT NATIVE .sutra FILE LOADING AND INTERPRETATION
+# The engine must first be able to load, parse, and interpret native `.sutra` files (written in the Sutra engine language, not Rust). This is the absolute prerequisite for all further macro migration, test suite rewrite, or native language support. No other work may proceed until this is complete.
+
 # TEST SUITE REWRITE REQUIRED
 # All tests must be rewritten to use only user-facing Sutra scripts (s-expr or braced), asserting only on observable output, world queries, or errors as surfaced to the user. No direct Rust API or internal data structure manipulation is permitted. See systemPatterns.md and README.md for protocol.
 
@@ -117,6 +120,9 @@ Batch-based, test-driven iteration is required: after each batch, re-run the ful
 - 2025-07-05: Macro system, CLI, and test harness refactor completed. Session summary and next steps added.
 - 2025-07-06: Batch refactor completed for Rust idiom compliance (implicit/explicit return style), match exhaustiveness, and error handling. All explicit returns for early exits restored where required. All match arms for Expr variants in eval_expr restored. Protocol-driven, batch-based, test-first approach enforced. All tests pass. Lesson: Always enumerate all functions for audit, not just those surfaced by search.
 - 2025-07-06: Macro system helpers refactored for protocol compliance (pure, linear, documented, no deep nesting). Full protocol-driven audit performed. All tests and docs updated. Memory bank changelogs updated per protocol.
+- **Integration Test Runner Bootstrapped (2025-07-06):**
+  - Created `tests/scripts/` directory and added first `.sutra` test script (`hello_world.sutra`) with expected output (`hello_world.expected`).
+  - This is the foundation for protocol-compliant, user-facing integration tests. See `progress.md` and `systemPatterns.md` for details.
 
 ## Rationale for Order
 
@@ -316,3 +322,218 @@ The highest-value, lowest-cost techniques (integration tests, registry hashing) 
 - Macro expansion engine is now refactored for purity, composability, and protocol compliance.
 - Macro expansion is handled by pure, single-responsibility functions.
 - All tests and lints pass; documentation is up to date and follows @Rust best practices.
+
+## Step-by-Step Plan: Native `.sutra` File Loading and Interpretation
+
+1. **Requirements & Scope Definition**
+   - Clarify MVP: engine must load a `.sutra` file, parse it, and execute it through the full pipeline (`parse → macro-expand → validate → evaluate → output`).
+   - All macro and user code must be loaded from `.sutra` source, not Rust.
+   - Document all interfaces and contracts before coding.
+
+2. **CLI & API Input Pathways**
+   - Add CLI argument (e.g., `sutra run <file.sutra>`) to specify a `.sutra` file to load and run.
+   - Support reading from stdin for piping scripts.
+   - Expose a public Rust API for loading and running `.sutra` source from a string or file.
+
+3. **File Reading & Error Handling**
+   - Implement robust file reading with clear, span-carrying error messages for missing/unreadable files.
+   - Test: Attempt to load a non-existent file and verify user-facing error output.
+
+4. **Parsing Pipeline Integration**
+   - Parse the loaded file using the canonical PEG parser, producing a `Vec<WithSpan<Expr>>` AST.
+   - All parse errors must include file name, line/col, and a clear message.
+   - Test: Parse a minimal valid and invalid `.sutra` file, verify error output.
+
+5. **Macro Loader from Source**
+   - Implement a macro loader that scans the parsed AST for macro definitions, registers them, and handles errors for duplicates/invalid forms.
+   - Test: Load a `.sutra` file with valid/invalid macro definitions, verify registry and error output.
+
+6. **User Code Extraction**
+   - Separate macro definitions from user code in the parsed AST.
+   - Ensure only user code is passed to macro expansion and evaluation.
+   - Test: Run a `.sutra` file with both macro definitions and user code, verify correct execution.
+
+7. **Pipeline Wiring**
+   - Wire up the full pipeline: `parse → macro-expand → validate → evaluate → output`.
+   - Ensure all stages are called in order, with clear error propagation and reporting.
+   - Test: Run a `.sutra` file that defines and uses a macro, verify correct expansion and evaluation.
+
+8. **Output & Diagnostics**
+   - Ensure all output is routed through the CLI output module, with clear formatting.
+   - Support tracing macro expansion and evaluation steps for debugging and transparency.
+   - Test: Run a `.sutra` file and verify output and trace diagnostics.
+
+9. **Documentation & Protocol Compliance**
+   - Update all relevant documentation (memory bank, CLI help, README, architecture docs).
+   - Add usage examples for running `.sutra` files.
+   - Document all new/changed interfaces and error messages.
+
+10. **Batch-Based, Test-Driven Iteration**
+    - After each batch: run the full test suite, update documentation and memory bank, only proceed when all tests pass and docs are current.
+
+11. **Quality & Protocol Audits**
+    - Run full protocol-driven audits: linting, formatting, test coverage, manual review for compliance, update memory bank with lessons learned.
+
+12. **Final Review & Release**
+    - Conduct a final review: ensure all requirements are met, docs are up to date, and the system is robust. Tag and release the version with native `.sutra` file support.
+
+### Guiding Principles (applied at every step):
+- Minimalism, Transparency, Compositionality, Test/Production Parity, Documentation-Driven, Batch-Based/Test-Driven.
+
+## Integration Test Runner Plan (for Native `.sutra` Scripts)
+
+### Purpose
+- Build a robust, protocol-compliant integration test runner for `.sutra` scripts.
+- Ensure all tests are discoverable, automatable, and produce clear, colorized, and auditable output.
+
+### Scope
+- The runner must:
+  - Execute all `.sutra` scripts in a test directory (e.g., `tests/scripts/`).
+  - Compare actual output/errors to expected results (from comments or sidecar files).
+  - Report pass/fail with clear diagnostics.
+  - Be extensible for future test types (macro expansion, error cases, world state queries).
+
+### Plan (Selected: Rust Integration Test Runner)
+1. **Create `tests/scripts/` directory** for `.sutra` test scripts.
+2. **Add sample `.sutra` scripts** with expected output (in comments or `.expected` files).
+3. **Implement `tests/script_runner.rs`**:
+   - Discover all `.sutra` files in `tests/scripts/`.
+   - For each file:
+     - Read the script and expected output.
+     - Run the script using the public API (`run_sutra_source`).
+     - Capture and compare output/errors.
+     - Report pass/fail with colorized output.
+   - Fail the test suite if any script fails.
+4. **Integrate with `cargo test`** for automation.
+5. **Document and cross-link** all test scripts and runner logic in the memory bank and `progress.md`.
+
+### Risks & Considerations
+- Output capture and comparison must be robust.
+- Standardize expected output format (top-of-file comment or `.expected` file).
+- Distinguish expected vs. unexpected errors.
+
+### Next Actions
+1. Create `tests/scripts/` and add at least one `.sutra` test script with expected output.
+2. Draft `tests/script_runner.rs` to discover and run all `.sutra` scripts.
+3. Implement output capture and comparison logic.
+4. Integrate colorized, protocol-compliant diagnostics and reporting.
+5. Document the test runner and scripts in the memory bank and cross-link in `progress.md`.
+
+### Rationale
+- Plan A (Rust integration test runner) is selected for protocol, audit, and Rust ecosystem alignment.
+- All steps are diagram-governed and protocol-compliant.
+- This plan is canonical and must be resumed in the next session.
+
+## Error Handling Refactor Plan (2025-07-06):
+  - Initiated a full audit and refactor of error handling across the Sutra engine.
+  - Goal: Standardize all public APIs to use `SutraError`, ensure all conversions from internal error types are explicit, and match all enum variant signatures exactly.
+  - Rationale: Persistent build/test errors traced to inconsistent error propagation and enum usage.
+  - See `progress.md` for stepwise plan and next actions.
+
+- Decision: Proceeding with the error handling refactor proposal as discussed in recent reviews and architectural notes.
+- Plan:
+  - Replace all error construction macros (e.g., eval_err!) with ergonomic, domain-specific and general constructor functions in error.rs.
+  - Centralize all error construction helpers in error.rs; remove scattered logic from other modules.
+  - Document the distinction between general-purpose and domain-specific error constructors, and provide onboarding guidance in error.rs.
+  - Only introduce a ContextualError trait if more than one structured error type (like EvalError) emerges, to avoid premature abstraction.
+  - Enforce usage of constructor helpers (and ban direct struct construction of SutraError outside error.rs) via a CI lint/test, with a possible future custom Clippy lint.
+- Rationale: This approach improves maintainability, onboarding, type safety, and user-facing error quality, and aligns with Rust best practices.
+- Next Steps: Begin implementation as per the proposal, update documentation and tests accordingly.
+
+# [2025-07-07] Error Handling Refactor Audit & Preparation (Batch 1)
+
+## Summary
+
+**This section records the protocol-driven audit and preparation for the error handling refactor, as required by the error-refactor-plan.md and memory bank protocol.**
+
+### Files/Locations with Direct `SutraError` Construction or Error Macro Usage
+- Direct `SutraError { ... }` construction found in:
+  - src/parser.rs (parsing errors, malformed AST, internal parse errors)
+  - src/macros.rs (macro expansion errors, duplicate macro names, parameter validation)
+  - src/eval.rs (evaluation errors, recursion depth, type/arity errors)
+  - src/atoms_std.rs (atom contract errors, type/arity errors)
+  - src/macros_std.rs (macro helpers, path canonicalization errors)
+  - src/cli/output.rs (output formatting, error printing)
+  - src/cli/mod.rs (CLI error handling)
+  - src/validate.rs (validation errors)
+- Error construction macros (`eval_err!`, etc.) found in:
+  - src/atoms_std.rs (extensive use for arity/type/general errors)
+  - Possibly other modules (to be confirmed in next batch)
+
+### Identified Error Domains & Patterns
+- **General:** parse, macro, validation, IO, malformed AST, internal parse
+- **Domain-specific:** eval_arity_error, eval_type_error, eval_general_error, macro expansion errors, atom contract errors
+- **Patterns:**
+  - Most errors constructed with kind, message, and optional span
+  - Macros wrap common error patterns for brevity (to be replaced by helpers)
+
+### Rationale & Protocol
+- All error handling must be robust, ergonomic, and span-carrying, with clear, actionable messages
+- Centralize all error construction in error.rs using ergonomic, domain-specific and general helpers
+- Remove all error macros and direct struct construction outside error.rs
+- Enforce via CI/lint and update all documentation and onboarding
+- Batch-based, test-driven modernization: after each batch, re-run tests and update memory bank
+
+### Next Steps
+- Implement constructor helpers in error.rs (Step B)
+- Remove macros and update call sites (Step C)
+- Update tests and documentation after each batch
+
+**See also:** docs/architecture/error-refactor-plan.md, memory-bank/progress.md, memory-bank/systemPatterns.md, memory-bank/projectPatterns.md
+
+# [2024-07-07] Error Handling Refactor Progress Update
+
+## Summary
+
+- **Preparation, constructor helpers, macro removal, and call site migration (esp. src/atoms_std.rs) are complete.**
+- All findings, rationale, and protocol are documented in error-refactor-plan.md and the memory bank.
+- **Outstanding issues:**
+  - Duplicate import of `Span` in `src/error.rs` (remove one)
+  - Missing imports for error helpers in `src/eval.rs` (add `recursion_depth_error`, `eval_arity_error`, `eval_type_error`, `eval_general_error`)
+  - Unused imports in `src/eval.rs` and `src/parser.rs` (remove `EvalError`, `SutraErrorKind`, etc.)
+  - Incorrect use of `Default::default()` in error helpers in `src/error.rs` (remove or replace)
+  - Trait implementation missing for `EvalError` (implement `Display` or use `{:?}` in `src/lib.rs`)
+  - Type mismatch in closure arguments in `src/lib.rs` (ensure error types are consistent)
+- See error-refactor-plan.md for full plan, status, and next steps.
+- See progress.md for project-wide status and blockers.
+
+---
+
+## [2025-07-07] Debugging and Validator Refactor Context
+
+### Validator Registry Refactor (Critical Blocker)
+- **Issue:** Integration test failures persist due to the validator not recognizing atoms (e.g., `core/print`) that are present in the canonical atom registry but not in macro registries.
+- **Root Cause:** The validator currently only checks macro registries (`user_macros`, `core_macros`) and does not receive or use the canonical atom registry.
+- **Required Change:** Refactor the validator to always receive and use the canonical atom registry, passed from the main code path. The validator must check the atom registry for symbols not found in macro registries before reporting errors.
+- **Rationale:** This aligns with the registry pattern (see `systemPatterns.md` and `error-refactor-plan.md`), ensures test/production parity, and resolves the current integration test blocker.
+- **Status:** Debugging confirmed that macro expansion and atom registration are correct; the validator is the point of failure. Refactor is now top priority.
+- **Next Steps:**
+  1. Refactor validator and all call sites to accept and use the atom registry.
+  2. Update tests and documentation.
+  3. Re-run integration tests to confirm resolution.
+
+## [2024-07-07] Registry Invariant Regression Test
+- The single source of truth atom registry invariant is now enforced by a dedicated regression test (`test/echo`).
+- All pipeline stages are guaranteed to use the canonical registry.
+
+## [2024-07-07] Registry Invariant and Output Pipeline Complete
+- Registry invariant is fully enforced and tested; output emission is correct and robust.
+- All integration tests pass.
+
+## [2024-07-08] Final State: Error Handling & Registry Invariant
+- Error handling refactor complete: all helpers used, all direct struct construction removed.
+- All tests pass with and without test-atom feature.
+- CI runs both test modes to enforce registry invariant.
+- Registry invariant is enforced and regression-tested.
+- All requirements from error-refactor-plan.md are satisfied.
+
+# [2024-07-08] Error Handling Refactor & Linter/Clippy Cleanup Complete
+
+- All outstanding linter and clippy warnings/errors have been resolved.
+- All error handling is now routed through ergonomic, documented helpers; no direct struct construction or macros remain outside error.rs.
+- All function signatures and test runners have been updated for protocol compliance.
+- The full test suite passes with all features enabled.
+- The codebase is now fully compliant with the error-refactor plan, registry invariant, and Rust protocol.
+- See progress.md for project-wide status and blockers.
+
+---

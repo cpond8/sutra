@@ -1,5 +1,6 @@
 use crate::path::Path;
 use im::HashMap;
+use std::fmt;
 
 /// Represents a value in the Sutra engine.
 ///
@@ -94,6 +95,40 @@ impl Value {
         match self {
             Value::Bool(b) => Some(*b),
             _ => None,
+        }
+    }
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Nil => write!(f, "nil"),
+            Value::Number(n) => write!(f, "{}", n),
+            Value::String(s) => write!(f, "{}", s),
+            Value::Bool(b) => write!(f, "{}", b),
+            Value::List(items) => {
+                write!(f, "(")?;
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " ")?;
+                    }
+                    write!(f, "{}", item)?;
+                }
+                write!(f, ")")
+            }
+            Value::Map(map) => {
+                write!(f, "{{")?;
+                let mut first = true;
+                for (k, v) in map.iter() {
+                    if !first {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}: {}", k, v)?;
+                    first = false;
+                }
+                write!(f, "}}")
+            }
+            Value::Path(p) => write!(f, "{}", p),
         }
     }
 }

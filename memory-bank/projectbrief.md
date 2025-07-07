@@ -21,6 +21,10 @@ Sutra aspires to be a **universal substrate for compositional, emergent, and nar
 
 > **Protocol Requirement:** All tests must be written as user-facing Sutra scripts (s-expr or braced), asserting only on observable output, world queries, or errors as surfaced to the user. No direct Rust API or internal data structure manipulation is permitted. A full test suite rewrite is required to comply with this protocol. See `memory-bank/README.md` and `memory-bank/activeContext.md` for details.
 
+- **Integration Test Runner Bootstrapped (2025-07-06):**
+  - `tests/scripts/` directory created for protocol-compliant integration tests.
+  - First `.sutra` test script (`hello_world.sutra`) and expected output (`hello_world.expected`) added. See `activeContext.md` and `progress.md`.
+
 ## Key Design Philosophy
 
 **Minimalism as Power**: Following Scheme/Lisp tradition where a tiny set of core forms serves as the basis for an expressive, extensible, and Turing-complete language.

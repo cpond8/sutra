@@ -14,6 +14,7 @@
 
 use crate::ast::{Expr, WithSpan};
 use crate::atom::{AtomFn, AtomRegistry};
+use crate::error::{eval_arity_error, eval_general_error, eval_type_error};
 use crate::error::{EvalError, SutraError, SutraErrorKind};
 use crate::eval::EvalContext;
 use crate::value::Value;
@@ -42,6 +43,38 @@ pub fn register_std_atoms(registry: &mut AtomRegistry) {
     registry.register("list", ATOM_LIST);
     registry.register("len", ATOM_LEN);
     registry.register("error", ATOM_ERROR);
+    registry.register("print", ATOM_PRINT);
+    registry.register("core/print", ATOM_PRINT);
+}
+
+#[cfg(feature = "test-atom")]
+pub fn register_test_atoms(registry: &mut crate::atom::AtomRegistry) {
+    use crate::ast::Expr;
+    use crate::ast::Span;
+    use crate::ast::WithSpan;
+    use crate::error::SutraError;
+    use crate::eval::EvalContext;
+    use crate::value::Value;
+    use crate::world::World;
+
+    fn test_echo_atom(
+        args: &[WithSpan<Expr>],
+        _ctx: &mut EvalContext,
+        _span: &Span,
+    ) -> Result<(Value, World), SutraError> {
+        if let Some(first) = args.first() {
+            match &first.value {
+                Expr::String(s, _) => Ok((Value::String(s.clone()), _ctx.world.clone())),
+                _ => Ok((
+                    Value::String(format!("{:?}", first.value)),
+                    _ctx.world.clone(),
+                )),
+            }
+        } else {
+            Ok((Value::String("".to_string()), _ctx.world.clone()))
+        }
+    }
+    registry.register("test/echo", test_echo_atom);
 }
 
 /*
@@ -55,67 +88,6 @@ where the full engine context is available. See tests/ for examples.
 // ---
 // Error Handling & Helpers
 // ---
-
-macro_rules! eval_err {
-    (arity, $span:expr, $args:expr, $name:expr, $expected:expr) => {
-        SutraError {
-            kind: SutraErrorKind::Eval(EvalError {
-                message: format!(
-                    "`{}` expects {} arguments, got {}",
-                    $name,
-                    $expected,
-                    $args.len()
-                ),
-                expanded_code: WithSpan {
-                    value: Expr::List($args.to_vec(), $span.clone()),
-                    span: $span.clone(),
-                }
-                .value
-                .pretty(),
-                original_code: None,
-                suggestion: None,
-            }),
-            span: Some($span.clone()),
-        }
-    };
-    (type, $expr:expr, $name:expr, $expected:expr, $actual:expr) => {{
-        let span = $expr.span.clone();
-        let pretty = match &$expr.value {
-            Expr::List(items, span) => WithSpan {
-                value: Expr::List(items.to_vec(), span.clone()),
-                span: span.clone(),
-            }
-            .value
-            .pretty(),
-            _ => $expr.value.pretty(),
-        };
-        SutraError {
-            kind: SutraErrorKind::Eval(EvalError {
-                message: format!(
-                    "`{}` expects {}, got {}",
-                    $name,
-                    $expected,
-                    $actual.type_name()
-                ),
-                expanded_code: pretty,
-                original_code: None,
-                suggestion: None,
-            }),
-            span: Some(span),
-        }
-    }};
-    (general, $expr:expr, $msg:expr) => {
-        SutraError {
-            kind: SutraErrorKind::Eval(EvalError {
-                message: $msg.to_string(),
-                expanded_code: $expr.value.pretty(),
-                original_code: None,
-                suggestion: None,
-            }),
-            span: Some($expr.span.clone()),
-        }
-    };
-}
 
 fn eval_args(
     args: &[WithSpan<Expr>],
@@ -139,13 +111,24 @@ fn eval_args(
 macro_rules! eval_binary_op {
     ($args:expr, $context:expr, $parent_span:expr, $op:expr, $name:expr) => {{
         if $args.len() != 2 {
-            return Err(eval_err!(arity, $parent_span, $args, $name, 2));
+            return Err(eval_arity_error(
+                Some($parent_span.clone()),
+                $args,
+                $name,
+                2,
+            ));
         }
         let (val1, world1) = $context.eval(&$args[0])?;
         let (val2, world2) = $context.eval_in(&world1, &$args[1])?;
         match (&val1, &val2) {
             (Value::Number(n1), Value::Number(n2)) => Ok(($op(*n1, *n2), world2)),
-            _ => Err(eval_err!(type, &$args[0], $name, "two Numbers", &val1)),
+            _ => Err(eval_type_error(
+                Some($parent_span.clone()),
+                &$args[0],
+                $name,
+                "two Numbers",
+                &val1,
+            )),
         }
     }};
 }
@@ -157,7 +140,12 @@ macro_rules! eval_binary_op {
 /// (core/set! <path> <value>)
 pub const ATOM_CORE_SET: AtomFn = |args, context, parent_span| {
     if args.len() != 2 {
-        Err(eval_err!(arity, parent_span, args, "core/set!", 2))?
+        Err(eval_arity_error(
+            Some(parent_span.clone()),
+            args,
+            "core/set!",
+            2,
+        ))?
     }
     let (path_val, world1) = context.eval(&args[0])?;
     let (value, world2) = context.eval_in(&world1, &args[1])?;
@@ -166,58 +154,88 @@ pub const ATOM_CORE_SET: AtomFn = |args, context, parent_span| {
         let new_world = world2.set(&path, value);
         Ok((Value::default(), new_world))
     } else {
-        Err(eval_err!(type, &args[0], "core/set!", "a Path", &path_val))?
+        Err(eval_type_error(
+            Some(parent_span.clone()),
+            &args[0],
+            "core/set!",
+            "a Path",
+            &path_val,
+        ))?
     }
 };
 
 /// (core/get <path>)
 pub const ATOM_CORE_GET: AtomFn = |args, context, parent_span| {
     if args.len() != 1 {
-        Err(eval_err!(arity, parent_span, args, "core/get", 1))?
+        Err(eval_arity_error(
+            Some(parent_span.clone()),
+            args,
+            "core/get",
+            1,
+        ))?
     }
     let (path_val, world) = context.eval(&args[0])?;
     if let Value::Path(path) = path_val {
         let value = world.get(&path).cloned().unwrap_or_default();
         Ok((value, world))
     } else {
-        Err(eval_err!(type, &args[0], "core/get", "a Path", &path_val))?
+        Err(eval_type_error(
+            Some(parent_span.clone()),
+            &args[0],
+            "core/get",
+            "a Path",
+            &path_val,
+        ))?
     }
 };
 
 /// (core/del! <path>)
 pub const ATOM_CORE_DEL: AtomFn = |args, context, parent_span| {
     if args.len() != 1 {
-        Err(eval_err!(arity, parent_span, args, "core/del!", 1))?
+        Err(eval_arity_error(
+            Some(parent_span.clone()),
+            args,
+            "core/del!",
+            1,
+        ))?
     }
     let (path_val, world) = context.eval(&args[0])?;
     if let Value::Path(path) = path_val {
         let new_world = world.del(&path);
         Ok((Value::default(), new_world))
     } else {
-        Err(eval_err!(type, &args[0], "core/del!", "a Path", &path_val))?
+        Err(eval_type_error(
+            Some(parent_span.clone()),
+            &args[0],
+            "core/del!",
+            "a Path",
+            &path_val,
+        ))?
     }
 };
 
 /// (+ <args...>)
 pub const ATOM_ADD: AtomFn = |args, context, parent_span| {
     if args.len() < 2 {
-        Err(eval_err!(arity, parent_span, args, "+", "at least 2"))?
+        Err(eval_arity_error(
+            Some(parent_span.clone()),
+            args,
+            "+",
+            "at least 2",
+        ))?
     }
     let (values, world) = eval_args(args, context)?;
     let mut sum = 0.0;
-    for v in &values {
+    for (i, v) in values.iter().enumerate() {
         if let Value::Number(n) = v {
             sum += n;
         } else {
-            Err(eval_err!(
-                type,
-                &WithSpan {
-                    value: Expr::List(args.to_vec(), parent_span.clone()),
-                    span: parent_span.clone()
-                },
+            Err(eval_type_error(
+                Some(parent_span.clone()),
+                &args[i],
                 "+",
                 "a Number",
-                v
+                v,
             ))?
         }
     }
@@ -227,7 +245,7 @@ pub const ATOM_ADD: AtomFn = |args, context, parent_span| {
 /// (eq? <a> <b>)
 pub const ATOM_EQ: AtomFn = |args, context, parent_span| {
     if args.len() != 2 {
-        Err(eval_err!(arity, parent_span, args, "eq?", 2))?
+        Err(eval_arity_error(Some(parent_span.clone()), args, "eq?", 2))?
     }
     let (v1, w1) = context.eval(&args[0])?;
     let (v2, w2) = context.eval_in(&w1, &args[1])?;
@@ -254,19 +272,16 @@ pub const ATOM_SUB: AtomFn = |args, context, parent_span| {
 pub const ATOM_MUL: AtomFn = |args, context, parent_span| {
     let (values, world) = eval_args(args, context)?;
     let mut product = 1.0;
-    for v in &values {
+    for (i, v) in values.iter().enumerate() {
         if let Value::Number(n) = v {
             product *= n;
         } else {
-            return Err(eval_err!(
-                type,
-                &WithSpan {
-                    value: Expr::List(args.to_vec(), parent_span.clone()),
-                    span: parent_span.clone()
-                },
+            return Err(eval_type_error(
+                Some(parent_span.clone()),
+                &args[i],
                 "*",
                 "a Number",
-                v
+                v,
             ));
         }
     }
@@ -276,26 +291,25 @@ pub const ATOM_MUL: AtomFn = |args, context, parent_span| {
 /// (/ <a> <b>)
 pub const ATOM_DIV: AtomFn = |args, context, parent_span| {
     if args.len() != 2 {
-        return Err(eval_err!(arity, parent_span, args, "/", 2));
+        return Err(eval_arity_error(Some(parent_span.clone()), args, "/", 2));
     }
     let (v1, w1) = context.eval(&args[0])?;
     let (v2, w2) = context.eval_in(&w1, &args[1])?;
     match (v1, v2) {
         (Value::Number(n1), Value::Number(n2)) if n2 != 0.0 => Ok((Value::Number(n1 / n2), w2)),
-        (Value::Number(_), Value::Number(n2)) if n2 == 0.0 => {
-            Err(eval_err!(general, &args[1], "Division by zero"))
-        }
-        (a, b) => Err(eval_err!(
-            general,
-            &WithSpan {
-                value: Expr::List(args.to_vec(), parent_span.clone()),
-                span: parent_span.clone()
-            },
-            &format!(
+        (Value::Number(_), Value::Number(n2)) if n2 == 0.0 => Err(eval_general_error(
+            Some(parent_span.clone()),
+            &args[1],
+            "Division by zero",
+        )),
+        (a, b) => Err(eval_general_error(
+            Some(parent_span.clone()),
+            &args[0],
+            format!(
                 "`/` expects two Numbers, got {} and {}",
                 a.type_name(),
                 b.type_name()
-            )
+            ),
         )),
     }
 };
@@ -335,12 +349,18 @@ pub const ATOM_LTE: AtomFn = |args, context, parent_span| {
 /// (not <a>)
 pub const ATOM_NOT: AtomFn = |args, context, parent_span| {
     if args.len() != 1 {
-        return Err(eval_err!(arity, parent_span, args, "not", 1));
+        return Err(eval_arity_error(Some(parent_span.clone()), args, "not", 1));
     }
     let (v, world) = context.eval(&args[0])?;
     match v {
         Value::Bool(b) => Ok((Value::Bool(!b), world)),
-        _ => Err(eval_err!(type, &args[0], "not", "a Boolean", v)),
+        _ => Err(eval_type_error(
+            Some(parent_span.clone()),
+            &args[0],
+            "not",
+            "a Boolean",
+            &v,
+        )),
     }
 };
 
@@ -353,53 +373,57 @@ pub const ATOM_LIST: AtomFn = |args, context, _| {
 /// (len <list-or-string>)
 pub const ATOM_LEN: AtomFn = |args, context, parent_span| {
     if args.len() != 1 {
-        return Err(eval_err!(arity, parent_span, args, "len", 1));
+        return Err(eval_arity_error(Some(parent_span.clone()), args, "len", 1));
     }
     let (val, world) = context.eval(&args[0])?;
     match val {
         Value::List(ref items) => Ok((Value::Number(items.len() as f64), world)),
         Value::String(ref s) => Ok((Value::Number(s.len() as f64), world)),
-        _ => Err(eval_err!(type, &args[0], "len", "a List or String", &val)),
+        _ => Err(eval_type_error(
+            Some(parent_span.clone()),
+            &args[0],
+            "len",
+            "a List or String",
+            &val,
+        )),
     }
 };
 
 /// (mod <a> <b>)
 pub const ATOM_MOD: AtomFn = |args, context, parent_span| {
     if args.len() != 2 {
-        return Err(eval_err!(arity, parent_span, args, "mod", 2));
+        return Err(eval_arity_error(Some(parent_span.clone()), args, "mod", 2));
     }
     let (v1, w1) = context.eval(&args[0])?;
     let (v2, w2) = context.eval_in(&w1, &args[1])?;
     match (v1, v2) {
         (Value::Number(n1), Value::Number(n2)) => {
             if n2 == 0.0 {
-                return Err(eval_err!(general, &args[1], "Modulo by zero"));
+                return Err(eval_general_error(
+                    Some(parent_span.clone()),
+                    &args[1],
+                    "Modulo by zero",
+                ));
             }
             if n1.fract() != 0.0 || n2.fract() != 0.0 {
-                return Err(eval_err!(
-                    type,
-                    &WithSpan {
-                        value: Expr::List(args.to_vec(), parent_span.clone()),
-                        span: parent_span.clone()
-                    },
+                return Err(eval_type_error(
+                    Some(parent_span.clone()),
+                    &args[0],
                     "mod",
                     "two Integers",
-                    &Value::Number(n1)
+                    &Value::Number(n1),
                 ));
             }
             Ok((Value::Number((n1 as i64 % n2 as i64) as f64), w2))
         }
-        (a, b) => Err(eval_err!(
-            general,
-            &WithSpan {
-                value: Expr::List(args.to_vec(), parent_span.clone()),
-                span: parent_span.clone()
-            },
-            &format!(
+        (a, b) => Err(eval_general_error(
+            Some(parent_span.clone()),
+            &args[0],
+            format!(
                 "`mod` expects two Integers, got {} and {}",
                 a.type_name(),
                 b.type_name()
-            )
+            ),
         )),
     }
 };
@@ -407,7 +431,12 @@ pub const ATOM_MOD: AtomFn = |args, context, parent_span| {
 /// (error <message>)
 pub const ATOM_ERROR: AtomFn = |args, context, parent_span| {
     if args.len() != 1 {
-        return Err(eval_err!(arity, parent_span, args, "error", 1));
+        return Err(eval_arity_error(
+            Some(parent_span.clone()),
+            args,
+            "error",
+            1,
+        ));
     }
     let (msg_val, _world) = context.eval(&args[0])?;
     if let Value::String(msg) = msg_val {
@@ -426,6 +455,27 @@ pub const ATOM_ERROR: AtomFn = |args, context, parent_span| {
             span: Some(parent_span.clone()),
         })
     } else {
-        Err(eval_err!(type, &args[0], "error", "a String", msg_val))
+        Err(eval_type_error(
+            Some(parent_span.clone()),
+            &args[0],
+            "error",
+            "a String",
+            &msg_val,
+        ))
     }
+};
+
+/// (print <value>)
+pub const ATOM_PRINT: AtomFn = |args, context, parent_span| {
+    if args.len() != 1 {
+        return Err(eval_arity_error(
+            Some(parent_span.clone()),
+            args,
+            "print",
+            1,
+        ));
+    }
+    let (val, world) = context.eval(&args[0])?;
+    context.output.emit(&val.to_string(), Some(parent_span));
+    Ok((Value::Nil, world)) // Return Nil so the engine does not print again
 };

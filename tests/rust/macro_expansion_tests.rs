@@ -27,10 +27,7 @@ mod tests {
         fn dummy_macro(
             _expr: &sutra::ast::WithSpan<sutra::ast::Expr>,
         ) -> Result<sutra::ast::WithSpan<sutra::ast::Expr>, sutra::error::SutraError> {
-            Err(sutra::error::SutraError {
-                kind: sutra::error::SutraErrorKind::Macro("dummy".to_string()),
-                span: None,
-            })
+            Err(sutra::error::SutraError::new("dummy"))
         }
         registry
             .macros

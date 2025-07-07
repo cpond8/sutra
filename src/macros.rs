@@ -17,7 +17,7 @@
 //! **INVARIANT:** All macro system logic, macro functions, and recursive expansion must operate on `WithSpan<Expr>`. Never unwrap to a bare `Expr` except for internal logic, and always re-wrap with the correct span. All lists are `Vec<WithSpan<Expr>>`.
 
 use crate::ast::{Expr, WithSpan};
-use crate::error::{SutraError, SutraErrorKind};
+use crate::error::{io_error, macro_error, SutraError};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fs;
 
@@ -123,10 +123,7 @@ pub fn parse_macros_from_source(source: &str) -> Result<Vec<(String, MacroTempla
 
 /// Thin wrapper: loads macro definitions from a file.
 pub fn load_macros_from_file(path: &str) -> Result<Vec<(String, MacroTemplate)>, SutraError> {
-    let source = fs::read_to_string(path).map_err(|e| SutraError {
-        kind: SutraErrorKind::Io(e.to_string()),
-        span: None,
-    })?;
+    let source = fs::read_to_string(path).map_err(|e| io_error(e.to_string(), None))?;
     parse_macros_from_source(&source)
 }
 
@@ -148,17 +145,17 @@ fn try_parse_macro_form(
         return Ok(None);
     }
     let Expr::ParamList(param_list) = &items[1].value else {
-        Err(SutraError {
-            kind: SutraErrorKind::Macro("Macro parameter list must be a ParamList.".to_string()),
-            span: Some(items[1].span.clone()),
-        })?
+        Err(macro_error(
+            "Macro parameter list must be a ParamList.".to_string(),
+            Some(items[1].span.clone()),
+        ))?
     };
     let macro_name = extract_macro_name(param_list)?;
     if !names_seen.insert(macro_name.clone()) {
-        Err(SutraError {
-            kind: SutraErrorKind::Macro(format!("Duplicate macro name '{}'.", macro_name)),
-            span: Some(param_list.span.clone()),
-        })?
+        Err(macro_error(
+            format!("Duplicate macro name '{}'.", macro_name),
+            Some(param_list.span.clone()),
+        ))?
     }
     let params = crate::ast::ParamList {
         required: param_list.required[1..].to_vec(),
@@ -173,12 +170,10 @@ fn extract_macro_name(param_list: &crate::ast::ParamList) -> Result<String, Sutr
     if let Some(name) = param_list.required.first() {
         Ok(name.clone())
     } else {
-        Err(SutraError {
-            kind: SutraErrorKind::Macro(
-                "Macro name must be the first element of the parameter list.".to_string(),
-            ),
-            span: Some(param_list.span.clone()),
-        })?
+        Err(macro_error(
+            "Macro name must be the first element of the parameter list.".to_string(),
+            Some(param_list.span.clone()),
+        ))?
     }
 }
 
@@ -191,13 +186,10 @@ fn check_no_duplicate_params(
     let mut seen = std::collections::HashSet::new();
     for name in all_names {
         if !seen.insert(name) {
-            return Err(SutraError {
-                kind: SutraErrorKind::Macro(format!(
-                    "Duplicate parameter name '{}' in macro definition.",
-                    name
-                )),
-                span: Some(span.clone()),
-            });
+            return Err(macro_error(
+                format!("Duplicate parameter name '{}' in macro definition.", name),
+                Some(span.clone()),
+            ));
         }
     }
     Ok(())
@@ -227,24 +219,24 @@ pub fn check_arity(
     span: &crate::ast::Span,
 ) -> Result<(), SutraError> {
     if args_len < params.required.len() {
-        return Err(SutraError {
-            kind: SutraErrorKind::Macro(format!(
+        return Err(macro_error(
+            format!(
                 "Macro expects at least {} arguments, but got {}.",
                 params.required.len(),
                 args_len
-            )),
-            span: Some(span.clone()),
-        });
+            ),
+            Some(span.clone()),
+        ));
     }
     if params.rest.is_none() && args_len > params.required.len() {
-        return Err(SutraError {
-            kind: SutraErrorKind::Macro(format!(
+        return Err(macro_error(
+            format!(
                 "Macro expects exactly {} arguments, but got {}.",
                 params.required.len(),
                 args_len
-            )),
-            span: Some(span.clone()),
-        });
+            ),
+            Some(span.clone()),
+        ));
     }
     Ok(())
 }
@@ -287,21 +279,21 @@ pub fn expand_template(
     depth: usize,
 ) -> Result<WithSpan<Expr>, SutraError> {
     if depth > MAX_MACRO_RECURSION_DEPTH {
-        return Err(SutraError {
-            kind: SutraErrorKind::Macro(format!(
+        return Err(macro_error(
+            format!(
                 "Macro expansion recursion limit ({}) exceeded.",
                 MAX_MACRO_RECURSION_DEPTH
-            )),
-            span: Some(call.span.clone()),
-        });
+            ),
+            Some(call.span.clone()),
+        ));
     }
     let (args, span) = match &call.value {
         Expr::List(items, span) if items.len() > 1 => (&items[1..], span),
         _ => {
-            return Err(SutraError {
-                kind: SutraErrorKind::Macro("Template macro must be called as a list.".to_string()),
-                span: Some(call.span.clone()),
-            });
+            return Err(macro_error(
+                "Template macro must be called as a list.".to_string(),
+                Some(call.span.clone()),
+            ));
         }
     };
     check_arity(args.len(), &template.params, span)?;

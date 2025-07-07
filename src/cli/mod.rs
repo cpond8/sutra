@@ -4,6 +4,8 @@
 //! the core library functions.
 
 use crate::cli::args::{Command, SutraArgs};
+use crate::cli::output::StdoutSink;
+use crate::error::io_error;
 use crate::macros::{expand_macros, load_macros_from_file, MacroDef, MacroEnv, MacroRegistry};
 use crate::{macros_std, parser};
 use clap::Parser;
@@ -19,6 +21,7 @@ pub fn run() {
     // Dispatch to the appropriate subcommand handler.
     let result = match args.command {
         Command::Macrotrace { file } => handle_macrotrace(&file),
+        Command::Run { file } => handle_run(&file),
         // Other commands will be handled here later.
         _ => {
             println!("Command not yet implemented.");
@@ -41,7 +44,10 @@ fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::E
     let ast_nodes = parser::parse(&source).map_err(|e| e.with_source(&source))?;
 
     let program: WithSpan<Expr> = if ast_nodes.len() == 1 {
-        ast_nodes.into_iter().next().unwrap()
+        ast_nodes
+            .into_iter()
+            .next()
+            .ok_or_else(|| io_error("No AST nodes found", None))?
     } else {
         let span = Span {
             start: 0,
@@ -89,5 +95,15 @@ fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::E
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{:?}", e)))?;
     println!("{}", expanded.value.pretty());
     // Optionally print trace here if desired
+    Ok(())
+}
+
+fn handle_run(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    let filename = path.to_str().ok_or("Invalid filename")?;
+    let source = std::fs::read_to_string(filename)
+        .map_err(|e| format!("Failed to read '{}': {}", filename, e))?;
+    let mut stdout_sink = StdoutSink;
+    crate::run_sutra_source_with_output(&source, &mut stdout_sink)
+        .map_err(|e| format!("Sutra error: {}", e))?;
     Ok(())
 }

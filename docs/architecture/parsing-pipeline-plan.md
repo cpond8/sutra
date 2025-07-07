@@ -48,6 +48,7 @@ This document archives the full, detailed plan for the modular, interface-driven
   - Documented recursion depth enforcement (limit: 128) in macro expansion.
   - Updated macro system patterns and CLI output documentation.
   - All interface and contract sections now reflect the current implementation.
+- 2024-07-08: **Status/progress section added to reflect current codebase.**
 - [Add future updates here.]
 
 ## Canonical Interface Contracts
@@ -673,3 +674,37 @@ pub struct SutraDiagnostic {
   - Automated batch edits are insufficient for macro_rules! and error helpers; manual review is required.
   - Enforcing span-carrying invariants across all modules is nontrivial and must be maintained going forward.
 - See memory bank and .cursorrules for canonical context and cross-references.
+
+# Status as of 2024-07-08
+
+## Parsing Pipeline Implementation Progress
+
+- **CST Parser Module:**
+  - Contract and scaffolding are present and mostly implemented (`src/cst_parser.rs`, `src/parser.rs`).
+  - `PestCstParser` uses the canonical PEG grammar and produces a traversable CST.
+  - Traversal/visitor APIs are stubbed or minimal, but the contract is present.
+- **AST Builder Module:**
+  - Contract and implementation are present and functional (`src/ast_builder.rs`, `src/ast.rs`).
+  - Canonical builder normalizes CST to AST, with span-carrying nodes.
+  - Error types and invariants match the plan.
+- **Macroexpander Module:**
+  - Macroexpansion logic is present and robust (`src/macros.rs`, `src/macros_std.rs`).
+  - No explicit `SutraMacroExpander` trait, but the logic is modular and testable.
+  - Registry and hygiene scope are present in the environment.
+- **Validator Module:**
+  - Contract and implementation are present and extensible (`src/validate.rs`, `src/validator.rs`).
+  - Diagnostics are span-carrying, serializable, and match the contract.
+  - Registry pattern allows chaining/composing validators.
+- **Pipeline Integration:**
+  - The modular pipeline (parse → macroexpand → validate → evaluate) is implemented in `src/lib.rs`.
+  - All data flows are explicit and modular.
+- **Documentation and Contracts:**
+  - All modules have doc comments referencing the canonical plan, and the contracts are present in code and documentation.
+- **Outstanding/Partial Areas:**
+  - Macroexpander trait is not explicitly defined as in the plan, but the logic is present and modular.
+  - CST traversal/visitor APIs are stubbed or minimal.
+  - Some advanced features (auto-fix in validator, incremental parsing, full hygiene in macroexpander) are not yet implemented.
+  - Golden tests and example usage are present but could be expanded.
+
+**Conclusion:**
+- The codebase is largely up to date with the canonical parsing pipeline plan. All major modules, contracts, and data types are present and implemented. Some interfaces (notably the macroexpander trait and advanced CST traversal) could be further formalized for full protocol compliance, but the core architecture and modularity are in place. Documentation and code comments are well-aligned with the plan.

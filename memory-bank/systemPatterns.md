@@ -46,6 +46,10 @@ This document captures the canonical architectural and design patterns, system-w
 
 > **Protocol Requirement:** All tests must be written as user-facing Sutra scripts (s-expr or braced), asserting only on observable output, world queries, or errors as surfaced to the user. No direct Rust API or internal data structure manipulation is permitted. A full test suite rewrite is required. See `memory-bank/README.md` and `memory-bank/activeContext.md` for details.
 
+- **Integration Test Runner Bootstrapped (2025-07-06):**
+  - `tests/scripts/` directory created for protocol-compliant integration tests.
+  - First `.sutra` test script (`hello_world.sutra`) and expected output (`hello_world.expected`) added. See `activeContext.md` and `progress.md`.
+
 ### 8. Modular Parsing Pipeline (2025-07-04)
 - The parsing pipeline is now a canonical, interface-driven, modular architecture. Each stage (CST parser, AST builder, macroexpander, validator, etc.) is a pure, swappable module with a documented contract.
 - Rationale: Ensures maintainability, testability, and future extensibility. Supports robust diagnostics, editor integration, and authoring ergonomics.
@@ -78,6 +82,7 @@ This document captures the canonical architectural and design patterns, system-w
 - 2025-07-05: Migration to proper-list-only and ...rest-only architecture complete. All legacy code, tests, and documentation for improper/dotted lists and legacy variadic syntax have been removed.
 - 2025-07-05: Macro system, CLI, and test harness refactor system patterns and changelog updated.
 - 2025-07-06: Batch refactor for Rust idiom compliance (implicit/explicit return style), match exhaustiveness, and error handling. Explicit returns for early exits restored. All match arms for Expr variants in eval_expr restored. Protocol-driven, batch-based, test-first approach enforced. All tests pass. Lesson: Always enumerate all functions for audit, not just those surfaced by search. Macro system helpers refactored for protocol compliance (pure, linear, early-return, documented, no deep nesting). Protocol-driven audit and batch-based, test-driven modernization enforced. Memory bank updated per protocol.
+- 2024-07-07: Added registry invariant regression test note.
 
 ## Core Architecture
 
@@ -237,6 +242,11 @@ parse → macro-expand → validate → evaluate → output/presentation
 - **Rich, Contextual Errors**: The `SutraError` system is designed for maximum author feedback. Evaluation errors (`EvalError`) are captured with the original code, the fully expanded code, and a helpful suggestion.
 - **Two-Phase Enrichment**: Errors are created with immediate context within their pipeline stage (e.g., `eval` creates an error with the expanded code). A top-level runner then "enriches" this error with further context (like the original source code) before displaying it to the user. This keeps each module's responsibility clean.
 - **Span-based**: All errors retain source span information, allowing the CLI to point directly to the source of the problem.
+- **Error Handling Policy (2025-07-06):**
+  - All public APIs must use `SutraError` as the canonical error type.
+  - All conversions from internal error types (e.g., `EvalError`) must be explicit and auditable.
+  - All enum variant signatures must be matched exactly in both construction and pattern matching.
+  - See `activeContext.md` and `progress.md` for rationale and implementation plan.
 
 ## Architectural Constraints
 
@@ -327,6 +337,9 @@ _Last Updated: 2025-07-01_
 - CLI output and macro expansion trace format have been updated for clarity and protocol compliance.
 - Test harness and error handling patterns have been modernized and documented.
 - All recursive macro expansion logic must increment and check recursion depth, with a default limit of 128.
+
+### Registry Invariant Regression Test (2024-07-07)
+- Milestone complete: registry invariant is enforced, output pipeline is robust, and all integration tests pass.
 
 <!-- AUDIT ANNOTATIONS BEGIN -->
 

@@ -10,7 +10,8 @@
 //! node. This is the only place in the entire engine where path syntax is parsed.
 
 use crate::ast::{Expr, WithSpan};
-use crate::error::{SutraError, SutraErrorKind};
+use crate::error::validation_error;
+use crate::error::SutraError;
 use crate::macros::MacroRegistry;
 use crate::path::Path;
 
@@ -38,6 +39,7 @@ pub fn register_std_macros(registry: &mut MacroRegistry) {
     registry.register("inc!", expand_inc);
     registry.register("dec!", expand_dec);
     // Standard macros like cond are now loaded from macros.sutra at startup.
+    registry.register("print", expand_print);
 }
 
 // ---
@@ -57,22 +59,18 @@ fn expr_to_path(expr: &WithSpan<Expr>) -> Result<Path, SutraError> {
                 match &item.value {
                     Expr::Symbol(s, _) => segments.push(s.clone()),
                     Expr::String(s, _) => segments.push(s.clone()),
-                    _ => Err(SutraError {
-                        kind: SutraErrorKind::Macro(
-                            "Path lists can only contain symbols or strings.".to_string(),
-                        ),
-                        span: Some(item.span.clone()),
-                    })?,
+                    _ => Err(validation_error(
+                        "Path lists can only contain symbols or strings.",
+                        Some(item.span.clone()),
+                    ))?,
                 }
             }
             Ok(Path(segments))
         }
-        _ => Err(SutraError {
-            kind: SutraErrorKind::Macro(
-                "Invalid path format: expected a symbol or a list.".to_string(),
-            ),
-            span: Some(expr.span.clone()),
-        }),
+        _ => Err(validation_error(
+            "Invalid path format: expected a symbol or a list.",
+            Some(expr.span.clone()),
+        )),
     }
 }
 
@@ -111,14 +109,14 @@ fn create_binary_predicate_macro(
     match &expr.value {
         Expr::List(items, span) => {
             if items.len() != 3 {
-                Err(SutraError {
-                    kind: SutraErrorKind::Macro(format!(
+                Err(validation_error(
+                    format!(
                         "Macro '{}' expects 2 arguments, but got {}",
                         macro_name,
                         items.len() - 1
-                    )),
-                    span: Some(span.clone()),
-                })?
+                    ),
+                    Some(span.clone()),
+                ))?
             }
             let atom_symbol = WithSpan {
                 value: Expr::Symbol(atom_name.to_string(), items[0].span.clone()),
@@ -131,13 +129,10 @@ fn create_binary_predicate_macro(
                 span: span.clone(),
             })
         }
-        _ => Err(SutraError {
-            kind: SutraErrorKind::Macro(format!(
-                "Macro '{}' can only be applied to a list.",
-                macro_name
-            )),
-            span: Some(expr.span.clone()),
-        }),
+        _ => Err(validation_error(
+            format!("Macro '{}' can only be applied to a list.", macro_name),
+            Some(expr.span.clone()),
+        )),
     }
 }
 
@@ -150,14 +145,14 @@ fn create_assignment_macro(
     match &expr.value {
         Expr::List(items, span) => {
             if items.len() != 3 {
-                Err(SutraError {
-                    kind: SutraErrorKind::Macro(format!(
+                Err(validation_error(
+                    format!(
                         "Macro '{}' expects 2 arguments, but got {}",
                         macro_name,
                         items.len() - 1
-                    )),
-                    span: Some(span.clone()),
-                })?
+                    ),
+                    Some(span.clone()),
+                ))?
             }
             let set_symbol = WithSpan {
                 value: Expr::Symbol("core/set!".to_string(), items[0].span.clone()),
@@ -185,13 +180,10 @@ fn create_assignment_macro(
                 span: span.clone(),
             })
         }
-        _ => Err(SutraError {
-            kind: SutraErrorKind::Macro(format!(
-                "Macro '{}' can only be applied to a list.",
-                macro_name
-            )),
-            span: Some(expr.span.clone()),
-        }),
+        _ => Err(validation_error(
+            format!("Macro '{}' can only be applied to a list.", macro_name),
+            Some(expr.span.clone()),
+        )),
     }
 }
 
@@ -306,7 +298,48 @@ pub fn expand_add(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
 /// assert!(matches!(expanded.value, Expr::List(_, _)));
 /// ```
 pub fn expand_sub(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
-    create_assignment_macro(expr, "sub!", "-")
+    match &expr.value {
+        Expr::List(items, span) => {
+            if items.len() != 3 {
+                Err(validation_error(
+                    format!(
+                        "Macro 'sub!' expects 2 arguments, but got {}",
+                        items.len() - 1
+                    ),
+                    Some(span.clone()),
+                ))?
+            }
+            let set_symbol = WithSpan {
+                value: Expr::Symbol("core/set!".to_string(), items[0].span.clone()),
+                span: items[0].span.clone(),
+            };
+            let path_arg = &items[1];
+            let canonical_path = WithSpan {
+                value: Expr::Path(expr_to_path(path_arg)?, path_arg.span.clone()),
+                span: path_arg.span.clone(),
+            };
+            let value_arg = items[2].clone();
+            let atom_symbol = WithSpan {
+                value: Expr::Symbol("-".to_string(), items[0].span.clone()),
+                span: items[0].span.clone(),
+            };
+            let inner_expr = WithSpan {
+                value: Expr::List(
+                    vec![atom_symbol, wrap_in_get(path_arg), value_arg],
+                    span.clone(),
+                ),
+                span: span.clone(),
+            };
+            Ok(WithSpan {
+                value: Expr::List(vec![set_symbol, canonical_path, inner_expr], span.clone()),
+                span: span.clone(),
+            })
+        }
+        _ => Err(validation_error(
+            "Macro 'sub!' can only be applied to a list.".to_string(),
+            Some(expr.span.clone()),
+        )),
+    }
 }
 
 /// Expands `(inc! foo)` to `(core/set! (path foo) (+ (core/get foo) 1))`.
@@ -330,13 +363,13 @@ pub fn expand_inc(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     match &expr.value {
         Expr::List(items, span) => {
             if items.len() != 2 {
-                Err(SutraError {
-                    kind: SutraErrorKind::Macro(format!(
+                Err(validation_error(
+                    format!(
                         "Macro 'inc!' expects 1 argument, but got {}",
                         items.len() - 1
-                    )),
-                    span: Some(span.clone()),
-                })?
+                    ),
+                    Some(span.clone()),
+                ))?
             }
             let set_symbol = WithSpan {
                 value: Expr::Symbol("core/set!".to_string(), items[0].span.clone()),
@@ -364,10 +397,10 @@ pub fn expand_inc(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
                 span: span.clone(),
             })
         }
-        _ => Err(SutraError {
-            kind: SutraErrorKind::Macro("Macro 'inc!' can only be applied to a list.".to_string()),
-            span: Some(expr.span.clone()),
-        }),
+        _ => Err(validation_error(
+            "Macro 'inc!' can only be applied to a list.".to_string(),
+            Some(expr.span.clone()),
+        )),
     }
 }
 
@@ -392,13 +425,13 @@ pub fn expand_dec(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     match &expr.value {
         Expr::List(items, span) => {
             if items.len() != 2 {
-                Err(SutraError {
-                    kind: SutraErrorKind::Macro(format!(
+                Err(validation_error(
+                    format!(
                         "Macro 'dec!' expects 1 argument, but got {}",
                         items.len() - 1
-                    )),
-                    span: Some(span.clone()),
-                })?
+                    ),
+                    Some(span.clone()),
+                ))?
             }
             let set_symbol = WithSpan {
                 value: Expr::Symbol("core/set!".to_string(), items[0].span.clone()),
@@ -426,10 +459,10 @@ pub fn expand_dec(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
                 span: span.clone(),
             })
         }
-        _ => Err(SutraError {
-            kind: SutraErrorKind::Macro("Macro 'dec!' can only be applied to a list.".to_string()),
-            span: Some(expr.span.clone()),
-        }),
+        _ => Err(validation_error(
+            "Macro 'dec!' can only be applied to a list.".to_string(),
+            Some(expr.span.clone()),
+        )),
     }
 }
 
@@ -455,13 +488,13 @@ pub fn expand_set(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     match &expr.value {
         Expr::List(items, span) => {
             if items.len() != 3 {
-                Err(SutraError {
-                    kind: SutraErrorKind::Macro(format!(
+                Err(validation_error(
+                    format!(
                         "Macro 'set!' expects 2 arguments, but got {}",
                         items.len() - 1
-                    )),
-                    span: Some(span.clone()),
-                })?
+                    ),
+                    Some(span.clone()),
+                ))?
             }
             let atom_symbol = WithSpan {
                 value: Expr::Symbol("core/set!".to_string(), items[0].span.clone()),
@@ -478,10 +511,10 @@ pub fn expand_set(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
                 span: span.clone(),
             })
         }
-        _ => Err(SutraError {
-            kind: SutraErrorKind::Macro("Macro 'set!' can only be applied to a list.".to_string()),
-            span: Some(expr.span.clone()),
-        }),
+        _ => Err(validation_error(
+            "Macro 'set!' can only be applied to a list.".to_string(),
+            Some(expr.span.clone()),
+        )),
     }
 }
 
@@ -506,13 +539,13 @@ pub fn expand_get(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     match &expr.value {
         Expr::List(items, span) => {
             if items.len() != 2 {
-                Err(SutraError {
-                    kind: SutraErrorKind::Macro(format!(
+                Err(validation_error(
+                    format!(
                         "Macro 'get' expects 1 argument, but got {}",
                         items.len() - 1
-                    )),
-                    span: Some(span.clone()),
-                })?
+                    ),
+                    Some(span.clone()),
+                ))?
             }
             let atom_symbol = WithSpan {
                 value: Expr::Symbol("core/get".to_string(), items[0].span.clone()),
@@ -528,10 +561,10 @@ pub fn expand_get(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
                 span: span.clone(),
             })
         }
-        _ => Err(SutraError {
-            kind: SutraErrorKind::Macro("Macro 'get' can only be applied to a list.".to_string()),
-            span: Some(expr.span.clone()),
-        }),
+        _ => Err(validation_error(
+            "Macro 'get' can only be applied to a list.".to_string(),
+            Some(expr.span.clone()),
+        )),
     }
 }
 
@@ -556,13 +589,13 @@ pub fn expand_del(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     match &expr.value {
         Expr::List(items, span) => {
             if items.len() != 2 {
-                Err(SutraError {
-                    kind: SutraErrorKind::Macro(format!(
+                Err(validation_error(
+                    format!(
                         "Macro 'del!' expects 1 argument, but got {}",
                         items.len() - 1
-                    )),
-                    span: Some(span.clone()),
-                })?
+                    ),
+                    Some(span.clone()),
+                ))?
             }
             let atom_symbol = WithSpan {
                 value: Expr::Symbol("core/del!".to_string(), items[0].span.clone()),
@@ -578,47 +611,25 @@ pub fn expand_del(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
                 span: span.clone(),
             })
         }
-        _ => Err(SutraError {
-            kind: SutraErrorKind::Macro("Macro 'del!' can only be applied to a list.".to_string()),
-            span: Some(expr.span.clone()),
-        }),
+        _ => Err(validation_error(
+            "Macro 'del!' can only be applied to a list.".to_string(),
+            Some(expr.span.clone()),
+        )),
     }
 }
 
-// ---
-// Conditional Macros
-// ---
-
 /// Expands `(if <cond> <then> <else>)` to a canonical `Expr::If` node.
-///
-/// # Examples
-///
-/// ```rust
-/// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros_std::expand_if;
-/// let expr = WithSpan {
-///     value: Expr::List(vec![
-///         WithSpan { value: Expr::Symbol("if".to_string(), Span::default()), span: Span::default() },
-///         WithSpan { value: Expr::Symbol("cond".to_string(), Span::default()), span: Span::default() },
-///         WithSpan { value: Expr::Symbol("then".to_string(), Span::default()), span: Span::default() },
-///         WithSpan { value: Expr::Symbol("else".to_string(), Span::default()), span: Span::default() },
-///     ], Span::default()),
-///     span: Span::default(),
-/// };
-/// let expanded = expand_if(&expr).unwrap();
-/// assert!(matches!(expanded.value, Expr::If { .. }));
-/// ```
 pub fn expand_if(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     match &expr.value {
         Expr::List(items, span) => {
             if items.len() != 4 {
-                Err(SutraError {
-                    kind: SutraErrorKind::Macro(format!(
+                return Err(validation_error(
+                    format!(
                         "Macro 'if' expects 3 arguments, but got {}",
                         items.len() - 1
-                    )),
-                    span: Some(span.clone()),
-                })?
+                    ),
+                    Some(span.clone()),
+                ));
             }
             Ok(WithSpan {
                 value: Expr::If {
@@ -630,9 +641,35 @@ pub fn expand_if(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
                 span: span.clone(),
             })
         }
-        _ => Err(SutraError {
-            kind: SutraErrorKind::Macro("Macro 'if' can only be applied to a list.".to_string()),
-            span: Some(expr.span.clone()),
-        }),
+        _ => Err(validation_error(
+            "Macro 'if' can only be applied to a list.".to_string(),
+            Some(expr.span.clone()),
+        )),
+    }
+}
+
+/// Expands `(print <expr>)` to `(core/print <expr>)`.
+pub fn expand_print(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
+    match &expr.value {
+        Expr::List(items, span) => {
+            if items.len() != 2 {
+                return Err(validation_error(
+                    format!("Macro 'print' expects 1 argument, got {}", items.len() - 1),
+                    Some(span.clone()),
+                ));
+            }
+            let atom_symbol = WithSpan {
+                value: Expr::Symbol("core/print".to_string(), items[0].span.clone()),
+                span: items[0].span.clone(),
+            };
+            Ok(WithSpan {
+                value: Expr::List(vec![atom_symbol, items[1].clone()], span.clone()),
+                span: span.clone(),
+            })
+        }
+        _ => Err(validation_error(
+            "Macro 'print' can only be applied to a list.".to_string(),
+            Some(expr.span.clone()),
+        )),
     }
 }

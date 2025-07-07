@@ -1,4 +1,3 @@
-use crate::ast::Span;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,7 +27,7 @@ pub enum SutraErrorKind {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SutraError {
     pub kind: SutraErrorKind,
-    pub span: Option<Span>,
+    pub span: Option<crate::ast::Span>,
 }
 
 impl SutraError {
@@ -72,3 +71,222 @@ impl std::fmt::Display for SutraError {
 }
 
 impl std::error::Error for SutraError {}
+
+/// # Sutra Error Construction Helpers
+///
+/// This section provides ergonomic, documented constructor functions for all error domains.
+/// All error construction outside this module must use these helpers.
+///
+/// ## How to Add a New Error Domain
+/// 1. Define a new variant in `SutraErrorKind` if needed.
+/// 2. Add a constructor helper here, following the patterns below.
+/// 3. Document usage and rationale in this section.
+/// 4. Add/expand tests for the new error domain.
+///
+/// ## When to Use Each Helper
+/// - Use general helpers (`parse_error`, `macro_error`, etc.) for broad error categories.
+/// - Use domain-specific helpers (`eval_arity_error`, etc.) for common, repeated patterns in a specific subsystem.
+/// - Prefer helpers that require a span for author-facing errors; IO/internal errors may allow `None`.
+use crate::ast::{Expr, Span, WithSpan};
+use crate::value::Value;
+
+/// Constructs a parse error (malformed input, syntax error).
+///
+/// # Example
+/// ```rust
+/// use sutra::error::parse_error;
+/// use sutra::ast::Span;
+/// let span = Span::default();
+/// let _ = parse_error("Unexpected token", Some(span.clone()));
+/// ```
+pub fn parse_error(msg: impl Into<String>, span: Option<Span>) -> SutraError {
+    SutraError {
+        kind: SutraErrorKind::Parse(msg.into()),
+        span,
+    }
+}
+
+/// Constructs a macro error (expansion, definition, invocation).
+///
+/// # Example
+/// ```rust
+/// use sutra::error::macro_error;
+/// use sutra::ast::Span;
+/// let span = Span::default();
+/// let _ = macro_error("Duplicate macro name", Some(span.clone()));
+/// ```
+pub fn macro_error(msg: impl Into<String>, span: Option<Span>) -> SutraError {
+    SutraError {
+        kind: SutraErrorKind::Macro(msg.into()),
+        span,
+    }
+}
+
+/// Constructs a validation error (post-expansion validation failure).
+///
+/// # Example
+/// ```rust
+/// use sutra::error::validation_error;
+/// use sutra::ast::Span;
+/// let span = Span::default();
+/// let _ = validation_error("Invalid macro usage", Some(span.clone()));
+/// ```
+pub fn validation_error(msg: impl Into<String>, span: Option<Span>) -> SutraError {
+    SutraError {
+        kind: SutraErrorKind::Validation(msg.into()),
+        span,
+    }
+}
+
+/// Constructs an IO error (file or system IO failure).
+///
+/// # Example
+/// ```rust
+/// use sutra::error::io_error;
+/// let _ = io_error("Failed to read file", None);
+/// ```
+pub fn io_error(msg: impl Into<String>, span: Option<Span>) -> SutraError {
+    SutraError {
+        kind: SutraErrorKind::Io(msg.into()),
+        span,
+    }
+}
+
+/// Constructs a malformed AST error (internal AST structure error).
+///
+/// # Example
+/// ```rust
+/// use sutra::error::malformed_ast_error;
+/// use sutra::ast::Span;
+/// let span = Span::default();
+/// let _ = malformed_ast_error("Empty expr pair", Some(span.clone()));
+/// ```
+pub fn malformed_ast_error(msg: impl Into<String>, span: Option<Span>) -> SutraError {
+    SutraError {
+        kind: SutraErrorKind::MalformedAst(msg.into()),
+        span,
+    }
+}
+
+/// Constructs an internal parse error (parser state error not caused by user input).
+///
+/// # Example
+/// ```rust
+/// use sutra::error::internal_parse_error;
+/// use sutra::ast::Span;
+/// let span = Span::default();
+/// let _ = internal_parse_error("Parser generated an empty tree", Some(span.clone()));
+/// ```
+pub fn internal_parse_error(msg: impl Into<String>, span: Option<Span>) -> SutraError {
+    SutraError {
+        kind: SutraErrorKind::InternalParse(msg.into()),
+        span,
+    }
+}
+
+// --- Domain-Specific (Evaluation) Error Helpers ---
+
+/// Constructs an evaluation arity error (wrong number of arguments).
+///
+/// # Example
+/// ```rust
+/// use sutra::error::eval_arity_error;
+/// use sutra::ast::{Expr, Span, WithSpan};
+/// let span = Span::default();
+/// let args: Vec<WithSpan<Expr>> = vec![];
+/// let _ = eval_arity_error(Some(span.clone()), &args, "core/set!", "2");
+/// ```
+pub fn eval_arity_error(
+    span: Option<Span>,
+    args: &[WithSpan<Expr>],
+    func_name: &str,
+    expected: impl ToString,
+) -> SutraError {
+    SutraError {
+        kind: SutraErrorKind::Validation(format!(
+            "{}: expected {} argument(s), got {}",
+            func_name,
+            expected.to_string(),
+            args.len()
+        )),
+        span,
+    }
+}
+
+/// Constructs an evaluation type error (type mismatch).
+///
+/// # Example
+/// ```rust
+/// use sutra::error::eval_type_error;
+/// use sutra::ast::{Expr, Span, WithSpan};
+/// use sutra::value::Value;
+/// let span = Span::default();
+/// let arg = WithSpan { value: Expr::List(vec![], Span::default()), span: span.clone() };
+/// let val = Value::Nil;
+/// let _ = eval_type_error(Some(span.clone()), &arg, "core/get", "a Path", &val);
+/// ```
+pub fn eval_type_error(
+    span: Option<Span>,
+    _arg: &WithSpan<Expr>,
+    func_name: &str,
+    expected: &str,
+    found: &Value,
+) -> SutraError {
+    SutraError {
+        kind: SutraErrorKind::Validation(format!(
+            "{}: expected {} for argument {:?}, found {:?}",
+            func_name, expected, _arg, found
+        )),
+        span,
+    }
+}
+
+/// Constructs a general evaluation error (other evaluation failures).
+///
+/// # Example
+/// ```rust
+/// use sutra::error::eval_general_error;
+/// use sutra::ast::{Expr, Span, WithSpan};
+/// let span = Span::default();
+/// let arg = WithSpan { value: Expr::List(vec![], Span::default()), span: span.clone() };
+/// let _ = eval_general_error(Some(span.clone()), &arg, "Division by zero");
+/// ```
+pub fn eval_general_error(
+    span: Option<Span>,
+    _arg: &WithSpan<Expr>,
+    msg: impl Into<String>,
+) -> SutraError {
+    SutraError {
+        kind: SutraErrorKind::Validation(msg.into()),
+        span,
+    }
+}
+
+/// Constructs a recursion depth error (exceeded recursion limit).
+///
+/// # Example
+/// ```rust
+/// use sutra::error::recursion_depth_error;
+/// use sutra::ast::Span;
+/// let span = Span::default();
+/// let _ = recursion_depth_error(Some(span.clone()));
+/// ```
+pub fn recursion_depth_error(span: Option<Span>) -> SutraError {
+    SutraError {
+        kind: SutraErrorKind::Validation("Recursion depth limit exceeded".to_string()),
+        span,
+    }
+}
+
+/// Constructs a SutraError from an existing kind and span.
+///
+/// # Example
+/// ```rust
+/// use sutra::error::{from_kind, SutraErrorKind};
+/// use sutra::ast::Span;
+/// let span = Span::default();
+/// let _ = from_kind(SutraErrorKind::Parse("custom".to_string()), Some(span.clone()));
+/// ```
+pub fn from_kind(kind: SutraErrorKind, span: Option<Span>) -> SutraError {
+    SutraError { kind, span }
+}

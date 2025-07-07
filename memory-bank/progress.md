@@ -1,3 +1,6 @@
+# TOP PRIORITY: IMPLEMENT NATIVE .sutra FILE LOADING AND INTERPRETATION
+# The engine must first be able to load, parse, and interpret native `.sutra` files (written in the Sutra engine language, not Rust). This is the absolute prerequisite for all further macro migration, test suite rewrite, or native language support. No other work may proceed until this is complete.
+
 # Sutra Engine - Progress
 
 ## Completed Work
@@ -13,6 +16,10 @@
 - **Atoms/Eval Audit:** Atoms follow uniform contracts, state propagation is immutable, and documentation is up-to-date.
 - **CLI/Output and Tests Audit:** CLI is a pure orchestrator, output is centralized, and test/production parity is maintained.
 - **Parser Refactor:** Parser is decomposed into per-rule helpers, with robust error handling and dotted list validation.
+- **Integration Test Runner Bootstrapped (2025-07-06):**
+  - Created `tests/scripts/` directory for protocol-compliant integration tests.
+  - Added first `.sutra` test script (`hello_world.sutra`) and expected output file (`hello_world.expected`).
+  - All future integration tests will be added here, following the protocol in `activeContext.md` and `systemPatterns.md`.
 
 ## Macro System Bootstrapping Roadmap (2025-07-02)
 
@@ -196,3 +203,137 @@ See activeContext.md for the canonical, dependency-ordered plan for resolving al
 5. Test Suite Rewrite and Documentation: Rewrite tests as Sutra scripts, update docs/memory bank.
 
 Batch-based, test-driven iteration is required. Documentation and memory bank must be updated after each batch.
+
+## Step-by-Step Plan: Native `.sutra` File Loading and Interpretation
+
+1. **Requirements & Scope Definition**
+   - Clarify MVP: engine must load a `.sutra` file, parse it, and execute it through the full pipeline (`parse → macro-expand → validate → evaluate → output`).
+   - All macro and user code must be loaded from `.sutra` source, not Rust.
+   - Document all interfaces and contracts before coding.
+
+2. **CLI & API Input Pathways**
+   - Add CLI argument (e.g., `sutra run <file.sutra>`) to specify a `.sutra` file to load and run.
+   - Support reading from stdin for piping scripts.
+   - Expose a public Rust API for loading and running `.sutra` source from a string or file.
+
+3. **File Reading & Error Handling**
+   - Implement robust file reading with clear, span-carrying error messages for missing/unreadable files.
+   - Test: Attempt to load a non-existent file and verify user-facing error output.
+
+4. **Parsing Pipeline Integration**
+   - Parse the loaded file using the canonical PEG parser, producing a `Vec<WithSpan<Expr>>` AST.
+   - All parse errors must include file name, line/col, and a clear message.
+   - Test: Parse a minimal valid and invalid `.sutra` file, verify error output.
+
+5. **Macro Loader from Source**
+   - Implement a macro loader that scans the parsed AST for macro definitions, registers them, and handles errors for duplicates/invalid forms.
+   - Test: Load a `.sutra` file with valid/invalid macro definitions, verify registry and error output.
+
+6. **User Code Extraction**
+   - Separate macro definitions from user code in the parsed AST.
+   - Ensure only user code is passed to macro expansion and evaluation.
+   - Test: Run a `.sutra` file with both macro definitions and user code, verify correct execution.
+
+7. **Pipeline Wiring**
+   - Wire up the full pipeline: `parse → macro-expand → validate → evaluate → output`.
+   - Ensure all stages are called in order, with clear error propagation and reporting.
+   - Test: Run a `.sutra` file that defines and uses a macro, verify correct expansion and evaluation.
+
+8. **Output & Diagnostics**
+   - Ensure all output is routed through the CLI output module, with clear formatting.
+   - Support tracing macro expansion and evaluation steps for debugging and transparency.
+   - Test: Run a `.sutra` file and verify output and trace diagnostics.
+
+9. **Documentation & Protocol Compliance**
+   - Update all relevant documentation (memory bank, CLI help, README, architecture docs).
+   - Add usage examples for running `.sutra` files.
+   - Document all new/changed interfaces and error messages.
+
+10. **Batch-Based, Test-Driven Iteration**
+    - After each batch: run the full test suite, update documentation and memory bank, only proceed when all tests pass and docs are current.
+
+11. **Quality & Protocol Audits**
+    - Run full protocol-driven audits: linting, formatting, test coverage, manual review for compliance, update memory bank with lessons learned.
+
+12. **Final Review & Release**
+    - Conduct a final review: ensure all requirements are met, docs are up to date, and the system is robust. Tag and release the version with native `.sutra` file support.
+
+### Guiding Principles (applied at every step):
+- Minimalism, Transparency, Compositionality, Test/Production Parity, Documentation-Driven, Batch-Based/Test-Driven.
+
+## Integration Test Runner Plan (for Native `.sutra` Scripts)
+
+### Purpose
+- Build a robust, protocol-compliant integration test runner for `.sutra` scripts.
+- Ensure all tests are discoverable, automatable, and produce clear, colorized, and auditable output.
+
+### Scope
+- The runner must:
+  - Execute all `.sutra` scripts in a test directory (e.g., `tests/scripts/`).
+  - Compare actual output/errors to expected results (from comments or sidecar files).
+  - Report pass/fail with clear diagnostics.
+  - Be extensible for future test types (macro expansion, error cases, world state queries).
+
+### Plan (Selected: Rust Integration Test Runner)
+1. **Create `tests/scripts/` directory** for `.sutra` test scripts.
+2. **Add sample `.sutra` scripts** with expected output (in comments or `.expected` files).
+3. **Implement `tests/script_runner.rs`**:
+   - Discover all `.sutra` files in `tests/scripts/`.
+   - For each file:
+     - Read the script and expected output.
+     - Run the script using the public API (`run_sutra_source`).
+     - Capture and compare output/errors.
+     - Report pass/fail with colorized output.
+   - Fail the test suite if any script fails.
+4. **Integrate with `cargo test`** for automation.
+5. **Document and cross-link** all test scripts and runner logic in the memory bank and `progress.md`.
+
+### Risks & Considerations
+- Output capture and comparison must be robust.
+- Standardize expected output format (top-of-file comment or `.expected` file).
+- Distinguish expected vs. unexpected errors.
+
+### Next Actions
+1. Create `tests/scripts/` and add at least one `.sutra` test script with expected output.
+2. Draft `tests/script_runner.rs` to discover and run all `.sutra` scripts.
+3. Implement output capture and comparison logic.
+4. Integrate colorized, protocol-compliant diagnostics and reporting.
+5. Document the test runner and scripts in the memory bank and cross-link in `progress.md`.
+
+### Rationale
+- Plan A (Rust integration test runner) is selected for protocol, audit, and Rust ecosystem alignment.
+- All steps are diagram-governed and protocol-compliant.
+- This plan is canonical and must be resumed in the next session.
+
+# [2025-07-07] Error Handling Refactor: Audit & Preparation (Batch 1)
+
+- **Initiated batch-based, test-driven error handling modernization as per error-refactor-plan.md.**
+- Completed protocol-driven audit of all files for direct `SutraError` construction and error macro usage (see activeContext.md for detailed findings).
+- Identified all error domains and patterns; confirmed need for ergonomic, centralized constructor helpers in error.rs.
+- Next: Implement constructor helpers, remove macros, update call sites, and expand tests/documentation in batches.
+- All changes and rationale are recorded in activeContext.md and cross-referenced in systemPatterns.md and projectPatterns.md.
+
+# [2024-07-07] Error Handling Refactor: Batch Completion & Outstanding Issues
+
+- **Completed:** Audit, constructor helpers, macro removal, and call site migration (esp. src/atoms_std.rs) for error handling refactor.
+- All findings, rationale, and protocol are documented in error-refactor-plan.md and the memory bank.
+- **Outstanding issues:**
+  - Duplicate import of `Span` in `src/error.rs` (remove one)
+  - Missing imports for error helpers in `src/eval.rs` (add `recursion_depth_error`, `eval_arity_error`, `eval_type_error`, `eval_general_error`)
+  - Unused imports in `src/eval.rs` and `src/parser.rs` (remove `EvalError`, `SutraErrorKind`, etc.)
+  - Incorrect use of `Default::default()` in error helpers in `src/error.rs` (remove or replace)
+  - Trait implementation missing for `EvalError` (implement `Display` or use `{:?}` in `src/lib.rs`)
+  - Type mismatch in closure arguments in `src/lib.rs` (ensure error types are consistent)
+- See error-refactor-plan.md for full plan, status, and next steps.
+- See activeContext.md for current work focus and blockers.
+
+## [2024-07-08] Error Handling Refactor & Linter/Clippy Cleanup Complete
+
+- All linter and clippy warnings/errors have been resolved.
+- All error handling is routed through helpers; no direct struct construction or macros remain outside error.rs.
+- All function signatures and test runners updated for protocol compliance.
+- Full test suite passes with all features enabled.
+- Codebase is fully compliant with the error-refactor plan, registry invariant, and Rust protocol.
+- Next: Continue batch-based, test-driven development and update documentation as needed.
+
+---

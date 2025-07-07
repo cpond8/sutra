@@ -21,6 +21,9 @@ This file is the canonical, living intelligence log for the Sutra project. It re
 - Update documentation and memory bank files after every significant change.
 - Lesson (2025-07-05): Automated or semantic search-based code audits are insufficient for never-nester and complexity checks. Always enumerate and check every function in a file for excessive nesting or complexity, not just those surfaced by search. Supplement search with pattern-based grep for function definitions and manual review for large or critical files.
 - **Test Suite Protocol:** All tests must be written as user-facing Sutra scripts (s-expr or braced), asserting only on observable output, world queries, or errors as surfaced to the user. No direct Rust API or internal data structure manipulation is permitted. A full test suite rewrite is required. See `memory-bank/README.md` and `memory-bank/activeContext.md`.
+- **Integration Test Runner Bootstrapped (2025-07-06):**
+  - `tests/scripts/` directory created for protocol-compliant integration tests.
+  - First `.sutra` test script (`hello_world.sutra`) and expected output (`hello_world.expected`) added. See `activeContext.md` and `progress.md`.
 
 ## Recurring Challenges
 - Ensuring parser, grammar, loader, and tests are updated together when making changes to core syntax or AST structure.
@@ -85,3 +88,9 @@ See activeContext.md and progress.md for the canonical, timestamped list of expl
 ## Prioritized Action Plan: Native-Language Test Suite Blockers (2025-07-06)
 
 See activeContext.md and progress.md for the canonical, dependency-ordered plan for resolving all blockers to a fully native-language (s-expr and brace/block) test suite. Each step must be completed before the next can proceed. See system-reference.md for architectural rationale.
+
+## Registry Invariant Regression Test (2024-07-07)
+- Milestone complete: registry invariant is enforced, output pipeline is robust, and all integration tests pass.
+
+## Changelog
+- 2024-07-07: Added registry invariant regression test note.

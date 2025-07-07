@@ -41,7 +41,7 @@
 //! - If a canonical program node is ever needed, document and update accordingly.
 
 use crate::ast::{Expr, Span, WithSpan};
-use crate::error::{SutraError, SutraErrorKind};
+use crate::error::{internal_parse_error, malformed_ast_error, parse_error, SutraError};
 use once_cell::sync::Lazy;
 use pest::iterators::Pair;
 use pest::Parser;
@@ -68,9 +68,6 @@ pub fn parse(source: &str) -> Result<Vec<WithSpan<Expr>>, SutraError> {
     // `SutraParser::parse` attempts to match the `program` rule from the grammar.
     // If it fails, it returns a `pest` error, which we map to our `SutraError`.
     let pairs = SutraParser::parse(Rule::program, source).map_err(|e| {
-        // TODO: A future improvement would be to use a library like `pest_consume`
-        // or write a more detailed error formatter to give even more user-friendly
-        // error messages than the default `pest` provides.
         let span = match e.location {
             pest::error::InputLocation::Pos(pos) => Span {
                 start: pos,
@@ -78,18 +75,15 @@ pub fn parse(source: &str) -> Result<Vec<WithSpan<Expr>>, SutraError> {
             },
             pest::error::InputLocation::Span((start, end)) => Span { start, end },
         };
-        SutraError {
-            kind: SutraErrorKind::Parse(e.to_string()),
-            span: Some(span),
-        }
+        parse_error(e.to_string(), Some(span))
     })?;
 
     // The `program` rule is guaranteed to have one inner pair (itself) if parsing succeeds.
-    let root_pair = pairs.peek().ok_or_else(|| SutraError {
-        kind: SutraErrorKind::Parse(
-            "Parser generated an empty tree, this should not happen.".to_string(),
-        ),
-        span: None,
+    let root_pair = pairs.peek().ok_or_else(|| {
+        parse_error(
+            "Parser generated an empty tree, this should not happen.",
+            None,
+        )
     })?;
 
     // We build the AST from all expressions found inside the `program` rule.
@@ -131,16 +125,16 @@ pub static AST_BUILDERS: Lazy<HashMap<Rule, AstBuilderFn>> = Lazy::new(|| {
 
 // Dispatcher: looks up the handler in the map and calls it
 fn build_ast_from_pair(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
-    AST_BUILDERS
-        .get(&pair.as_rule())
-        .ok_or_else(|| SutraError {
-            kind: SutraErrorKind::InternalParse(format!(
+    AST_BUILDERS.get(&pair.as_rule()).ok_or_else(|| {
+        internal_parse_error(
+            format!(
                 "No AST builder registered for rule: {:?} (input: '{}')",
                 pair.as_rule(),
                 pair.as_str()
-            )),
-            span: Some(get_span(&pair)),
-        })?(pair)
+            ),
+            Some(get_span(&pair)),
+        )
+    })?(pair)
 }
 
 // Private combinator for mapping children to Expr::List
@@ -177,9 +171,11 @@ fn build_program(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
 fn build_expr(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     let span = get_span(&pair);
     let mut inner = pair.clone().into_inner();
-    let sub = inner.next().ok_or_else(|| SutraError {
-        kind: SutraErrorKind::MalformedAst(format!("Empty expr pair (input: '{}')", pair.as_str())),
-        span: Some(span),
+    let sub = inner.next().ok_or_else(|| {
+        malformed_ast_error(
+            format!("Empty expr pair (input: '{}')", pair.as_str()),
+            Some(span),
+        )
     })?;
     build_ast_from_pair(sub)
 }
@@ -253,26 +249,22 @@ fn partition_param_list<'a>(
         Some(idx) => {
             // "..." must be followed by a symbol and be the last two elements
             if idx + 2 != pairs.len() {
-                Err(SutraError {
-                    kind: SutraErrorKind::Parse(
-                        "Required parameter after ...rest in parameter list".to_string(),
-                    ),
-                    span: Some(span.clone()),
-                })?
+                return Err(parse_error(
+                    "Required parameter after ...rest in parameter list",
+                    Some(span.clone()),
+                ));
             }
-            let rest_pair = pairs.get(idx + 1).ok_or_else(|| SutraError {
-                kind: SutraErrorKind::Parse(
-                    "Expected symbol after ... in parameter list".to_string(),
-                ),
-                span: Some(span.clone()),
+            let rest_pair = pairs.get(idx + 1).ok_or_else(|| {
+                parse_error(
+                    "Expected symbol after ... in parameter list",
+                    Some(span.clone()),
+                )
             })?;
             if rest_pair.as_rule() != Rule::symbol {
-                Err(SutraError {
-                    kind: SutraErrorKind::Parse(
-                        "Expected symbol after ... in parameter list".to_string(),
-                    ),
-                    span: Some(span.clone()),
-                })?
+                return Err(parse_error(
+                    "Expected symbol after ... in parameter list",
+                    Some(span.clone()),
+                ));
             }
             Ok(ParamListParts::RequiredAndRest(
                 pairs[..idx].iter().collect(),
@@ -291,10 +283,7 @@ fn as_symbol(pair: &Pair<Rule>) -> Result<String, SutraError> {
             value: Expr::Symbol(s, _),
             ..
         } => Ok(s),
-        _ => Err(SutraError {
-            kind: SutraErrorKind::Parse("Expected symbol in parameter list".to_string()),
-            span: Some(span),
-        }),
+        _ => Err(parse_error("Expected symbol in parameter list", Some(span))),
     }
 }
 
@@ -312,9 +301,11 @@ fn build_block(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
 fn build_atom(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     let span = get_span(&pair);
     let mut inner = pair.clone().into_inner();
-    let sub = inner.next().ok_or_else(|| SutraError {
-        kind: SutraErrorKind::MalformedAst(format!("Empty atom pair (input: '{}')", pair.as_str())),
-        span: Some(span),
+    let sub = inner.next().ok_or_else(|| {
+        malformed_ast_error(
+            format!("Empty atom pair (input: '{}')", pair.as_str()),
+            Some(span),
+        )
     })?;
     build_ast_from_pair(sub)
 }
@@ -323,12 +314,14 @@ fn build_atom(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
 fn build_number(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     let span = get_span(&pair);
     let s = pair.as_str();
-    let n = s.parse().map_err(|e| SutraError {
-        kind: SutraErrorKind::Parse(format!(
-            "number: Invalid number: expected numeric literal, found '{}', error: {}",
-            s, e
-        )),
-        span: Some(span.clone()),
+    let n = s.parse().map_err(|e| {
+        parse_error(
+            format!(
+                "number: Invalid number: expected numeric literal, found '{}', error: {}",
+                s, e
+            ),
+            Some(span.clone()),
+        )
     })?;
     Ok(WithSpan {
         value: Expr::Number(n, span.clone()),
@@ -349,13 +342,13 @@ fn build_boolean(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
             value: Expr::Bool(false, span.clone()),
             span,
         }),
-        _ => Err(SutraError {
-            kind: SutraErrorKind::Parse(format!(
+        _ => Err(parse_error(
+            format!(
                 "boolean: Invalid boolean: expected 'true' or 'false', found '{}'",
                 s
-            )),
-            span: Some(span),
-        }),
+            ),
+            Some(span),
+        )),
     }
 }
 
@@ -587,9 +580,11 @@ mod tests {
 fn build_quote(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     let span = get_span(&pair);
     let mut inner = pair.into_inner();
-    let quoted = inner.next().ok_or_else(|| SutraError {
-        kind: SutraErrorKind::MalformedAst("quote: Empty quote pair (expected expr)".to_string()),
-        span: Some(span.clone()),
+    let quoted = inner.next().ok_or_else(|| {
+        malformed_ast_error(
+            "quote: Empty quote pair (expected expr)".to_string(),
+            Some(span.clone()),
+        )
     })?;
     let quoted_expr = build_ast_from_pair(quoted)?;
     Ok(WithSpan {
@@ -604,18 +599,18 @@ fn build_define_form(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     let mut inner = pair.clone().into_inner();
     // Expect: define, param_list, expr
     let _define_kw = inner.next(); // "define" symbol (skip)
-    let param_list_pair = inner.next().ok_or_else(|| SutraError {
-        kind: SutraErrorKind::MalformedAst(
+    let param_list_pair = inner.next().ok_or_else(|| {
+        malformed_ast_error(
             "define_form: Missing param_list in define_form (expected param_list)".to_string(),
-        ),
-        span: Some(span.clone()),
+            Some(span.clone()),
+        )
     })?;
     let param_list_expr = build_ast_from_pair(param_list_pair)?;
-    let body_pair = inner.next().ok_or_else(|| SutraError {
-        kind: SutraErrorKind::MalformedAst(
+    let body_pair = inner.next().ok_or_else(|| {
+        malformed_ast_error(
             "define_form: Missing body expr in define_form (expected expr)".to_string(),
-        ),
-        span: Some(span.clone()),
+            Some(span.clone()),
+        )
     })?;
     let body_expr = build_ast_from_pair(body_pair)?;
     Ok(WithSpan {

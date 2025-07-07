@@ -141,6 +141,10 @@ sutra/
 
 - **Protocol Requirement:** All tests must be written as user-facing Sutra scripts (s-expr or braced), asserting only on observable output, world queries, or errors as surfaced to the user. No direct Rust API or internal data structure manipulation is permitted. A full test suite rewrite is required. See `memory-bank/README.md` and `memory-bank/activeContext.md` for details.
 
+- **Integration Test Runner Bootstrapped (2025-07-06):**
+  - `tests/scripts/` directory created for protocol-compliant integration tests.
+  - First `.sutra` test script (`hello_world.sutra`) and expected output (`hello_world.expected`) added. See `activeContext.md` and `progress.md`.
+
 ## Deployment Considerations
 
 ### Library-First Design

@@ -1,3 +1,4 @@
+// The atom registry is a single source of truth and must be passed by reference to all validation and evaluation code. Never construct a local/hidden registry.
 use crate::ast::{Expr, Span, WithSpan};
 use crate::error::SutraError;
 use crate::eval::EvalContext;
