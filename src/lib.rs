@@ -9,7 +9,7 @@ use crate::ast::{Expr, Span, WithSpan};
 use crate::atoms::OutputSink;
 use crate::cli::output::StdoutSink;
 use crate::macros::{expand_macros, MacroDef, MacroEnv, MacroRegistry, MacroTemplate};
-use crate::runtime::eval::{eval, eval_expr};
+use crate::runtime::eval::eval;
 use crate::runtime::registry::build_default_atom_registry;
 use crate::runtime::world::World;
 use crate::syntax::error::macro_error;
@@ -40,7 +40,7 @@ pub fn run_sutra_source_with_output(
         }
         user_macros
             .macros
-            .insert(name, MacroDef::Template(template));
+            .insert(name.clone(), MacroDef::Template(template));
     }
 
     // 4. Build core macro registry (standard macros)

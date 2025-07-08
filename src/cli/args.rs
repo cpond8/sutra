@@ -61,4 +61,10 @@ pub enum Command {
     ListMacros,
     /// List all available atoms with their documentation.
     ListAtoms,
+    /// Show the Abstract Syntax Tree (AST) for a script.
+    Ast {
+        /// The path to the Sutra script file to parse.
+        #[arg(required = true)]
+        file: PathBuf,
+    },
 }

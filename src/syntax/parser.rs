@@ -219,7 +219,19 @@ enum ParamListParts<'a> {
 /// ```
 fn build_param_list(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     let span = get_span(&pair);
-    let pairs: Vec<_> = pair.clone().into_inner().collect();
+    let mut inner = pair.clone().into_inner();
+
+    // The param_list rule contains a single param_items rule
+    let param_items_pair = inner.next().ok_or_else(|| {
+        malformed_ast_error(
+            "param_list: Missing param_items".to_string(),
+            Some(span.clone()),
+        )
+    })?;
+
+    // Now get the individual symbols from param_items
+    let pairs: Vec<_> = param_items_pair.clone().into_inner().collect();
+
     let parts = partition_param_list(&pairs, &span)?;
     let (required, rest) = match parts {
         ParamListParts::RequiredOnly(req) => (req, None),

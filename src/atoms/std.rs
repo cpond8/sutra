@@ -848,7 +848,7 @@ pub fn register_test_atoms(registry: &mut crate::atoms::AtomRegistry) {
             _ => (0, "default".to_string()),
         };
         ctx.output.emit(&format!("[before:{}:{}]", depth, msg), Some(span));
-        let (result, world) = if depth > 0 {
+        let (_result, world) = if depth > 0 {
             // Recursive call to self
             let mut sub_context = EvalContext {
                 world: ctx.world,

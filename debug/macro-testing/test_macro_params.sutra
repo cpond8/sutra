@@ -1,0 +1,4 @@
+;; Test macro with parameter usage
+(define (greet name) (print name))
+(greet "Alice")
+(greet "Bob")
