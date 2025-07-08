@@ -18,7 +18,7 @@ pub struct Span {
     // Optionally: line/col for richer error UX.
 }
 
-use crate::path::Path;
+use crate::runtime::path::Path;
 
 /// The core AST node for Sutra expressions.
 ///
@@ -165,7 +165,7 @@ pub struct ParamList {
 pub trait SutraAstBuilder {
     fn build_ast(
         &self,
-        cst: &crate::parser::SutraCstNode,
+        cst: &crate::syntax::parser::SutraCstNode,
     ) -> Result<WithSpan<Expr>, SutraAstBuildError>;
 }
 
@@ -188,7 +188,7 @@ pub struct TrivialAstBuilder;
 impl SutraAstBuilder for TrivialAstBuilder {
     fn build_ast(
         &self,
-        cst: &crate::parser::SutraCstNode,
+        cst: &crate::syntax::parser::SutraCstNode,
     ) -> Result<WithSpan<Expr>, SutraAstBuildError> {
         Ok(WithSpan {
             value: Expr::List(vec![], cst.span.clone()),
@@ -203,7 +203,7 @@ pub struct CanonicalAstBuilder;
 impl SutraAstBuilder for CanonicalAstBuilder {
     fn build_ast(
         &self,
-        cst: &crate::parser::SutraCstNode,
+        cst: &crate::syntax::parser::SutraCstNode,
     ) -> Result<WithSpan<Expr>, SutraAstBuildError> {
         build_ast_from_cst(cst)
     }
@@ -211,12 +211,12 @@ impl SutraAstBuilder for CanonicalAstBuilder {
 
 // Private combinator for mapping CST children to Expr::List
 fn map_cst_children_to_list<F>(
-    children: &[crate::parser::SutraCstNode],
+    children: &[crate::syntax::parser::SutraCstNode],
     builder: F,
     span: &Span,
 ) -> Result<WithSpan<Expr>, SutraAstBuildError>
 where
-    F: FnMut(&crate::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError>,
+    F: FnMut(&crate::syntax::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError>,
 {
     let exprs = children
         .iter()
@@ -229,7 +229,7 @@ where
 }
 
 fn build_ast_from_cst(
-    cst: &crate::parser::SutraCstNode,
+    cst: &crate::syntax::parser::SutraCstNode,
 ) -> Result<WithSpan<Expr>, SutraAstBuildError> {
     match cst.rule.as_str() {
         "program" | "list" => {
@@ -292,7 +292,7 @@ fn build_ast_from_cst(
     }
 }
 
-fn cst_text(cst: &crate::parser::SutraCstNode) -> String {
+fn cst_text(cst: &crate::syntax::parser::SutraCstNode) -> String {
     // For leaf nodes, reconstruct text from span (in real impl, pass source)
     // Here, just use rule name as placeholder
     cst.rule.clone()
@@ -302,3 +302,6 @@ fn unescape_string(s: &str) -> Result<String, String> {
     // TODO: Implement real unescaping and validation
     Ok(s.to_string())
 }
+
+pub mod value;
+pub mod builder;

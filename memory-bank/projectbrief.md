@@ -81,12 +81,30 @@ A major, multi-phase refactor of the Sutra parsing pipeline has been planned and
 
 See the full plan and context in `docs/architecture/parsing-pipeline-plan.md` (archival document).
 
+## File Hierarchy and Modularization Update (2025-07-07)
+
+- The Rust codebase is now organized into modular directories:
+  - `src/syntax/` (parser, CST, error, validation)
+  - `src/ast/` (AST builder, value types)
+  - `src/atoms/` (core atom implementations)
+  - `src/macros/` (macro system and stdlib)
+  - `src/runtime/` (evaluation, registry, world state)
+  - `src/cli/` (CLI logic, args, output)
+  - Entry points: `src/lib.rs`, `src/main.rs`
+- All directory-based modules use explicit `mod.rs` files (per Rust idiom).
+- Tests are organized as:
+  - Rust integration/unit tests: `tests/rust/`
+  - Protocol-compliant integration tests: `tests/scripts/` (Sutra scripts + expected output)
+- God files have been eliminated; each module is focused and minimal.
+- This structure supports maintainability, onboarding, and future growth.
+
 ## Changelog
 
 - 2025-07-03: Updated to resolve all audit TODOs, clarify vision, and align with current codebase and guidelines.
 - 2025-06-30: Initial synthesis from legacy documentation.
 - 2025-07-04: Added summary and cross-reference for the new parsing pipeline plan.
 - 2025-07-06: Batch refactor for Rust idiom compliance (implicit/explicit return style), match exhaustiveness, and error handling. Explicit returns for early exits restored. All match arms for Expr variants in eval_expr restored. Protocol-driven, batch-based, test-first approach enforced. All tests pass. Lesson: Always enumerate all functions for audit, not just those surfaced by search.
+- 2025-07-07: Major file hierarchy and module organization refactor. Modular directories created in src/, god files removed, explicit mod.rs usage, and new test organization. All documentation and memory bank files must be updated to reflect this canonical structure.
 
 ## Current Development Phase
 

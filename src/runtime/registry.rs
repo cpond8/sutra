@@ -6,26 +6,24 @@
 //!
 //! Registry Invariant: The atom registry is a single source of truth. It must be constructed once at the entrypoint and passed by reference to all validation and evaluation code. Never construct a local/hidden registry. See validate.rs and atom.rs for enforcement.
 
-use crate::atom::AtomRegistry;
-use crate::atoms_std;
-use crate::macros::MacroRegistry;
-use crate::macros_std;
+use crate::atoms::{self, AtomRegistry};
+use crate::macros::{self, MacroRegistry};
 
 /// Builds and returns a fully populated atom registry with all standard atoms registered.
 ///
 /// # Example
 /// ```
-/// use sutra::registry::build_default_atom_registry;
+/// use sutra::runtime::registry::build_default_atom_registry;
 /// let registry = build_default_atom_registry();
 /// ```
 #[inline]
 pub fn build_default_atom_registry() -> AtomRegistry {
     let mut registry = AtomRegistry::new();
-    atoms_std::register_std_atoms(&mut registry);
+    atoms::std::register_std_atoms(&mut registry);
     #[cfg(any(test, feature = "test-atom"))]
     {
         // Regression: Ensure test atoms are only registered when the 'test-atom' feature is enabled or during tests.
-        atoms_std::register_test_atoms(&mut registry);
+        atoms::std::register_test_atoms(&mut registry);
     }
     registry
 }
@@ -34,12 +32,12 @@ pub fn build_default_atom_registry() -> AtomRegistry {
 ///
 /// # Example
 /// ```
-/// use sutra::registry::build_default_macro_registry;
+/// use sutra::runtime::registry::build_default_macro_registry;
 /// let registry = build_default_macro_registry();
 /// ```
 #[inline]
 pub fn build_default_macro_registry() -> MacroRegistry {
     let mut registry = MacroRegistry::new();
-    macros_std::register_std_macros(&mut registry);
+    macros::std::register_std_macros(&mut registry);
     registry
 }

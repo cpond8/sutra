@@ -10,10 +10,10 @@
 //! node. This is the only place in the entire engine where path syntax is parsed.
 
 use crate::ast::{Expr, WithSpan};
-use crate::error::validation_error;
-use crate::error::SutraError;
+use crate::syntax::error::validation_error;
+use crate::syntax::error::SutraError;
 use crate::macros::MacroRegistry;
-use crate::path::Path;
+use crate::runtime::path::Path;
 
 // ---
 // Registry
@@ -187,7 +187,7 @@ fn create_assignment_macro(
 ///
 /// ```rust
 /// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros_std::expand_is;
+/// use sutra::macros::std::expand_is;
 /// let expr = WithSpan {
 ///     value: Expr::List(vec![
 ///         WithSpan { value: Expr::Symbol("is?".to_string(), Span::default()), span: Span::default() },
@@ -209,7 +209,7 @@ pub fn expand_is(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
 ///
 /// ```rust
 /// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros_std::expand_over;
+/// use sutra::macros::std::expand_over;
 /// let expr = WithSpan {
 ///     value: Expr::List(vec![
 ///         WithSpan { value: Expr::Symbol("over?".to_string(), Span::default()), span: Span::default() },
@@ -231,7 +231,7 @@ pub fn expand_over(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> 
 ///
 /// ```rust
 /// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros_std::expand_under;
+/// use sutra::macros::std::expand_under;
 /// let expr = WithSpan {
 ///     value: Expr::List(vec![
 ///         WithSpan { value: Expr::Symbol("under?".to_string(), Span::default()), span: Span::default() },
@@ -253,7 +253,7 @@ pub fn expand_under(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError>
 ///
 /// ```rust
 /// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros_std::expand_add;
+/// use sutra::macros::std::expand_add;
 /// let expr = WithSpan {
 ///     value: Expr::List(vec![
 ///         WithSpan { value: Expr::Symbol("add!".to_string(), Span::default()), span: Span::default() },
@@ -275,7 +275,7 @@ pub fn expand_add(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
 ///
 /// ```rust
 /// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros_std::expand_sub;
+/// use sutra::macros::std::expand_sub;
 /// let expr = WithSpan {
 ///     value: Expr::List(vec![
 ///         WithSpan { value: Expr::Symbol("sub!".to_string(), Span::default()), span: Span::default() },
@@ -322,7 +322,7 @@ pub fn expand_sub(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
 ///
 /// ```rust
 /// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros_std::expand_inc;
+/// use sutra::macros::std::expand_inc;
 /// let expr = WithSpan {
 ///     value: Expr::List(vec![
 ///         WithSpan { value: Expr::Symbol("inc!".to_string(), Span::default()), span: Span::default() },
@@ -368,7 +368,7 @@ pub fn expand_inc(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
 ///
 /// ```rust
 /// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros_std::expand_dec;
+/// use sutra::macros::std::expand_dec;
 /// let expr = WithSpan {
 ///     value: Expr::List(vec![
 ///         WithSpan { value: Expr::Symbol("dec!".to_string(), Span::default()), span: Span::default() },
@@ -414,7 +414,7 @@ pub fn expand_dec(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
 ///
 /// ```rust
 /// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros_std::expand_set;
+/// use sutra::macros::std::expand_set;
 /// let expr = WithSpan {
 ///     value: Expr::List(vec![
 ///         WithSpan { value: Expr::Symbol("set!".to_string(), Span::default()), span: Span::default() },
@@ -450,7 +450,7 @@ pub fn expand_set(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
 ///
 /// ```rust
 /// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros_std::expand_get;
+/// use sutra::macros::std::expand_get;
 /// let expr = WithSpan {
 ///     value: Expr::List(vec![
 ///         WithSpan { value: Expr::Symbol("get".to_string(), Span::default()), span: Span::default() },
@@ -484,7 +484,7 @@ pub fn expand_get(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
 ///
 /// ```rust
 /// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros_std::expand_del;
+/// use sutra::macros::std::expand_del;
 /// let expr = WithSpan {
 ///     value: Expr::List(vec![
 ///         WithSpan { value: Expr::Symbol("del!".to_string(), Span::default()), span: Span::default() },

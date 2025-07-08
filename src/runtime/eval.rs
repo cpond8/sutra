@@ -1,11 +1,11 @@
 // The atom registry is a single source of truth and must be passed by reference to all validation and evaluation code. Never construct a local/hidden registry.
 use crate::ast::{Expr, WithSpan};
-use crate::atom::{AtomRegistry, OutputSink};
-use crate::error::{
+use crate::atoms::{AtomRegistry, OutputSink};
+use crate::syntax::error::{
     eval_arity_error, eval_general_error, eval_type_error, recursion_depth_error, SutraError,
 };
-use crate::value::Value;
-use crate::world::World;
+use crate::ast::value::Value;
+use crate::runtime::world::World;
 
 pub struct EvalOptions {
     pub max_depth: usize,

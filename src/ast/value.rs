@@ -1,4 +1,4 @@
-use crate::path::Path;
+use crate::runtime::path::Path;
 use im::HashMap;
 use std::fmt;
 
@@ -7,7 +7,7 @@ use std::fmt;
 /// # Examples
 ///
 /// ```rust
-/// use sutra::value::Value;
+/// use sutra::ast::value::Value;
 /// let n = Value::Number(3.14);
 /// assert_eq!(n.type_name(), "Number");
 /// let s = Value::String("hello".to_string());
@@ -33,7 +33,7 @@ impl Value {
     /// # Examples
     ///
     /// ```rust
-    /// use sutra::value::Value;
+    /// use sutra::ast::value::Value;
     /// let v = Value::Bool(true);
     /// assert_eq!(v.type_name(), "Bool");
     /// ```
@@ -54,7 +54,7 @@ impl Value {
     /// # Examples
     ///
     /// ```rust
-    /// use sutra::value::Value;
+    /// use sutra::ast::value::Value;
     /// assert!(Value::Nil.is_nil());
     /// assert!(!Value::Number(1.0).is_nil());
     /// ```
@@ -67,7 +67,7 @@ impl Value {
     /// # Examples
     ///
     /// ```rust
-    /// use sutra::value::Value;
+    /// use sutra::ast::value::Value;
     /// let v = Value::Number(2.0);
     /// assert_eq!(v.as_number(), Some(2.0));
     /// let v2 = Value::String("nope".to_string());
@@ -85,7 +85,7 @@ impl Value {
     /// # Examples
     ///
     /// ```rust
-    /// use sutra::value::Value;
+    /// use sutra::ast::value::Value;
     /// let v = Value::Bool(false);
     /// assert_eq!(v.as_bool(), Some(false));
     /// let v2 = Value::Nil;

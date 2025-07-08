@@ -4,8 +4,8 @@
 //! All errors are span-carrying and user-friendly.
 
 use crate::ast::{Expr, Span, WithSpan};
-use crate::error::validation_error;
-use crate::error::SutraError;
+use crate::syntax::error::validation_error;
+use crate::syntax::error::SutraError;
 use crate::macros::MacroEnv;
 use serde::{Deserialize, Serialize};
 
@@ -43,7 +43,7 @@ impl SutraValidator for TrivialValidator {
 pub fn validate(
     expr: &WithSpan<Expr>,
     env: &MacroEnv,
-    atom_registry: &crate::atom::AtomRegistry,
+    atom_registry: &crate::atoms::AtomRegistry,
 ) -> Result<(), SutraError> {
     match &expr.value {
         Expr::List(items, _) => {

@@ -1,5 +1,5 @@
-use crate::path::Path;
-use crate::value::Value;
+use crate::runtime::path::Path;
+use crate::ast::value::Value;
 use im::HashMap;
 use rand::{RngCore, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;

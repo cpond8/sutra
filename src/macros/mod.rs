@@ -17,16 +17,16 @@
 //! **INVARIANT:** All macro system logic, macro functions, and recursive expansion must operate on `WithSpan<Expr>`. Never unwrap to a bare `Expr` except for internal logic, and always re-wrap with the correct span. All lists are `Vec<WithSpan<Expr>>`.
 
 use crate::ast::{Expr, WithSpan};
-use crate::error::{io_error, macro_error, SutraError};
+use crate::syntax::error::{io_error, macro_error, SutraError};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::fs;
+use ::std::fs;
 
 // === Type Definitions (Core Data Structures) ===
 
 // A macro function is a native Rust function that transforms an AST.
 pub type MacroFn = fn(
     &crate::ast::WithSpan<crate::ast::Expr>,
-) -> Result<crate::ast::WithSpan<crate::ast::Expr>, crate::error::SutraError>;
+) -> Result<crate::ast::WithSpan<crate::ast::Expr>, crate::syntax::error::SutraError>;
 
 /// A declarative macro defined by a template.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,7 +46,7 @@ pub enum MacroDef {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MacroRegistry {
     /// Map from macro name to macro definition (built-in or template).
-    pub macros: std::collections::HashMap<String, MacroDef>,
+    pub macros: ::std::collections::HashMap<String, MacroDef>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,8 +86,8 @@ pub struct MacroExpansionStep {
 /// Macro expansion environment: holds user/core registries and the trace.
 #[derive(Debug, Clone)]
 pub struct MacroEnv {
-    pub user_macros: std::collections::HashMap<String, MacroDef>,
-    pub core_macros: std::collections::HashMap<String, MacroDef>,
+    pub user_macros: ::std::collections::HashMap<String, MacroDef>,
+    pub core_macros: ::std::collections::HashMap<String, MacroDef>,
     pub trace: Vec<MacroExpansionStep>,
 }
 
@@ -107,11 +107,9 @@ impl MacroRegistry {
 
 /// Parses Sutra macro definitions from a source string.
 pub fn parse_macros_from_source(source: &str) -> Result<Vec<(String, MacroTemplate)>, SutraError> {
-    use crate::parser;
-
-    let exprs = parser::parse(source)?;
+    let exprs = crate::syntax::parser::parse(source)?;
     let mut macros = Vec::new();
-    let mut names_seen = std::collections::HashSet::new();
+    let mut names_seen = ::std::collections::HashSet::new();
 
     for expr in exprs {
         if let Some((macro_name, template)) = try_parse_macro_form(&expr, &mut names_seen)? {
@@ -129,7 +127,7 @@ pub fn load_macros_from_file(path: &str) -> Result<Vec<(String, MacroTemplate)>,
 
 fn try_parse_macro_form(
     expr: &crate::ast::WithSpan<crate::ast::Expr>,
-    names_seen: &mut std::collections::HashSet<String>,
+    names_seen: &mut ::std::collections::HashSet<String>,
 ) -> Result<Option<(String, MacroTemplate)>, SutraError> {
     // Only process (define (name ...) body) forms
     let Expr::List(items, _) = &expr.value else {
@@ -183,7 +181,7 @@ fn check_no_duplicate_params(
     all_names: &[String],
     span: &crate::ast::Span,
 ) -> Result<(), SutraError> {
-    let mut seen = std::collections::HashSet::new();
+    let mut seen = ::std::collections::HashSet::new();
     for name in all_names {
         if !seen.insert(name) {
             return Err(macro_error(
@@ -246,8 +244,8 @@ pub fn bind_macro_params(
     args: &[WithSpan<Expr>],
     params: &crate::ast::ParamList,
     expr_span: &crate::ast::Span,
-) -> std::collections::HashMap<String, WithSpan<Expr>> {
-    let mut bindings = std::collections::HashMap::new();
+) -> ::std::collections::HashMap<String, WithSpan<Expr>> {
+    let mut bindings = ::std::collections::HashMap::new();
     for (i, param_name) in params.required.iter().enumerate() {
         bindings.insert(param_name.clone(), args[i].clone());
     }
@@ -304,7 +302,7 @@ pub fn expand_template(
 /// Recursively substitutes macro parameters in the template body with provided arguments.
 pub fn substitute_template(
     expr: &WithSpan<Expr>,
-    bindings: &std::collections::HashMap<String, WithSpan<Expr>>,
+    bindings: &::std::collections::HashMap<String, WithSpan<Expr>>,
 ) -> Result<WithSpan<Expr>, SutraError> {
     match &expr.value {
         Expr::Symbol(name, _span) => {
@@ -548,4 +546,5 @@ impl<'de> Deserialize<'de> for MacroDef {
         }
     }
 }
-// ... end of file ...
+
+pub mod std;

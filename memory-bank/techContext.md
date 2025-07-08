@@ -27,27 +27,49 @@
 ### Project Structure
 ```
 sutra/
-├── Cargo.toml          # Rust project configuration
+├── Cargo.toml                  # Rust project configuration
 ├── src/
-│   ├── lib.rs          # Core library API
-│   ├── main.rs         # Main CLI entry point
-│   ├── ast.rs          # AST types and span tracking
-│   ├── value.rs        # Runtime data values
-│   ├── world.rs        # Persistent world state
-│   ├── error.rs        # Unified error types
-│   ├── sutra.pest      # Formal PEG grammar for all syntaxes
-│   ├── parser.rs       # Unified PEG-based parser
-│   ├── atom.rs         # Irreducible operations
-│   ├── eval.rs         # Evaluation engine
-│   ├── macros.rs       # Macro expansion engine
-│   ├── macros_std.rs   # Standard macro library
-│   ├── validate.rs     # Validation passes (planned)
-│   └── cli/            # CLI module
-│       ├── mod.rs      # Main CLI logic and dispatch
-│       ├── args.rs     # CLI argument definitions
-│       └── output.rs   # Output formatting and printing
-├── tests/              # Integration tests
-└── docs/               # Design documentation
+│   ├── ast/                    # AST types and span tracking
+│   │   ├── builder.rs          # AST construction utilities
+│   │   └── value.rs            # Runtime data values
+│   ├── atoms/                  # Core atom (primitive op) implementations
+│   ├── cli/                    # CLI logic and argument parsing
+│   │   ├── args.rs             # CLI argument definitions
+│   │   └── output.rs           # Output formatting and printing
+│   ├── macros/                 # Macro system and stdlib
+│   ├── runtime/                # Evaluation engine and world state
+│   │   ├── eval.rs             # Main evaluation logic
+│   │   ├── path.rs             # Path-based addressing
+│   │   ├── registry.rs         # Atom/macro registry
+│   │   └── world.rs            # Persistent world state
+│   ├── syntax/                 # Parsing, error handling, validation
+│   │   ├── cst_parser.rs       # Concrete syntax tree parser
+│   │   ├── error.rs            # Syntax/parse error types
+│   │   ├── grammar.pest        # PEG grammar definition
+│   │   ├── parser.rs           # AST parser
+│   │   ├── validate.rs         # Syntax validation passes
+│   │   └── validator.rs        # Validator implementation
+│   ├── lib.rs                  # Core library API
+│   └── main.rs                 # Main CLI entry point
+├── tests/
+│   ├── rust/                   # Rust integration/unit tests
+│   ├── scripts/                # Protocol-compliant Sutra script tests
+│   └── script_runner.rs        # Test runner for scripts
+├── docs/                       # Design documentation
+│   ├── architecture/           # Architecture docs
+│   ├── archive/                # Historical/archived docs
+│   ├── philosophy/             # Project philosophy
+│   ├── references/             # Reference material
+│   └── specs/                  # Formal specs
+├── memory-bank/                # Canonical project memory/context
+│   ├── activeContext.md        # Current work focus
+│   ├── productContext.md       # Product rationale
+│   ├── progress.md             # Completed work/next steps
+│   ├── projectbrief.md         # Project vision
+│   ├── projectPatterns.md      # Project patterns
+│   ├── README.md               # Memory bank protocol
+│   ├── systemPatterns.md       # System/architecture patterns
+│   └── techContext.md          # Technical context (this file)
 ```
 
 ### Build System
@@ -181,6 +203,23 @@ sutra/
 
 See `docs/architecture/parsing-pipeline-plan.md` for the full plan and technical context.
 
+## File Hierarchy and Modularization Update (2025-07-07)
+
+- The Rust codebase is now organized into modular directories:
+  - `src/syntax/` (parser, CST, error, validation)
+  - `src/ast/` (AST builder, value types)
+  - `src/atoms/` (core atom implementations)
+  - `src/macros/` (macro system and stdlib)
+  - `src/runtime/` (evaluation, registry, world state)
+  - `src/cli/` (CLI logic, args, output)
+  - Entry points: `src/lib.rs`, `src/main.rs`
+- All directory-based modules use explicit `mod.rs` files (per Rust idiom).
+- Tests are organized as:
+  - Rust integration/unit tests: `tests/rust/`
+  - Protocol-compliant integration tests: `tests/scripts/` (Sutra scripts + expected output)
+- God files have been eliminated; each module is focused and minimal.
+- This structure supports maintainability, onboarding, and future growth.
+
 ## Changelog
 
 - 2025-07-03: Updated to resolve all audit TODOs, clarify technical context, and align with current codebase and guidelines.
@@ -188,3 +227,4 @@ See `docs/architecture/parsing-pipeline-plan.md` for the full plan and technical
 - 2025-07-04: Added section on parsing pipeline technical rationale and requirements.
 - 2025-07-06: Batch refactor for Rust idiom compliance (implicit/explicit return style), match exhaustiveness, and error handling. Explicit returns for early exits restored. All match arms for Expr variants in eval_expr restored. Protocol-driven, batch-based, test-first approach enforced. All tests pass. Lesson: Always enumerate all functions for audit, not just those surfaced by search.
 - 2025-07-07: Macro/atom registry and test system are now fully Rust-idiomatic, with anti-nesting audits and iterator combinator refactors complete. Feature-gated (test-atom) and debug-assertion-based test atom registration is in place; integration tests that require test-only atoms are now feature-gated and optional. Protocol for feature-gated/optional integration tests is documented in systemPatterns.md. All code, tests, and documentation are up to date and compliant as of this session.
+- 2025-07-07: Major file hierarchy and module organization refactor. Modular directories created in src/, god files removed, explicit mod.rs usage, and new test organization. All documentation and memory bank files must be updated to reflect this canonical structure.

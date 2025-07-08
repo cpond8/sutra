@@ -7,7 +7,7 @@
 //
 // Key Responsibilities:
 // 1.  **Use the Formal Grammar**: It is driven by the formal PEG grammar defined
-//     in `src/sutra.pest`, which is the single source of truth for syntax.
+//     in `src/syntax/grammar.pest`, which is the single source of truth for syntax.
 // 2.  **Unified Syntax**: It handles both s-expression `()` and brace-block `{}`
 //     syntaxes, producing the identical AST for both.
 // 3.  **CST to AST Conversion**: Its primary role is to transform the Concrete
@@ -41,16 +41,17 @@
 //! - If a canonical program node is ever needed, document and update accordingly.
 
 use crate::ast::{Expr, Span, WithSpan};
-use crate::error::{internal_parse_error, malformed_ast_error, parse_error, SutraError};
+use crate::syntax::error::{internal_parse_error, malformed_ast_error, parse_error, SutraError};
 use once_cell::sync::Lazy;
 use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
 use std::collections::HashMap;
+use pest::error::InputLocation;
 
 // This derive macro generates the parser implementation from our grammar file.
 #[derive(Parser)]
-#[grammar = "sutra.pest"]
+#[grammar = "syntax/grammar.pest"]
 struct SutraParser;
 
 /// Parses a source string into a vector of top-level Sutra `Expr` AST nodes.
@@ -69,11 +70,11 @@ pub fn parse(source: &str) -> Result<Vec<WithSpan<Expr>>, SutraError> {
     // If it fails, it returns a `pest` error, which we map to our `SutraError`.
     let pairs = SutraParser::parse(Rule::program, source).map_err(|e| {
         let span = match e.location {
-            pest::error::InputLocation::Pos(pos) => Span {
+            InputLocation::Pos(pos) => Span {
                 start: pos,
                 end: pos,
             },
-            pest::error::InputLocation::Span((start, end)) => Span { start, end },
+            InputLocation::Span((start, end)) => Span { start, end },
         };
         parse_error(e.to_string(), Some(span))
     })?;
@@ -493,11 +494,11 @@ impl SutraCstParser for PestCstParser {
     fn parse(&self, input: &str) -> Result<SutraCstNode, SutraCstParseError> {
         let pairs = SutraParser::parse(Rule::program, input).map_err(|e| {
             let span = match e.location {
-                pest::error::InputLocation::Pos(pos) => crate::ast::Span {
+                InputLocation::Pos(pos) => crate::ast::Span {
                     start: pos,
                     end: pos,
                 },
-                pest::error::InputLocation::Span((start, end)) => crate::ast::Span { start, end },
+                InputLocation::Span((start, end)) => crate::ast::Span { start, end },
             };
             SutraCstParseError::Syntax {
                 span,

@@ -1,29 +1,21 @@
+pub mod syntax;
 pub mod ast;
-pub mod atom;
-pub mod atoms_std;
-pub mod cli;
-pub mod error;
-pub mod eval;
+pub mod atoms;
 pub mod macros;
-pub mod macros_std;
-pub mod parser;
-pub mod path;
-pub mod registry;
-pub mod validate;
-pub mod value;
-pub mod world;
+pub mod runtime;
+pub mod cli;
 
 use crate::ast::{Expr, Span, WithSpan};
-use crate::atom::OutputSink;
+use crate::atoms::OutputSink;
 use crate::cli::output::StdoutSink;
-use crate::error::macro_error;
-use crate::error::SutraError;
-use crate::eval::eval_expr;
-use crate::eval::EvalOptions;
+use crate::syntax::error::macro_error;
+use crate::syntax::error::SutraError;
+use crate::runtime::eval::eval_expr;
+use crate::runtime::eval::EvalOptions;
 use crate::macros::{expand_macros, MacroDef, MacroEnv, MacroRegistry, MacroTemplate};
-use crate::registry::build_default_atom_registry;
-use crate::validate::validate;
-use crate::world::World;
+use crate::runtime::registry::build_default_atom_registry;
+use crate::syntax::validate::validate;
+use crate::runtime::world::World;
 
 /// New API: Run Sutra source with injectable output sink.
 pub fn run_sutra_source_with_output(
@@ -31,7 +23,7 @@ pub fn run_sutra_source_with_output(
     output: &mut dyn OutputSink,
 ) -> Result<(), SutraError> {
     // 1. Parse the source into AST nodes
-    let ast_nodes = parser::parse(source).map_err(|e| e.with_source(source))?;
+    let ast_nodes = syntax::parser::parse(source).map_err(|e| e.with_source(source))?;
 
     // 2. Partition AST nodes: macro definitions vs user code
     let (macro_defs, user_code): (Vec<_>, Vec<_>) =
@@ -54,7 +46,7 @@ pub fn run_sutra_source_with_output(
 
     // 4. Build core macro registry (standard macros)
     let mut core_macros = MacroRegistry::new();
-    macros_std::register_std_macros(&mut core_macros);
+    macros::std::register_std_macros(&mut core_macros);
 
     // 5. Build MacroEnv
     let mut env = MacroEnv {
@@ -96,7 +88,7 @@ pub fn run_sutra_source_with_output(
     })?;
 
     // 10. Print evaluation result
-    if !matches!(result.0, crate::value::Value::Nil) {
+    if !matches!(result.0, crate::ast::value::Value::Nil) {
         output.emit(&format!("{}", result.0), None);
     }
 

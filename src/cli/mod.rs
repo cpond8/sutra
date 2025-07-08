@@ -5,9 +5,8 @@
 
 use crate::cli::args::{Command, SutraArgs};
 use crate::cli::output::StdoutSink;
-use crate::error::io_error;
+use crate::syntax::error::io_error;
 use crate::macros::{expand_macros, load_macros_from_file, MacroDef, MacroEnv, MacroRegistry};
-use crate::{macros_std, parser};
 use clap::Parser;
 use std::{fs, process};
 
@@ -41,7 +40,7 @@ use crate::ast::{Expr, Span, WithSpan};
 fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
     let filename = path.to_str().ok_or("Invalid filename")?;
     let source = fs::read_to_string(filename)?;
-    let ast_nodes = parser::parse(&source).map_err(|e| e.with_source(&source))?;
+    let ast_nodes = crate::syntax::parser::parse(&source).map_err(|e| e.with_source(&source))?;
 
     let program: WithSpan<Expr> = if ast_nodes.len() == 1 {
         ast_nodes
@@ -68,7 +67,7 @@ fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::E
 
     // Build core macro registry
     let mut core_macros = MacroRegistry::new();
-    macros_std::register_std_macros(&mut core_macros);
+    crate::macros::std::register_std_macros(&mut core_macros);
 
     // Load user-defined/stdlib macros from macros.sutra
     let mut user_macros = MacroRegistry::new();

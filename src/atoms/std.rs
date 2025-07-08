@@ -13,11 +13,11 @@
 //!   Complex operations are built by composing atoms, not by creating complex atoms.
 
 use crate::ast::{Expr, WithSpan};
-use crate::atom::{AtomFn, AtomRegistry};
-use crate::error::{eval_arity_error, eval_general_error, eval_type_error};
-use crate::error::{EvalError, SutraError, SutraErrorKind};
-use crate::eval::EvalContext;
-use crate::value::Value;
+use crate::atoms::{AtomFn, AtomRegistry};
+use crate::syntax::error::{eval_arity_error, eval_general_error, eval_type_error};
+use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
+use crate::runtime::eval::EvalContext;
+use crate::ast::value::Value;
 
 // ---
 // Registry
@@ -48,14 +48,14 @@ pub fn register_std_atoms(registry: &mut AtomRegistry) {
 }
 
 #[cfg(any(test, feature = "test-atom", debug_assertions))]
-pub fn register_test_atoms(registry: &mut crate::atom::AtomRegistry) {
+pub fn register_test_atoms(registry: &mut crate::atoms::AtomRegistry) {
     use crate::ast::Expr;
     use crate::ast::Span;
     use crate::ast::WithSpan;
-    use crate::error::SutraError;
-    use crate::eval::EvalContext;
-    use crate::value::Value;
-    use crate::world::World;
+    use crate::syntax::error::SutraError;
+    use crate::runtime::eval::EvalContext;
+    use crate::ast::value::Value;
+    use crate::runtime::world::World;
 
     fn test_echo_atom(
         args: &[WithSpan<Expr>],
@@ -92,7 +92,7 @@ where the full engine context is available. See tests/ for examples.
 fn eval_args(
     args: &[WithSpan<Expr>],
     context: &mut EvalContext<'_, '_>,
-) -> Result<(Vec<Value>, crate::world::World), SutraError> {
+) -> Result<(Vec<Value>, crate::runtime::world::World), SutraError> {
     // Use try_fold to create a functional pipeline that threads the world
     // state through the evaluation of each argument. This is the canonical
     // pattern for safe, sequential evaluation in Sutra.

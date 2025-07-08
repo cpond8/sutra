@@ -15,6 +15,8 @@
 //! ## Changelog
 //! - 2025-07-05: Initial stub by AI. Rationale: Canonical modular pipeline contract.
 
+use crate::syntax::cst_parser::SutraSpan;
+use crate::syntax::parser::SutraCstNode;
 use serde::{Serialize, Deserialize};
 
 /// Main trait for the AST builder stage.
@@ -50,10 +52,3 @@ pub struct SutraAstBuildError {
     pub span: SutraSpan,
     pub message: String, // Must start with rule name and describe expected vs. found
 }
-
-/// # Example
-/// ```rust
-/// let builder = MyAstBuilder::default();
-/// let ast = builder.build_ast(&cst)?;
-/// assert!(matches!(ast.value, SutraAstNode::List(_)));
-/// ```

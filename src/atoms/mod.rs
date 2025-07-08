@@ -1,10 +1,10 @@
 // The atom registry is a single source of truth and must be passed by reference to all validation and evaluation code. Never construct a local/hidden registry.
 use crate::ast::{Expr, Span, WithSpan};
-use crate::error::SutraError;
-use crate::eval::EvalContext;
-use crate::value::Value;
-use crate::world::World;
-use std::collections::HashMap;
+use crate::syntax::error::SutraError;
+use crate::runtime::eval::EvalContext;
+use crate::ast::value::Value;
+use crate::runtime::world::World;
+use im::HashMap;
 
 // Atom function type: takes AST arguments, the current evaluation context,
 // and the span of the parent expression for better error reporting.
@@ -51,3 +51,5 @@ impl AtomRegistry {
         self.atoms.insert(name.to_string(), func);
     }
 }
+
+pub mod std;

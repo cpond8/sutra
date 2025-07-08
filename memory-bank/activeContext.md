@@ -544,3 +544,32 @@ The highest-value, lowest-cost techniques (integration tests, registry hashing) 
 - Feature-gated (`test-atom`) and debug-assertion-based test atom registration is in place; integration tests that require test-only atoms are now feature-gated and optional.
 - Protocol for feature-gated/optional integration tests is documented in systemPatterns.md.
 - All code, tests, and documentation are up to date and compliant as of this session.
+
+# FILE HIERARCHY AND MODULE ORGANIZATION UPDATE (2025-07-07)
+
+## New Modular Structure
+
+- The Rust codebase has been reorganized for maximal modularity and maintainability:
+  - `src/syntax/` (parser.rs, cst_parser.rs, error.rs, validate.rs, validator.rs, grammar.pest, mod.rs)
+  - `src/ast/` (builder.rs, value.rs, mod.rs)
+  - `src/atoms/` (std.rs, mod.rs)
+  - `src/macros/` (std.rs, mod.rs)
+  - `src/runtime/` (eval.rs, path.rs, registry.rs, world.rs, mod.rs)
+  - `src/cli/` (args.rs, output.rs, mod.rs)
+  - `src/lib.rs`, `src/main.rs` as entry points
+- All directory-based modules use explicit `mod.rs` files (per Rust idiom) except where a single root file suffices.
+- God files have been eliminated; each module is focused and minimal.
+- Test placement protocol:
+  - Inline tests for small modules
+  - `tests.rs` only for large/shared test suites
+  - Rust integration/unit tests in `tests/rust/`
+  - Protocol-compliant integration tests in `tests/scripts/` (Sutra scripts + expected output)
+
+## Rationale
+- Prevents god files and over-merging
+- Follows modern Rust best practices (explicit root files, minimal use of mod.rs)
+- Enables clear ownership, testability, and onboarding
+- Supports future growth and modular refactor
+
+## Changelog
+- 2025-07-07: Major file hierarchy and module organization refactor. Modular directories created in src/, god files removed, explicit mod.rs usage, and new test organization. All documentation and memory bank files must be updated to reflect this canonical structure.

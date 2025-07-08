@@ -88,13 +88,13 @@ impl std::error::Error for SutraError {}
 /// - Use domain-specific helpers (`eval_arity_error`, etc.) for common, repeated patterns in a specific subsystem.
 /// - Prefer helpers that require a span for author-facing errors; IO/internal errors may allow `None`.
 use crate::ast::{Expr, Span, WithSpan};
-use crate::value::Value;
+use crate::ast::value::Value;
 
 /// Constructs a parse error (malformed input, syntax error).
 ///
 /// # Example
 /// ```rust
-/// use sutra::error::parse_error;
+/// use sutra::syntax::error::parse_error;
 /// use sutra::ast::Span;
 /// let span = Span::default();
 /// let _ = parse_error("Unexpected token", Some(span.clone()));
@@ -110,7 +110,7 @@ pub fn parse_error(msg: impl Into<String>, span: Option<Span>) -> SutraError {
 ///
 /// # Example
 /// ```rust
-/// use sutra::error::macro_error;
+/// use sutra::syntax::error::macro_error;
 /// use sutra::ast::Span;
 /// let span = Span::default();
 /// let _ = macro_error("Duplicate macro name", Some(span.clone()));
@@ -126,7 +126,7 @@ pub fn macro_error(msg: impl Into<String>, span: Option<Span>) -> SutraError {
 ///
 /// # Example
 /// ```rust
-/// use sutra::error::validation_error;
+/// use sutra::syntax::error::validation_error;
 /// use sutra::ast::Span;
 /// let span = Span::default();
 /// let _ = validation_error("Invalid macro usage", Some(span.clone()));
@@ -142,7 +142,7 @@ pub fn validation_error(msg: impl Into<String>, span: Option<Span>) -> SutraErro
 ///
 /// # Example
 /// ```rust
-/// use sutra::error::io_error;
+/// use sutra::syntax::error::io_error;
 /// let _ = io_error("Failed to read file", None);
 /// ```
 pub fn io_error(msg: impl Into<String>, span: Option<Span>) -> SutraError {
@@ -156,7 +156,7 @@ pub fn io_error(msg: impl Into<String>, span: Option<Span>) -> SutraError {
 ///
 /// # Example
 /// ```rust
-/// use sutra::error::malformed_ast_error;
+/// use sutra::syntax::error::malformed_ast_error;
 /// use sutra::ast::Span;
 /// let span = Span::default();
 /// let _ = malformed_ast_error("Empty expr pair", Some(span.clone()));
@@ -172,7 +172,7 @@ pub fn malformed_ast_error(msg: impl Into<String>, span: Option<Span>) -> SutraE
 ///
 /// # Example
 /// ```rust
-/// use sutra::error::internal_parse_error;
+/// use sutra::syntax::error::internal_parse_error;
 /// use sutra::ast::Span;
 /// let span = Span::default();
 /// let _ = internal_parse_error("Parser generated an empty tree", Some(span.clone()));
@@ -190,7 +190,7 @@ pub fn internal_parse_error(msg: impl Into<String>, span: Option<Span>) -> Sutra
 ///
 /// # Example
 /// ```rust
-/// use sutra::error::eval_arity_error;
+/// use sutra::syntax::error::eval_arity_error;
 /// use sutra::ast::{Expr, Span, WithSpan};
 /// let span = Span::default();
 /// let args: Vec<WithSpan<Expr>> = vec![];
@@ -217,9 +217,9 @@ pub fn eval_arity_error(
 ///
 /// # Example
 /// ```rust
-/// use sutra::error::eval_type_error;
+/// use sutra::syntax::error::eval_type_error;
 /// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::value::Value;
+/// use sutra::ast::value::Value;
 /// let span = Span::default();
 /// let arg = WithSpan { value: Expr::List(vec![], Span::default()), span: span.clone() };
 /// let val = Value::Nil;
@@ -245,7 +245,7 @@ pub fn eval_type_error(
 ///
 /// # Example
 /// ```rust
-/// use sutra::error::eval_general_error;
+/// use sutra::syntax::error::eval_general_error;
 /// use sutra::ast::{Expr, Span, WithSpan};
 /// let span = Span::default();
 /// let arg = WithSpan { value: Expr::List(vec![], Span::default()), span: span.clone() };
@@ -266,7 +266,7 @@ pub fn eval_general_error(
 ///
 /// # Example
 /// ```rust
-/// use sutra::error::recursion_depth_error;
+/// use sutra::syntax::error::recursion_depth_error;
 /// use sutra::ast::Span;
 /// let span = Span::default();
 /// let _ = recursion_depth_error(Some(span.clone()));
@@ -282,7 +282,7 @@ pub fn recursion_depth_error(span: Option<Span>) -> SutraError {
 ///
 /// # Example
 /// ```rust
-/// use sutra::error::{from_kind, SutraErrorKind};
+/// use sutra::syntax::error::{from_kind, SutraErrorKind};
 /// use sutra::ast::Span;
 /// let span = Span::default();
 /// let _ = from_kind(SutraErrorKind::Parse("custom".to_string()), Some(span.clone()));

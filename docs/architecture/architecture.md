@@ -464,6 +464,30 @@ cond {
 
 ---
 
+## 9. File Hierarchy and Modularization Update (2025-07-07)
+
+- The Rust codebase is now organized into modular directories:
+  - `src/syntax/` (parser, CST, error, validation)
+  - `src/ast/` (AST builder, value types)
+  - `src/atoms/` (core atom implementations)
+  - `src/macros/` (macro system and stdlib)
+  - `src/runtime/` (evaluation, registry, world state)
+  - `src/cli/` (CLI logic, args, output)
+  - Entry points: `src/lib.rs`, `src/main.rs`
+- All directory-based modules use explicit `mod.rs` files (per Rust idiom).
+- Tests are organized as:
+  - Rust integration/unit tests: `tests/rust/`
+  - Protocol-compliant integration tests: `tests/scripts/` (Sutra scripts + expected output)
+- God files have been eliminated; each module is focused and minimal.
+- This structure supports maintainability, onboarding, and future growth.
+
+---
+
+## Changelog
+- 2025-07-07: Major file hierarchy and module organization refactor. Modular directories created in src/, god files removed, explicit mod.rs usage, and new test organization. All documentation and memory bank files must be updated to reflect this canonical structure.
+
+---
+
 ## Appendices
 
 ---

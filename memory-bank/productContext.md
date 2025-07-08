@@ -65,6 +65,23 @@ See `docs/architecture/parsing-pipeline-plan.md` for the full plan and rationale
 - See `memory-bank/progress.md` for completed work and next steps.
 - See `.cursor/rules/memory-bank.mdc` for update protocol and overlays.
 
+## File Hierarchy and Modularization Update (2025-07-07)
+
+- The Rust codebase is now organized into modular directories:
+  - `src/syntax/` (parser, CST, error, validation)
+  - `src/ast/` (AST builder, value types)
+  - `src/atoms/` (core atom implementations)
+  - `src/macros/` (macro system and stdlib)
+  - `src/runtime/` (evaluation, registry, world state)
+  - `src/cli/` (CLI logic, args, output)
+  - Entry points: `src/lib.rs`, `src/main.rs`
+- All directory-based modules use explicit `mod.rs` files (per Rust idiom).
+- Tests are organized as:
+  - Rust integration/unit tests: `tests/rust/`
+  - Protocol-compliant integration tests: `tests/scripts/` (Sutra scripts + expected output)
+- God files have been eliminated; each module is focused and minimal.
+- This structure supports maintainability, onboarding, and future growth.
+
 ## Changelog
 
 - 2025-07-03: Updated to resolve all audit TODOs, clarify product context, and align with current codebase and guidelines.
@@ -72,3 +89,4 @@ See `docs/architecture/parsing-pipeline-plan.md` for the full plan and rationale
 - 2025-07-04: Added section on parsing pipeline and product goals.
 - 2025-07-06: Batch refactor for Rust idiom compliance (implicit/explicit return style), match exhaustiveness, and error handling. Explicit returns for early exits restored. All match arms for Expr variants in eval_expr restored. Protocol-driven, batch-based, test-first approach enforced. All tests pass. Lesson: Always enumerate all functions for audit, not just those surfaced by search.
 - 2025-07-07: Macro/atom registry and test system are now fully Rust-idiomatic, with anti-nesting audits and iterator combinator refactors complete. Feature-gated (test-atom) and debug-assertion-based test atom registration is in place; integration tests that require test-only atoms are now feature-gated and optional. Protocol for feature-gated/optional integration tests is documented in systemPatterns.md. All code, tests, and documentation are up to date and compliant as of this session.
+- 2025-07-07: Major file hierarchy and module organization refactor. Modular directories created in src/, god files removed, explicit mod.rs usage, and new test organization. All documentation and memory bank files must be updated to reflect this canonical structure.

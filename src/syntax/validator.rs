@@ -15,12 +15,11 @@
 //! ## Changelog
 //! - 2025-07-05: Modular validator system by AI. Rationale: Canonical modular pipeline contract.
 
-use serde::{Serialize, Deserialize};
-use crate::ast_builder::{WithSpan, SutraAstNode};
-use crate::cst_parser::SutraSpan;
+use crate::ast::{Expr as SutraAstNode, Span as SutraSpan, WithSpan};
+use serde::{Deserialize, Serialize};
 
 /// Severity of a diagnostic.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum SutraSeverity {
     Error,
     Warning,
@@ -28,7 +27,7 @@ pub enum SutraSeverity {
 }
 
 /// A single validation diagnostic (error, warning, or info).
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct SutraDiagnostic {
     pub severity: SutraSeverity,
     pub message: String, // Must start with rule name and describe expected vs. found
@@ -65,14 +64,14 @@ impl SutraValidator for NoEmptyListValidator {
     fn validate(&self, ast: &WithSpan<SutraAstNode>) -> Vec<SutraDiagnostic> {
         let mut diags = Vec::new();
         match &ast.value {
-            SutraAstNode::List(items) if items.is_empty() => {
+            SutraAstNode::List(items, _) if items.is_empty() => {
                 diags.push(SutraDiagnostic {
                     severity: SutraSeverity::Warning,
                     message: "list: expected non-empty list, found empty".to_string(),
                     span: ast.span.clone(),
                 });
             }
-            SutraAstNode::List(items) => {
+            SutraAstNode::List(items, _) => {
                 for item in items {
                     diags.extend(self.validate(item));
                 }
