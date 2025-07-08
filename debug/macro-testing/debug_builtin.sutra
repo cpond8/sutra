@@ -1,2 +1,0 @@
-;; Test built-in macro call
-(print "Hello, world!")

@@ -63,6 +63,12 @@ impl ValidatorRegistry {
     }
 }
 
+impl Default for ValidatorRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Example: Validator that checks for empty lists.
 pub struct NoEmptyListValidator;
 impl SutraValidator for NoEmptyListValidator {

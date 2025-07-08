@@ -7,7 +7,8 @@
 //! - **Canonical Arguments**: Atoms assume their arguments are canonical and valid.
 //!   For example, `set!` expects its first argument to evaluate to a `Value::Path`.
 //!   It does no parsing or transformation itself.
-//! - **State Propagation**: Atoms that modify state (like `set!`) must accept a
+
+// After function definitions, move all ATOM_* constants here:function definitions, move all ATOM_* constants here:e Propagation**: Atoms that modify state (like `set!`) must accept a
 //!   `World` and return a new, modified `World`.
 //! - **Clarity over Complexity**: Each atom has a single, clear responsibility.
 //!   Complex operations are built by composing atoms, not by creating complex atoms.
@@ -19,20 +20,38 @@ use crate::runtime::eval::{eval_expr, EvalContext};
 use crate::syntax::error::{eval_arity_error, eval_general_error, eval_type_error};
 use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
 
-// Add macro for error construction at the top of the file if not already in scope
-macro_rules! sutra_error {
-    (arity, $span:expr, $args:expr, $func:expr, $expected:expr) => {
-        eval_arity_error($span, $args, $func, $expected)
-    };
-    (type, $span:expr, $arg:expr, $func:expr, $expected:expr, $found:expr) => {
-        eval_type_error($span, $arg, $func, $expected, $found)
-    };
-    (general, $span:expr, $arg:expr, $msg:expr) => {
-        eval_general_error($span, $arg, $msg)
-    };
-    (recursion, $span:expr) => {
-        recursion_depth_error($span)
-    };
+// Convenient type alias for atom return values - modern Rust idiom
+pub type AtomResult = Result<(Value, crate::runtime::world::World), SutraError>;
+
+// Error construction functions to replace sutra_error! macro - cleaner than macro
+/// Creates an arity error for atoms with consistent messaging
+pub fn arity_error(
+    span: Option<crate::ast::Span>,
+    args: &[WithSpan<Expr>],
+    name: &str,
+    expected: impl ToString,
+) -> SutraError {
+    eval_arity_error(span, args, name, expected)
+}
+
+/// Creates a type error for atoms with consistent messaging
+pub fn type_error(
+    span: Option<crate::ast::Span>,
+    arg: &WithSpan<Expr>,
+    name: &str,
+    expected: &str,
+    found: &Value,
+) -> SutraError {
+    eval_type_error(span, arg, name, expected, found)
+}
+
+/// Creates a validation error for atoms with consistent messaging
+pub fn validation_error(
+    span: Option<crate::ast::Span>,
+    arg: &WithSpan<Expr>,
+    message: &str,
+) -> SutraError {
+    eval_general_error(span, arg, message)
 }
 
 /// Macro to create a sub-evaluation context with a new world state.
@@ -93,238 +112,286 @@ fn eval_args(
     )
 }
 
-/// Macro for binary numeric or predicate operations.
-/// Usage: eval_binary_op!(args, context, parent_span, |a, b| ..., "atom_name", "expected_type")
-macro_rules! eval_binary_op {
-    ($args:expr, $context:expr, $parent_span:expr, $op:expr, $name:expr, $expected:expr) => {{
-        if $args.len() != 2 {
-            return Err(sutra_error!(
-                arity,
-                Some($parent_span.clone()),
-                $args,
-                $name,
-                2
-            ));
-        }
-        let mut sub_context1 = sub_eval_context!($context, $context.world);
-        let (val1, world1) = eval_expr(&$args[0], &mut sub_context1)?;
-        let mut sub_context2 = sub_eval_context!($context, &world1);
-        let (val2, world2) = eval_expr(&$args[1], &mut sub_context2)?;
-        match (&val1, &val2) {
-            (Value::Number(n1), Value::Number(n2)) => Ok(($op(*n1, *n2), world2)),
-            _ => Err(sutra_error!(
-                type,
-                Some($parent_span.clone()),
-                &$args[0],
-                $name,
-                $expected,
-                &val1
-            )),
-        }
-    }};
-}
-
-/// Macro for binary numeric operations with custom validation (e.g., division by zero check).
-/// Usage: eval_binary_op_with_validation!(args, context, parent_span, |a, b| ..., "atom_name", |a, b| validation_result)
-macro_rules! eval_binary_op_with_validation {
-    ($args:expr, $context:expr, $parent_span:expr, $op:expr, $name:expr, $validator:expr) => {{
-        if $args.len() != 2 {
-            return Err(sutra_error!(
-                arity,
-                Some($parent_span.clone()),
-                $args,
-                $name,
-                2
-            ));
-        }
-        let mut sub_context1 = sub_eval_context!($context, $context.world);
-        let (val1, world1) = eval_expr(&$args[0], &mut sub_context1)?;
-        let mut sub_context2 = sub_eval_context!($context, &world1);
-        let (val2, world2) = eval_expr(&$args[1], &mut sub_context2)?;
-        match (&val1, &val2) {
-            (Value::Number(n1), Value::Number(n2)) => {
-                // Apply custom validation
-                if let Err(err_msg) = $validator(*n1, *n2) {
-                    return Err(sutra_error!(
-                        general,
-                        Some($parent_span.clone()),
-                        &$args[1],
-                        err_msg
-                    ));
-                }
-                Ok(($op(*n1, *n2), world2))
-            }
-            _ => Err(sutra_error!(
-                general,
-                Some($parent_span.clone()),
-                &$args[0],
-                format!(
-                    "`{}` expects two Numbers, got {} and {}",
-                    $name,
-                    val1.type_name(),
-                    val2.type_name()
-                )
-            )),
-        }
-    }};
-}
-
-/// Macro for n-ary numeric operations (sum, product, etc.)
-/// Usage: eval_nary_numeric_op!(args, context, parent_span, init, |acc, v| ..., "atom_name")
-macro_rules! eval_nary_numeric_op {
-    ($args:expr, $context:expr, $parent_span:expr, $init:expr, $fold:expr, $name:expr) => {{
-        if $args.len() < 2 {
-            return Err(sutra_error!(
-                arity,
-                Some($parent_span.clone()),
-                $args,
-                $name,
-                "at least 2"
-            ));
-        }
-        let (values, world) = eval_args($args, $context)?;
-        let mut acc = $init;
-        for (i, v) in values.iter().enumerate() {
-            if let Value::Number(n) = v {
-                acc = $fold(acc, *n);
-            } else {
-                return Err(sutra_error!(
-                    type,
-                    Some($parent_span.clone()),
-                    &$args[i],
-                    $name,
-                    "a Number",
-                    v
-                ));
-            }
-        }
-        Ok((Value::Number(acc), world))
-    }};
-}
-
-/// Macro for boolean unary operations.
-/// Usage: eval_unary_bool_op!(args, context, parent_span, |b| ..., "atom_name")
-macro_rules! eval_unary_bool_op {
-    ($args:expr, $context:expr, $parent_span:expr, $op:expr, $name:expr) => {{
-        if $args.len() != 1 {
-            return Err(sutra_error!(
-                arity,
-                Some($parent_span.clone()),
-                $args,
-                $name,
-                1
-            ));
-        }
-        let mut sub_context = sub_eval_context!($context, $context.world);
-        let (val, world) = eval_expr(&$args[0], &mut sub_context)?;
-        match val {
-            Value::Bool(b) => {
-                let result = $op(b);
-                Ok((result, world))
-            }
-            _ => Err(sutra_error!(
-                type,
-                Some($parent_span.clone()),
-                &$args[0],
-                $name,
-                "a Boolean",
-                &val
-            )),
-        }
-    }};
-}
-
-/// Macro for unary path operations (get, del).
-/// Usage: eval_unary_path_op!(args, context, parent_span, |path, world| ..., "atom_name")
-macro_rules! eval_unary_path_op {
-    ($args:expr, $context:expr, $parent_span:expr, $op:expr, $name:expr) => {{
-        if $args.len() != 1 {
-            return Err(sutra_error!(
-                arity,
-                Some($parent_span.clone()),
-                $args,
-                $name,
-                1
-            ));
-        }
-        let mut sub_context = sub_eval_context!($context, $context.world);
-        let (path_val, world) = eval_expr(&$args[0], &mut sub_context)?;
-        if let Value::Path(path) = path_val {
-            $op(path, world)
-        } else {
-            Err(sutra_error!(
-                type,
-                Some($parent_span.clone()),
-                &$args[0],
-                $name,
-                "a Path",
-                &path_val
+/// Evaluates a binary numeric operation atomically, with optional validation.
+/// Handles arity, type checking, and error construction.
+///
+/// # Example
+/// ```ignore
+/// let result = eval_binary_numeric_op(
+///     args, context, parent_span,
+///     |a, b| Value::Number(a + b), // operation
+///     None,                        // no extra validation
+///     "+",
+///     "two Numbers",
+/// );
+/// ```
+/// # Safety
+/// Only operates on Value::Number. Returns error for invalid types or arity.
+fn eval_binary_numeric_op<F, V>(
+    args: &[WithSpan<Expr>],
+    context: &mut EvalContext<'_, '_>,
+    parent_span: &crate::ast::Span,
+    op: F,
+    validator: Option<V>,
+    name: &str,
+    expected: &str,
+) -> Result<(Value, crate::runtime::world::World), SutraError>
+where
+    F: Fn(f64, f64) -> Value,
+    V: Fn(f64, f64) -> Result<(), &'static str>,
+{
+    if args.len() != 2 {
+        return Err(arity_error(Some(parent_span.clone()), args, name, 2));
+    }
+    let mut sub_context1 = sub_eval_context!(context, context.world);
+    let (val1, world1) = eval_expr(&args[0], &mut sub_context1)?;
+    let mut sub_context2 = sub_eval_context!(context, &world1);
+    let (val2, world2) = eval_expr(&args[1], &mut sub_context2)?;
+    let (n1, n2) = match (&val1, &val2) {
+        (Value::Number(n1), Value::Number(n2)) => (*n1, *n2),
+        _ => {
+            return Err(type_error(
+                Some(parent_span.clone()),
+                &args[0],
+                name,
+                expected,
+                &val1,
             ))
         }
-    }};
+    };
+    if let Some(validate) = validator {
+        validate(n1, n2)
+            .map_err(|msg| validation_error(Some(parent_span.clone()), &args[1], msg))?;
+    }
+    Ok((op(n1, n2), world2))
 }
 
-/// Macro for binary path operations (set).
-/// Usage: eval_binary_path_op!(args, context, parent_span, |path, value, world| ..., "atom_name")
-macro_rules! eval_binary_path_op {
-    ($args:expr, $context:expr, $parent_span:expr, $op:expr, $name:expr) => {{
-        if $args.len() != 2 {
-            return Err(sutra_error!(
-                arity,
-                Some($parent_span.clone()),
-                $args,
-                $name,
-                2
-            ));
-        }
-        let mut sub_context1 = sub_eval_context!($context, $context.world);
-        let (path_val, world1) = eval_expr(&$args[0], &mut sub_context1)?;
-        let mut sub_context2 = sub_eval_context!($context, &world1);
-        let (value, world2) = eval_expr(&$args[1], &mut sub_context2)?;
-
-        if let Value::Path(path) = path_val {
-            $op(path, value, world2)
+/// Evaluates an n-ary numeric operation (e.g., sum, product).
+/// Handles arity, type checking, and error construction.
+///
+/// # Example
+/// ```ignore
+/// let result = eval_nary_numeric_op(
+///     args, context, parent_span,
+///     0.0, |acc, v| acc + v, "+"
+/// );
+/// ```
+/// # Safety
+/// Only operates on Value::Number. Returns error for invalid types or arity.
+fn eval_nary_numeric_op<F>(
+    args: &[WithSpan<Expr>],
+    context: &mut EvalContext<'_, '_>,
+    parent_span: &crate::ast::Span,
+    init: f64,
+    fold: F,
+    name: &str,
+) -> Result<(Value, crate::runtime::world::World), SutraError>
+where
+    F: Fn(f64, f64) -> f64,
+{
+    if args.len() < 2 {
+        return Err(arity_error(
+            Some(parent_span.clone()),
+            args,
+            name,
+            "at least 2",
+        ));
+    }
+    let (values, world) = eval_args(args, context)?;
+    let mut acc = init;
+    for (i, v) in values.iter().enumerate() {
+        if let Value::Number(n) = v {
+            acc = fold(acc, *n);
         } else {
-            Err(sutra_error!(
-                type,
-                Some($parent_span.clone()),
-                &$args[0],
-                $name,
-                "a Path",
-                &path_val
-            ))
-        }
-    }};
-}
-
-/// Macro for unary operations that take any value.
-/// Usage: eval_unary_value_op!(args, context, parent_span, |val, world| ..., "atom_name")
-macro_rules! eval_unary_value_op {
-    ($args:expr, $context:expr, $parent_span:expr, $op:expr, $name:expr) => {{
-        if $args.len() != 1 {
-            return Err(sutra_error!(
-                arity,
-                Some($parent_span.clone()),
-                $args,
-                $name,
-                1
+            return Err(type_error(
+                Some(parent_span.clone()),
+                &args[i],
+                name,
+                "a Number",
+                v,
             ));
         }
-        let mut sub_context = sub_eval_context!($context, $context.world);
-        let (val, world) = eval_expr(&$args[0], &mut sub_context)?;
-        $op(val, world, $parent_span, $context)
-    }};
+    }
+    Ok((Value::Number(acc), world))
 }
 
-// After macro definitions, move all ATOM_* constants here:
+/// Evaluates a unary boolean operation.
+/// Handles arity, type checking, and error construction.
+///
+/// # Example
+/// ```ignore
+/// let result = eval_unary_bool_op(
+///     args, context, parent_span,
+///     |b| Value::Bool(!b),
+///     "not"
+/// );
+/// ```
+/// # Safety
+/// Only operates on Value::Bool. Returns error for invalid types or arity.
+fn eval_unary_bool_op<F>(
+    args: &[WithSpan<Expr>],
+    context: &mut EvalContext<'_, '_>,
+    parent_span: &crate::ast::Span,
+    op: F,
+    name: &str,
+) -> Result<(Value, crate::runtime::world::World), SutraError>
+where
+    F: Fn(bool) -> Value,
+{
+    if args.len() != 1 {
+        return Err(arity_error(Some(parent_span.clone()), args, name, 1));
+    }
+    let mut sub_context = sub_eval_context!(context, context.world);
+    let (val, world) = eval_expr(&args[0], &mut sub_context)?;
+    match val {
+        Value::Bool(b) => Ok((op(b), world)),
+        _ => Err(type_error(
+            Some(parent_span.clone()),
+            &args[0],
+            name,
+            "a Boolean",
+            &val,
+        )),
+    }
+}
+
+/// Evaluates a unary path operation (get, del).
+/// Handles arity, type checking, and error construction.
+///
+/// # Example
+/// ```ignore
+/// let result = eval_unary_path_op(
+///     args, context, parent_span,
+///     |path, world| Ok((Value::default(), world)),
+///     "core/get"
+/// );
+/// ```
+/// # Safety
+/// Only operates on Value::Path. Returns error for invalid types or arity.
+fn eval_unary_path_op<F>(
+    args: &[WithSpan<Expr>],
+    context: &mut EvalContext<'_, '_>,
+    parent_span: &crate::ast::Span,
+    op: F,
+    name: &str,
+) -> Result<(Value, crate::runtime::world::World), SutraError>
+where
+    F: Fn(
+        crate::runtime::path::Path,
+        crate::runtime::world::World,
+    ) -> Result<(Value, crate::runtime::world::World), SutraError>,
+{
+    if args.len() != 1 {
+        return Err(arity_error(Some(parent_span.clone()), args, name, 1));
+    }
+    let mut sub_context = sub_eval_context!(context, context.world);
+    let (path_val, world) = eval_expr(&args[0], &mut sub_context)?;
+    if let Value::Path(path) = path_val {
+        op(path, world)
+    } else {
+        Err(type_error(
+            Some(parent_span.clone()),
+            &args[0],
+            name,
+            "a Path",
+            &path_val,
+        ))
+    }
+}
+
+/// Evaluates a binary path operation (set).
+/// Handles arity, type checking, and error construction.
+///
+/// # Example
+/// ```ignore
+/// let result = eval_binary_path_op(
+///     args, context, parent_span,
+///     |path, value, world| Ok((Value::default(), world)),
+///     "core/set!"
+/// );
+/// ```
+/// # Safety
+/// Only operates on Value::Path for first arg. Returns error for invalid types or arity.
+fn eval_binary_path_op<F>(
+    args: &[WithSpan<Expr>],
+    context: &mut EvalContext<'_, '_>,
+    parent_span: &crate::ast::Span,
+    op: F,
+    name: &str,
+) -> Result<(Value, crate::runtime::world::World), SutraError>
+where
+    F: Fn(
+        crate::runtime::path::Path,
+        Value,
+        crate::runtime::world::World,
+    ) -> Result<(Value, crate::runtime::world::World), SutraError>,
+{
+    if args.len() != 2 {
+        return Err(arity_error(Some(parent_span.clone()), args, name, 2));
+    }
+    let mut sub_context1 = sub_eval_context!(context, context.world);
+    let (path_val, world1) = eval_expr(&args[0], &mut sub_context1)?;
+    let mut sub_context2 = sub_eval_context!(context, &world1);
+    let (value, world2) = eval_expr(&args[1], &mut sub_context2)?;
+    if let Value::Path(path) = path_val {
+        op(path, value, world2)
+    } else {
+        Err(type_error(
+            Some(parent_span.clone()),
+            &args[0],
+            name,
+            "a Path",
+            &path_val,
+        ))
+    }
+}
+
+/// Evaluates a unary operation that takes any value.
+/// Handles arity and error construction.
+///
+/// # Example
+/// ```ignore
+/// let result = eval_unary_value_op(
+///     args, context, parent_span,
+///     |val, world, parent_span, context| Ok((Value::Nil, world)),
+///     "print"
+/// );
+/// ```
+/// # Safety
+/// Accepts any value. Returns error for invalid arity.
+fn eval_unary_value_op<F>(
+    args: &[WithSpan<Expr>],
+    context: &mut EvalContext<'_, '_>,
+    parent_span: &crate::ast::Span,
+    op: F,
+    name: &str,
+) -> Result<(Value, crate::runtime::world::World), SutraError>
+where
+    F: Fn(
+        Value,
+        crate::runtime::world::World,
+        &crate::ast::Span,
+        &mut EvalContext<'_, '_>,
+    ) -> Result<(Value, crate::runtime::world::World), SutraError>,
+{
+    if args.len() != 1 {
+        return Err(arity_error(Some(parent_span.clone()), args, name, 1));
+    }
+    let mut sub_context = sub_eval_context!(context, context.world);
+    let (val, world) = eval_expr(&args[0], &mut sub_context)?;
+    op(val, world, parent_span, context)
+}
+
+// After function definitions, move all ATOM_* constants here:
 // ATOM_CORE_SET, ATOM_CORE_GET, ATOM_CORE_DEL, ATOM_ADD, ATOM_SUB, ATOM_MUL, ATOM_DIV, ATOM_MOD, ATOM_EQ, ATOM_GT, ATOM_LT, ATOM_GTE, ATOM_LTE, ATOM_NOT, ATOM_DO, ATOM_LIST, ATOM_LEN, ATOM_ERROR, ATOM_PRINT
 
 /// Sets a value at a path in the world state.
 ///
 /// Usage: (core/set! <path> <value>)
-/// - <path>: Path to set (must evaluate to a Value::Path)
-/// - <value>: Value to store
-/// Returns: Nil. Mutates world state (returns new world).
+///   - <path>: Path to set (must evaluate to a Value::Path)
+///   - <value>: Value to store
+///
+///   Returns: Nil. Mutates world state (returns new world).
 ///
 /// Example:
 ///   (core/set! player.score 42)
@@ -332,7 +399,7 @@ macro_rules! eval_unary_value_op {
 /// # Safety
 /// Only mutates the world at the given path.
 pub const ATOM_CORE_SET: AtomFn = |args, context, parent_span| {
-    eval_binary_path_op!(
+    eval_binary_path_op(
         args,
         context,
         parent_span,
@@ -343,15 +410,16 @@ pub const ATOM_CORE_SET: AtomFn = |args, context, parent_span| {
             let new_world = world.set(&path, value);
             Ok((Value::default(), new_world))
         },
-        "core/set!"
+        "core/set!",
     )
 };
 
 /// Gets a value at a path in the world state.
 ///
 /// Usage: (core/get <path>)
-/// - <path>: Path to get (must evaluate to a Value::Path)
-/// Returns: Value at path, or Nil if not found.
+///   - <path>: Path to get (must evaluate to a Value::Path)
+///
+///   Returns: Value at path, or Nil if not found.
 ///
 /// Example:
 ///   (core/get player.score)
@@ -359,7 +427,7 @@ pub const ATOM_CORE_SET: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_CORE_GET: AtomFn = |args, context, parent_span| {
-    eval_unary_path_op!(
+    eval_unary_path_op(
         args,
         context,
         parent_span,
@@ -369,15 +437,16 @@ pub const ATOM_CORE_GET: AtomFn = |args, context, parent_span| {
             let value = world.get(&path).cloned().unwrap_or_default();
             Ok((value, world))
         },
-        "core/get"
+        "core/get",
     )
 };
 
 /// Deletes a value at a path in the world state.
 ///
 /// Usage: (core/del! <path>)
-/// - <path>: Path to delete (must evaluate to a Value::Path)
-/// Returns: Nil. Mutates world state (returns new world).
+///   - <path>: Path to delete (must evaluate to a Value::Path)
+///
+///   Returns: Nil. Mutates world state (returns new world).
 ///
 /// Example:
 ///   (core/del! player.score)
@@ -385,7 +454,7 @@ pub const ATOM_CORE_GET: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Only mutates the world at the given path.
 pub const ATOM_CORE_DEL: AtomFn = |args, context, parent_span| {
-    eval_unary_path_op!(
+    eval_unary_path_op(
         args,
         context,
         parent_span,
@@ -395,15 +464,16 @@ pub const ATOM_CORE_DEL: AtomFn = |args, context, parent_span| {
             let new_world = world.del(&path);
             Ok((Value::default(), new_world))
         },
-        "core/del!"
+        "core/del!",
     )
 };
 
 /// Returns true if two values are equal.
 ///
 /// Usage: (eq? <a> <b>)
-/// - <a>, <b>: Values to compare
-/// Returns: Bool
+///   - <a>, <b>: Values to compare
+///
+///   Returns: Bool
 ///
 /// Example:
 ///   (eq? 1 1) ; => true
@@ -412,21 +482,23 @@ pub const ATOM_CORE_DEL: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_EQ: AtomFn = |args, context, parent_span| {
-    eval_binary_op!(
+    eval_binary_numeric_op(
         args,
         context,
         parent_span,
         |a, b| Value::Bool(a == b),
+        None::<fn(f64, f64) -> Result<(), &'static str>>,
         "eq?",
-        "two Numbers"
+        "two Numbers",
     )
 };
 
 /// Sequentially evaluates expressions, returning the last value.
 ///
 /// Usage: (do <expr1> <expr2> ...)
-/// - <expr1>, <expr2>, ...: Expressions to evaluate in sequence
-/// Returns: Value of last expression
+///   - <expr1>, <expr2>, ...: Expressions to evaluate in sequence
+///
+///   Returns: Value of last expression
 ///
 /// Example:
 ///   (do (core/set! x 1) (core/get x)) ; => 1
@@ -446,8 +518,9 @@ pub const ATOM_DO: AtomFn = |args, context, _| {
 /// Adds numbers.
 ///
 /// Usage: (+ <a> <b> ...)
-/// - <a>, <b>, ...: Numbers
-/// Returns: Number (sum)
+///   - <a>, <b>, ...: Numbers
+///
+///   Returns: Number (sum)
 ///
 /// Example:
 ///   (+ 1 2 3) ; => 6
@@ -455,14 +528,15 @@ pub const ATOM_DO: AtomFn = |args, context, _| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_ADD: AtomFn = |args, context, parent_span| {
-    eval_nary_numeric_op!(args, context, parent_span, 0.0, |a, b| a + b, "+")
+    eval_nary_numeric_op(args, context, parent_span, 0.0, |a, b| a + b, "+")
 };
 
 /// Subtracts two numbers.
 ///
 /// Usage: (- <a> <b>)
-/// - <a>, <b>: Numbers
-/// Returns: Number (a - b)
+///   - <a>, <b>: Numbers
+///
+///   Returns: Number (a - b)
 ///
 /// Example:
 ///   (- 5 2) ; => 3
@@ -470,21 +544,23 @@ pub const ATOM_ADD: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_SUB: AtomFn = |args, context, parent_span| {
-    eval_binary_op!(
+    eval_binary_numeric_op(
         args,
         context,
         parent_span,
         |a, b| Value::Number(a - b),
+        None::<fn(f64, f64) -> Result<(), &'static str>>,
         "-",
-        "two Numbers"
+        "two Numbers",
     )
 };
 
 /// Multiplies numbers.
 ///
 /// Usage: (* <a> <b> ...)
-/// - <a>, <b>, ...: Numbers
-/// Returns: Number (product)
+///   - <a>, <b>, ...: Numbers
+///
+///   Returns: Number (product)
 ///
 /// Example:
 ///   (* 2 3 4) ; => 24
@@ -492,14 +568,15 @@ pub const ATOM_SUB: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_MUL: AtomFn = |args, context, parent_span| {
-    eval_nary_numeric_op!(args, context, parent_span, 1.0, |a, b| a * b, "*")
+    eval_nary_numeric_op(args, context, parent_span, 1.0, |a, b| a * b, "*")
 };
 
 /// Divides two numbers.
 ///
 /// Usage: (/ <a> <b>)
-/// - <a>, <b>: Numbers
-/// Returns: Number (a / b)
+///   - <a>, <b>: Numbers
+///
+///   Returns: Number (a / b)
 ///
 /// Example:
 ///   (/ 6 2) ; => 3
@@ -507,27 +584,29 @@ pub const ATOM_MUL: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Pure, does not mutate state. Errors on division by zero.
 pub const ATOM_DIV: AtomFn = |args, context, parent_span| {
-    eval_binary_op_with_validation!(
+    eval_binary_numeric_op(
         args,
         context,
         parent_span,
         |a, b| Value::Number(a / b),
-        "/",
-        |_a, b| {
+        Some(|_a, b| {
             if b == 0.0 {
                 Err("Division by zero")
             } else {
                 Ok(())
             }
-        }
+        }),
+        "/",
+        "two Numbers",
     )
 };
 
 /// Returns true if a > b.
 ///
 /// Usage: (gt? <a> <b>)
-/// - <a>, <b>: Numbers
-/// Returns: Bool
+///   - <a>, <b>: Numbers
+///
+///   Returns: Bool
 ///
 /// Example:
 ///   (gt? 3 2) ; => true
@@ -535,21 +614,23 @@ pub const ATOM_DIV: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_GT: AtomFn = |args, context, parent_span| {
-    eval_binary_op!(
+    eval_binary_numeric_op(
         args,
         context,
         parent_span,
         |a, b| Value::Bool(a > b),
+        None::<fn(f64, f64) -> Result<(), &'static str>>,
         "gt?",
-        "two Numbers"
+        "two Numbers",
     )
 };
 
 /// Returns true if a < b.
 ///
 /// Usage: (lt? <a> <b>)
-/// - <a>, <b>: Numbers
-/// Returns: Bool
+///   - <a>, <b>: Numbers
+///
+///   Returns: Bool
 ///
 /// Example:
 ///   (lt? 1 2) ; => true
@@ -557,21 +638,23 @@ pub const ATOM_GT: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_LT: AtomFn = |args, context, parent_span| {
-    eval_binary_op!(
+    eval_binary_numeric_op(
         args,
         context,
         parent_span,
         |a, b| Value::Bool(a < b),
+        None::<fn(f64, f64) -> Result<(), &'static str>>,
         "lt?",
-        "two Numbers"
+        "two Numbers",
     )
 };
 
 /// Returns true if a >= b.
 ///
 /// Usage: (gte? <a> <b>)
-/// - <a>, <b>: Numbers
-/// Returns: Bool
+///   - <a>, <b>: Numbers
+///
+///   Returns: Bool
 ///
 /// Example:
 ///   (gte? 2 2) ; => true
@@ -579,21 +662,23 @@ pub const ATOM_LT: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_GTE: AtomFn = |args, context, parent_span| {
-    eval_binary_op!(
+    eval_binary_numeric_op(
         args,
         context,
         parent_span,
         |a, b| Value::Bool(a >= b),
+        None::<fn(f64, f64) -> Result<(), &'static str>>,
         "gte?",
-        "two Numbers"
+        "two Numbers",
     )
 };
 
 /// Returns true if a <= b.
 ///
 /// Usage: (lte? <a> <b>)
-/// - <a>, <b>: Numbers
-/// Returns: Bool
+///   - <a>, <b>: Numbers
+///
+///   Returns: Bool
 ///
 /// Example:
 ///   (lte? 1 2) ; => true
@@ -601,21 +686,23 @@ pub const ATOM_GTE: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_LTE: AtomFn = |args, context, parent_span| {
-    eval_binary_op!(
+    eval_binary_numeric_op(
         args,
         context,
         parent_span,
         |a, b| Value::Bool(a <= b),
+        None::<fn(f64, f64) -> Result<(), &'static str>>,
         "lte?",
-        "two Numbers"
+        "two Numbers",
     )
 };
 
 /// Logical negation.
 ///
 /// Usage: (not <a>)
-/// - <a>: Boolean
-/// Returns: Bool
+///   - <a>: Boolean
+///
+///   Returns: Bool
 ///
 /// Example:
 ///   (not true) ; => false
@@ -623,14 +710,15 @@ pub const ATOM_LTE: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_NOT: AtomFn = |args, context, parent_span| {
-    eval_unary_bool_op!(args, context, parent_span, |b: bool| Value::Bool(!b), "not")
+    eval_unary_bool_op(args, context, parent_span, |b: bool| Value::Bool(!b), "not")
 };
 
 /// Constructs a list from arguments.
 ///
 /// Usage: (list <a> <b> ...)
-/// - <a>, <b>, ...: Values to include in the list
-/// Returns: List containing all arguments
+///   - <a>, <b>, ...: Values to include in the list
+///
+///   Returns: List containing all arguments
 ///
 /// Example:
 ///   (list 1 2 3) ; => (1 2 3)
@@ -645,8 +733,9 @@ pub const ATOM_LIST: AtomFn = |args, context, _| {
 /// Returns the length of a list or string.
 ///
 /// Usage: (len <list-or-string>)
-/// - <list-or-string>: List or String to measure
-/// Returns: Number (length)
+///   - <list-or-string>: List or String to measure
+///
+///   Returns: Number (length)
 ///
 /// Example:
 ///   (len (list 1 2 3)) ; => 3
@@ -656,26 +745,19 @@ pub const ATOM_LIST: AtomFn = |args, context, _| {
 /// Pure, does not mutate state.
 pub const ATOM_LEN: AtomFn = |args, context, parent_span| {
     if args.len() != 1 {
-        return Err(sutra_error!(
-            arity,
-            Some(parent_span.clone()),
-            args,
-            "len",
-            1
-        ));
+        return Err(arity_error(Some(parent_span.clone()), args, "len", 1));
     }
     let mut sub_context = sub_eval_context!(context, context.world);
     let (val, world) = eval_expr(&args[0], &mut sub_context)?;
     match val {
         Value::List(ref items) => Ok((Value::Number(items.len() as f64), world)),
         Value::String(ref s) => Ok((Value::Number(s.len() as f64), world)),
-        _ => Err(sutra_error!(
-            type,
+        _ => Err(type_error(
             Some(parent_span.clone()),
             &args[0],
             "len",
             "a List or String",
-            &val
+            &val,
         )),
     }
 };
@@ -683,8 +765,9 @@ pub const ATOM_LEN: AtomFn = |args, context, parent_span| {
 /// Modulo operation.
 ///
 /// Usage: (mod <a> <b>)
-/// - <a>, <b>: Integers
-/// Returns: Number (a % b)
+///   - <a>, <b>: Integers
+///
+///   Returns: Number (a % b)
 ///
 /// Example:
 ///   (mod 5 2) ; => 1
@@ -692,13 +775,12 @@ pub const ATOM_LEN: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Pure, does not mutate state. Errors on division by zero or non-integer input.
 pub const ATOM_MOD: AtomFn = |args, context, parent_span| {
-    eval_binary_op_with_validation!(
+    eval_binary_numeric_op(
         args,
         context,
         parent_span,
         |a, b| Value::Number((a as i64 % b as i64) as f64),
-        "mod",
-        |a: f64, b: f64| -> Result<(), &'static str> {
+        Some(|a: f64, b: f64| -> Result<(), &'static str> {
             if b == 0.0 {
                 Err("Modulo by zero")
             } else if a.fract() != 0.0 || b.fract() != 0.0 {
@@ -706,15 +788,18 @@ pub const ATOM_MOD: AtomFn = |args, context, parent_span| {
             } else {
                 Ok(())
             }
-        }
+        }),
+        "mod",
+        "two Numbers",
     )
 };
 
 /// Raises an error with a message.
 ///
 /// Usage: (error <message>)
-/// - <message>: String
-/// Returns: Error (never returns normally)
+///   - <message>: String
+///
+///   Returns: Error (never returns normally)
 ///
 /// Example:
 ///   (error "fail!")
@@ -722,7 +807,7 @@ pub const ATOM_MOD: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Always errors. Does not mutate state.
 pub const ATOM_ERROR: AtomFn = |args, context, parent_span| {
-    eval_unary_value_op!(
+    eval_unary_value_op(
         args,
         context,
         parent_span,
@@ -747,25 +832,25 @@ pub const ATOM_ERROR: AtomFn = |args, context, parent_span| {
                     span: Some(parent_span.clone()),
                 })
             } else {
-                Err(sutra_error!(
-                    type,
+                Err(type_error(
                     Some(parent_span.clone()),
                     &args[0],
                     "error",
                     "a String",
-                    &msg_val
+                    &msg_val,
                 ))
             }
         },
-        "error"
+        "error",
     )
 };
 
 /// Emits output to the output sink.
 ///
 /// Usage: (print <value>)
-/// - <value>: Any value
-/// Returns: Nil. Emits output.
+///   - <value>: Any value
+///
+///   Returns: Nil. Emits output.
 ///
 /// Example:
 ///   (print "hello")
@@ -773,7 +858,7 @@ pub const ATOM_ERROR: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Emits output, does not mutate world state.
 pub const ATOM_PRINT: AtomFn = |args, context, parent_span| {
-    eval_unary_value_op!(
+    eval_unary_value_op(
         args,
         context,
         parent_span,
@@ -785,12 +870,11 @@ pub const ATOM_PRINT: AtomFn = |args, context, parent_span| {
             context.output.emit(&val.to_string(), Some(parent_span));
             Ok((Value::Nil, world)) // Return Nil so the engine does not print again
         },
-        "print"
+        "print",
     )
 };
 
 #[cfg(any(test, feature = "test-atom", debug_assertions))]
-
 /// Registers all standard atoms in the given registry.
 pub fn register_std_atoms(registry: &mut AtomRegistry) {
     registry.register("core/set!", ATOM_CORE_SET);

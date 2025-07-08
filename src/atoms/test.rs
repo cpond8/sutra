@@ -25,7 +25,7 @@ use crate::sub_eval_context;
 ///
 /// Usage: (test/echo <value>)
 /// - <value>: Any value to echo
-/// Returns: The echoed value
+///     Returns: The echoed value
 ///
 /// Example:
 ///   (test/echo "hello") ; => "hello" (also emits "hello")
@@ -70,7 +70,6 @@ fn test_echo_atom(
 ///
 /// # Safety
 /// Emits output, does not mutate world state. May recurse up to max_depth.
-
 // Type alias for test atom function signatures
 type TestAtomFn =
     fn(&[WithSpan<Expr>], &mut EvalContext, &Span) -> Result<(Value, World), SutraError>;

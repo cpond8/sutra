@@ -32,7 +32,7 @@ pub struct EvalContext<'a, 'o> {
     pub depth: usize,
 }
 
-impl<'a, 'o> EvalContext<'a, 'o> {
+impl EvalContext<'_, '_> {
     /// Helper to increment depth for recursive calls.
     pub fn next_depth(&self) -> usize {
         self.depth + 1
@@ -122,7 +122,7 @@ pub fn eval(
 
 /// Helper for evaluating Expr::List arms.
 fn eval_list(
-    items: &Vec<WithSpan<Expr>>,
+    items: &[WithSpan<Expr>],
     span: &crate::ast::Span,
     context: &mut EvalContext,
 ) -> Result<(Value, World), SutraError> {

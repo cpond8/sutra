@@ -1,3 +1,6 @@
+;; atom_core_ops.sutra - Canonical core atom operation tests
+
+;; Base: test_phase2_macro_patterns.sutra
 ;; Test Phase 2 Macro Pattern Expansion
 ;; Tests all atoms that were refactored to use macros
 
@@ -48,3 +51,32 @@
   (print (get counter)))
 
 (print "All macro pattern tests completed!")
+
+;; Supplement: test_refactor.sutra
+(print "Testing refactored atoms:")
+(print (+ 1 2 3))
+(print (* 4 5))
+(print (- 10 3))
+(print (/ 20 4))
+(print (eq? 5 5))
+(print (gt? 7 3))
+(set! test.value 42)
+(print (get test.value))
+(print "All tests completed!")
+
+;; Supplement: test_macro_patterns.sutra
+(print "Testing macro pattern expansions:")
+(print (/ 10 2))     ; Test refactored division
+(print (/ 6 3))      ; Test division again
+(print (not true))   ; Test refactored negation
+(print (not false))  ; Test negation again
+(print "Division and negation work correctly!")
+
+;; Supplement: test_atom_check.sutra (if not a special feature)
+(test/echo "This should not work without test atoms enabled")
+
+;; Supplement: debug_simple.sutra
+(print "hello")
+
+;; Supplement: debug_builtin.sutra
+(print "Hello, world!")

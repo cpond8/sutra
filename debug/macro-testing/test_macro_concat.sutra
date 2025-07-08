@@ -1,4 +1,0 @@
-;; Test macro with string interpolation using let
-(define (greet name)
-  (print (concat "Hello, " name "!")))
-(greet "Alice")

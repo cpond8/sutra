@@ -1,3 +1,0 @@
-;; Test macro definition and usage - with correct string concatenation
-(define (greet name) (print "Hello, Sutra!"))
-(greet "unused")

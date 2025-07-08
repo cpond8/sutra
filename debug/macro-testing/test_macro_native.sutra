@@ -1,3 +1,0 @@
-;; Test macro definition and usage in native .sutra
-(define (greet name) (print (+ "Hello, " name "!")))
-(greet "Sutra")

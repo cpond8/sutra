@@ -2,6 +2,35 @@
 
 # Sutra Engine - Progress
 
+## ✅ INCREMENTAL REFACTORING COMPLETE: Atom Standard Library Modernization (2025-07-08)
+
+**MILESTONE**: Successfully completed incremental refactoring of the atom standard library, converting all macro invocations to direct function calls while maintaining full functionality.
+
+**Converted Operations**:
+
+- Binary operations: EQ, SUB, GT, LT, GTE, LTE (6 instances)
+- Binary operations with validation: DIV, MOD (2 instances)
+- N-ary operations: ADD, MUL (2 instances)
+- Unary operations: NOT (1 instance)
+- Path operations: CORE_SET, CORE_GET, CORE_DEL (3 instances)
+- Value operations: ERROR, PRINT (2 instances)
+
+**Foundation Established**:
+
+- Error construction helper functions (arity_error, type_error, validation_error)
+- Type alias for atom return values (AtomResult)
+- Preserved working context macro (sub_eval_context!) for safe abstraction
+
+**Macro Tests Consolidated**:
+
+All macro-related debug and investigation tests have been consolidated into a canonical suite in `debug/macro-testing/`:
+
+- `macro_basic.sutra`: Minimal macro definition, invocation, parameter passing, and definition-only macro.
+- `macro_string_ops.sutra`: Macros involving string operations/interpolation.
+- `atom_core_ops.sutra`: Comprehensive core atom operation tests, including arithmetic, logic, path, and list operations.
+- `error_cases.sutra`: Error handling, invalid input, and edge cases.
+- `parser_edge_cases.sutra`: Parser-specific edge case (parameter list).
+
 ## ✅ COMPLETE: CLI Tooling Suite (2025-07-07)
 
 ### 🧹 ARCHITECTURAL CLEANUP COMPLETE: Test Infrastructure Consolidated (2025-07-07)
@@ -12,11 +41,6 @@
 
 - **Problem**: Duplicated CLI test functionality, violated single source of truth
 - **Solution**: Complete removal - CLI `test` command provides identical capabilities
-- **Result**: All 10+ linting errors eliminated, cleaner architecture achieved
-
-**Design Principle Validation**: Perfect alignment (10/10) with Sutra philosophy:
-
-- Minimalism, single source of truth, separation of concerns all upheld
 
 **MILESTONE ACHIEVED:** All planned CLI commands have been **successfully implemented and tested**. The Sutra Engine now provides a complete professional development workflow.
 

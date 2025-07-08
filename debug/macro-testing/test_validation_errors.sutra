@@ -1,4 +1,0 @@
-;; File with validation errors
-(define (broken name) (unknown-function name))
-(broken "test")
-(another-unknown-atom "value")

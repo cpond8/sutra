@@ -1,2 +1,0 @@
-;; Test macro definition only (no call)
-(define (greet name) (print (+ "Hello, " name "!")))

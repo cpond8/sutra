@@ -1,6 +1,0 @@
-(print "Testing macro pattern expansions:")
-(print (/ 10 2))     ; Test refactored division
-(print (/ 6 3))      ; Test division again
-(print (not true))   ; Test refactored negation
-(print (not false))  ; Test negation again
-(print "Division and negation work correctly!")

@@ -7,9 +7,9 @@ use crate::cli::args::{Command, SutraArgs};
 use crate::cli::output::StdoutSink;
 use crate::macros::{expand_macros, load_macros_from_file, MacroDef, MacroEnv, MacroRegistry};
 use clap::Parser;
-use std::{process};
-use termcolor::WriteColor;
 use std::io::Write;
+use std::process;
+use termcolor::WriteColor;
 
 pub mod args;
 pub mod output;
@@ -62,7 +62,10 @@ fn wrap_in_do_if_needed(ast_nodes: Vec<WithSpan<Expr>>, source: &str) -> WithSpa
     if ast_nodes.len() == 1 {
         ast_nodes.into_iter().next().unwrap()
     } else {
-        let span = Span { start: 0, end: source.len() };
+        let span = Span {
+            start: 0,
+            end: source.len(),
+        };
         let do_symbol = WithSpan {
             value: Expr::Symbol("do".to_string(), span.clone()),
             span: span.clone(),
@@ -78,9 +81,8 @@ fn wrap_in_do_if_needed(ast_nodes: Vec<WithSpan<Expr>>, source: &str) -> WithSpa
 }
 
 /// Partitions AST nodes into macro definitions and user code, and builds a user macro registry.
-fn partition_and_build_user_macros(
-    ast_nodes: Vec<WithSpan<Expr>>,
-) -> Result<(MacroRegistry, Vec<WithSpan<Expr>>), Box<dyn std::error::Error>> {
+type MacroParseResult = Result<(MacroRegistry, Vec<WithSpan<Expr>>), Box<dyn std::error::Error>>;
+fn partition_and_build_user_macros(ast_nodes: Vec<WithSpan<Expr>>) -> MacroParseResult {
     let (macro_defs, user_code): (Vec<_>, Vec<_>) =
         ast_nodes.into_iter().partition(crate::is_macro_definition);
     let mut user_macros = MacroRegistry::new();
@@ -89,7 +91,9 @@ fn partition_and_build_user_macros(
         if user_macros.macros.contains_key(&name) {
             return Err(format!("Duplicate macro name '{}'.", name).into());
         }
-        user_macros.macros.insert(name, MacroDef::Template(template));
+        user_macros
+            .macros
+            .insert(name, MacroDef::Template(template));
     }
     Ok((user_macros, user_code))
 }
@@ -236,10 +240,16 @@ fn handle_validate(path: &std::path::Path) -> Result<(), Box<dyn std::error::Err
     let atom_registry = crate::runtime::registry::build_default_atom_registry();
     match crate::syntax::validate::validate(&expanded, &env, &atom_registry) {
         Ok(_) => {
-            println!("✅ Validation successful: No errors found in {}", path_to_str(path).unwrap_or("<unknown>"));
+            println!(
+                "✅ Validation successful: No errors found in {}",
+                path_to_str(path).unwrap_or("<unknown>")
+            );
         }
         Err(e) => {
-            println!("❌ Validation failed in {}:", path_to_str(path).unwrap_or("<unknown>"));
+            println!(
+                "❌ Validation failed in {}:",
+                path_to_str(path).unwrap_or("<unknown>")
+            );
             println!("   {}", e);
             return Err(e.into());
         }
@@ -344,22 +354,41 @@ fn print_test_result(
     outcome: TestOutcome,
     stdout: &mut termcolor::StandardStream,
 ) {
-    use TestOutcome::*;
     use termcolor::ColorSpec;
+    use TestOutcome::*;
     match outcome {
         Pass => {
-            let _ = stdout.set_color(ColorSpec::new().set_fg(Some(termcolor::Color::Green)).set_bold(true));
+            let _ = stdout.set_color(
+                ColorSpec::new()
+                    .set_fg(Some(termcolor::Color::Green))
+                    .set_bold(true),
+            );
             let _ = writeln!(stdout, "PASS: {script_name}");
         }
-        Fail { ref expected, ref actual } => {
-            let _ = stdout.set_color(ColorSpec::new().set_fg(Some(termcolor::Color::Red)).set_bold(true));
+        Fail {
+            ref expected,
+            ref actual,
+        } => {
+            let _ = stdout.set_color(
+                ColorSpec::new()
+                    .set_fg(Some(termcolor::Color::Red))
+                    .set_bold(true),
+            );
             let _ = writeln!(stdout, "FAIL: {script_name}");
-            let _ = stdout.set_color(ColorSpec::new().set_fg(Some(termcolor::Color::Yellow)).set_bold(false));
+            let _ = stdout.set_color(
+                ColorSpec::new()
+                    .set_fg(Some(termcolor::Color::Yellow))
+                    .set_bold(false),
+            );
             let _ = writeln!(stdout, "  Expected: {expected:?}");
             let _ = writeln!(stdout, "  Actual:   {actual:?}");
         }
         Skip => {
-            let _ = stdout.set_color(ColorSpec::new().set_fg(Some(termcolor::Color::Yellow)).set_bold(true));
+            let _ = stdout.set_color(
+                ColorSpec::new()
+                    .set_fg(Some(termcolor::Color::Yellow))
+                    .set_bold(true),
+            );
             let _ = writeln!(stdout, "SKIP: {script_name} (requires test atoms)");
         }
     }
@@ -368,7 +397,7 @@ fn print_test_result(
 
 /// Handles the `test` subcommand.
 fn handle_test(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    use termcolor::{ColorSpec, ColorChoice, StandardStream};
+    use termcolor::{ColorChoice, ColorSpec, StandardStream};
 
     let scripts = find_test_scripts(path);
     if scripts.is_empty() {
@@ -389,7 +418,11 @@ fn handle_test(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>>
     }
 
     if skipped > 0 {
-        let _ = stdout.set_color(ColorSpec::new().set_fg(Some(termcolor::Color::Cyan)).set_bold(false));
+        let _ = stdout.set_color(
+            ColorSpec::new()
+                .set_fg(Some(termcolor::Color::Cyan))
+                .set_bold(false),
+        );
         let _ = writeln!(
             stdout,
             "\nNote: {skipped} test(s) skipped (use 'cargo test' to run all tests)"
@@ -412,7 +445,9 @@ fn build_macro_env() -> MacroEnv {
     let mut user_macros = MacroRegistry::new();
     if let Ok(macros) = load_macros_from_file("src/macros/macros.sutra") {
         for (name, template) in macros {
-            user_macros.macros.insert(name, MacroDef::Template(template));
+            user_macros
+                .macros
+                .insert(name, MacroDef::Template(template));
         }
     }
 

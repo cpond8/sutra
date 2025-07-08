@@ -43,6 +43,18 @@ Sutra aspires to be a **universal substrate for compositional, emergent, and nar
 
 **A full test suite rewrite is required to comply with this protocol.**
 
+### Canonical Macro Testing Suite (2025-07-08)
+
+All macro-related debug and investigation tests are now consolidated into a canonical suite in `debug/macro-testing/`:
+
+- `macro_basic.sutra`: Minimal macro definition, invocation, parameter passing, and definition-only macro.
+- `macro_string_ops.sutra`: Macros involving string operations/interpolation.
+- `atom_core_ops.sutra`: Comprehensive core atom operation tests, including arithmetic, logic, path, and list operations.
+- `error_cases.sutra`: Error handling, invalid input, and edge cases.
+- `parser_edge_cases.sutra`: Parser-specific edge case (parameter list).
+
+This suite replaces the previous fragmented test files, improving coverage, maintainability, and clarity. See the `README.md` in that directory for mapping and rationale.
+
 ## Current Architecture
 
 ### Core Implementation

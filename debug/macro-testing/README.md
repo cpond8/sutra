@@ -1,50 +1,21 @@
-# Debug Files for Native .sutra File Loading Investigation
+# Canonical Test Suite (2025-07)
 
-This directory contains test files created during the investigation of native `.sutra` file loading and user-defined macro functionality (2025-07-07).
+This directory now uses a small set of canonical test files, consolidating all previous tests for clarity, coverage, and maintainability.
 
-## Purpose
+## Canonical Test Files
 
-These files were used to systematically debug and isolate issues in the macro definition and expansion pipeline, leading to the identification and resolution of critical parser bugs.
+| Canonical File           | Purpose/Contents                                                                 |
+|-------------------------|---------------------------------------------------------------------------------|
+| macro_basic.sutra        | Minimal macro definition, invocation, parameter passing.                         |
+| macro_string_ops.sutra   | Macros involving string operations/interpolation.                                |
+| atom_core_ops.sutra      | Canonical test for all core atom operations (arithmetic, comparison, path, etc). |
+| error_cases.sutra        | Error handling, invalid input, and edge cases.                                   |
+| parser_edge_cases.sutra  | Parser-specific edge cases (parameter list, etc). Optional.                      |
 
-## Test Files
+## Rationale
 
-### Basic Functionality Tests
-
-- `debug_simple.sutra` - Basic script execution test: `(print "hello")`
-- `debug_builtin.sutra` - Built-in macro functionality test: `(print "Hello, world!")`
-- `debug_paramlist.sutra` - Parameter list parsing test: `((test))`
-
-### Macro Definition Tests
-
-- `debug_minimal.sutra` - Minimal macro definition: `(define (f) x)`
-- `debug_macro.sutra` - Simple macro with body: `(define (test) (print "test macro"))`
-- `debug_def_only.sutra` - Macro definition without call: `(define (greet name) (print ...))`
-- `test_macro_native.sutra` - Complete macro definition and usage test
-
-## Key Findings
-
-These tests revealed:
-
-1. **Parser Bug**: Fixed critical issue in `build_define_form` where literal "define" was incorrectly expected as AST node
-2. **Integration Issue**: Identified that user-defined macros are not being properly partitioned/expanded
-3. **Pipeline Validation**: Confirmed that basic scripts and built-in macros work perfectly
-
-## Usage
-
-These files can be used with CLI commands:
-
-```bash
-./target/debug/sutra run debug/macro-testing/debug_simple.sutra
-./target/debug/sutra macrotrace debug/macro-testing/test_macro_native.sutra
-```
-
-## Status
-
-As of 2025-07-07:
-
-- ✅ Basic script execution works
-- ✅ Built-in macros work
-- ✅ Parser correctly handles macro definitions (after fix)
-- ❌ User-defined macro expansion still blocked (integration issue)
-
-These files document the systematic approach to isolating and debugging the native file loading capabilities.
+- **macro_basic.sutra**: Ensures parser and expander handle minimal and parameterized macros.
+- **macro_string_ops.sutra**: Covers string interpolation and macro string operations.
+- **atom_core_ops.sutra**: Comprehensive coverage of all built-in atoms and their macro patterns.
+- **error_cases.sutra**: Ensures correct error handling for invalid input, arity, type, and unknown atoms.
+- **parser_edge_cases.sutra**: Retained only if unique parser edge cases are not covered elsewhere.
