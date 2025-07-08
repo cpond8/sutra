@@ -4,89 +4,74 @@
 
 Sutra addresses fundamental limitations in current game and narrative engines by providing a compositional, transparent, and extensible substrate for interactive systems.
 
-### Problems Being Solved
+## Problems Being Solved
 
-1. **Rigid, Inflexible Narrative Systems**
-   - Most engines bake in specific narrative patterns (linear, branching, etc.), making it difficult to experiment with emergent or system-driven narratives.
-   - Authors are constrained by engine assumptions and cannot easily extend or combine systems.
+### 1. Rigid, Inflexible Narrative Systems
+- Most engines bake in specific narrative patterns (linear, branching, etc.), making experimentation with emergent or system-driven narratives difficult
+- Authors are constrained by engine assumptions and cannot easily extend or combine systems
 
-2. **Non-Compositional Game Logic**
-   - Features are often implemented as monolithic, hard-coded systems, leading to feature bloat and brittle architectures.
-   - Sutra enables novel combinations and extensions through compositional atoms and macros.
+### 2. Non-Compositional Game Logic
+- Features often implemented as monolithic, hard-coded systems, leading to feature bloat and brittle architectures
+- Sutra enables novel combinations and extensions through compositional atoms and macros
 
-3. **Poor Authoring Transparency**
-   - Authors struggle to inspect, debug, or understand how their content is processed.
-   - Sutra prioritizes transparency, with inspectable state, macro expansion, and error reporting.
+### 3. Poor Authoring Transparency
+- Authors struggle to inspect, debug, or understand how their content is processed
+- Sutra prioritizes transparency with inspectable state, macro expansion, and error reporting
 
-4. **Limited Extensibility**
-   - Adding new features in traditional engines often requires modifying the core or forking the codebase.
-   - Sutra's registry and macro system allow new features to be added without core changes.
+### 4. Limited Extensibility
+- Adding new features in traditional engines often requires modifying the core or forking the codebase
+- Sutra's registry and macro system allow new features without core changes
 
 ## Product Goals
 
-- **Empower authors** to build any narrative or simulation system, from interactive fiction to complex emergent worlds.
-- **Lower the barrier to experimentation** by making all systems compositional and extensible.
-- **Provide full transparency** into all authoring, debugging, and state changes.
-- **Enable robust, testable, and maintainable content** through pure functions and immutable data.
-- **All tests must be written as user-facing Sutra scripts (s-expr or braced), asserting only on observable output, world queries, or errors as surfaced to the user. No direct Rust API or internal data structure manipulation is permitted. A full test suite rewrite is required. See `memory-bank/README.md` and `memory-bank/activeContext.md`.**
-- **Integration Test Runner Bootstrapped (2025-07-06):**
-  - `tests/scripts/` directory created for protocol-compliant integration tests.
-  - First `.sutra` test script (`hello_world.sutra`) and expected output (`hello_world.expected`) added. See `activeContext.md` and `progress.md`.
+- **Empower authors** to build any narrative or simulation system, from interactive fiction to complex emergent worlds
+- **Lower the barrier to experimentation** by making all systems compositional and extensible
+- **Provide full transparency** into all authoring, debugging, and state changes
+- **Enable robust, testable, and maintainable content** through pure functions and immutable data
 
 ## User Experience Principles
 
-- **Compositionality**: Authors build from small, orthogonal primitives.
-- **Transparency**: All computation and state are inspectable and debuggable.
-- **Extensibility**: New atoms/macros can be added without modifying the core.
-- **Minimalism**: The engine exposes only what is necessary, avoiding feature bloat.
-- **Portability**: Works across platforms and frontends.
+- **Compositionality**: Authors build from small, orthogonal primitives
+- **Transparency**: All computation and state are inspectable and debuggable
+- **Extensibility**: New atoms/macros can be added without modifying the core
+- **Minimalism**: The engine exposes only what is necessary, avoiding feature bloat
+- **Portability**: Works across platforms and frontends
 
-## Alignment with Current Codebase
+## Test Suite Protocol
 
-- The codebase implements these principles through a modular Rust architecture, pure functions, and a registry-driven macro/atom system.
-- Macro expansion and evaluation are fully transparent and testable.
-- The CLI and documentation are designed for author ergonomics and onboarding.
+**All tests must be written as user-facing Sutra scripts (s-expr or braced), asserting only on observable output, world queries, or errors as surfaced to the user. No direct Rust API or internal data structure manipulation is permitted.**
 
-## Parsing Pipeline and Product Goals (2025-07-04)
+This protocol ensures that all testing validates the actual user experience and maintains transparency principles.
 
-The new modular parsing pipeline directly supports Sutra's product goals:
-- **Transparency:** Every stage is explicit, auditable, and debuggable, making authoring and debugging easier for users.
-- **Extensibility:** The architecture is designed for easy extension and evolution, supporting new syntax, macros, and validation features.
-- **Authoring Ergonomics:** Clear error reporting, diagnostics, and round-trippability ensure a smooth authoring experience.
+## Architecture Alignment
 
-See `docs/architecture/parsing-pipeline-plan.md` for the full plan and rationale.
+The current Rust codebase implements these principles through:
+- **Modular Architecture**: Clear separation between parsing, macro expansion, evaluation, and output
+- **Pure Functions**: All core logic with no global state or hidden side effects
+- **Registry-Driven System**: Extensible atom/macro registration without core modifications
+- **Transparent Pipeline**: Macro expansion and evaluation fully inspectable and testable
+
+### File Organization (2025-07-07)
+- `src/syntax/` - parsing, error handling, validation
+- `src/ast/` - AST builder, value types  
+- `src/atoms/` - core atom implementations
+- `src/macros/` - macro system and standard library
+- `src/runtime/` - evaluation, registry, world state
+- `src/cli/` - CLI logic, args, output
+
+This structure supports the product goals of transparency, maintainability, and extensibility.
 
 ## Cross-References
 
-- See `memory-bank/projectbrief.md` for project vision and aspirations.
-- See `memory-bank/systemPatterns.md` for architectural and design patterns.
-- See `memory-bank/techContext.md` for technical stack and constraints.
-- See `memory-bank/activeContext.md` for current work focus and priorities.
-- See `memory-bank/progress.md` for completed work and next steps.
-- See `.cursor/rules/memory-bank.mdc` for update protocol and overlays.
-
-## File Hierarchy and Modularization Update (2025-07-07)
-
-- The Rust codebase is now organized into modular directories:
-  - `src/syntax/` (parser, CST, error, validation)
-  - `src/ast/` (AST builder, value types)
-  - `src/atoms/` (core atom implementations)
-  - `src/macros/` (macro system and stdlib)
-  - `src/runtime/` (evaluation, registry, world state)
-  - `src/cli/` (CLI logic, args, output)
-  - Entry points: `src/lib.rs`, `src/main.rs`
-- All directory-based modules use explicit `mod.rs` files (per Rust idiom).
-- Tests are organized as:
-  - Rust integration/unit tests: `tests/rust/`
-  - Protocol-compliant integration tests: `tests/scripts/` (Sutra scripts + expected output)
-- God files have been eliminated; each module is focused and minimal.
-- This structure supports maintainability, onboarding, and future growth.
+- See `memory-bank/projectbrief.md` for project vision and target use cases
+- See `memory-bank/systemPatterns.md` for architectural patterns supporting these goals
+- See `memory-bank/activeContext.md` for current work focus
+- See `memory-bank/progress.md` for implementation status
+- See `docs/architecture/parsing-pipeline-plan.md` for pipeline architecture
 
 ## Changelog
 
-- 2025-07-03: Updated to resolve all audit TODOs, clarify product context, and align with current codebase and guidelines.
-- 2025-06-30: Initial synthesis from legacy documentation.
-- 2025-07-04: Added section on parsing pipeline and product goals.
-- 2025-07-06: Batch refactor for Rust idiom compliance (implicit/explicit return style), match exhaustiveness, and error handling. Explicit returns for early exits restored. All match arms for Expr variants in eval_expr restored. Protocol-driven, batch-based, test-first approach enforced. All tests pass. Lesson: Always enumerate all functions for audit, not just those surfaced by search.
-- 2025-07-07: Macro/atom registry and test system are now fully Rust-idiomatic, with anti-nesting audits and iterator combinator refactors complete. Feature-gated (test-atom) and debug-assertion-based test atom registration is in place; integration tests that require test-only atoms are now feature-gated and optional. Protocol for feature-gated/optional integration tests is documented in systemPatterns.md. All code, tests, and documentation are up to date and compliant as of this session.
-- 2025-07-07: Major file hierarchy and module organization refactor. Modular directories created in src/, god files removed, explicit mod.rs usage, and new test organization. All documentation and memory bank files must be updated to reflect this canonical structure.
+- **2025-07-07**: File hierarchy aligned with product goals, test organization updated
+- **2025-07-06**: Integration test runner bootstrapped for protocol-compliant testing
+- **2025-07-04**: Parsing pipeline connection to product goals documented
+- **2025-07-03**: Product context aligned with current codebase and implementation

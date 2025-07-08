@@ -1,0 +1,2 @@
+;; Test very simple macro definition
+(define (test) (print "test macro"))

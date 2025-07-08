@@ -1,5 +1,20 @@
 # Sutra Engine - Memory Bank
 
+> **MAXIMALLY IMPORTANT: Throughout this project, "memory bank" ALWAYS refers to the files in the `memory-bank/` directory (as described in `memory-bank.mdc`). It NEVER refers to any built-in, agent, or AI memory. All project context, decisions, and updates MUST be recorded here, not in any external or ephemeral memory.**
+
+## Purpose
+
+The memory bank is the canonical, living knowledge base for the Sutra project. It encodes all project context, design decisions, architectural patterns, technical constraints, and current work status. It is the single source of truth for onboarding, planning, and all major decisions.
+
+## Distillation Status (2025-07-07)
+
+**All memory bank files have been distilled for token efficiency while preserving recent and salient material:**
+
+- Original files archived in `archive/` subdirectory
+- Each file reduced to under 200 lines (total reduction: ~62%)
+- Focus on current work, critical blockers, and actionable information
+- Historical content and verbose explanations condensed or archived Engine - Memory Bank
+
 > **MAXIMALLY IMPORTANT: Throughout this project, “memory bank” ALWAYS refers to the files in the `memory-bank/` directory (as described in `memory-bank.mdc`). It NEVER refers to any built-in, agent, or AI memory. All project context, decisions, and updates MUST be recorded here, not in any external or ephemeral memory.**
 
 ## Purpose
@@ -50,6 +65,7 @@ The memory bank consists of the following files:
 - All contributors must review this document before working on parser or macro system code.
 
 ## 2025-07-05: Milestone Update
+
 - Macro system, CLI, and test harness refactor completed. Memory bank and documentation are current and protocol-compliant as of this session.
 
 ## File Hierarchy and Modularization Update (2025-07-07)

@@ -598,8 +598,7 @@ fn build_quote(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
 fn build_define_form(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     let span = get_span(&pair);
     let mut inner = pair.clone().into_inner();
-    // Expect: define, param_list, expr
-    let _define_kw = inner.next(); // "define" symbol (skip)
+    // Expect: param_list, expr (the literal "define" is consumed by the grammar)
     let param_list_pair = inner.next().ok_or_else(|| {
         malformed_ast_error(
             "define_form: Missing param_list in define_form (expected param_list)".to_string(),
