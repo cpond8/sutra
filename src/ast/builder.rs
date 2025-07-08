@@ -17,7 +17,7 @@
 
 use crate::syntax::cst_parser::SutraSpan;
 use crate::syntax::parser::SutraCstNode;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Main trait for the AST builder stage.
 pub trait SutraAstBuilder {

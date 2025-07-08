@@ -15,7 +15,7 @@
 // ## Changelog
 // - 2025-07-05: Initial stub by AI. Rationale: Canonical modular pipeline contract.
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Main trait for the CST parser stage.
 pub trait SutraCstParser {

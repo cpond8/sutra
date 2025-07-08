@@ -47,14 +47,19 @@ pub struct ValidatorRegistry {
 
 impl ValidatorRegistry {
     /// Creates a new, empty validator registry.
-    pub fn new() -> Self { Self { validators: vec![] } }
+    pub fn new() -> Self {
+        Self { validators: vec![] }
+    }
     /// Registers a validator (built-in or user-defined).
     pub fn register(&mut self, validator: Box<dyn SutraValidator>) {
         self.validators.push(validator);
     }
     /// Runs all registered validators and collects diagnostics.
     pub fn validate_all(&self, ast: &WithSpan<SutraAstNode>) -> Vec<SutraDiagnostic> {
-        self.validators.iter().flat_map(|v| v.validate(ast)).collect()
+        self.validators
+            .iter()
+            .flat_map(|v| v.validate(ast))
+            .collect()
     }
 }
 

@@ -1,21 +1,20 @@
-pub mod syntax;
 pub mod ast;
 pub mod atoms;
+pub mod cli;
 pub mod macros;
 pub mod runtime;
-pub mod cli;
+pub mod syntax;
 
 use crate::ast::{Expr, Span, WithSpan};
 use crate::atoms::OutputSink;
 use crate::cli::output::StdoutSink;
+use crate::macros::{expand_macros, MacroDef, MacroEnv, MacroRegistry, MacroTemplate};
+use crate::runtime::eval::{eval, eval_expr};
+use crate::runtime::registry::build_default_atom_registry;
+use crate::runtime::world::World;
 use crate::syntax::error::macro_error;
 use crate::syntax::error::SutraError;
-use crate::runtime::eval::eval_expr;
-use crate::runtime::eval::EvalOptions;
-use crate::macros::{expand_macros, MacroDef, MacroEnv, MacroRegistry, MacroTemplate};
-use crate::runtime::registry::build_default_atom_registry;
 use crate::syntax::validate::validate;
-use crate::runtime::world::World;
 
 /// New API: Run Sutra source with injectable output sink.
 pub fn run_sutra_source_with_output(
@@ -78,11 +77,7 @@ pub fn run_sutra_source_with_output(
 
     // 9. Evaluate the expanded AST
     let world = World::default();
-    let opts = EvalOptions {
-        max_depth: 1000,
-        atom_registry,
-    };
-    let result = eval_expr(&expanded, &world, output, &opts, 0).map_err(|e| {
+    let result = eval(&expanded, &world, output, &atom_registry, 1000).map_err(|e| {
         output.emit(&format!("Evaluation error: {:?}", e), None);
         e
     })?;

@@ -72,6 +72,7 @@ impl std::fmt::Display for SutraError {
 
 impl std::error::Error for SutraError {}
 
+use crate::ast::value::Value;
 /// # Sutra Error Construction Helpers
 ///
 /// This section provides ergonomic, documented constructor functions for all error domains.
@@ -88,7 +89,6 @@ impl std::error::Error for SutraError {}
 /// - Use domain-specific helpers (`eval_arity_error`, etc.) for common, repeated patterns in a specific subsystem.
 /// - Prefer helpers that require a span for author-facing errors; IO/internal errors may allow `None`.
 use crate::ast::{Expr, Span, WithSpan};
-use crate::ast::value::Value;
 
 /// Constructs a parse error (malformed input, syntax error).
 ///

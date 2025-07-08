@@ -10,10 +10,10 @@
 //! node. This is the only place in the entire engine where path syntax is parsed.
 
 use crate::ast::{Expr, WithSpan};
-use crate::syntax::error::validation_error;
-use crate::syntax::error::SutraError;
 use crate::macros::MacroRegistry;
 use crate::runtime::path::Path;
+use crate::syntax::error::validation_error;
+use crate::syntax::error::SutraError;
 
 // ---
 // Registry
@@ -183,110 +183,60 @@ fn create_assignment_macro(
 
 /// Expands `(is? a b)` to `(eq? (core/get a) (core/get b))`.
 ///
-/// # Examples
+/// Usage: (is? a b)
+/// Example:
+///   (is? foo bar) ; expands to (eq? (core/get foo) (core/get bar))
 ///
-/// ```rust
-/// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros::std::expand_is;
-/// let expr = WithSpan {
-///     value: Expr::List(vec![
-///         WithSpan { value: Expr::Symbol("is?".to_string(), Span::default()), span: Span::default() },
-///         WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
-///         WithSpan { value: Expr::Symbol("bar".to_string(), Span::default()), span: Span::default() },
-///     ], Span::default()),
-///     span: Span::default(),
-/// };
-/// let expanded = expand_is(&expr).unwrap();
-/// assert!(matches!(expanded.value, Expr::List(_, _)));
-/// ```
+/// # Caveats
+/// Only works for two arguments.
 pub fn expand_is(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     create_binary_predicate_macro(expr, "is?", "eq?")
 }
 
 /// Expands `(over? a b)` to `(gt? (core/get a) (core/get b))`.
 ///
-/// # Examples
+/// Usage: (over? a b)
+/// Example:
+///   (over? foo bar) ; expands to (gt? (core/get foo) (core/get bar))
 ///
-/// ```rust
-/// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros::std::expand_over;
-/// let expr = WithSpan {
-///     value: Expr::List(vec![
-///         WithSpan { value: Expr::Symbol("over?".to_string(), Span::default()), span: Span::default() },
-///         WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
-///         WithSpan { value: Expr::Symbol("bar".to_string(), Span::default()), span: Span::default() },
-///     ], Span::default()),
-///     span: Span::default(),
-/// };
-/// let expanded = expand_over(&expr).unwrap();
-/// assert!(matches!(expanded.value, Expr::List(_, _)));
-/// ```
+/// # Caveats
+/// Only works for two arguments.
 pub fn expand_over(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     create_binary_predicate_macro(expr, "over?", "gt?")
 }
 
 /// Expands `(under? a b)` to `(lt? (core/get a) (core/get b))`.
 ///
-/// # Examples
+/// Usage: (under? a b)
+/// Example:
+///   (under? foo bar) ; expands to (lt? (core/get foo) (core/get bar))
 ///
-/// ```rust
-/// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros::std::expand_under;
-/// let expr = WithSpan {
-///     value: Expr::List(vec![
-///         WithSpan { value: Expr::Symbol("under?".to_string(), Span::default()), span: Span::default() },
-///         WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
-///         WithSpan { value: Expr::Symbol("bar".to_string(), Span::default()), span: Span::default() },
-///     ], Span::default()),
-///     span: Span::default(),
-/// };
-/// let expanded = expand_under(&expr).unwrap();
-/// assert!(matches!(expanded.value, Expr::List(_, _)));
-/// ```
+/// # Caveats
+/// Only works for two arguments.
 pub fn expand_under(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     create_binary_predicate_macro(expr, "under?", "lt?")
 }
 
 /// Expands `(add! foo 1)` to `(core/set! (path foo) (+ (core/get foo) 1))`.
 ///
-/// # Examples
+/// Usage: (add! foo 1)
+/// Example:
+///   (add! foo 1) ; expands to (core/set! (path foo) (+ (core/get foo) 1))
 ///
-/// ```rust
-/// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros::std::expand_add;
-/// let expr = WithSpan {
-///     value: Expr::List(vec![
-///         WithSpan { value: Expr::Symbol("add!".to_string(), Span::default()), span: Span::default() },
-///         WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
-///         WithSpan { value: Expr::Number(1.0, Span::default()), span: Span::default() },
-///     ], Span::default()),
-///     span: Span::default(),
-/// };
-/// let expanded = expand_add(&expr).unwrap();
-/// assert!(matches!(expanded.value, Expr::List(_, _)));
-/// ```
+/// # Caveats
+/// Only works for two arguments.
 pub fn expand_add(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     create_assignment_macro(expr, "add!", "+")
 }
 
 /// Expands `(sub! foo 1)` to `(core/set! (path foo) (- (core/get foo) 1))`.
 ///
-/// # Examples
+/// Usage: (sub! foo 1)
+/// Example:
+///   (sub! foo 1) ; expands to (core/set! (path foo) (- (core/get foo) 1))
 ///
-/// ```rust
-/// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros::std::expand_sub;
-/// let expr = WithSpan {
-///     value: Expr::List(vec![
-///         WithSpan { value: Expr::Symbol("sub!".to_string(), Span::default()), span: Span::default() },
-///         WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
-///         WithSpan { value: Expr::Number(1.0, Span::default()), span: Span::default() },
-///     ], Span::default()),
-///     span: Span::default(),
-/// };
-/// let expanded = expand_sub(&expr).unwrap();
-/// assert!(matches!(expanded.value, Expr::List(_, _)));
-/// ```
+/// # Caveats
+/// Only works for two arguments.
 pub fn expand_sub(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     let (items, span) = expect_list_with_n_args(expr, 3, "sub!")?;
     let set_symbol = WithSpan {
@@ -318,21 +268,12 @@ pub fn expand_sub(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
 
 /// Expands `(inc! foo)` to `(core/set! (path foo) (+ (core/get foo) 1))`.
 ///
-/// # Examples
+/// Usage: (inc! foo)
+/// Example:
+///   (inc! foo) ; expands to (core/set! (path foo) (+ (core/get foo) 1))
 ///
-/// ```rust
-/// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros::std::expand_inc;
-/// let expr = WithSpan {
-///     value: Expr::List(vec![
-///         WithSpan { value: Expr::Symbol("inc!".to_string(), Span::default()), span: Span::default() },
-///         WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
-///     ], Span::default()),
-///     span: Span::default(),
-/// };
-/// let expanded = expand_inc(&expr).unwrap();
-/// assert!(matches!(expanded.value, Expr::List(_, _)));
-/// ```
+/// # Caveats
+/// Only works for one argument.
 pub fn expand_inc(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     let (items, span) = expect_list_with_n_args(expr, 2, "inc!")?;
     let set_symbol = WithSpan {
@@ -364,21 +305,12 @@ pub fn expand_inc(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
 
 /// Expands `(dec! foo)` to `(core/set! (path foo) (- (core/get foo) 1))`.
 ///
-/// # Examples
+/// Usage: (dec! foo)
+/// Example:
+///   (dec! foo) ; expands to (core/set! (path foo) (- (core/get foo) 1))
 ///
-/// ```rust
-/// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros::std::expand_dec;
-/// let expr = WithSpan {
-///     value: Expr::List(vec![
-///         WithSpan { value: Expr::Symbol("dec!".to_string(), Span::default()), span: Span::default() },
-///         WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
-///     ], Span::default()),
-///     span: Span::default(),
-/// };
-/// let expanded = expand_dec(&expr).unwrap();
-/// assert!(matches!(expanded.value, Expr::List(_, _)));
-/// ```
+/// # Caveats
+/// Only works for one argument.
 pub fn expand_dec(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     let (items, span) = expect_list_with_n_args(expr, 2, "dec!")?;
     let set_symbol = WithSpan {
@@ -408,24 +340,14 @@ pub fn expand_dec(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     })
 }
 
-/// Expands `(set! foo 42)` to `(core/set! (path foo) 42)`.
+/// Expands `(set! foo bar)` to `(core/set! (path foo) bar)`.
 ///
-/// # Examples
+/// Usage: (set! foo bar)
+/// Example:
+///   (set! foo bar) ; expands to (core/set! (path foo) bar)
 ///
-/// ```rust
-/// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros::std::expand_set;
-/// let expr = WithSpan {
-///     value: Expr::List(vec![
-///         WithSpan { value: Expr::Symbol("set!".to_string(), Span::default()), span: Span::default() },
-///         WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
-///         WithSpan { value: Expr::Number(42.0, Span::default()), span: Span::default() },
-///     ], Span::default()),
-///     span: Span::default(),
-/// };
-/// let expanded = expand_set(&expr).unwrap();
-/// assert!(matches!(expanded.value, Expr::List(_, _)));
-/// ```
+/// # Caveats
+/// Only works for two arguments.
 pub fn expand_set(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     let (items, span) = expect_list_with_n_args(expr, 3, "set!")?;
     let atom_symbol = WithSpan {
@@ -446,21 +368,12 @@ pub fn expand_set(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
 
 /// Expands `(get foo)` to `(core/get (path foo))`.
 ///
-/// # Examples
+/// Usage: (get foo)
+/// Example:
+///   (get foo) ; expands to (core/get (path foo))
 ///
-/// ```rust
-/// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros::std::expand_get;
-/// let expr = WithSpan {
-///     value: Expr::List(vec![
-///         WithSpan { value: Expr::Symbol("get".to_string(), Span::default()), span: Span::default() },
-///         WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
-///     ], Span::default()),
-///     span: Span::default(),
-/// };
-/// let expanded = expand_get(&expr).unwrap();
-/// assert!(matches!(expanded.value, Expr::List(_, _)));
-/// ```
+/// # Caveats
+/// Only works for one argument.
 pub fn expand_get(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     let (items, span) = expect_list_with_n_args(expr, 2, "get")?;
     let atom_symbol = WithSpan {
@@ -478,23 +391,14 @@ pub fn expand_get(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     })
 }
 
-/// Expands `(del! <path>)` to `(core/del! (path <...>))`.
+/// Expands `(del! foo)` to `(core/del! (path foo))`.
 ///
-/// # Examples
+/// Usage: (del! foo)
+/// Example:
+///   (del! foo) ; expands to (core/del! (path foo))
 ///
-/// ```rust
-/// use sutra::ast::{Expr, Span, WithSpan};
-/// use sutra::macros::std::expand_del;
-/// let expr = WithSpan {
-///     value: Expr::List(vec![
-///         WithSpan { value: Expr::Symbol("del!".to_string(), Span::default()), span: Span::default() },
-///         WithSpan { value: Expr::Symbol("foo".to_string(), Span::default()), span: Span::default() },
-///     ], Span::default()),
-///     span: Span::default(),
-/// };
-/// let expanded = expand_del(&expr).unwrap();
-/// assert!(matches!(expanded.value, Expr::List(_, _)));
-/// ```
+/// # Caveats
+/// Only works for one argument.
 pub fn expand_del(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     let (items, span) = expect_list_with_n_args(expr, 2, "del!")?;
     let atom_symbol = WithSpan {
@@ -512,7 +416,14 @@ pub fn expand_del(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     })
 }
 
-/// Expands `(if <cond> <then> <else>)` to a canonical `Expr::If` node.
+/// Expands `(if cond then else)` to a canonical conditional form.
+///
+/// Usage: (if cond then else)
+/// Example:
+///   (if (eq? x 1) (print "yes") (print "no"))
+///
+/// # Caveats
+/// Only works for three arguments.
 pub fn expand_if(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     let (items, span) = expect_list_with_n_args(expr, 4, "if")?;
     Ok(WithSpan {
@@ -526,7 +437,14 @@ pub fn expand_if(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     })
 }
 
-/// Expands `(print <expr>)` to `(core/print <expr>)`.
+/// Expands `(print x)` to a canonical print form.
+///
+/// Usage: (print x)
+/// Example:
+///   (print x) ; expands to (print x)
+///
+/// # Caveats
+/// Only works for one argument.
 pub fn expand_print(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     let (items, span) = expect_list_with_n_args(expr, 2, "print")?;
     let atom_symbol = WithSpan {

@@ -5,8 +5,8 @@
 
 use crate::cli::args::{Command, SutraArgs};
 use crate::cli::output::StdoutSink;
-use crate::syntax::error::io_error;
 use crate::macros::{expand_macros, load_macros_from_file, MacroDef, MacroEnv, MacroRegistry};
+use crate::syntax::error::io_error;
 use clap::Parser;
 use std::{fs, process};
 
@@ -69,9 +69,9 @@ fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::E
     let mut core_macros = MacroRegistry::new();
     crate::macros::std::register_std_macros(&mut core_macros);
 
-    // Load user-defined/stdlib macros from macros.sutra
+    // Load user-defined/stdlib macros from src/macros/macros.sutra
     let mut user_macros = MacroRegistry::new();
-    match load_macros_from_file("macros.sutra") {
+    match load_macros_from_file("src/macros/macros.sutra") {
         Ok(macros) => {
             for (name, template) in macros {
                 user_macros
@@ -80,7 +80,7 @@ fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::E
             }
         }
         Err(e) => {
-            eprintln!("Error loading macros from macros.sutra: {}", e);
+            eprintln!("Error loading macros from src/macros/macros.sutra: {}", e);
             std::process::exit(1);
         }
     }

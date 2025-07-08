@@ -4,9 +4,9 @@
 //! All errors are span-carrying and user-friendly.
 
 use crate::ast::{Expr, Span, WithSpan};
+use crate::macros::MacroEnv;
 use crate::syntax::error::validation_error;
 use crate::syntax::error::SutraError;
-use crate::macros::MacroEnv;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

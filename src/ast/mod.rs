@@ -303,5 +303,5 @@ fn unescape_string(s: &str) -> Result<String, String> {
     Ok(s.to_string())
 }
 
-pub mod value;
 pub mod builder;
+pub mod value;

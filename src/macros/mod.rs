@@ -18,15 +18,16 @@
 
 use crate::ast::{Expr, WithSpan};
 use crate::syntax::error::{io_error, macro_error, SutraError};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use ::std::fs;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 // === Type Definitions (Core Data Structures) ===
 
 // A macro function is a native Rust function that transforms an AST.
-pub type MacroFn = fn(
-    &crate::ast::WithSpan<crate::ast::Expr>,
-) -> Result<crate::ast::WithSpan<crate::ast::Expr>, crate::syntax::error::SutraError>;
+pub type MacroFn =
+    fn(
+        &crate::ast::WithSpan<crate::ast::Expr>,
+    ) -> Result<crate::ast::WithSpan<crate::ast::Expr>, crate::syntax::error::SutraError>;
 
 /// A declarative macro defined by a template.
 #[derive(Debug, Clone, Serialize, Deserialize)]

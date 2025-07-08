@@ -43,11 +43,11 @@
 use crate::ast::{Expr, Span, WithSpan};
 use crate::syntax::error::{internal_parse_error, malformed_ast_error, parse_error, SutraError};
 use once_cell::sync::Lazy;
+use pest::error::InputLocation;
 use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
 use std::collections::HashMap;
-use pest::error::InputLocation;
 
 // This derive macro generates the parser implementation from our grammar file.
 #[derive(Parser)]
