@@ -1,0 +1,33 @@
+;; arithmetic_basic.sutra
+;; Basic arithmetic operations test for core atoms: +, -, *, /, mod
+
+;; Addition tests
+(print (+ 2 3))
+(print (+ 1 2 3 4))
+(print (+ -5 10))
+(print (+ 0 0))
+(print (+ 42 0))
+
+;; Subtraction tests
+(print (- 10 3))
+(print (- 20 5))
+(print (- 0 10))
+(print (- 100 0))
+
+;; Multiplication tests
+(print (* 3 4))
+(print (* 2 3 4))
+(print (* -2 5))
+(print (* 1 1))
+(print (* 7 1))
+
+;; Division tests
+(print (/ 15 3))
+(print (/ 20 4))
+(print (/ -12 3))
+(print (/ 42 1))
+
+;; Modulo tests
+(print (mod 10 3))
+(print (mod 17 5))
+(print (mod -7 3))

@@ -29,6 +29,7 @@ pub fn run() {
         Command::Macroexpand { file } => handle_macroexpand(&file),
         Command::Format { file } => handle_format(&file),
         Command::Test { path } => handle_test(&path),
+        Command::GenExpected { path } => handle_gen_expected(&path),
     };
 
     if let Err(e) = result {
@@ -434,6 +435,33 @@ fn handle_test(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>>
         return Err("One or more test scripts failed".into());
     }
 
+    Ok(())
+}
+
+/// Handles the `gen-expected` subcommand.
+fn handle_gen_expected(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    // Use the test harness from tests/common/mod.rs
+    // This requires including the module at build time for CLI use
+    #[path = "../../tests/common/mod.rs"]
+    mod test_common;
+    use test_common::{generate_expected_output, discover_test_cases, TestConfig};
+
+    let config = TestConfig::default();
+    if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("sutra") {
+        generate_expected_output(path, &config)?;
+        println!("Generated expected output for {}", path.display());
+    } else if path.is_dir() {
+        let test_cases = discover_test_cases(path)?;
+        for case in test_cases {
+            if let Err(e) = generate_expected_output(&case.sutra_file, &config) {
+                eprintln!("Failed for {}: {}", case.sutra_file.display(), e);
+            } else {
+                println!("Generated expected output for {}", case.sutra_file.display());
+            }
+        }
+    } else {
+        eprintln!("Path must be a .sutra file or directory");
+    }
     Ok(())
 }
 

@@ -1,3 +1,0 @@
-;; hello_world.sutra
-;; This script should output 'Hello, world!'
-(print "Hello, world!")

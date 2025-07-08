@@ -1,0 +1,42 @@
+;; Core atom operation tests
+;; Tests all implemented atom operations without unimplemented features
+
+;; Test path-based operations
+(print "Testing path operations...")
+(set! test.value 42)
+(print (get test.value))
+(del! test.value)
+(print (get test.value))
+
+;; Test binary operations with validation
+(print "Testing binary operations with validation...")
+(print (/ 10 2))
+(print (mod 5 2))
+(print (mod 7 3))
+
+;; Test unary boolean operations
+(print "Testing unary boolean operations...")
+(print (not true))
+(print (not false))
+
+;; Test binary numeric operations
+(print "Testing binary numeric operations...")
+(print (eq? 1 1))
+(print (eq? 1 2))
+(print (gt? 3 2))
+(print (lt? 1 2))
+(print (gte? 2 2))
+(print (lte? 1 2))
+(print (- 5 2))
+
+;; Test n-ary numeric operations
+(print "Testing n-ary numeric operations...")
+(print (+ 1 2 3))
+(print (* 2 3 4))
+
+;; Test basic print operations
+(print "Testing print operations...")
+(print "direct print test")
+(print 42)
+(print true)
+(print false)

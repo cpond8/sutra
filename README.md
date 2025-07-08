@@ -115,4 +115,15 @@ Available commands (see `src/cli/args.rs` for full details):
 - `listmacros`: List all available macros with documentation
 - `listatoms`: List all available atoms with documentation
 
+### Generate Expected Output
+
+Regenerate `.expected` files for a `.sutra` script or all scripts in a directory:
+
+```sh
+sutra gen-expected path/to/file.sutra
+sutra gen-expected path/to/directory/
+```
+
+**Safety:** This command will overwrite existing `.expected` files.
+
 ---

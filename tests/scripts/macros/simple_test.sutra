@@ -1,0 +1,3 @@
+;; Simple macro test
+(define (greet name) (print name))
+(greet "Alice")

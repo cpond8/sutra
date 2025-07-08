@@ -1,0 +1,19 @@
+;; Macro string operations test
+;; Tests macros that work with string values (no concatenation)
+
+;; Macro that takes a string parameter
+(define (echo_string text) (print text))
+(echo_string "Hello")
+(echo_string "World")
+
+;; Macro that prints predefined strings
+(define (say_hello name) (print name))
+(say_hello "Alice")
+(say_hello "Bob")
+
+;; Macro with multiple string parameters
+(define (print_two first second)
+  (do
+    (print first)
+    (print second)))
+(print_two "Line 1" "Line 2")

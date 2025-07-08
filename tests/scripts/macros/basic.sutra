@@ -1,0 +1,15 @@
+;; Basic macro definition and invocation tests
+;; Tests minimal macro functionality and parameter passing
+
+;; Test: Macro with parameter
+(define (greet name) (print name))
+(greet "Alice")
+(greet "Bob")
+
+;; Test: Macro with different parameter
+(define (show value) (print value))
+(show "test message")
+(show 42)
+
+;; Test: Definition-only macro (not invoked)
+(define (unused_macro param) (print param))

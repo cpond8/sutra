@@ -1,0 +1,22 @@
+;; list_operations.sutra
+;; Test list and len operations
+
+;; Basic list creation
+(print (list))
+(print (list 1))
+(print (list 1 2 3))
+(print (list "a" "b" "c"))
+
+;; Mixed type lists
+(print (list 1 "hello" true))
+(print (list (list 1 2) (list 3 4)))
+
+;; Length operations
+(print (len (list)))
+(print (len (list 1)))
+(print (len (list 1 2 3 4)))
+(print (len (list "a" "b" "c" "d" "e")))
+
+;; Length of nested lists
+(print (len (list (list 1) (list 2 3))))
+(print (len (list 1 (list 2 3 4) 5)))
