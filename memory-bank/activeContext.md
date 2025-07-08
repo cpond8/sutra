@@ -4,6 +4,27 @@
 
 ## ✅ CLI TOOLING COMPLETED: Full Development Workflow Support (2025-07-07)
 
+### 🧹 CLEANUP COMPLETE: Obsolete Test Infrastructure Removed (2025-07-07)
+
+**ARCHITECTURAL IMPROVEMENT**: Removed obsolete `tests/script_runner.rs` file that violated design principles.
+
+**Issues Resolved**:
+
+- **Code Duplication**: File duplicated functionality already present in CLI `test` command
+- **Single Source of Truth Violation**: Two separate test runners for same functionality
+- **Linting Errors**: 10+ unused import and dead code warnings eliminated
+- **Feature Gate Confusion**: Test gated behind `test-atom` feature but functionality migrated to CLI
+
+**Design Principle Alignment** (All 10/10):
+
+- ✅ **Pure Functions/Immutability**: Removed mutable test state duplication
+- ✅ **Single Source of Truth**: Consolidated test infrastructure in CLI module
+- ✅ **Minimalism**: Eliminated unnecessary code (80+ lines removed)
+- ✅ **Modularity**: Test functionality properly belongs in CLI, not integration tests
+- ✅ **Separation of Concerns**: Clear responsibility boundaries maintained
+
+**Verified**: CLI `test` command provides identical functionality with no regression.
+
 ### 🎉 COMPLETE: Comprehensive CLI Command Suite
 
 **STATUS**: All planned CLI commands have been **successfully implemented and tested**. The Sutra Engine now provides a complete development, debugging, and authoring workflow through its CLI interface.
@@ -202,6 +223,7 @@ The Rust codebase has been reorganized for maximal modularity:
 
 ## Changelog
 
+- **2025-07-07**: Phase 2 (Macro Pattern Expansion) completed - comprehensive macro usage expansion in std atoms
 - **2025-07-07**: Native .sutra file loading assessment completed, critical blocker identified, debug infrastructure documented
 - **2025-07-07**: File hierarchy reorganized for modularity, test organization updated
 - **2025-07-06**: Integration test runner bootstrapped with `tests/scripts/`

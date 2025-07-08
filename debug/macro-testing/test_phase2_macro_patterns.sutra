@@ -1,0 +1,50 @@
+;; Test Phase 2 Macro Pattern Expansion
+;; Tests all atoms that were refactored to use macros
+
+;; Test path-based operations using eval_binary_path_op and eval_unary_path_op
+(print "Testing path operations...")
+(set! test.value 42)
+(print (get test.value))
+(del! test.value)
+(print (get test.value))  ; should be nil
+
+;; Test binary operations with validation using eval_binary_op_with_validation
+(print "Testing binary operations with validation...")
+(print (/ 10 2))    ; should work
+(print (mod 5 2))   ; should work
+(print (mod 7 3))   ; should work
+
+;; Test unary boolean operations using eval_unary_bool_op
+(print "Testing unary boolean operations...")
+(print (not true))   ; should be false
+(print (not false))  ; should be true
+
+;; Test binary numeric operations using eval_binary_op
+(print "Testing binary numeric operations...")
+(print (eq? 1 1))    ; should be true
+(print (eq? 1 2))    ; should be false
+(print (gt? 3 2))    ; should be true
+(print (lt? 1 2))    ; should be true
+(print (gte? 2 2))   ; should be true
+(print (lte? 1 2))   ; should be true
+(print (- 5 2))      ; should be 3
+
+;; Test n-ary numeric operations using eval_nary_numeric_op
+(print "Testing n-ary numeric operations...")
+(print (+ 1 2 3))    ; should be 6
+(print (* 2 3 4))    ; should be 24
+
+;; Test unary value operations using eval_unary_value_op
+(print "Testing unary value operations...")
+(print "direct print test")
+(print (len "hello"))        ; should work and return 5
+(print (len (list 1 2 3)))   ; should work and return 3
+
+;; Test do operation (uses eval_args)
+(print "Testing do operation...")
+(do
+  (set! counter 0)
+  (set! counter (+ (get counter) 1))
+  (print (get counter)))
+
+(print "All macro pattern tests completed!")

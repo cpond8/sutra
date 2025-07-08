@@ -53,3 +53,7 @@ impl AtomRegistry {
 }
 
 pub mod std;
+
+// Test atoms module - only available in debug/test builds
+#[cfg(any(test, feature = "test-atom", debug_assertions))]
+pub mod test;

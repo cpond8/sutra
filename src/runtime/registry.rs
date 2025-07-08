@@ -20,10 +20,10 @@ use crate::macros::{self, MacroRegistry};
 pub fn build_default_atom_registry() -> AtomRegistry {
     let mut registry = AtomRegistry::new();
     atoms::std::register_std_atoms(&mut registry);
-    #[cfg(any(test, feature = "test-atom"))]
+    #[cfg(any(test, feature = "test-atom", debug_assertions))]
     {
-        // Regression: Ensure test atoms are only registered when the 'test-atom' feature is enabled or during tests.
-        atoms::std::register_test_atoms(&mut registry);
+        // Register test atoms only in debug/test builds
+        atoms::test::register_test_atoms(&mut registry);
     }
     registry
 }

@@ -35,6 +35,30 @@ macro_rules! sutra_error {
     };
 }
 
+/// Macro to create a sub-evaluation context with a new world state.
+/// This centralizes the repetitive context construction pattern used throughout atoms.
+///
+/// # Usage
+/// ```ignore
+/// let mut sub_context = sub_eval_context!(parent_context, &new_world);
+/// let (result, world) = eval_expr(&args[0], &mut sub_context)?;
+/// ```
+#[macro_export]
+macro_rules! sub_eval_context {
+    ($parent:expr, $world:expr) => {
+        $crate::runtime::eval::EvalContext {
+            world: $world,
+            output: $parent.output,
+            atom_registry: $parent.atom_registry,
+            max_depth: $parent.max_depth,
+            depth: $parent.depth,
+        }
+    };
+}
+
+// Also provide the local version for use within this module
+use sub_eval_context;
+
 // ---
 // Registry
 // ---
@@ -61,13 +85,7 @@ fn eval_args(
     args.iter().try_fold(
         (Vec::with_capacity(args.len()), context.world.clone()),
         |(mut values, world), arg| {
-            let mut sub_context = EvalContext {
-                world: &world,
-                output: context.output,
-                atom_registry: context.atom_registry,
-                max_depth: context.max_depth,
-                depth: context.depth,
-            };
+            let mut sub_context = sub_eval_context!(context, &world);
             let (val, next_world) = eval_expr(arg, &mut sub_context)?;
             values.push(val);
             Ok((values, next_world))
@@ -88,21 +106,9 @@ macro_rules! eval_binary_op {
                 2
             ));
         }
-        let mut sub_context1 = EvalContext {
-            world: $context.world,
-            output: $context.output,
-            atom_registry: $context.atom_registry,
-            max_depth: $context.max_depth,
-            depth: $context.depth,
-        };
+        let mut sub_context1 = sub_eval_context!($context, $context.world);
         let (val1, world1) = eval_expr(&$args[0], &mut sub_context1)?;
-        let mut sub_context2 = EvalContext {
-            world: &world1,
-            output: $context.output,
-            atom_registry: $context.atom_registry,
-            max_depth: $context.max_depth,
-            depth: $context.depth,
-        };
+        let mut sub_context2 = sub_eval_context!($context, &world1);
         let (val2, world2) = eval_expr(&$args[1], &mut sub_context2)?;
         match (&val1, &val2) {
             (Value::Number(n1), Value::Number(n2)) => Ok(($op(*n1, *n2), world2)),
@@ -113,6 +119,51 @@ macro_rules! eval_binary_op {
                 $name,
                 $expected,
                 &val1
+            )),
+        }
+    }};
+}
+
+/// Macro for binary numeric operations with custom validation (e.g., division by zero check).
+/// Usage: eval_binary_op_with_validation!(args, context, parent_span, |a, b| ..., "atom_name", |a, b| validation_result)
+macro_rules! eval_binary_op_with_validation {
+    ($args:expr, $context:expr, $parent_span:expr, $op:expr, $name:expr, $validator:expr) => {{
+        if $args.len() != 2 {
+            return Err(sutra_error!(
+                arity,
+                Some($parent_span.clone()),
+                $args,
+                $name,
+                2
+            ));
+        }
+        let mut sub_context1 = sub_eval_context!($context, $context.world);
+        let (val1, world1) = eval_expr(&$args[0], &mut sub_context1)?;
+        let mut sub_context2 = sub_eval_context!($context, &world1);
+        let (val2, world2) = eval_expr(&$args[1], &mut sub_context2)?;
+        match (&val1, &val2) {
+            (Value::Number(n1), Value::Number(n2)) => {
+                // Apply custom validation
+                if let Err(err_msg) = $validator(*n1, *n2) {
+                    return Err(sutra_error!(
+                        general,
+                        Some($parent_span.clone()),
+                        &$args[1],
+                        err_msg
+                    ));
+                }
+                Ok(($op(*n1, *n2), world2))
+            }
+            _ => Err(sutra_error!(
+                general,
+                Some($parent_span.clone()),
+                &$args[0],
+                format!(
+                    "`{}` expects two Numbers, got {} and {}",
+                    $name,
+                    val1.type_name(),
+                    val2.type_name()
+                )
             )),
         }
     }};
@@ -151,6 +202,120 @@ macro_rules! eval_nary_numeric_op {
     }};
 }
 
+/// Macro for boolean unary operations.
+/// Usage: eval_unary_bool_op!(args, context, parent_span, |b| ..., "atom_name")
+macro_rules! eval_unary_bool_op {
+    ($args:expr, $context:expr, $parent_span:expr, $op:expr, $name:expr) => {{
+        if $args.len() != 1 {
+            return Err(sutra_error!(
+                arity,
+                Some($parent_span.clone()),
+                $args,
+                $name,
+                1
+            ));
+        }
+        let mut sub_context = sub_eval_context!($context, $context.world);
+        let (val, world) = eval_expr(&$args[0], &mut sub_context)?;
+        match val {
+            Value::Bool(b) => {
+                let result = $op(b);
+                Ok((result, world))
+            }
+            _ => Err(sutra_error!(
+                type,
+                Some($parent_span.clone()),
+                &$args[0],
+                $name,
+                "a Boolean",
+                &val
+            )),
+        }
+    }};
+}
+
+/// Macro for unary path operations (get, del).
+/// Usage: eval_unary_path_op!(args, context, parent_span, |path, world| ..., "atom_name")
+macro_rules! eval_unary_path_op {
+    ($args:expr, $context:expr, $parent_span:expr, $op:expr, $name:expr) => {{
+        if $args.len() != 1 {
+            return Err(sutra_error!(
+                arity,
+                Some($parent_span.clone()),
+                $args,
+                $name,
+                1
+            ));
+        }
+        let mut sub_context = sub_eval_context!($context, $context.world);
+        let (path_val, world) = eval_expr(&$args[0], &mut sub_context)?;
+        if let Value::Path(path) = path_val {
+            $op(path, world)
+        } else {
+            Err(sutra_error!(
+                type,
+                Some($parent_span.clone()),
+                &$args[0],
+                $name,
+                "a Path",
+                &path_val
+            ))
+        }
+    }};
+}
+
+/// Macro for binary path operations (set).
+/// Usage: eval_binary_path_op!(args, context, parent_span, |path, value, world| ..., "atom_name")
+macro_rules! eval_binary_path_op {
+    ($args:expr, $context:expr, $parent_span:expr, $op:expr, $name:expr) => {{
+        if $args.len() != 2 {
+            return Err(sutra_error!(
+                arity,
+                Some($parent_span.clone()),
+                $args,
+                $name,
+                2
+            ));
+        }
+        let mut sub_context1 = sub_eval_context!($context, $context.world);
+        let (path_val, world1) = eval_expr(&$args[0], &mut sub_context1)?;
+        let mut sub_context2 = sub_eval_context!($context, &world1);
+        let (value, world2) = eval_expr(&$args[1], &mut sub_context2)?;
+
+        if let Value::Path(path) = path_val {
+            $op(path, value, world2)
+        } else {
+            Err(sutra_error!(
+                type,
+                Some($parent_span.clone()),
+                &$args[0],
+                $name,
+                "a Path",
+                &path_val
+            ))
+        }
+    }};
+}
+
+/// Macro for unary operations that take any value.
+/// Usage: eval_unary_value_op!(args, context, parent_span, |val, world| ..., "atom_name")
+macro_rules! eval_unary_value_op {
+    ($args:expr, $context:expr, $parent_span:expr, $op:expr, $name:expr) => {{
+        if $args.len() != 1 {
+            return Err(sutra_error!(
+                arity,
+                Some($parent_span.clone()),
+                $args,
+                $name,
+                1
+            ));
+        }
+        let mut sub_context = sub_eval_context!($context, $context.world);
+        let (val, world) = eval_expr(&$args[0], &mut sub_context)?;
+        $op(val, world, $parent_span, $context)
+    }};
+}
+
 // After macro definitions, move all ATOM_* constants here:
 // ATOM_CORE_SET, ATOM_CORE_GET, ATOM_CORE_DEL, ATOM_ADD, ATOM_SUB, ATOM_MUL, ATOM_DIV, ATOM_MOD, ATOM_EQ, ATOM_GT, ATOM_LT, ATOM_GTE, ATOM_LTE, ATOM_NOT, ATOM_DO, ATOM_LIST, ATOM_LEN, ATOM_ERROR, ATOM_PRINT
 
@@ -167,45 +332,19 @@ macro_rules! eval_nary_numeric_op {
 /// # Safety
 /// Only mutates the world at the given path.
 pub const ATOM_CORE_SET: AtomFn = |args, context, parent_span| {
-    if args.len() != 2 {
-        Err(sutra_error!(
-            arity,
-            Some(parent_span.clone()),
-            args,
-            "core/set!",
-            2
-        ))?
-    }
-    let mut sub_context1 = EvalContext {
-        world: context.world,
-        output: context.output,
-        atom_registry: context.atom_registry,
-        max_depth: context.max_depth,
-        depth: context.depth,
-    };
-    let (path_val, world1) = eval_expr(&args[0], &mut sub_context1)?;
-    let mut sub_context2 = EvalContext {
-        world: &world1,
-        output: context.output,
-        atom_registry: context.atom_registry,
-        max_depth: context.max_depth,
-        depth: context.depth,
-    };
-    let (value, world2) = eval_expr(&args[1], &mut sub_context2)?;
-
-    if let Value::Path(path) = path_val {
-        let new_world = world2.set(&path, value);
-        Ok((Value::default(), new_world))
-    } else {
-        Err(sutra_error!(
-            type,
-            Some(parent_span.clone()),
-            &args[0],
-            "core/set!",
-            "a Path",
-            &path_val
-        ))?
-    }
+    eval_binary_path_op!(
+        args,
+        context,
+        parent_span,
+        |path: crate::runtime::path::Path,
+         value: Value,
+         world: crate::runtime::world::World|
+         -> Result<(Value, crate::runtime::world::World), SutraError> {
+            let new_world = world.set(&path, value);
+            Ok((Value::default(), new_world))
+        },
+        "core/set!"
+    )
 };
 
 /// Gets a value at a path in the world state.
@@ -220,36 +359,18 @@ pub const ATOM_CORE_SET: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_CORE_GET: AtomFn = |args, context, parent_span| {
-    if args.len() != 1 {
-        Err(sutra_error!(
-            arity,
-            Some(parent_span.clone()),
-            args,
-            "core/get",
-            1
-        ))?
-    }
-    let mut sub_context = EvalContext {
-        world: context.world,
-        output: context.output,
-        atom_registry: context.atom_registry,
-        max_depth: context.max_depth,
-        depth: context.depth,
-    };
-    let (path_val, world) = eval_expr(&args[0], &mut sub_context)?;
-    if let Value::Path(path) = path_val {
-        let value = world.get(&path).cloned().unwrap_or_default();
-        Ok((value, world))
-    } else {
-        Err(sutra_error!(
-            type,
-            Some(parent_span.clone()),
-            &args[0],
-            "core/get",
-            "a Path",
-            &path_val
-        ))?
-    }
+    eval_unary_path_op!(
+        args,
+        context,
+        parent_span,
+        |path: crate::runtime::path::Path,
+         world: crate::runtime::world::World|
+         -> Result<(Value, crate::runtime::world::World), SutraError> {
+            let value = world.get(&path).cloned().unwrap_or_default();
+            Ok((value, world))
+        },
+        "core/get"
+    )
 };
 
 /// Deletes a value at a path in the world state.
@@ -264,36 +385,18 @@ pub const ATOM_CORE_GET: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Only mutates the world at the given path.
 pub const ATOM_CORE_DEL: AtomFn = |args, context, parent_span| {
-    if args.len() != 1 {
-        Err(sutra_error!(
-            arity,
-            Some(parent_span.clone()),
-            args,
-            "core/del!",
-            1
-        ))?
-    }
-    let mut sub_context = EvalContext {
-        world: context.world,
-        output: context.output,
-        atom_registry: context.atom_registry,
-        max_depth: context.max_depth,
-        depth: context.depth,
-    };
-    let (path_val, world) = eval_expr(&args[0], &mut sub_context)?;
-    if let Value::Path(path) = path_val {
-        let new_world = world.del(&path);
-        Ok((Value::default(), new_world))
-    } else {
-        Err(sutra_error!(
-            type,
-            Some(parent_span.clone()),
-            &args[0],
-            "core/del!",
-            "a Path",
-            &path_val
-        ))?
-    }
+    eval_unary_path_op!(
+        args,
+        context,
+        parent_span,
+        |path: crate::runtime::path::Path,
+         world: crate::runtime::world::World|
+         -> Result<(Value, crate::runtime::world::World), SutraError> {
+            let new_world = world.del(&path);
+            Ok((Value::default(), new_world))
+        },
+        "core/del!"
+    )
 };
 
 /// Returns true if two values are equal.
@@ -322,7 +425,8 @@ pub const ATOM_EQ: AtomFn = |args, context, parent_span| {
 /// Sequentially evaluates expressions, returning the last value.
 ///
 /// Usage: (do <expr1> <expr2> ...)
-/// Returns: Value of last expression.
+/// - <expr1>, <expr2>, ...: Expressions to evaluate in sequence
+/// Returns: Value of last expression
 ///
 /// Example:
 ///   (do (core/set! x 1) (core/get x)) ; => 1
@@ -403,44 +507,20 @@ pub const ATOM_MUL: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Pure, does not mutate state. Errors on division by zero.
 pub const ATOM_DIV: AtomFn = |args, context, parent_span| {
-    if args.len() != 2 {
-        return Err(sutra_error!(arity, Some(parent_span.clone()), args, "/", 2));
-    }
-    let mut sub_context1 = EvalContext {
-        world: context.world,
-        output: context.output,
-        atom_registry: context.atom_registry,
-        max_depth: context.max_depth,
-        depth: context.depth,
-    };
-    let (v1, w1) = eval_expr(&args[0], &mut sub_context1)?;
-    let mut sub_context2 = EvalContext {
-        world: &w1,
-        output: context.output,
-        atom_registry: context.atom_registry,
-        max_depth: context.max_depth,
-        depth: context.depth,
-    };
-    let (v2, w2) = eval_expr(&args[1], &mut sub_context2)?;
-    match (v1, v2) {
-        (Value::Number(n1), Value::Number(n2)) if n2 != 0.0 => Ok((Value::Number(n1 / n2), w2)),
-        (Value::Number(_), Value::Number(n2)) if n2 == 0.0 => Err(sutra_error!(
-            general,
-            Some(parent_span.clone()),
-            &args[1],
-            "Division by zero"
-        )),
-        (a, b) => Err(sutra_error!(
-            general,
-            Some(parent_span.clone()),
-            &args[0],
-            format!(
-                "`/` expects two Numbers, got {} and {}",
-                a.type_name(),
-                b.type_name()
-            )
-        )),
-    }
+    eval_binary_op_with_validation!(
+        args,
+        context,
+        parent_span,
+        |a, b| Value::Number(a / b),
+        "/",
+        |_a, b| {
+            if b == 0.0 {
+                Err("Division by zero")
+            } else {
+                Ok(())
+            }
+        }
+    )
 };
 
 /// Returns true if a > b.
@@ -543,40 +623,14 @@ pub const ATOM_LTE: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_NOT: AtomFn = |args, context, parent_span| {
-    if args.len() != 1 {
-        return Err(sutra_error!(
-            arity,
-            Some(parent_span.clone()),
-            args,
-            "not",
-            1
-        ));
-    }
-    let mut sub_context = EvalContext {
-        world: context.world,
-        output: context.output,
-        atom_registry: context.atom_registry,
-        max_depth: context.max_depth,
-        depth: context.depth,
-    };
-    let (v, world) = eval_expr(&args[0], &mut sub_context)?;
-    match v {
-        Value::Bool(b) => Ok((Value::Bool(!b), world)),
-        _ => Err(sutra_error!(
-            type,
-            Some(parent_span.clone()),
-            &args[0],
-            "not",
-            "a Boolean",
-            &v
-        )),
-    }
+    eval_unary_bool_op!(args, context, parent_span, |b: bool| Value::Bool(!b), "not")
 };
 
 /// Constructs a list from arguments.
 ///
 /// Usage: (list <a> <b> ...)
-/// Returns: List
+/// - <a>, <b>, ...: Values to include in the list
+/// Returns: List containing all arguments
 ///
 /// Example:
 ///   (list 1 2 3) ; => (1 2 3)
@@ -591,6 +645,7 @@ pub const ATOM_LIST: AtomFn = |args, context, _| {
 /// Returns the length of a list or string.
 ///
 /// Usage: (len <list-or-string>)
+/// - <list-or-string>: List or String to measure
 /// Returns: Number (length)
 ///
 /// Example:
@@ -609,13 +664,7 @@ pub const ATOM_LEN: AtomFn = |args, context, parent_span| {
             1
         ));
     }
-    let mut sub_context = EvalContext {
-        world: context.world,
-        output: context.output,
-        atom_registry: context.atom_registry,
-        max_depth: context.max_depth,
-        depth: context.depth,
-    };
+    let mut sub_context = sub_eval_context!(context, context.world);
     let (val, world) = eval_expr(&args[0], &mut sub_context)?;
     match val {
         Value::List(ref items) => Ok((Value::Number(items.len() as f64), world)),
@@ -643,64 +692,22 @@ pub const ATOM_LEN: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Pure, does not mutate state. Errors on division by zero or non-integer input.
 pub const ATOM_MOD: AtomFn = |args, context, parent_span| {
-    if args.len() != 2 {
-        return Err(sutra_error!(
-            arity,
-            Some(parent_span.clone()),
-            args,
-            "mod",
-            2
-        ));
-    }
-    let mut sub_context1 = EvalContext {
-        world: context.world,
-        output: context.output,
-        atom_registry: context.atom_registry,
-        max_depth: context.max_depth,
-        depth: context.depth,
-    };
-    let (v1, w1) = eval_expr(&args[0], &mut sub_context1)?;
-    let mut sub_context2 = EvalContext {
-        world: &w1,
-        output: context.output,
-        atom_registry: context.atom_registry,
-        max_depth: context.max_depth,
-        depth: context.depth,
-    };
-    let (v2, w2) = eval_expr(&args[1], &mut sub_context2)?;
-    match (v1, v2) {
-        (Value::Number(n1), Value::Number(n2)) => {
-            if n2 == 0.0 {
-                return Err(sutra_error!(
-                    general,
-                    Some(parent_span.clone()),
-                    &args[1],
-                    "Modulo by zero"
-                ));
+    eval_binary_op_with_validation!(
+        args,
+        context,
+        parent_span,
+        |a, b| Value::Number((a as i64 % b as i64) as f64),
+        "mod",
+        |a: f64, b: f64| -> Result<(), &'static str> {
+            if b == 0.0 {
+                Err("Modulo by zero")
+            } else if a.fract() != 0.0 || b.fract() != 0.0 {
+                Err("Modulo expects integers")
+            } else {
+                Ok(())
             }
-            if n1.fract() != 0.0 || n2.fract() != 0.0 {
-                return Err(sutra_error!(
-                    type,
-                    Some(parent_span.clone()),
-                    &args[0],
-                    "mod",
-                    "two Integers",
-                    &Value::Number(n1)
-                ));
-            }
-            Ok((Value::Number((n1 as i64 % n2 as i64) as f64), w2))
         }
-        (a, b) => Err(sutra_error!(
-            general,
-            Some(parent_span.clone()),
-            &args[0],
-            format!(
-                "`mod` expects two Integers, got {} and {}",
-                a.type_name(),
-                b.type_name()
-            )
-        )),
-    }
+    )
 };
 
 /// Raises an error with a message.
@@ -715,48 +722,43 @@ pub const ATOM_MOD: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Always errors. Does not mutate state.
 pub const ATOM_ERROR: AtomFn = |args, context, parent_span| {
-    if args.len() != 1 {
-        return Err(sutra_error!(
-            arity,
-            Some(parent_span.clone()),
-            args,
-            "error",
-            1
-        ));
-    }
-    let mut sub_context = EvalContext {
-        world: context.world,
-        output: context.output,
-        atom_registry: context.atom_registry,
-        max_depth: context.max_depth,
-        depth: context.depth,
-    };
-    let (msg_val, _world) = eval_expr(&args[0], &mut sub_context)?;
-    if let Value::String(msg) = msg_val {
-        Err(SutraError {
-            kind: SutraErrorKind::Eval(EvalError {
-                message: msg,
-                expanded_code: WithSpan {
-                    value: Expr::List(args.to_vec(), parent_span.clone()),
-                    span: parent_span.clone(),
-                }
-                .value
-                .pretty(),
-                original_code: None,
-                suggestion: None,
-            }),
-            span: Some(parent_span.clone()),
-        })
-    } else {
-        Err(sutra_error!(
-            type,
-            Some(parent_span.clone()),
-            &args[0],
-            "error",
-            "a String",
-            &msg_val
-        ))
-    }
+    eval_unary_value_op!(
+        args,
+        context,
+        parent_span,
+        |msg_val: Value,
+         _world: crate::runtime::world::World,
+         parent_span: &crate::ast::Span,
+         _context: &mut EvalContext<'_, '_>|
+         -> Result<(Value, crate::runtime::world::World), SutraError> {
+            if let Value::String(msg) = msg_val {
+                Err(SutraError {
+                    kind: SutraErrorKind::Eval(EvalError {
+                        message: msg,
+                        expanded_code: WithSpan {
+                            value: Expr::List(args.to_vec(), parent_span.clone()),
+                            span: parent_span.clone(),
+                        }
+                        .value
+                        .pretty(),
+                        original_code: None,
+                        suggestion: None,
+                    }),
+                    span: Some(parent_span.clone()),
+                })
+            } else {
+                Err(sutra_error!(
+                    type,
+                    Some(parent_span.clone()),
+                    &args[0],
+                    "error",
+                    "a String",
+                    &msg_val
+                ))
+            }
+        },
+        "error"
+    )
 };
 
 /// Emits output to the output sink.
@@ -771,124 +773,23 @@ pub const ATOM_ERROR: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Emits output, does not mutate world state.
 pub const ATOM_PRINT: AtomFn = |args, context, parent_span| {
-    if args.len() != 1 {
-        return Err(sutra_error!(
-            arity,
-            Some(parent_span.clone()),
-            args,
-            "print",
-            1
-        ));
-    }
-    let mut sub_context = EvalContext {
-        world: context.world,
-        output: context.output,
-        atom_registry: context.atom_registry,
-        max_depth: context.max_depth,
-        depth: context.depth,
-    };
-    let (val, world) = eval_expr(&args[0], &mut sub_context)?;
-    context.output.emit(&val.to_string(), Some(parent_span));
-    Ok((Value::Nil, world)) // Return Nil so the engine does not print again
+    eval_unary_value_op!(
+        args,
+        context,
+        parent_span,
+        |val: Value,
+         world: crate::runtime::world::World,
+         parent_span: &crate::ast::Span,
+         context: &mut EvalContext<'_, '_>|
+         -> Result<(Value, crate::runtime::world::World), SutraError> {
+            context.output.emit(&val.to_string(), Some(parent_span));
+            Ok((Value::Nil, world)) // Return Nil so the engine does not print again
+        },
+        "print"
+    )
 };
 
 #[cfg(any(test, feature = "test-atom", debug_assertions))]
-pub fn register_test_atoms(registry: &mut crate::atoms::AtomRegistry) {
-    use crate::ast::value::Value;
-    use crate::ast::Expr;
-    use crate::ast::Span;
-    use crate::ast::WithSpan;
-    use crate::runtime::eval::EvalContext;
-    use crate::runtime::world::World;
-    use crate::syntax::error::SutraError;
-
-    fn test_echo_atom(
-        args: &[WithSpan<Expr>],
-        ctx: &mut EvalContext,
-        span: &Span,
-    ) -> Result<(Value, World), SutraError> {
-        let (val, world) = if let Some(first) = args.first() {
-            match &first.value {
-                Expr::String(s, _) => (Value::String(s.clone()), ctx.world.clone()),
-                _ => (Value::String(format!("{:?}", first.value)), ctx.world.clone()),
-            }
-        } else {
-            (Value::String("".to_string()), ctx.world.clone())
-        };
-        ctx.output.emit(&val.to_string(), Some(span));
-        Ok((val, world))
-    }
-    registry.register("test/echo", test_echo_atom);
-
-    /// Borrow checker/context management stress test atom.
-    ///
-    /// Usage: (test/borrow_stress <depth:int> <msg:string>)
-    /// - Emits output before and after a nested call to itself (if depth > 0).
-    /// - Calls `test/echo` at the base case.
-    /// - Returns a string showing the order of output and recursion depth.
-    ///
-    /// This atom is designed to stress borrow splitting, nested calls, and output ordering.
-    fn test_borrow_stress_atom(
-        args: &[WithSpan<Expr>],
-        ctx: &mut EvalContext,
-        span: &Span,
-    ) -> Result<(Value, World), SutraError> {
-        let (depth, msg) = match (args.get(0), args.get(1)) {
-            (Some(d), Some(m)) => {
-                let d = match &d.value {
-                    Expr::Number(n, _) => *n as i64,
-                    _ => 0,
-                };
-                let m = match &m.value {
-                    Expr::String(s, _) => s.clone(),
-                    _ => format!("{:?}", m.value),
-                };
-                (d, m)
-            }
-            _ => (0, "default".to_string()),
-        };
-        ctx.output.emit(&format!("[before:{}:{}]", depth, msg), Some(span));
-        let (_result, world) = if depth > 0 {
-            // Recursive call to self
-            let mut sub_context = EvalContext {
-                world: ctx.world,
-                output: ctx.output,
-                atom_registry: ctx.atom_registry,
-                max_depth: ctx.max_depth,
-                depth: ctx.depth + 1,
-            };
-            // Build args for nested call: (depth-1, msg)
-            let nested_args = vec![
-                WithSpan {
-                    value: Expr::Number((depth - 1) as f64, span.clone()),
-                    span: span.clone(),
-                },
-                WithSpan {
-                    value: Expr::String(msg.clone(), span.clone()),
-                    span: span.clone(),
-                },
-            ];
-            test_borrow_stress_atom(&nested_args, &mut sub_context, span)?
-        } else {
-            // Base case: call test/echo
-            let mut sub_context = EvalContext {
-                world: ctx.world,
-                output: ctx.output,
-                atom_registry: ctx.atom_registry,
-                max_depth: ctx.max_depth,
-                depth: ctx.depth + 1,
-            };
-            let echo_arg = WithSpan {
-                value: Expr::String(msg.clone(), span.clone()),
-                span: span.clone(),
-            };
-            test_echo_atom(&[echo_arg], &mut sub_context, span)?
-        };
-        ctx.output.emit(&format!("[after:{}:{}]", depth, msg), Some(span));
-        Ok((Value::String(format!("depth:{};msg:{}", depth, msg)), world))
-    }
-    registry.register("test/borrow_stress", test_borrow_stress_atom);
-}
 
 /// Registers all standard atoms in the given registry.
 pub fn register_std_atoms(registry: &mut AtomRegistry) {

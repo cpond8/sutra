@@ -1,0 +1,1 @@
+(test/echo "This should not work without test atoms enabled")
