@@ -1,5 +1,22 @@
-// All AST nodes carry a span for source tracking; enables better errors and explainability.
+//! AST module for the Sutra language
+//!
+//! This module provides the core Abstract Syntax Tree types and builders
+//! for representing Sutra expressions with source location tracking.
+
+// ============================================================================
+// IMPORTS
+// ============================================================================
+
+use serde::{Deserialize, Serialize};
+use crate::runtime::path::Path;
+
+// ============================================================================
+// CORE DATA STRUCTURES
+// ============================================================================
+
 /// Represents a span in the source code.
+///
+/// All AST nodes carry a span for source tracking; enables better errors and explainability.
 ///
 /// # Examples
 ///
@@ -9,8 +26,6 @@
 /// assert_eq!(span.start, 0);
 /// assert_eq!(span.end, 5);
 /// ```
-use serde::{Deserialize, Serialize};
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Span {
     pub start: usize,
@@ -18,7 +33,12 @@ pub struct Span {
     // Optionally: line/col for richer error UX.
 }
 
-use crate::runtime::path::Path;
+/// Wrapper for carrying source span information with any value
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WithSpan<T> {
+    pub value: T,
+    pub span: Span,
+}
 
 /// The core AST node for Sutra expressions.
 ///
@@ -50,6 +70,26 @@ pub enum Expr {
     /// Spread argument (e.g., ...args) for use in call position
     Spread(Box<WithSpan<Expr>>),
 }
+
+/// Parameter list for function definitions
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ParamList {
+    pub required: Vec<String>,
+    pub rest: Option<String>,
+    pub span: Span,
+}
+
+/// Errors that can occur during AST building
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum SutraAstBuildError {
+    InvalidShape { span: Span, message: String },
+    UnknownRule { span: Span, rule: String },
+    // ...
+}
+
+// ============================================================================
+// PUBLIC API IMPLEMENTATION
+// ============================================================================
 
 impl Expr {
     /// Returns the span of this expression.
@@ -95,7 +135,6 @@ impl Expr {
         }
     }
 
-    // Utility: pretty printing, tree walking
     /// Pretty-prints the expression as a string.
     ///
     /// # Examples
@@ -109,54 +148,68 @@ impl Expr {
     /// ```
     pub fn pretty(&self) -> String {
         match self {
-            Expr::List(exprs, _) => {
-                let inner = exprs
-                    .iter()
-                    .map(|e| e.value.pretty())
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                format!("({})", inner)
-            }
+            Expr::List(exprs, _) => Self::pretty_list(exprs),
             Expr::Symbol(s, _) => s.clone(),
             Expr::Path(p, _) => format!("(path {})", p.0.join(" ")),
             Expr::String(s, _) => format!("\"{}\"", s),
             Expr::Number(n, _) => n.to_string(),
             Expr::Bool(b, _) => b.to_string(),
-            Expr::If {
-                condition,
-                then_branch,
-                else_branch,
-                ..
-            } => {
-                format!(
-                    "(if {} {} {})",
-                    condition.value.pretty(),
-                    then_branch.value.pretty(),
-                    else_branch.value.pretty()
-                )
+            Expr::If { condition, then_branch, else_branch, .. } => {
+                Self::pretty_if(condition, then_branch, else_branch)
             }
             Expr::Quote(expr, _) => format!("'{}", expr.value.pretty()),
-            Expr::ParamList(param_list) => {
-                let mut s = String::from("(");
-                for (i, req) in param_list.required.iter().enumerate() {
-                    if i > 0 {
-                        s.push(' ');
-                    }
-                    s.push_str(req);
-                }
-                if let Some(rest) = &param_list.rest {
-                    if !param_list.required.is_empty() {
-                        s.push_str(" . ");
-                    }
-                    s.push_str(rest);
-                }
-                s.push(')');
-                s
-            }
+            Expr::ParamList(param_list) => Self::pretty_param_list(param_list),
             Expr::Spread(expr) => format!("...{}", expr.value.pretty()),
         }
     }
+
+    // ------------------------------------------------------------------------
+    // Pretty-printing helpers
+    // ------------------------------------------------------------------------
+
+    /// Helper for pretty-printing list expressions
+    fn pretty_list(exprs: &[WithSpan<Expr>]) -> String {
+        let inner = exprs
+            .iter()
+            .map(|e| e.value.pretty())
+            .collect::<Vec<_>>()
+            .join(" ");
+        format!("({})", inner)
+    }
+
+    /// Helper for pretty-printing if expressions
+    fn pretty_if(condition: &WithSpan<Expr>, then_branch: &WithSpan<Expr>, else_branch: &WithSpan<Expr>) -> String {
+        format!(
+            "(if {} {} {})",
+            condition.value.pretty(),
+            then_branch.value.pretty(),
+            else_branch.value.pretty()
+        )
+    }
+
+    /// Helper for pretty-printing parameter lists
+    fn pretty_param_list(param_list: &ParamList) -> String {
+        let mut s = String::from("(");
+        for (i, req) in param_list.required.iter().enumerate() {
+            if i > 0 {
+                s.push(' ');
+            }
+            s.push_str(req);
+        }
+        if let Some(rest) = &param_list.rest {
+            if !param_list.required.is_empty() {
+                s.push_str(" . ");
+            }
+            s.push_str(rest);
+        }
+        s.push(')');
+        s
+    }
 }
+
+// ============================================================================
+// CONVERSIONS
+// ============================================================================
 
 impl From<crate::ast::value::Value> for Expr {
     fn from(val: crate::ast::value::Value) -> Self {
@@ -175,12 +228,9 @@ impl From<crate::ast::value::Value> for Expr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ParamList {
-    pub required: Vec<String>,
-    pub rest: Option<String>,
-    pub span: Span,
-}
+// ============================================================================
+// BUILDER INFRASTRUCTURE
+// ============================================================================
 
 /// Canonical AST builder trait for the modular pipeline.
 pub trait SutraAstBuilder {
@@ -188,19 +238,6 @@ pub trait SutraAstBuilder {
         &self,
         cst: &crate::syntax::parser::SutraCstNode,
     ) -> Result<WithSpan<Expr>, SutraAstBuildError>;
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum SutraAstBuildError {
-    InvalidShape { span: Span, message: String },
-    UnknownRule { span: Span, rule: String },
-    // ...
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct WithSpan<T> {
-    pub value: T,
-    pub span: Span,
 }
 
 /// Trivial AST builder for pipeline scaffolding (Sprint 2).
@@ -230,7 +267,90 @@ impl SutraAstBuilder for CanonicalAstBuilder {
     }
 }
 
-// Private combinator for mapping CST children to Expr::List
+// ============================================================================
+// AST CONSTRUCTION HELPERS (INTERNAL)
+// ============================================================================
+
+/// Main CST to AST conversion function
+fn build_ast_from_cst(
+    cst: &crate::syntax::parser::SutraCstNode,
+) -> Result<WithSpan<Expr>, SutraAstBuildError> {
+    match cst.rule.as_str() {
+        "program" | "list" => {
+            map_cst_children_to_list(&cst.children, build_ast_from_cst, &cst.span)
+        }
+        "spread_arg" => build_spread_expr(cst),
+        "number" => build_number_expr(cst),
+        "boolean" => build_boolean_expr(cst),
+        "string" => build_string_expr(cst),
+        "symbol" => build_symbol_expr(cst),
+        // Add more rules as needed (block, quote, define_form, etc.)
+        _ => Err(SutraAstBuildError::UnknownRule {
+            span: cst.span.clone(),
+            rule: cst.rule.clone(),
+        }),
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Node-specific builders
+// ----------------------------------------------------------------------------
+
+/// Helper for building number expressions from CST
+fn build_number_expr(cst: &crate::syntax::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError> {
+    let text = cst_text(cst);
+    let number = text.parse::<f64>()
+        .map_err(|_| invalid_shape_error(&cst.span, format!("Invalid number: {}", text)))?;
+
+    Ok(with_span(Expr::Number(number, cst.span.clone()), &cst.span))
+}
+
+/// Helper for building boolean expressions from CST
+fn build_boolean_expr(cst: &crate::syntax::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError> {
+    let text = cst_text(cst);
+    let bool_value = match text.as_str() {
+        "true" => true,
+        "false" => false,
+        _ => return Err(invalid_shape_error(&cst.span, format!("Invalid boolean: {}", text))),
+    };
+
+    Ok(with_span(Expr::Bool(bool_value, cst.span.clone()), &cst.span))
+}
+
+/// Helper for building string expressions from CST
+fn build_string_expr(cst: &crate::syntax::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError> {
+    let text = cst_text(cst);
+    let unescaped = unescape_string(&text)
+        .map_err(|msg| invalid_shape_error(&cst.span, msg))?;
+
+    Ok(with_span(Expr::String(unescaped, cst.span.clone()), &cst.span))
+}
+
+/// Helper for building symbol expressions from CST
+fn build_symbol_expr(cst: &crate::syntax::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError> {
+    let text = cst_text(cst);
+    Ok(with_span(Expr::Symbol(text, cst.span.clone()), &cst.span))
+}
+
+/// Helper for building spread expressions from CST
+fn build_spread_expr(cst: &crate::syntax::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError> {
+    // Guard clause: ensure exactly one child
+    if cst.children.len() != 1 {
+        return Err(invalid_shape_error(
+            &cst.span,
+            "Malformed spread_arg: expected one child (symbol)",
+        ));
+    }
+
+    let symbol_expr = build_ast_from_cst(&cst.children[0])?;
+    Ok(with_span(Expr::Spread(Box::new(symbol_expr)), &cst.span))
+}
+
+// ----------------------------------------------------------------------------
+// Utility functions
+// ----------------------------------------------------------------------------
+
+/// Private combinator for mapping CST children to Expr::List
 fn map_cst_children_to_list<F>(
     children: &[crate::syntax::parser::SutraCstNode],
     builder: F,
@@ -249,94 +369,38 @@ where
     })
 }
 
-fn build_ast_from_cst(
-    cst: &crate::syntax::parser::SutraCstNode,
-) -> Result<WithSpan<Expr>, SutraAstBuildError> {
-    match cst.rule.as_str() {
-        "program" | "list" => {
-            map_cst_children_to_list(&cst.children, build_ast_from_cst, &cst.span)
-        }
-        "spread_arg" => {
-            // Should have one child: a symbol
-            if cst.children.len() != 1 {
-                return Err(SutraAstBuildError::InvalidShape {
-                    span: cst.span.clone(),
-                    message: "Malformed spread_arg: expected one child (symbol)".to_string(),
-                });
-            }
-            let symbol_expr = build_ast_from_cst(&cst.children[0])?;
-            Ok(WithSpan {
-                value: Expr::Spread(Box::new(symbol_expr)),
-                span: cst.span.clone(),
-            })
-        }
-        "number" => {
-            let s = &cst_text(cst);
-            let n = s
-                .parse::<f64>()
-                .map_err(|_| SutraAstBuildError::InvalidShape {
-                    span: cst.span.clone(),
-                    message: format!("Invalid number: {}", s),
-                })?;
-            Ok(WithSpan {
-                value: Expr::Number(n, cst.span.clone()),
-                span: cst.span.clone(),
-            })
-        }
-        "boolean" => {
-            let s = &cst_text(cst);
-            let b = if s == "true" {
-                true
-            } else if s == "false" {
-                false
-            } else {
-                Err(SutraAstBuildError::InvalidShape {
-                    span: cst.span.clone(),
-                    message: format!("Invalid boolean: {}", s),
-                })?
-            };
-            Ok(WithSpan {
-                value: Expr::Bool(b, cst.span.clone()),
-                span: cst.span.clone(),
-            })
-        }
-        "string" => {
-            let s = &cst_text(cst);
-            // Validate escape sequences (TODO: improve for all edge cases)
-            let unescaped = unescape_string(s).map_err(|msg| SutraAstBuildError::InvalidShape {
-                span: cst.span.clone(),
-                message: msg,
-            })?;
-            Ok(WithSpan {
-                value: Expr::String(unescaped, cst.span.clone()),
-                span: cst.span.clone(),
-            })
-        }
-        "symbol" => {
-            let s = &cst_text(cst);
-            Ok(WithSpan {
-                value: Expr::Symbol(s.clone(), cst.span.clone()),
-                span: cst.span.clone(),
-            })
-        }
-        // Add more rules as needed (block, quote, define_form, etc.)
-        _ => Err(SutraAstBuildError::UnknownRule {
-            span: cst.span.clone(),
-            rule: cst.rule.clone(),
-        }),
+/// Helper for creating WithSpan<Expr> with less boilerplate
+fn with_span(expr: Expr, span: &Span) -> WithSpan<Expr> {
+    WithSpan {
+        value: expr,
+        span: span.clone(),
     }
 }
 
+/// Helper for creating invalid shape errors
+fn invalid_shape_error(span: &Span, message: impl Into<String>) -> SutraAstBuildError {
+    SutraAstBuildError::InvalidShape {
+        span: span.clone(),
+        message: message.into(),
+    }
+}
+
+/// Extract text from CST node (placeholder implementation)
 fn cst_text(cst: &crate::syntax::parser::SutraCstNode) -> String {
     // For leaf nodes, reconstruct text from span (in real impl, pass source)
     // Here, just use rule name as placeholder
     cst.rule.clone()
 }
 
+/// Unescape string content (placeholder implementation)
 fn unescape_string(s: &str) -> Result<String, String> {
     // TODO: Implement real unescaping and validation
     Ok(s.to_string())
 }
+
+// ============================================================================
+// MODULE EXPORTS
+// ============================================================================
 
 pub mod builder;
 pub mod value;

@@ -20,354 +20,19 @@ use crate::syntax::error::{eval_arity_error, eval_general_error, eval_type_error
 use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
 
 // ============================================================================
-// TYPE ALIASES AND ERROR HELPERS
+// CORE DATA STRUCTURES AND TYPE ALIASES
 // ============================================================================
 
 /// Convenient type alias for atom return values - modern Rust idiom
 pub type AtomResult = Result<(Value, crate::runtime::world::World), SutraError>;
 
-/// Creates an arity error for atoms with consistent messaging
-pub fn arity_error(
-    span: Option<crate::ast::Span>,
-    args: &[WithSpan<Expr>],
-    name: &str,
-    expected: impl ToString,
-) -> SutraError {
-    eval_arity_error(span, args, name, expected)
-}
-
-/// Creates a type error for atoms with consistent messaging
-pub fn type_error(
-    span: Option<crate::ast::Span>,
-    arg: &WithSpan<Expr>,
-    name: &str,
-    expected: &str,
-    found: &Value,
-) -> SutraError {
-    eval_type_error(span, arg, name, expected, found)
-}
-
-/// Creates a validation error for atoms with consistent messaging
-pub fn validation_error(
-    span: Option<crate::ast::Span>,
-    arg: &WithSpan<Expr>,
-    message: &str,
-) -> SutraError {
-    eval_general_error(span, arg, message)
-}
-
-/// Macro to create a sub-evaluation context with a new world state.
-/// This centralizes the repetitive context construction pattern used throughout atoms.
-///
-/// # Usage
-/// ```ignore
-/// let mut sub_context = sub_eval_context!(parent_context, &new_world);
-/// let (result, world) = eval_expr(&args[0], &mut sub_context)?;
-/// ```
-#[macro_export]
-macro_rules! sub_eval_context {
-    ($parent:expr, $world:expr) => {
-        $crate::runtime::eval::EvalContext {
-            world: $world,
-            output: $parent.output,
-            atom_registry: $parent.atom_registry,
-            max_depth: $parent.max_depth,
-            depth: $parent.depth,
-        }
-    };
-}
-
-// Also provide the local version for use within this module
-use sub_eval_context;
-
 // ============================================================================
-// HELPER EVALUATION FUNCTIONS
+// PUBLIC API IMPLEMENTATION - STANDARD ATOMS
 // ============================================================================
 
-/// Evaluates all arguments in sequence, threading world state through each evaluation.
-fn eval_args(
-    args: &[WithSpan<Expr>],
-    context: &mut EvalContext<'_, '_>,
-) -> Result<(Vec<Value>, crate::runtime::world::World), SutraError> {
-    args.iter().try_fold(
-        (Vec::with_capacity(args.len()), context.world.clone()),
-        |(mut values, world), arg| {
-            let mut sub_context = sub_eval_context!(context, &world);
-            let (val, next_world) = eval_expr(arg, &mut sub_context)?;
-            values.push(val);
-            Ok((values, next_world))
-        },
-    )
-}
-
-/// Evaluates a binary numeric operation atomically, with optional validation.
-/// Handles arity, type checking, and error construction.
-fn eval_binary_numeric_op<F, V>(
-    args: &[WithSpan<Expr>],
-    context: &mut EvalContext<'_, '_>,
-    parent_span: &crate::ast::Span,
-    op: F,
-    validator: Option<V>,
-    name: &str,
-    expected: &str,
-) -> Result<(Value, crate::runtime::world::World), SutraError>
-where
-    F: Fn(f64, f64) -> Value,
-    V: Fn(f64, f64) -> Result<(), &'static str>,
-{
-    if args.len() != 2 {
-        return Err(arity_error(Some(parent_span.clone()), args, name, 2));
-    }
-    let mut sub_context1 = sub_eval_context!(context, context.world);
-    let (val1, world1) = eval_expr(&args[0], &mut sub_context1)?;
-    let mut sub_context2 = sub_eval_context!(context, &world1);
-    let (val2, world2) = eval_expr(&args[1], &mut sub_context2)?;
-    let (n1, n2) = match (&val1, &val2) {
-        (Value::Number(n1), Value::Number(n2)) => (*n1, *n2),
-        _ => {
-            return Err(type_error(
-                Some(parent_span.clone()),
-                &args[0],
-                name,
-                expected,
-                &val1,
-            ))
-        }
-    };
-    if let Some(validate) = validator {
-        validate(n1, n2)
-            .map_err(|msg| validation_error(Some(parent_span.clone()), &args[1], msg))?;
-    }
-    Ok((op(n1, n2), world2))
-}
-
-/// Evaluates an n-ary numeric operation (e.g., sum, product).
-/// Handles arity, type checking, and error construction.
-fn eval_nary_numeric_op<F>(
-    args: &[WithSpan<Expr>],
-    context: &mut EvalContext<'_, '_>,
-    parent_span: &crate::ast::Span,
-    init: f64,
-    fold: F,
-    name: &str,
-) -> Result<(Value, crate::runtime::world::World), SutraError>
-where
-    F: Fn(f64, f64) -> f64,
-{
-    if args.len() < 2 {
-        return Err(arity_error(
-            Some(parent_span.clone()),
-            args,
-            name,
-            "at least 2",
-        ));
-    }
-    let (values, world) = eval_args(args, context)?;
-    let mut acc = init;
-    for (i, v) in values.iter().enumerate() {
-        let Value::Number(n) = v else {
-            return Err(type_error(
-                Some(parent_span.clone()),
-                &args[i],
-                name,
-                "a Number",
-                v,
-            ));
-        };
-        acc = fold(acc, *n);
-    }
-    Ok((Value::Number(acc), world))
-}
-
-/// Evaluates a unary boolean operation.
-/// Handles arity, type checking, and error construction.
-fn eval_unary_bool_op<F>(
-    args: &[WithSpan<Expr>],
-    context: &mut EvalContext<'_, '_>,
-    parent_span: &crate::ast::Span,
-    op: F,
-    name: &str,
-) -> Result<(Value, crate::runtime::world::World), SutraError>
-where
-    F: Fn(bool) -> Value,
-{
-    if args.len() != 1 {
-        return Err(arity_error(Some(parent_span.clone()), args, name, 1));
-    }
-    let mut sub_context = sub_eval_context!(context, context.world);
-    let (val, world) = eval_expr(&args[0], &mut sub_context)?;
-    match val {
-        Value::Bool(b) => Ok((op(b), world)),
-        _ => Err(type_error(
-            Some(parent_span.clone()),
-            &args[0],
-            name,
-            "a Boolean",
-            &val,
-        )),
-    }
-}
-
-/// Evaluates a unary path operation (get, del).
-/// Handles arity, type checking, and error construction.
-fn eval_unary_path_op<F>(
-    args: &[WithSpan<Expr>],
-    context: &mut EvalContext<'_, '_>,
-    parent_span: &crate::ast::Span,
-    op: F,
-    name: &str,
-) -> Result<(Value, crate::runtime::world::World), SutraError>
-where
-    F: Fn(
-        crate::runtime::path::Path,
-        crate::runtime::world::World,
-    ) -> Result<(Value, crate::runtime::world::World), SutraError>,
-{
-    if args.len() != 1 {
-        return Err(arity_error(Some(parent_span.clone()), args, name, 1));
-    }
-    let mut sub_context = sub_eval_context!(context, context.world);
-    let (path_val, world) = eval_expr(&args[0], &mut sub_context)?;
-    let Value::Path(path) = path_val else {
-        return Err(type_error(
-            Some(parent_span.clone()),
-            &args[0],
-            name,
-            "a Path",
-            &path_val,
-        ));
-    };
-    op(path, world)
-}
-
-/// Evaluates a binary path operation (set).
-/// Handles arity, type checking, and error construction.
-fn eval_binary_path_op<F>(
-    args: &[WithSpan<Expr>],
-    context: &mut EvalContext<'_, '_>,
-    parent_span: &crate::ast::Span,
-    op: F,
-    name: &str,
-) -> Result<(Value, crate::runtime::world::World), SutraError>
-where
-    F: Fn(
-        crate::runtime::path::Path,
-        Value,
-        crate::runtime::world::World,
-    ) -> Result<(Value, crate::runtime::world::World), SutraError>,
-{
-    if args.len() != 2 {
-        return Err(arity_error(Some(parent_span.clone()), args, name, 2));
-    }
-    let mut sub_context1 = sub_eval_context!(context, context.world);
-    let (path_val, world1) = eval_expr(&args[0], &mut sub_context1)?;
-    let mut sub_context2 = sub_eval_context!(context, &world1);
-    let (value, world2) = eval_expr(&args[1], &mut sub_context2)?;
-    let Value::Path(path) = path_val else {
-        return Err(type_error(
-            Some(parent_span.clone()),
-            &args[0],
-            name,
-            "a Path",
-            &path_val,
-        ));
-    };
-    op(path, value, world2)
-}
-
-/// Evaluates a unary operation that takes any value.
-/// Handles arity and error construction.
-fn eval_unary_value_op<F>(
-    args: &[WithSpan<Expr>],
-    context: &mut EvalContext<'_, '_>,
-    parent_span: &crate::ast::Span,
-    op: F,
-    name: &str,
-) -> Result<(Value, crate::runtime::world::World), SutraError>
-where
-    F: Fn(
-        Value,
-        crate::runtime::world::World,
-        &crate::ast::Span,
-        &mut EvalContext<'_, '_>,
-    ) -> Result<(Value, crate::runtime::world::World), SutraError>,
-{
-    if args.len() != 1 {
-        return Err(arity_error(Some(parent_span.clone()), args, name, 1));
-    }
-    let mut sub_context = sub_eval_context!(context, context.world);
-    let (val, world) = eval_expr(&args[0], &mut sub_context)?;
-    op(val, world, parent_span, context)
-}
-
-/// Evaluates normal arguments for apply (all except the last argument).
-/// Returns the evaluated arguments as expressions and the final world state.
-fn eval_apply_normal_args(
-    args: &[WithSpan<Expr>],
-    context: &mut EvalContext<'_, '_>,
-) -> Result<(Vec<WithSpan<Expr>>, crate::runtime::world::World), SutraError> {
-    let mut evald_args = Vec::with_capacity(args.len());
-    let mut world = context.world.clone();
-    for arg in args {
-        let mut sub_context = sub_eval_context!(context, &world);
-        let (val, next_world) = eval_expr(arg, &mut sub_context)?;
-        evald_args.push(WithSpan {
-            value: Expr::from(val),
-            span: arg.span.clone()
-        });
-        world = next_world;
-    }
-    Ok((evald_args, world))
-}
-
-/// Evaluates the list argument for apply (the last argument).
-/// Returns the list items as expressions and the final world state.
-fn eval_apply_list_arg(
-    arg: &WithSpan<Expr>,
-    context: &mut EvalContext<'_, '_>,
-    parent_span: &crate::ast::Span,
-) -> Result<(Vec<WithSpan<Expr>>, crate::runtime::world::World), SutraError> {
-    let mut sub_context = sub_eval_context!(context, context.world);
-    let (list_val, world) = eval_expr(arg, &mut sub_context)?;
-    let Value::List(items) = list_val else {
-        return Err(type_error(
-            Some(parent_span.clone()),
-            arg,
-            "apply",
-            "a List as the last argument",
-            &list_val,
-        ));
-    };
-    let list_items = items
-        .into_iter()
-        .map(|v| WithSpan {
-            value: Expr::from(v),
-            span: parent_span.clone()
-        })
-        .collect();
-    Ok((list_items, world))
-}
-
-/// Builds the call expression for apply by combining function, normal args, and list args.
-fn build_apply_call_expr(
-    func_expr: &WithSpan<Expr>,
-    normal_args: Vec<WithSpan<Expr>>,
-    list_args: Vec<WithSpan<Expr>>,
-    parent_span: &crate::ast::Span,
-) -> WithSpan<Expr> {
-    let mut call_items = Vec::with_capacity(1 + normal_args.len() + list_args.len());
-    call_items.push(func_expr.clone());
-    call_items.extend(normal_args);
-    call_items.extend(list_args);
-    WithSpan {
-        value: Expr::List(call_items, parent_span.clone()),
-        span: parent_span.clone(),
-    }
-}
-
-// ============================================================================
-// CORE ATOMS: World state manipulation
-// ============================================================================
+// ----------------------------------------------------------------------------
+// Core atoms: World state manipulation
+// ----------------------------------------------------------------------------
 
 /// Sets a value at a path in the world state.
 ///
@@ -452,9 +117,9 @@ pub const ATOM_CORE_DEL: AtomFn = |args, context, parent_span| {
     )
 };
 
-// ============================================================================
-// ARITHMETIC ATOMS: Basic mathematical operations
-// ============================================================================
+// ----------------------------------------------------------------------------
+// Arithmetic atoms: Basic mathematical operations
+// ----------------------------------------------------------------------------
 
 /// Adds numbers.
 ///
@@ -492,7 +157,6 @@ pub const ATOM_SUB: AtomFn = |args, context, parent_span| {
         |a, b| Value::Number(a - b),
         None::<fn(f64, f64) -> Result<(), &'static str>>,
         "-",
-        "two Numbers",
     )
 };
 
@@ -538,7 +202,6 @@ pub const ATOM_DIV: AtomFn = |args, context, parent_span| {
             }
         }),
         "/",
-        "two Numbers",
     )
 };
 
@@ -570,13 +233,12 @@ pub const ATOM_MOD: AtomFn = |args, context, parent_span| {
             Ok(())
         }),
         "mod",
-        "two Numbers",
     )
 };
 
-// ============================================================================
-// COMPARISON ATOMS: Relational and equality operations
-// ============================================================================
+// ----------------------------------------------------------------------------
+// Comparison atoms: Relational and equality operations
+// ----------------------------------------------------------------------------
 
 /// Returns true if two values are equal.
 ///
@@ -599,7 +261,6 @@ pub const ATOM_EQ: AtomFn = |args, context, parent_span| {
         |a, b| Value::Bool(a == b),
         None::<fn(f64, f64) -> Result<(), &'static str>>,
         "eq?",
-        "two Numbers",
     )
 };
 
@@ -623,7 +284,6 @@ pub const ATOM_GT: AtomFn = |args, context, parent_span| {
         |a, b| Value::Bool(a > b),
         None::<fn(f64, f64) -> Result<(), &'static str>>,
         "gt?",
-        "two Numbers",
     )
 };
 
@@ -647,7 +307,6 @@ pub const ATOM_LT: AtomFn = |args, context, parent_span| {
         |a, b| Value::Bool(a < b),
         None::<fn(f64, f64) -> Result<(), &'static str>>,
         "lt?",
-        "two Numbers",
     )
 };
 
@@ -671,7 +330,6 @@ pub const ATOM_GTE: AtomFn = |args, context, parent_span| {
         |a, b| Value::Bool(a >= b),
         None::<fn(f64, f64) -> Result<(), &'static str>>,
         "gte?",
-        "two Numbers",
     )
 };
 
@@ -695,13 +353,12 @@ pub const ATOM_LTE: AtomFn = |args, context, parent_span| {
         |a, b| Value::Bool(a <= b),
         None::<fn(f64, f64) -> Result<(), &'static str>>,
         "lte?",
-        "two Numbers",
     )
 };
 
-// ============================================================================
-// LOGIC ATOMS: Boolean operations
-// ============================================================================
+// ----------------------------------------------------------------------------
+// Logic atoms: Boolean operations
+// ----------------------------------------------------------------------------
 
 /// Logical negation.
 ///
@@ -719,9 +376,9 @@ pub const ATOM_NOT: AtomFn = |args, context, parent_span| {
     eval_unary_bool_op(args, context, parent_span, |b: bool| Value::Bool(!b), "not")
 };
 
-// ============================================================================
-// LIST AND STRING ATOMS: Collection and text operations
-// ============================================================================
+// ----------------------------------------------------------------------------
+// Collection and text atoms: List and string operations
+// ----------------------------------------------------------------------------
 
 /// Constructs a list from arguments.
 ///
@@ -847,9 +504,9 @@ pub const ATOM_APPLY: AtomFn = |args, context, parent_span| {
     eval_expr(&call_expr, &mut sub_context)
 };
 
-// ============================================================================
-// CONTROL FLOW ATOMS: Program structure and flow control
-// ============================================================================
+// ----------------------------------------------------------------------------
+// Control flow atoms: Program structure and flow control
+// ----------------------------------------------------------------------------
 
 /// Sequentially evaluates expressions, returning the last value.
 ///
@@ -923,9 +580,9 @@ pub const ATOM_ERROR: AtomFn = |args, context, parent_span| {
     )
 };
 
-// ============================================================================
-// I/O ATOMS: Input/output operations
-// ============================================================================
+// ----------------------------------------------------------------------------
+// I/O atoms: Input/output operations
+// ----------------------------------------------------------------------------
 
 /// Emits output to the output sink.
 ///
@@ -957,7 +614,479 @@ pub const ATOM_PRINT: AtomFn = |args, context, parent_span| {
 };
 
 // ============================================================================
-// REGISTRATION: Atom registry population
+// INFRASTRUCTURE/TRAITS - TYPE EXTRACTION AND ARGUMENT EVALUATION
+// ============================================================================
+
+/// Generic type extraction trait for eliminating DRY violations in extract_* functions
+trait ExtractValue<T> {
+    fn extract(
+        &self,
+        args: &[WithSpan<Expr>],
+        arg_index: usize,
+        parent_span: &crate::ast::Span,
+        name: &str,
+        expected_type: &str,
+    ) -> Result<T, SutraError>;
+}
+
+impl ExtractValue<f64> for Value {
+    fn extract(
+        &self,
+        args: &[WithSpan<Expr>],
+        arg_index: usize,
+        parent_span: &crate::ast::Span,
+        name: &str,
+        expected_type: &str,
+    ) -> Result<f64, SutraError> {
+        match self {
+            Value::Number(n) => Ok(*n),
+            _ => Err(type_error(
+                Some(parent_span.clone()),
+                &args[arg_index],
+                name,
+                expected_type,
+                self,
+            )),
+        }
+    }
+}
+
+impl ExtractValue<bool> for Value {
+    fn extract(
+        &self,
+        args: &[WithSpan<Expr>],
+        arg_index: usize,
+        parent_span: &crate::ast::Span,
+        name: &str,
+        expected_type: &str,
+    ) -> Result<bool, SutraError> {
+        match self {
+            Value::Bool(b) => Ok(*b),
+            _ => Err(type_error(
+                Some(parent_span.clone()),
+                &args[arg_index],
+                name,
+                expected_type,
+                self,
+            )),
+        }
+    }
+}
+
+impl ExtractValue<crate::runtime::path::Path> for Value {
+    fn extract(
+        &self,
+        args: &[WithSpan<Expr>],
+        arg_index: usize,
+        parent_span: &crate::ast::Span,
+        name: &str,
+        expected_type: &str,
+    ) -> Result<crate::runtime::path::Path, SutraError> {
+        match self {
+            Value::Path(path) => Ok(path.clone()),
+            _ => Err(type_error(
+                Some(parent_span.clone()),
+                &args[arg_index],
+                name,
+                expected_type,
+                self,
+            )),
+        }
+    }
+}
+
+// ============================================================================
+// INTERNAL HELPERS - EVALUATION PATTERNS AND UTILITIES
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// Error construction helpers
+// ----------------------------------------------------------------------------
+
+/// Creates an arity error for atoms with consistent messaging
+pub fn arity_error(
+    span: Option<crate::ast::Span>,
+    args: &[WithSpan<Expr>],
+    name: &str,
+    expected: impl ToString,
+) -> SutraError {
+    eval_arity_error(span, args, name, expected)
+}
+
+/// Creates a type error for atoms with consistent messaging
+pub fn type_error(
+    span: Option<crate::ast::Span>,
+    arg: &WithSpan<Expr>,
+    name: &str,
+    expected: &str,
+    found: &Value,
+) -> SutraError {
+    eval_type_error(span, arg, name, expected, found)
+}
+
+/// Creates a validation error for atoms with consistent messaging
+pub fn validation_error(
+    span: Option<crate::ast::Span>,
+    arg: &WithSpan<Expr>,
+    message: &str,
+) -> SutraError {
+    eval_general_error(span, arg, message)
+}
+
+/// Macro to create a sub-evaluation context with a new world state.
+/// This centralizes the repetitive context construction pattern used throughout atoms.
+///
+/// # Usage
+/// ```ignore
+/// let mut sub_context = sub_eval_context!(parent_context, &new_world);
+/// let (result, world) = eval_expr(&args[0], &mut sub_context)?;
+/// ```
+#[macro_export]
+macro_rules! sub_eval_context {
+    ($parent:expr, $world:expr) => {
+        $crate::runtime::eval::EvalContext {
+            world: $world,
+            output: $parent.output,
+            atom_registry: $parent.atom_registry,
+            max_depth: $parent.max_depth,
+            depth: $parent.depth,
+        }
+    };
+}
+
+// Also provide the local version for use within this module
+use sub_eval_context;
+
+// ----------------------------------------------------------------------------
+// Basic argument evaluation helpers
+// ----------------------------------------------------------------------------
+
+/// Evaluates all arguments in sequence, threading world state through each evaluation.
+fn eval_args(
+    args: &[WithSpan<Expr>],
+    context: &mut EvalContext<'_, '_>,
+) -> Result<(Vec<Value>, crate::runtime::world::World), SutraError> {
+    args.iter().try_fold(
+        (Vec::with_capacity(args.len()), context.world.clone()),
+        |(mut values, world), arg| {
+            let mut sub_context = sub_eval_context!(context, &world);
+            let (val, next_world) = eval_expr(arg, &mut sub_context)?;
+            values.push(val);
+            Ok((values, next_world))
+        },
+    )
+}
+
+/// Generic argument evaluation with compile-time arity checking
+fn eval_n_args<const N: usize>(
+    args: &[WithSpan<Expr>],
+    context: &mut EvalContext<'_, '_>,
+    parent_span: &crate::ast::Span,
+    name: &str,
+) -> Result<([Value; N], crate::runtime::world::World), SutraError> {
+    if args.len() != N {
+        return Err(arity_error(Some(parent_span.clone()), args, name, N));
+    }
+
+    let mut values = Vec::with_capacity(N);
+    let mut world = context.world.clone();
+
+    for arg in args.iter().take(N) {
+        let mut sub_context = sub_eval_context!(context, &world);
+        let (val, next_world) = eval_expr(arg, &mut sub_context)?;
+        values.push(val);
+        world = next_world;
+    }
+
+    // Convert Vec to array - this is safe because we checked length
+    let values_array: [Value; N] = values.try_into()
+        .map_err(|_| arity_error(Some(parent_span.clone()), args, name, N))?;
+
+    Ok((values_array, world))
+}
+
+/// Evaluates a single argument and returns the value and world
+fn eval_single_arg(
+    args: &[WithSpan<Expr>],
+    context: &mut EvalContext<'_, '_>,
+    parent_span: &crate::ast::Span,
+    name: &str,
+) -> Result<(Value, crate::runtime::world::World), SutraError> {
+    let ([val], world) = eval_n_args::<1>(args, context, parent_span, name)?;
+    Ok((val, world))
+}
+
+/// Evaluates two arguments and returns both values and the final world
+fn eval_binary_args(
+    args: &[WithSpan<Expr>],
+    context: &mut EvalContext<'_, '_>,
+    parent_span: &crate::ast::Span,
+    name: &str,
+) -> Result<(Value, Value, crate::runtime::world::World), SutraError> {
+    let ([val1, val2], world) = eval_n_args::<2>(args, context, parent_span, name)?;
+    Ok((val1, val2, world))
+}
+
+// ----------------------------------------------------------------------------
+// Type extraction helpers
+// ----------------------------------------------------------------------------
+
+/// Extracts two numbers from values with type checking using the trait
+fn extract_numbers(
+    val1: &Value,
+    val2: &Value,
+    args: &[WithSpan<Expr>],
+    parent_span: &crate::ast::Span,
+    name: &str,
+) -> Result<(f64, f64), SutraError> {
+    let n1 = val1.extract(args, 0, parent_span, name, "a Number")?;
+    let n2 = val2.extract(args, 1, parent_span, name, "a Number")?;
+    Ok((n1, n2))
+}
+
+/// Extracts a single number from a value with type checking using the trait
+fn extract_number(
+    val: &Value,
+    args: &[WithSpan<Expr>],
+    parent_span: &crate::ast::Span,
+    name: &str,
+) -> Result<f64, SutraError> {
+    val.extract(args, 0, parent_span, name, "a Number")
+}
+
+/// Extracts a boolean from a value with type checking using the trait
+fn extract_bool(
+    val: &Value,
+    args: &[WithSpan<Expr>],
+    parent_span: &crate::ast::Span,
+    name: &str,
+) -> Result<bool, SutraError> {
+    val.extract(args, 0, parent_span, name, "a Boolean")
+}
+
+/// Extracts a path from a value with type checking using the trait
+fn extract_path(
+    val: &Value,
+    args: &[WithSpan<Expr>],
+    parent_span: &crate::ast::Span,
+    name: &str,
+) -> Result<crate::runtime::path::Path, SutraError> {
+    val.extract(args, 0, parent_span, name, "a Path")
+}
+
+// ----------------------------------------------------------------------------
+// Operation evaluation templates
+// ----------------------------------------------------------------------------
+
+/// Evaluates a binary numeric operation atomically, with optional validation.
+/// Handles arity, type checking, and error construction.
+fn eval_binary_numeric_op<F, V>(
+    args: &[WithSpan<Expr>],
+    context: &mut EvalContext<'_, '_>,
+    parent_span: &crate::ast::Span,
+    op: F,
+    validator: Option<V>,
+    name: &str,
+) -> Result<(Value, crate::runtime::world::World), SutraError>
+where
+    F: Fn(f64, f64) -> Value,
+    V: Fn(f64, f64) -> Result<(), &'static str>,
+{
+    let (val1, val2, world) = eval_binary_args(args, context, parent_span, name)?;
+    let (n1, n2) = extract_numbers(&val1, &val2, args, parent_span, name)?;
+
+    if let Some(validate) = validator {
+        validate(n1, n2)
+            .map_err(|msg| validation_error(Some(parent_span.clone()), &args[1], msg))?;
+    }
+
+    Ok((op(n1, n2), world))
+}
+
+/// Evaluates an n-ary numeric operation (e.g., sum, product).
+/// Handles arity, type checking, and error construction.
+fn eval_nary_numeric_op<F>(
+    args: &[WithSpan<Expr>],
+    context: &mut EvalContext<'_, '_>,
+    parent_span: &crate::ast::Span,
+    init: f64,
+    fold: F,
+    name: &str,
+) -> Result<(Value, crate::runtime::world::World), SutraError>
+where
+    F: Fn(f64, f64) -> f64,
+{
+    if args.len() < 2 {
+        return Err(arity_error(
+            Some(parent_span.clone()),
+            args,
+            name,
+            "at least 2",
+        ));
+    }
+
+    let (values, world) = eval_args(args, context)?;
+    let mut acc = init;
+
+    for (i, v) in values.iter().enumerate() {
+        let n = extract_number(v, args, parent_span, name)
+            .map_err(|_| type_error(Some(parent_span.clone()), &args[i], name, "a Number", v))?;
+        acc = fold(acc, n);
+    }
+
+    Ok((Value::Number(acc), world))
+}
+
+/// Evaluates a unary boolean operation.
+/// Handles arity, type checking, and error construction.
+fn eval_unary_bool_op<F>(
+    args: &[WithSpan<Expr>],
+    context: &mut EvalContext<'_, '_>,
+    parent_span: &crate::ast::Span,
+    op: F,
+    name: &str,
+) -> Result<(Value, crate::runtime::world::World), SutraError>
+where
+    F: Fn(bool) -> Value,
+{
+    let (val, world) = eval_single_arg(args, context, parent_span, name)?;
+    let b = extract_bool(&val, args, parent_span, name)?;
+    Ok((op(b), world))
+}
+
+/// Evaluates a unary path operation (get, del).
+/// Handles arity, type checking, and error construction.
+fn eval_unary_path_op<F>(
+    args: &[WithSpan<Expr>],
+    context: &mut EvalContext<'_, '_>,
+    parent_span: &crate::ast::Span,
+    op: F,
+    name: &str,
+) -> Result<(Value, crate::runtime::world::World), SutraError>
+where
+    F: Fn(
+        crate::runtime::path::Path,
+        crate::runtime::world::World,
+    ) -> Result<(Value, crate::runtime::world::World), SutraError>,
+{
+    let (val, world) = eval_single_arg(args, context, parent_span, name)?;
+    let path = extract_path(&val, args, parent_span, name)?;
+    op(path, world)
+}
+
+/// Evaluates a binary path operation (set).
+/// Handles arity, type checking, and error construction.
+fn eval_binary_path_op<F>(
+    args: &[WithSpan<Expr>],
+    context: &mut EvalContext<'_, '_>,
+    parent_span: &crate::ast::Span,
+    op: F,
+    name: &str,
+) -> Result<(Value, crate::runtime::world::World), SutraError>
+where
+    F: Fn(
+        crate::runtime::path::Path,
+        Value,
+        crate::runtime::world::World,
+    ) -> Result<(Value, crate::runtime::world::World), SutraError>,
+{
+    let (path_val, value, world) = eval_binary_args(args, context, parent_span, name)?;
+    let path = extract_path(&path_val, args, parent_span, name)?;
+    op(path, value, world)
+}
+
+/// Evaluates a unary operation that takes any value.
+/// Handles arity and error construction.
+fn eval_unary_value_op<F>(
+    args: &[WithSpan<Expr>],
+    context: &mut EvalContext<'_, '_>,
+    parent_span: &crate::ast::Span,
+    op: F,
+    name: &str,
+) -> Result<(Value, crate::runtime::world::World), SutraError>
+where
+    F: Fn(
+        Value,
+        crate::runtime::world::World,
+        &crate::ast::Span,
+        &mut EvalContext<'_, '_>,
+    ) -> Result<(Value, crate::runtime::world::World), SutraError>,
+{
+    let (val, world) = eval_single_arg(args, context, parent_span, name)?;
+    op(val, world, parent_span, context)
+}
+
+// ----------------------------------------------------------------------------
+// Apply atom helpers
+// ----------------------------------------------------------------------------
+
+/// Evaluates normal arguments for apply (all except the last argument).
+/// Returns the evaluated arguments as expressions and the final world state.
+fn eval_apply_normal_args(
+    args: &[WithSpan<Expr>],
+    context: &mut EvalContext<'_, '_>,
+) -> Result<(Vec<WithSpan<Expr>>, crate::runtime::world::World), SutraError> {
+    let mut evald_args = Vec::with_capacity(args.len());
+    let mut world = context.world.clone();
+    for arg in args {
+        let mut sub_context = sub_eval_context!(context, &world);
+        let (val, next_world) = eval_expr(arg, &mut sub_context)?;
+        evald_args.push(WithSpan {
+            value: Expr::from(val),
+            span: arg.span.clone()
+        });
+        world = next_world;
+    }
+    Ok((evald_args, world))
+}
+
+/// Evaluates the list argument for apply (the last argument).
+/// Returns the list items as expressions and the final world state.
+fn eval_apply_list_arg(
+    arg: &WithSpan<Expr>,
+    context: &mut EvalContext<'_, '_>,
+    parent_span: &crate::ast::Span,
+) -> Result<(Vec<WithSpan<Expr>>, crate::runtime::world::World), SutraError> {
+    let mut sub_context = sub_eval_context!(context, context.world);
+    let (list_val, world) = eval_expr(arg, &mut sub_context)?;
+    let Value::List(items) = list_val else {
+        return Err(type_error(
+            Some(parent_span.clone()),
+            arg,
+            "apply",
+            "a List as the last argument",
+            &list_val,
+        ));
+    };
+    let list_items = items
+        .into_iter()
+        .map(|v| WithSpan {
+            value: Expr::from(v),
+            span: parent_span.clone()
+        })
+        .collect();
+    Ok((list_items, world))
+}
+
+/// Builds the call expression for apply by combining function, normal args, and list args.
+fn build_apply_call_expr(
+    func_expr: &WithSpan<Expr>,
+    normal_args: Vec<WithSpan<Expr>>,
+    list_args: Vec<WithSpan<Expr>>,
+    parent_span: &crate::ast::Span,
+) -> WithSpan<Expr> {
+    let mut call_items = Vec::with_capacity(1 + normal_args.len() + list_args.len());
+    call_items.push(func_expr.clone());
+    call_items.extend(normal_args);
+    call_items.extend(list_args);
+    WithSpan {
+        value: Expr::List(call_items, parent_span.clone()),
+        span: parent_span.clone(),
+    }
+}
+
+// ============================================================================
+// MODULE EXPORTS - REGISTRATION FUNCTIONS
 // ============================================================================
 
 #[cfg(any(test, feature = "test-atom", debug_assertions))]

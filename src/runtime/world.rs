@@ -31,15 +31,17 @@ impl World {
     pub fn get(&self, path: &Path) -> Option<&Value> {
         let mut current = &self.data;
         for key in &path.0 {
-            if let Value::Map(map) = current {
-                if let Some(value) = map.get(key.as_str()) {
-                    current = value;
-                } else {
-                    return None;
-                }
-            } else {
+            // Guard clause: ensure current is a map
+            let Value::Map(map) = current else {
                 return None;
-            }
+            };
+
+            // Guard clause: ensure key exists
+            let Some(value) = map.get(key.as_str()) else {
+                return None;
+            };
+
+            current = value;
         }
         Some(current)
     }
@@ -80,7 +82,12 @@ impl Default for World {
 
 // Recursive helper for immutable `set`.
 fn set_recursive(current: &Value, path_segments: &[String], val: Value) -> Value {
-    let key = &path_segments[0];
+    // Guard clause: ensure we have path segments (safety check)
+    let Some(key) = path_segments.first() else {
+        // Should not happen if called from `set` which checks for empty path.
+        return current.clone();
+    };
+
     let remaining_segments = &path_segments[1..];
 
     let mut map = match current {
@@ -89,33 +96,35 @@ fn set_recursive(current: &Value, path_segments: &[String], val: Value) -> Value
         _ => HashMap::new(),
     };
 
+    // Base case: we've reached the end of the path, so insert the value and return
     if remaining_segments.is_empty() {
-        // Base case: we've reached the end of the path, so insert the value.
         map.insert(key.clone(), val);
-    } else {
-        // Recursive step: get the child, or a Nil default, and recurse.
-        let child = map.get(key).unwrap_or(&Value::Nil);
-        let new_child = set_recursive(child, remaining_segments, val);
-        map.insert(key.clone(), new_child);
+        return Value::Map(map);
     }
+
+    // Recursive step: get the child, or a Nil default, and recurse.
+    let child = map.get(key).unwrap_or(&Value::Nil);
+    let new_child = set_recursive(child, remaining_segments, val);
+    map.insert(key.clone(), new_child);
+
     Value::Map(map)
 }
 
 // Recursive helper for immutable `del`.
 fn del_recursive(current: &Value, path_segments: &[String]) -> Value {
-    let key = if let Some(k) = path_segments.first() {
-        k
-    } else {
+    // Guard clause: ensure we have a path segment
+    let Some(key) = path_segments.first() else {
         // Should not happen if called from `del` which checks for empty path.
         return current.clone();
     };
 
-    let mut map = if let Value::Map(m) = current {
-        m.clone()
-    } else {
+    // Guard clause: ensure we're working with a map
+    let Value::Map(map) = current else {
         // Cannot delete from a non-map value.
         return current.clone();
     };
+
+    let mut map = map.clone();
 
     // Base case: If this is the last segment, remove the key and we're done.
     if path_segments.len() == 1 {
@@ -123,20 +132,21 @@ fn del_recursive(current: &Value, path_segments: &[String]) -> Value {
         return Value::Map(map);
     }
 
-    // Recursive step: If the child exists, recurse on it.
-    if let Some(child) = map.get(key) {
-        let new_child = del_recursive(child, &path_segments[1..]);
+    // Recursive step: Early return if child doesn't exist
+    let Some(child) = map.get(key) else {
+        return Value::Map(map);
+    };
 
-        // If the recursion resulted in an empty map, remove the key from the current map.
-        // Otherwise, update the map with the new, modified child.
-        if let Value::Map(ref m) = new_child {
-            if m.is_empty() {
-                map.remove(key);
-            } else {
-                map.insert(key.clone(), new_child);
-            }
-        } else {
-            // If the new child is not a map (e.g., Nil), update it.
+    let new_child = del_recursive(child, &path_segments[1..]);
+
+    // Handle the child update with guard clause pattern
+    match &new_child {
+        Value::Map(child_map) if child_map.is_empty() => {
+            // Remove empty maps
+            map.remove(key);
+        }
+        _ => {
+            // Update with the new child (whether map or other value)
             map.insert(key.clone(), new_child);
         }
     }

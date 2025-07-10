@@ -14,6 +14,7 @@
 
 ## Next Actions
 
+- **URGENT: Fix variadic macro arity checking** - Discovered during registry.rs work: variadic macros like `str+` incorrectly report "expects exactly 1 arguments" instead of accepting multiple args; affects string_ops and variadic_edge_cases tests; root cause appears to be in macro arity validation logic
 - Ensure all future tests and features are aligned with canonical Lisp/Scheme semantics
 - Continue auditing for canonical compliance as new features are added
 - Continue applying guard clause idioms and decomposition to all new/refactored code

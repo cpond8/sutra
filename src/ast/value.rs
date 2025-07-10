@@ -97,6 +97,36 @@ impl Value {
             _ => None,
         }
     }
+
+    // ------------------------------------------------------------------------
+    // Display formatting helpers
+    // ------------------------------------------------------------------------
+
+    /// Helper for formatting list values
+    fn fmt_list(f: &mut fmt::Formatter<'_>, items: &[Value]) -> fmt::Result {
+        write!(f, "(")?;
+        for (i, item) in items.iter().enumerate() {
+            if i > 0 {
+                write!(f, " ")?;
+            }
+            write!(f, "{}", item)?;
+        }
+        write!(f, ")")
+    }
+
+    /// Helper for formatting map values
+    fn fmt_map(f: &mut fmt::Formatter<'_>, map: &HashMap<String, Value>) -> fmt::Result {
+        write!(f, "{{")?;
+        let mut first = true;
+        for (k, v) in map.iter() {
+            if !first {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}: {}", k, v)?;
+            first = false;
+        }
+        write!(f, "}}")
+    }
 }
 
 impl fmt::Display for Value {
@@ -106,28 +136,8 @@ impl fmt::Display for Value {
             Value::Number(n) => write!(f, "{}", n),
             Value::String(s) => write!(f, "{}", s),
             Value::Bool(b) => write!(f, "{}", b),
-            Value::List(items) => {
-                write!(f, "(")?;
-                for (i, item) in items.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, " ")?;
-                    }
-                    write!(f, "{}", item)?;
-                }
-                write!(f, ")")
-            }
-            Value::Map(map) => {
-                write!(f, "{{")?;
-                let mut first = true;
-                for (k, v) in map.iter() {
-                    if !first {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}: {}", k, v)?;
-                    first = false;
-                }
-                write!(f, "}}")
-            }
+            Value::List(items) => Value::fmt_list(f, items),
+            Value::Map(map) => Value::fmt_map(f, map),
             Value::Path(p) => write!(f, "{}", p),
         }
     }
