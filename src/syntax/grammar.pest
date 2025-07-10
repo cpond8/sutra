@@ -85,7 +85,7 @@ quote = { "'" ~ expr }
 
 // -- Parameter List Rules --
 param_list = { "(" ~ param_items ~ ")" }
-param_items = { symbol* ~ ("..." ~ symbol)? } // Only ...rest is supported for variadics.
+param_items = { symbol* ~ spread_arg? } // Only ...rest is supported for variadics.
 
 // Macro/function definition: (define (name ... [ ...rest ]) body)
 define_form = { "(" ~ "define" ~ param_list ~ expr ~ ")" }

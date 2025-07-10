@@ -2,6 +2,7 @@
 
 ## Recent Updates
 
+[2025-07-10 10:17] Fixed critical variadic macro arity checking bug - changed grammar.pest param_items rule from inline pattern to proper spread_arg reference; developed comprehensive architectural improvement plan in 2 sprints to prevent similar issues
 [2025-07-10 09:58] memory-bank update - Updated progress.md to reflect completed systematic refactoring (eval.rs, macros/mod.rs, registry.rs); added Rules 1,2,3 methodology to projectPatterns.md core heuristics; documented proven 5-phase workflow and synergy patterns; memory bank now captures systematic refactoring approach for future application
 [2025-07-10 09:40] runtime/eval.rs guard clause patterns - Applied Rule 3 to call_atom and eval_condition_as_bool (lines 49-105): replaced nested if-let structures with let-else guard clauses and early returns; eliminated 2 levels of indentation in both functions while maintaining identical functionality; improved error handling flow and readability
 [2025-07-10 09:36] runtime/eval.rs guard clause patterns - Applied Rule 3 to flatten_spread_args (lines 350-374): replaced nested match/if-let structure with let-else guard clauses and early continue/return patterns; eliminated 3 levels of indentation while maintaining identical functionality; improved readability and followed idiomatic Rust patterns

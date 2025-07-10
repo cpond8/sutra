@@ -4,7 +4,7 @@
 
 **Canonical Reference Set**: The canonical reference for the Sutra engine language is Lisp, particularly Scheme. All tests and their expectations should reflect canonical Lisp behavior.
 
-**Variadic Macro Canonicalization Complete**: Macro system now matches canonical Lisp behavior. Variadic parsing, macro expansion, and runtime splicing (via apply) are correct. Only remaining issue was a malformed test in variadic_edge_cases.sutra producing a list with a number as the first element (invalid function call).
+**Architectural Improvement Plan**: Following successful resolution of the variadic macro arity bug (grammar.pest param_items rule fix), implementing systematic improvements to prevent similar issues. Plan developed 2025-07-10 based on root cause analysis.
 
 **Guard Clause Idioms Standard**: All new and refactored code should use let-else/early return for edge/invalid cases, reducing nesting and clarifying main logic.
 
@@ -14,13 +14,18 @@
 
 ## Next Actions
 
-- **URGENT: Fix variadic macro arity checking** - Discovered during registry.rs work: variadic macros like `str+` incorrectly report "expects exactly 1 arguments" instead of accepting multiple args; affects string_ops and variadic_edge_cases tests; root cause appears to be in macro arity validation logic
-- Ensure all future tests and features are aligned with canonical Lisp/Scheme semantics
-- Continue auditing for canonical compliance as new features are added
-- Continue applying guard clause idioms and decomposition to all new/refactored code
-- Audit for remaining deep nesting or monolithic functions in atoms, test atoms, and CLI/output
+**SPRINT 1: Quick Wins (1 week)**
+1. Enhanced Error Messages with Context (1-2 days) - Enrich arity errors and other error messages with debugging context
+2. Development-Time Grammar Checking (1 day) - Build script validation and pre-commit hooks for grammar consistency
+3. Comprehensive Unit Testing Strategy (2-3 days) - Systematic tests for parameter parsing, grammar edge cases, and macro processing
+
+**SPRINT 2: High-Value Complex (1-2 weeks)**
+4. Grammar Consistency Validation (3-4 days) - Static analysis tool to detect duplicate patterns and rule inconsistencies
+5. Debug & Introspection Tools (4-5 days) - New CLI commands for debugging parameter parsing, macro expansion, and pipeline inspection
 
 ## Recent Completions
+
+**Variadic Macro Bug Resolution (2025-07-10)**: Fixed critical parsing issue where param_items rule used inline `("..." ~ symbol)?` instead of proper `spread_arg?` reference. Root cause was grammar inconsistency - duplicate patterns without validation. Fix ensures variadic macros like `str+` parse correctly with 0 required parameters and proper rest parameter handling.
 
 **Canonical Macro System**: Variadic macro parsing, expansion, and runtime splicing now match Lisp/Scheme. No implicit splicing; apply is used for runtime argument splicing.
 
@@ -34,6 +39,6 @@
 
 ## System Status
 
-**Current Capabilities**: Macro system is canonical and matches Lisp expectations. All macro and atom features work as intended. All tests now reflect canonical Lisp behavior.
+**Current Capabilities**: Macro system is canonical and matches Lisp expectations. All macro and atom features work as intended. All tests now reflect canonical Lisp behavior. Variadic macro parsing is fully functional after grammar fix.
 
-**Test Infrastructure**: Macro operation tests now expect canonical errors for malformed calls, matching Scheme/Lisp reference.
+**Test Infrastructure**: Macro operation tests now expect canonical errors for malformed calls, matching Scheme/Lisp reference. All variadic macro tests passing.
