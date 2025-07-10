@@ -1,0 +1,36 @@
+;; Comprehensive Integration Test Suite
+;; Combines arity, type, macro, and parser testing in a single comprehensive test
+;; Ensures all components work together correctly
+
+(print "=== COMPREHENSIVE INTEGRATION TEST SUITE ===")
+
+(print "Testing basic operations:")
+(print (+ 1 2 3))                    ; variadic arithmetic
+(print (list 1 "text" true))         ; mixed types in list
+(print (not false))                  ; logic operation
+
+(print "Testing simple macro definitions and calls:")
+(define (test_macro x y) (+ x y))
+(print (test_macro 5 3))
+
+(print "Testing list operations:")
+(print (len (list 1 2 3 4 5)))
+
+(print "Testing string operations:")
+(print (core/str+ "Hello" " " "World"))
+
+(print "Testing variable operations:")
+(set! integration_test_var 42)
+(print (get integration_test_var))
+
+(print "Testing control flow:")
+(print (do
+  (print "First action")
+  "Final result"))
+
+(print "Testing edge cases:")
+(print (list))                       ; empty list
+(print (core/str+))                  ; empty string concatenation
+
+(print "=== INTEGRATION TEST COMPLETE ===")
+(print "All integration scenarios passed")

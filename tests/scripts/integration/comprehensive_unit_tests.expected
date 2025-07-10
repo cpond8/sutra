@@ -1,0 +1,21 @@
+=== COMPREHENSIVE INTEGRATION TEST SUITE ===
+Testing basic operations:
+6
+(1 text true)
+true
+Testing simple macro definitions and calls:
+8
+Testing list operations:
+5
+Testing string operations:
+Hello World
+Testing variable operations:
+42
+Testing control flow:
+First action
+Final result
+Testing edge cases:
+()
+
+=== INTEGRATION TEST COMPLETE ===
+All integration scenarios passed

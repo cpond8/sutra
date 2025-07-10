@@ -1,0 +1,6 @@
+;; Comprehensive Type Error Testing
+;; Tests that enhanced type error messages provide clear guidance
+;; Each test should fail with specific type error and helpful suggestions
+
+;; Arithmetic operations with wrong types
+(+ "hello" 5)           ; string + number - should suggest conversion

@@ -152,7 +152,7 @@ pub fn load_macros_from_file(path: &str) -> Result<Vec<(String, MacroTemplate)>,
 
 // --- Macro Expansion Core ---
 
-/// Checks the arity of macro arguments against the parameter list.
+/// Checks the arity of macro arguments against the parameter list with enhanced error reporting.
 pub fn check_arity(
     args_len: usize,
     params: &crate::ast::ParamList,
@@ -165,14 +165,9 @@ pub fn check_arity(
     let has_mismatch = args_len < required_len || (!has_variadic && args_len > required_len);
 
     if has_mismatch {
-        let expectation = if has_variadic { "at least" } else { "exactly" };
-        return Err(arity_error(
-            format!(
-                "Macro expects {} {} arguments, but got {}.",
-                expectation,
-                required_len,
-                args_len
-            ),
+        return Err(enhanced_macro_arity_error(
+            args_len,
+            params,
             span,
         ));
     }
@@ -454,12 +449,83 @@ fn check_no_duplicate_params(
 
 // --- Arity and Binding Helpers ---
 
-/// Creates an arity error with consistent formatting - DRY utility
-fn arity_error(
-    message: String,
+/// Creates an enhanced macro arity error with debugging context and suggestions.
+fn enhanced_macro_arity_error(
+    args_len: usize,
+    params: &crate::ast::ParamList,
     span: &crate::ast::Span,
 ) -> SutraError {
-    macro_error(message, Some(span.clone()))
+    let required_len = params.required.len();
+    let has_variadic = params.rest.is_some();
+
+    // Create main error message
+    let main_message = "Macro arity mismatch".to_string();
+
+    // Build detailed context message
+    let context_message = if has_variadic {
+        format!(
+            "Expected at least {} arguments, but received {}. This macro accepts additional arguments via '...' parameter.",
+            required_len, args_len
+        )
+    } else {
+        format!(
+            "Expected exactly {} arguments, but received {}. This macro requires a specific number of arguments.",
+            required_len, args_len
+        )
+    };
+
+    // Show parameter information
+    let param_info = format!(
+        "Macro parameters: {}{}",
+        params.required.join(", "),
+        if let Some(rest) = &params.rest {
+            format!(" ...{}", rest)
+        } else {
+            String::new()
+        }
+    );
+
+    // Generate suggestion
+    let suggestion = if args_len < required_len {
+        let missing = required_len - args_len;
+        format!(
+            "Add {} more argument{} to match the macro definition: {}",
+            missing,
+            if missing == 1 { "" } else { "s" },
+            param_info
+        )
+    } else if args_len > required_len && !has_variadic {
+        let extra = args_len - required_len;
+        format!(
+            "Remove {} argument{} - this macro only accepts {} arguments: {}",
+            extra,
+            if extra == 1 { "" } else { "s" },
+            required_len,
+            param_info
+        )
+    } else {
+        format!("Check the macro definition and ensure arguments match: {}", param_info)
+    };
+
+    // Combine all information
+    let full_message = format!(
+        "{}\n\n{}\n\n{}",
+        main_message,
+        context_message,
+        param_info
+    );
+
+    // Use EvalError for richer error structure
+    use crate::syntax::error::{SutraError, SutraErrorKind, EvalError};
+    SutraError {
+        kind: SutraErrorKind::Eval(EvalError {
+            message: full_message,
+            expanded_code: format!("<macro call with {} arguments>", args_len),
+            original_code: None,
+            suggestion: Some(suggestion),
+        }),
+        span: Some(span.clone()),
+    }
 }
 
 // --- Validation Helpers ---

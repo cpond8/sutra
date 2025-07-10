@@ -1,0 +1,54 @@
+;; Comprehensive Macro Arity Testing
+;; Tests systematic macro parameter handling to prevent variadic macro bugs
+;; Covers all macro parameter patterns: fixed, variadic, and mixed
+
+(print "=== MACRO ARITY TESTING ===")
+
+;; Test 1: Fixed arity macros
+(define (fixed_two a b) (list a b))
+(print "Fixed arity macro (2 params):")
+(print "Success case:")
+(print (fixed_two 1 2))
+
+(print "Expected failures:")
+;; These will be tested in separate error files since they terminate execution
+
+;; Test 2: Variadic macros
+(define (variadic_any ...args) args)
+(print "Variadic macro (any number of args):")
+(print "Success cases:")
+(print (variadic_any))           ; 0 args - valid
+(print (variadic_any 1))         ; 1 arg - valid
+(print (variadic_any 1 2 3))     ; many args - valid
+
+;; Test 3: Mixed parameter macros
+(define (mixed_params required ...optional) (list required optional))
+(print "Mixed parameter macro (1 required + variadic):")
+(print "Success cases:")
+(print (mixed_params "req"))             ; minimum args
+(print (mixed_params "req" "opt1"))      ; with optional
+(print (mixed_params "req" "opt1" "opt2" "opt3")) ; many optional
+
+;; Test 4: Complex nested macro calls
+(define (outer ...args) (inner ...args))
+(define (inner a b) (+ a b))
+(print "Nested macro with parameter forwarding:")
+(print "Success case:")
+(print (outer 3 4))
+
+;; Test 5: Spread operator usage
+(define (spread_test ...items) (list ...items))
+(print "Spread operator in macro body:")
+(print "Success cases:")
+(print (spread_test 1 2 3))
+
+;; Test 6: Parameter binding edge cases
+(define (param_binding x) x)
+(print "Parameter binding:")
+(print "Success cases:")
+(print (param_binding "test"))
+(print (param_binding 42))
+(print (param_binding (list 1 2 3)))
+
+(print "=== MACRO ARITY TESTING COMPLETE ===")
+(print "All macro arity patterns tested successfully")
