@@ -37,17 +37,17 @@ fn test_echo_atom(
     ctx: &mut EvalContext,
     span: &Span,
 ) -> Result<(Value, World), SutraError> {
-    let (val, world) = if let Some(first) = args.first() {
-        match &first.value {
-            Expr::String(s, _) => (Value::String(s.clone()), ctx.world.clone()),
-            _ => (
-                Value::String(format!("{:?}", first.value)),
-                ctx.world.clone(),
-            ),
-        }
-    } else {
-        (Value::String("".to_string()), ctx.world.clone())
+    let Some(first) = args.first() else {
+        let val = Value::String("".to_string());
+        let world = ctx.world.clone();
+        ctx.output.emit(&val.to_string(), Some(span));
+        return Ok((val, world));
     };
+    let val = match &first.value {
+        Expr::String(s, _) => Value::String(s.clone()),
+        _ => Value::String(format!("{:?}", first.value)),
+    };
+    let world = ctx.world.clone();
     ctx.output.emit(&val.to_string(), Some(span));
     Ok((val, world))
 }
@@ -115,23 +115,22 @@ fn handle_borrow_stress_recursion(
     test_borrow_stress_atom: TestAtomFn,
     test_echo_atom: TestAtomFn,
 ) -> Result<(Value, World), SutraError> {
-    if depth > 0 {
-        let mut sub_context = sub_eval_context!(ctx, ctx.world);
-        sub_context.depth = ctx.depth + 1; // Manually set incremented depth
-        let nested_args = vec![
-            WithSpan {
-                value: Expr::Number((depth - 1) as f64, span.clone()),
-                span: span.clone(),
-            },
-            WithSpan {
-                value: Expr::String(msg.to_string(), span.clone()),
-                span: span.clone(),
-            },
-        ];
-        test_borrow_stress_atom(&nested_args, &mut sub_context, span)
-    } else {
-        handle_borrow_stress_base_case(ctx, msg, span, test_echo_atom)
+    if depth == 0 {
+        return handle_borrow_stress_base_case(ctx, msg, span, test_echo_atom);
     }
+    let mut sub_context = sub_eval_context!(ctx, ctx.world);
+    sub_context.depth = ctx.depth + 1; // Manually set incremented depth
+    let nested_args = vec![
+        WithSpan {
+            value: Expr::Number((depth - 1) as f64, span.clone()),
+            span: span.clone(),
+        },
+        WithSpan {
+            value: Expr::String(msg.to_string(), span.clone()),
+            span: span.clone(),
+        },
+    ];
+    test_borrow_stress_atom(&nested_args, &mut sub_context, span)
 }
 
 /// Handle base case of borrow stress test (calls echo).

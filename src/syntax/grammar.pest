@@ -19,10 +19,16 @@ COMMENT    = _{ ";" ~ (!"\n" ~ ANY)* }
 program = { SOI ~ expr* ~ EOI }
 
 // An `expr` (expression) is the fundamental recursive unit of the language.
-expr = { define_form | quote | list | block | atom }
+// Now includes spread_arg for call position.
+expr = { define_form | quote | list | block | atom | spread_arg }
+
+// Spread argument: ...symbol (for use in call position)
+spread_arg = { "..." ~ symbol }
 
 // `list` and `block` are the two equivalent forms for collections of expressions.
-list  = { "(" ~ expr* ~ ")" } // Only proper lists are supported; improper/dotted lists are not allowed.
+// List elements can be expr or spread_arg.
+list  = { "(" ~ list_elem* ~ ")" } // Only proper lists are supported; improper/dotted lists are not allowed.
+list_elem = { expr | spread_arg }
 block = { "{" ~ expr* ~ "}" }
 
 // An `atom` is any primitive, non-recursive value. The order of rules inside

@@ -3,8 +3,7 @@
 //! PROTOCOL: All tests use file-based .sutra/.expected pairs executed via CLI,
 //! ensuring protocol compliance and maintainability.
 
-#[path = "common/mod.rs"]
-mod common;
+use sutra::test_utils as common;
 
 use std::path::Path;
 

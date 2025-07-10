@@ -5,7 +5,8 @@
 
 use crate::cli::args::{Command, SutraArgs};
 use crate::cli::output::StdoutSink;
-use crate::macros::{expand_macros, load_macros_from_file, MacroDef, MacroEnv, MacroRegistry};
+use crate::macros::{expand_macros, MacroDef, MacroRegistry};
+use crate::runtime::registry::build_canonical_macro_env;
 use clap::Parser;
 use std::io::Write;
 use std::process;
@@ -40,11 +41,18 @@ pub fn run() {
 
 use crate::ast::{Expr, Span, WithSpan};
 
-// === General CLI Helpers (shared by multiple functions) ===
+// ============================================================================
+// CORE UTILITIES - Fundamental operations used throughout the CLI
+// ============================================================================
 
 /// Converts a Path to a &str, returning an error if invalid.
 fn path_to_str(path: &std::path::Path) -> Result<&str, Box<dyn std::error::Error>> {
     path.to_str().ok_or_else(|| "Invalid filename".into())
+}
+
+/// Gets a safe display name for a path, with fallback for invalid paths.
+fn safe_path_display(path: &std::path::Path) -> &str {
+    path_to_str(path).unwrap_or("<unknown>")
 }
 
 /// Reads a file to a String, given a path.
@@ -53,31 +61,49 @@ fn read_file_to_string(path: &std::path::Path) -> Result<String, Box<dyn std::er
     Ok(std::fs::read_to_string(filename)?)
 }
 
+/// Reads a file and normalizes line endings, trimming whitespace.
+fn read_file_trimmed(path: &std::path::Path) -> std::io::Result<String> {
+    Ok(std::fs::read_to_string(path)?
+        .replace("\r\n", "\n")
+        .trim()
+        .to_string())
+}
+
+// ============================================================================
+// AST PROCESSING UTILITIES - Parsing and transformation operations
+// ============================================================================
+
 /// Parses Sutra source code into AST nodes.
 fn parse_source_to_ast(source: &str) -> Result<Vec<WithSpan<Expr>>, Box<dyn std::error::Error>> {
     Ok(crate::syntax::parser::parse(source).map_err(|e| e.with_source(source))?)
 }
 
+/// Common pipeline: read file and parse to AST nodes.
+fn load_file_to_ast(path: &std::path::Path) -> Result<(String, Vec<WithSpan<Expr>>), Box<dyn std::error::Error>> {
+    let source = read_file_to_string(path)?;
+    let ast_nodes = parse_source_to_ast(&source)?;
+    Ok((source, ast_nodes))
+}
+
 /// Wraps AST nodes in a (do ...) if needed.
 fn wrap_in_do_if_needed(ast_nodes: Vec<WithSpan<Expr>>, source: &str) -> WithSpan<Expr> {
     if ast_nodes.len() == 1 {
-        ast_nodes.into_iter().next().unwrap()
-    } else {
-        let span = Span {
-            start: 0,
-            end: source.len(),
-        };
-        let do_symbol = WithSpan {
-            value: Expr::Symbol("do".to_string(), span.clone()),
-            span: span.clone(),
-        };
-        let mut items = Vec::with_capacity(ast_nodes.len() + 1);
-        items.push(do_symbol);
-        items.extend(ast_nodes);
-        WithSpan {
-            value: Expr::List(items, span.clone()),
-            span,
-        }
+        return ast_nodes.into_iter().next().unwrap();
+    }
+    let span = Span {
+        start: 0,
+        end: source.len(),
+    };
+    let do_symbol = WithSpan {
+        value: Expr::Symbol("do".to_string(), span.clone()),
+        span: span.clone(),
+    };
+    let mut items = Vec::with_capacity(ast_nodes.len() + 1);
+    items.push(do_symbol);
+    items.extend(ast_nodes);
+    WithSpan {
+        value: Expr::List(items, span.clone()),
+        span,
     }
 }
 
@@ -99,20 +125,92 @@ fn partition_and_build_user_macros(ast_nodes: Vec<WithSpan<Expr>>) -> MacroParse
     Ok((user_macros, user_code))
 }
 
+/// Builds a complete macro environment with user macros and expands a program.
+/// Returns the expanded AST ready for execution or further processing.
+fn build_macro_environment_and_expand(
+    ast_nodes: Vec<WithSpan<Expr>>,
+    source: &str,
+) -> Result<WithSpan<Expr>, Box<dyn std::error::Error>> {
+    let (user_macros, user_code) = partition_and_build_user_macros(ast_nodes)?;
+
+    // Build complete macro environment
+    let mut env = build_canonical_macro_env()?;
+    env.user_macros.extend(user_macros.macros);
+
+    // Wrap user code if needed
+    let program = wrap_in_do_if_needed(user_code, source);
+
+    // Expand macros
+    let expanded = expand_macros(program, &mut env)
+        .map_err(|e| format!("Macro expansion error: {:?}", e))?;
+
+    Ok(expanded)
+}
+
+// ============================================================================
+// OUTPUT & FORMATTING UTILITIES - Presentation and display operations
+// ============================================================================
+
 /// Prints a sorted list of names with a title.
 fn print_sorted_list<T: AsRef<str>>(title: &str, names: &[T]) {
-    if !names.is_empty() {
-        println!("\n{title}:");
-        let mut sorted: Vec<_> = names.iter().map(|n| n.as_ref()).collect();
-        sorted.sort();
-        for name in sorted {
-            println!("  {}", name);
-        }
+    if names.is_empty() {
+        return;
+    }
+    println!("\n{title}:");
+    let mut sorted: Vec<_> = names.iter().map(|n| n.as_ref()).collect();
+    sorted.sort();
+    for name in sorted {
+        println!("  {}", name);
     }
 }
 
-// --- Test helpers moved to module scope ---
+/// Common pattern for listing registry contents with header and empty handling.
+fn print_registry_listing<T: AsRef<str>>(
+    main_title: &str,
+    separator: &str,
+    sections: &[(&str, &[T])],
+) {
+    println!("{main_title}");
+    println!("{separator}");
 
+    let has_any_items = sections.iter().any(|(_, items)| !items.is_empty());
+
+    for (section_title, items) in sections {
+        print_sorted_list(section_title, items);
+    }
+
+    if !has_any_items {
+        println!("  No items found.");
+    }
+}
+
+/// Sets color for terminal output.
+fn set_output_color(stdout: &mut termcolor::StandardStream, color: termcolor::Color, bold: bool) {
+    use termcolor::ColorSpec;
+    let _ = stdout.set_color(
+        ColorSpec::new()
+            .set_fg(Some(color))
+            .set_bold(bold),
+    );
+}
+
+/// Resets terminal color.
+fn reset_output_color(stdout: &mut termcolor::StandardStream) {
+    let _ = stdout.reset();
+}
+
+// ============================================================================
+// TEST INFRASTRUCTURE - Testing system components
+// ============================================================================
+
+#[derive(Clone)]
+enum TestOutcome {
+    Pass,
+    Fail { expected: String, actual: String },
+    Skip,
+}
+
+/// Discovers test scripts and their expected output files in a directory.
 fn find_test_scripts(dir: &std::path::Path) -> Vec<(std::path::PathBuf, std::path::PathBuf)> {
     let mut tests = Vec::new();
     for entry in walkdir::WalkDir::new(dir) {
@@ -121,100 +219,134 @@ fn find_test_scripts(dir: &std::path::Path) -> Vec<(std::path::PathBuf, std::pat
             Err(_) => continue,
         };
         let path = entry.path();
-        if path.is_file() && path.extension().map(|e| e == "sutra").unwrap_or(false) {
-            let expected = path.with_extension("expected");
-            if expected.exists() {
-                tests.push((path.to_path_buf(), expected));
-            }
+        // Guard clause: skip if not a file with a .sutra extension
+        if !(path.is_file() && path.extension().map(|e| e == "sutra").unwrap_or(false)) {
+            continue;
+        }
+        let expected = path.with_extension("expected");
+        if expected.exists() {
+            tests.push((path.to_path_buf(), expected));
         }
     }
     tests
 }
 
-fn read_file_trimmed(path: &std::path::Path) -> std::io::Result<String> {
-    Ok(std::fs::read_to_string(path)?
-        .replace("\r\n", "\n")
-        .trim()
-        .to_string())
+/// Determines if a test should be skipped based on content.
+fn should_skip_test(content: &str) -> bool {
+    content.contains("test/")
 }
 
-/// Handles the `macrotrace` subcommand.
-fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    let source = read_file_to_string(path)?;
-    let ast_nodes = parse_source_to_ast(&source)?;
-    let program = wrap_in_do_if_needed(ast_nodes, &source);
-    let mut env = build_macro_env();
-    let expanded = expand_macros(program.clone(), &mut env)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{:?}", e)))?;
-    println!("{}", expanded.value.pretty());
-    Ok(())
+/// Executes a Sutra script and captures its output.
+fn execute_script(source: &str) -> (Result<(), crate::SutraError>, String) {
+    let mut output_buf = crate::cli::output::OutputBuffer::new();
+    let result = crate::run_sutra_source_with_output(source, &mut output_buf);
+    let output = output_buf.as_str().replace("\r\n", "\n").trim().to_string();
+    (result, output)
 }
 
-fn handle_run(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    let source = read_file_to_string(path)?;
-    let mut stdout_sink = StdoutSink;
-    crate::run_sutra_source_with_output(&source, &mut stdout_sink)
-        .map_err(|e| format!("Sutra error: {}", e))?;
-    Ok(())
+/// Compares test output with expected result.
+fn compare_test_results(result: Result<(), crate::SutraError>, actual: &str, expected: &str) -> bool {
+    match result {
+        Ok(_) => actual == expected,
+        Err(e) => {
+            let err_str = format!("{e}").replace("\r\n", "\n").trim().to_string();
+            err_str == expected
+        }
+    }
 }
 
-/// Handles the `list-macros` subcommand.
-fn handle_list_macros() -> Result<(), Box<dyn std::error::Error>> {
-    let env = build_macro_env();
+/// Processes a single test file and determines the outcome.
+fn process_test_file(
+    script: &std::path::Path,
+    expected: &std::path::Path,
+) -> Result<TestOutcome, Box<dyn std::error::Error>> {
+    let script_src = read_file_trimmed(script)?;
+    let expected_output = read_file_trimmed(expected)?;
 
-    println!("Available Macros:");
-    println!("================");
-
-    let core_names: Vec<_> = env.core_macros.keys().map(|k| k.as_str()).collect();
-    let user_names: Vec<_> = env.user_macros.keys().map(|k| k.as_str()).collect();
-
-    print_sorted_list("Core Macros", &core_names);
-    print_sorted_list("User-Defined Macros", &user_names);
-
-    if core_names.is_empty() && user_names.is_empty() {
-        println!("  No macros found.");
+    // Guard clause: check if test should be skipped
+    if should_skip_test(&script_src) {
+        return Ok(TestOutcome::Skip);
     }
 
-    Ok(())
-}
+    let (result, actual_output) = execute_script(&script_src);
 
-/// Handles the `list-atoms` subcommand.
-fn handle_list_atoms() -> Result<(), Box<dyn std::error::Error>> {
-    use crate::runtime::registry::build_default_atom_registry;
-
-    let atom_registry = build_default_atom_registry();
-
-    println!("Available Atoms:");
-    println!("===============");
-
-    let atom_names: Vec<_> = atom_registry.atoms.keys().map(|k| k.as_str()).collect();
-    print_sorted_list("Atoms", &atom_names);
-
-    if atom_names.is_empty() {
-        println!("  No atoms found.");
+    if compare_test_results(result, &actual_output, &expected_output) {
+        return Ok(TestOutcome::Pass);
     }
 
-    Ok(())
+    Ok(TestOutcome::Fail {
+        expected: expected_output,
+        actual: actual_output,
+    })
 }
+
+/// Prints a test result with appropriate formatting.
+fn print_test_result(
+    script_name: &str,
+    outcome: TestOutcome,
+    stdout: &mut termcolor::StandardStream,
+) {
+    match outcome {
+        TestOutcome::Pass => {
+            set_output_color(stdout, termcolor::Color::Green, true);
+            let _ = writeln!(stdout, "PASS: {script_name}");
+        }
+        TestOutcome::Fail { ref expected, ref actual } => {
+            set_output_color(stdout, termcolor::Color::Red, true);
+            let _ = writeln!(stdout, "FAIL: {script_name}");
+            set_output_color(stdout, termcolor::Color::Yellow, false);
+            let _ = writeln!(stdout, "  Expected: {expected:?}");
+            let _ = writeln!(stdout, "  Actual:   {actual:?}");
+        }
+        TestOutcome::Skip => {
+            set_output_color(stdout, termcolor::Color::Yellow, true);
+            let _ = writeln!(stdout, "SKIP: {script_name} (requires test atoms)");
+        }
+    }
+    reset_output_color(stdout);
+}
+
+/// Runs a single test and prints the result.
+fn run_single_test(
+    script: &std::path::Path,
+    expected: &std::path::Path,
+    stdout: &mut termcolor::StandardStream,
+) -> Result<TestOutcome, Box<dyn std::error::Error>> {
+    let script_name = script.file_name().unwrap().to_string_lossy();
+    let outcome = process_test_file(script, expected)?;
+    print_test_result(&script_name, outcome.clone(), stdout);
+
+    // TODO: Consider using a more functional approach that avoids cloning
+    match outcome {
+        TestOutcome::Pass => Ok(TestOutcome::Pass),
+        TestOutcome::Fail { expected, actual } => Ok(TestOutcome::Fail { expected, actual }),
+        TestOutcome::Skip => Ok(TestOutcome::Skip),
+    }
+}
+
+// ============================================================================
+// COMMAND HANDLERS - CLI command implementations organized by functional area
+// ============================================================================
+
+// --- Analysis Commands: AST, validation, macro expansion, formatting ---
 
 /// Handles the `ast` subcommand.
 fn handle_ast(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    let source = read_file_to_string(path)?;
-    let ast_nodes = parse_source_to_ast(&source)?;
+    let (_source, ast_nodes) = load_file_to_ast(path)?;
 
-    let filename = path_to_str(path)?;
+    let filename = safe_path_display(path);
     println!("AST for {}:", filename);
     println!("={}=", "=".repeat(filename.len() + 9));
 
     if ast_nodes.is_empty() {
         println!("(empty)");
-    } else {
-        for (i, node) in ast_nodes.iter().enumerate() {
-            if ast_nodes.len() > 1 {
-                println!("\nNode {}:", i + 1);
-            }
-            println!("{:#?}", node);
+        return Ok(());
+    }
+    for (i, node) in ast_nodes.iter().enumerate() {
+        if ast_nodes.len() > 1 {
+            println!("\nNode {}:", i + 1);
         }
+        println!("{:#?}", node);
     }
 
     Ok(())
@@ -222,34 +354,23 @@ fn handle_ast(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> 
 
 /// Handles the `validate` subcommand.
 fn handle_validate(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    let source = read_file_to_string(path)?;
-    let ast_nodes = parse_source_to_ast(&source)?;
-    let (user_macros, user_code) = partition_and_build_user_macros(ast_nodes)?;
-
-    // Use core macros from helper
-    let mut env = build_macro_env();
-    env.user_macros.extend(user_macros.macros);
-
-    // Wrap user_code in a (do ...) if needed
-    let program = wrap_in_do_if_needed(user_code, &source);
-
-    // Expand macros
-    let expanded =
-        expand_macros(program, &mut env).map_err(|e| format!("Macro expansion error: {:?}", e))?;
+    let (source, ast_nodes) = load_file_to_ast(path)?;
+    let expanded = build_macro_environment_and_expand(ast_nodes, &source)?;
 
     // Validation step
+    let env = build_canonical_macro_env()?; // Rebuild for validation context
     let atom_registry = crate::runtime::registry::build_default_atom_registry();
     match crate::syntax::validate::validate(&expanded, &env, &atom_registry) {
         Ok(_) => {
             println!(
                 "✅ Validation successful: No errors found in {}",
-                path_to_str(path).unwrap_or("<unknown>")
+                safe_path_display(path)
             );
         }
         Err(e) => {
             println!(
                 "❌ Validation failed in {}:",
-                path_to_str(path).unwrap_or("<unknown>")
+                safe_path_display(path)
             );
             println!("   {}", e);
             return Err(e.into());
@@ -261,20 +382,8 @@ fn handle_validate(path: &std::path::Path) -> Result<(), Box<dyn std::error::Err
 
 /// Handles the `macroexpand` subcommand.
 fn handle_macroexpand(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    let source = read_file_to_string(path)?;
-    let ast_nodes = parse_source_to_ast(&source)?;
-    let (user_macros, user_code) = partition_and_build_user_macros(ast_nodes)?;
-
-    // Use core macros from helper
-    let mut env = build_macro_env();
-    env.user_macros.extend(user_macros.macros);
-
-    // Wrap user_code in a (do ...) if needed
-    let program = wrap_in_do_if_needed(user_code, &source);
-
-    // Expand macros
-    let expanded =
-        expand_macros(program, &mut env).map_err(|e| format!("Macro expansion error: {:?}", e))?;
+    let (source, ast_nodes) = load_file_to_ast(path)?;
+    let expanded = build_macro_environment_and_expand(ast_nodes, &source)?;
 
     // Print the expanded result
     println!("{}", expanded.value.pretty());
@@ -284,8 +393,7 @@ fn handle_macroexpand(path: &std::path::Path) -> Result<(), Box<dyn std::error::
 
 /// Handles the `format` subcommand.
 fn handle_format(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    let source = read_file_to_string(path)?;
-    let ast_nodes = parse_source_to_ast(&source)?;
+    let (_source, ast_nodes) = load_file_to_ast(path)?;
 
     // Pretty-print each top-level AST node
     for node in ast_nodes {
@@ -295,110 +403,70 @@ fn handle_format(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error
     Ok(())
 }
 
-// --- Test outcome and helpers for test reporting ---
+// --- Execution Commands: run and macro tracing ---
 
-enum TestOutcome {
-    Pass,
-    Fail { expected: String, actual: String },
-    Skip,
+/// Handles the `run` subcommand.
+fn handle_run(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    let source = read_file_to_string(path)?;
+    let mut stdout_sink = StdoutSink;
+    crate::run_sutra_source_with_output(&source, &mut stdout_sink)
+        .map_err(|e| format!("Sutra error: {}", e))?;
+    Ok(())
 }
 
-fn run_single_test(
-    script: &std::path::Path,
-    expected: &std::path::Path,
-    stdout: &mut termcolor::StandardStream,
-) -> Result<TestOutcome, Box<dyn std::error::Error>> {
-    let script_name = script.file_name().unwrap().to_string_lossy();
-    let script_src = read_file_trimmed(script)?;
-    let expected_output = read_file_trimmed(expected)?;
-
-    if script_src.contains("test/") {
-        print_test_result(&script_name, TestOutcome::Skip, stdout);
-        return Ok(TestOutcome::Skip);
-    }
-
-    let mut output_buf = crate::cli::output::OutputBuffer::new();
-    let result = crate::run_sutra_source_with_output(&script_src, &mut output_buf);
-    let actual_output = output_buf.as_str().replace("\r\n", "\n").trim().to_string();
-
-    let pass = match result {
-        Ok(_) => actual_output == expected_output,
-        Err(e) => {
-            let err_str = format!("{e}").replace("\r\n", "\n").trim().to_string();
-            err_str == expected_output
-        }
-    };
-
-    if pass {
-        print_test_result(&script_name, TestOutcome::Pass, stdout);
-        Ok(TestOutcome::Pass)
-    } else {
-        let expected_clone = expected_output.clone();
-        let actual_clone = actual_output.clone();
-        print_test_result(
-            &script_name,
-            TestOutcome::Fail {
-                expected: expected_clone,
-                actual: actual_clone,
-            },
-            stdout,
-        );
-        Ok(TestOutcome::Fail {
-            expected: expected_output,
-            actual: actual_output,
-        })
-    }
+/// Handles the `macrotrace` subcommand.
+fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    let (source, ast_nodes) = load_file_to_ast(path)?;
+    let program = wrap_in_do_if_needed(ast_nodes, &source);
+    let mut env = build_canonical_macro_env()?;
+    let expanded = expand_macros(program.clone(), &mut env)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{:?}", e)))?;
+    println!("{}", expanded.value.pretty());
+    Ok(())
 }
 
-fn print_test_result(
-    script_name: &str,
-    outcome: TestOutcome,
-    stdout: &mut termcolor::StandardStream,
-) {
-    use termcolor::ColorSpec;
-    use TestOutcome::*;
-    match outcome {
-        Pass => {
-            let _ = stdout.set_color(
-                ColorSpec::new()
-                    .set_fg(Some(termcolor::Color::Green))
-                    .set_bold(true),
-            );
-            let _ = writeln!(stdout, "PASS: {script_name}");
-        }
-        Fail {
-            ref expected,
-            ref actual,
-        } => {
-            let _ = stdout.set_color(
-                ColorSpec::new()
-                    .set_fg(Some(termcolor::Color::Red))
-                    .set_bold(true),
-            );
-            let _ = writeln!(stdout, "FAIL: {script_name}");
-            let _ = stdout.set_color(
-                ColorSpec::new()
-                    .set_fg(Some(termcolor::Color::Yellow))
-                    .set_bold(false),
-            );
-            let _ = writeln!(stdout, "  Expected: {expected:?}");
-            let _ = writeln!(stdout, "  Actual:   {actual:?}");
-        }
-        Skip => {
-            let _ = stdout.set_color(
-                ColorSpec::new()
-                    .set_fg(Some(termcolor::Color::Yellow))
-                    .set_bold(true),
-            );
-            let _ = writeln!(stdout, "SKIP: {script_name} (requires test atoms)");
-        }
-    }
-    let _ = stdout.reset();
+// --- Information Commands: listing available components ---
+
+/// Handles the `list-macros` subcommand.
+fn handle_list_macros() -> Result<(), Box<dyn std::error::Error>> {
+    let env = build_canonical_macro_env()?;
+
+    let core_names: Vec<_> = env.core_macros.keys().map(|k| k.as_str()).collect();
+    let user_names: Vec<_> = env.user_macros.keys().map(|k| k.as_str()).collect();
+
+    print_registry_listing(
+        "Available Macros:",
+        "================",
+        &[
+            ("Core Macros", &core_names),
+            ("User-Defined Macros", &user_names),
+        ],
+    );
+
+    Ok(())
 }
+
+/// Handles the `list-atoms` subcommand.
+fn handle_list_atoms() -> Result<(), Box<dyn std::error::Error>> {
+    use crate::runtime::registry::build_default_atom_registry;
+
+    let atom_registry = build_default_atom_registry();
+    let atom_names: Vec<_> = atom_registry.atoms.keys().map(|k| k.as_str()).collect();
+
+    print_registry_listing(
+        "Available Atoms:",
+        "===============",
+        &[("Atoms", &atom_names)],
+    );
+
+    Ok(())
+}
+
+// --- Testing Commands: test execution and management ---
 
 /// Handles the `test` subcommand.
 fn handle_test(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    use termcolor::{ColorChoice, ColorSpec, StandardStream};
+    use termcolor::{ColorChoice, StandardStream};
 
     let scripts = find_test_scripts(path);
     if scripts.is_empty() {
@@ -419,16 +487,12 @@ fn handle_test(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>>
     }
 
     if skipped > 0 {
-        let _ = stdout.set_color(
-            ColorSpec::new()
-                .set_fg(Some(termcolor::Color::Cyan))
-                .set_bold(false),
-        );
+        set_output_color(&mut stdout, termcolor::Color::Cyan, false);
         let _ = writeln!(
             stdout,
             "\nNote: {skipped} test(s) skipped (use 'cargo test' to run all tests)"
         );
-        let _ = stdout.reset();
+        reset_output_color(&mut stdout);
     }
 
     if failed {
@@ -438,50 +502,45 @@ fn handle_test(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
-/// Handles the `gen-expected` subcommand.
-fn handle_gen_expected(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    // Use the test harness from tests/common/mod.rs
-    // This requires including the module at build time for CLI use
-    #[path = "../../tests/common/mod.rs"]
-    mod test_common;
-    use test_common::{generate_expected_output, discover_test_cases, TestConfig};
+// --- Utility Commands: test setup and file generation ---
 
-    let config = TestConfig::default();
-    if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("sutra") {
-        generate_expected_output(path, &config)?;
-        println!("Generated expected output for {}", path.display());
-    } else if path.is_dir() {
-        let test_cases = discover_test_cases(path)?;
-        for case in test_cases {
-            if let Err(e) = generate_expected_output(&case.sutra_file, &config) {
-                eprintln!("Failed for {}: {}", case.sutra_file.display(), e);
-            } else {
-                println!("Generated expected output for {}", case.sutra_file.display());
-            }
+/// Processes a single file for expected output generation.
+fn process_single_file(path: &std::path::Path, config: &crate::test_utils::TestConfig) -> Result<(), Box<dyn std::error::Error>> {
+    crate::test_utils::generate_expected_output(path, config)?;
+    println!("Generated expected output for {}", path.display());
+    Ok(())
+}
+
+/// Processes a directory for expected output generation.
+fn process_directory(path: &std::path::Path, config: &crate::test_utils::TestConfig) -> Result<(), Box<dyn std::error::Error>> {
+    let test_cases = crate::test_utils::discover_test_cases(path)?;
+    for case in test_cases {
+        if let Err(e) = crate::test_utils::generate_expected_output(&case.sutra_file, config) {
+            eprintln!("Failed for {}: {}", case.sutra_file.display(), e);
+            continue;
         }
-    } else {
-        eprintln!("Path must be a .sutra file or directory");
+        println!("Generated expected output for {}", case.sutra_file.display());
     }
     Ok(())
 }
 
-/// Builds a MacroEnv with both core and user macros loaded.
-fn build_macro_env() -> MacroEnv {
-    let mut core_macros = MacroRegistry::new();
-    crate::macros::std::register_std_macros(&mut core_macros);
+/// Handles the `gen-expected` subcommand.
+fn handle_gen_expected(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::test_utils::TestConfig;
 
-    let mut user_macros = MacroRegistry::new();
-    if let Ok(macros) = load_macros_from_file("src/macros/macros.sutra") {
-        for (name, template) in macros {
-            user_macros
-                .macros
-                .insert(name, MacroDef::Template(template));
-        }
+    let config = TestConfig::default();
+
+    // Guard clause: handle single .sutra file
+    if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("sutra") {
+        return process_single_file(path, &config);
     }
 
-    MacroEnv {
-        user_macros: user_macros.macros,
-        core_macros: core_macros.macros,
-        trace: Vec::new(),
+    // Guard clause: handle invalid path
+    if !path.is_dir() {
+        eprintln!("Path must be a .sutra file or directory");
+        return Ok(());
     }
+
+    // Handle directory
+    process_directory(path, &config)
 }

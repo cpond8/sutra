@@ -47,6 +47,8 @@ pub enum Expr {
     },
     Quote(Box<WithSpan<Expr>>, Span),
     ParamList(ParamList),
+    /// Spread argument (e.g., ...args) for use in call position
+    Spread(Box<WithSpan<Expr>>),
 }
 
 impl Expr {
@@ -70,6 +72,7 @@ impl Expr {
             Expr::If { span, .. } => span.clone(),
             Expr::Quote(_, span) => span.clone(),
             Expr::ParamList(param_list) => param_list.span.clone(),
+            Expr::Spread(expr) => expr.span.clone(),
         }
     }
 
@@ -150,6 +153,24 @@ impl Expr {
                 s.push(')');
                 s
             }
+            Expr::Spread(expr) => format!("...{}", expr.value.pretty()),
+        }
+    }
+}
+
+impl From<crate::ast::value::Value> for Expr {
+    fn from(val: crate::ast::value::Value) -> Self {
+        use crate::ast::value::Value;
+        match val {
+            Value::Nil => Expr::List(vec![], Span::default()),
+            Value::Number(n) => Expr::Number(n, Span::default()),
+            Value::String(s) => Expr::String(s, Span::default()),
+            Value::Bool(b) => Expr::Bool(b, Span::default()),
+            Value::List(items) => {
+                Expr::List(items.into_iter().map(|v| WithSpan { value: Expr::from(v), span: Span::default() }).collect(), Span::default())
+            },
+            Value::Map(_) => Expr::List(vec![], Span::default()), // TODO: Map to a canonical representation if needed
+            Value::Path(p) => Expr::Path(p, Span::default()),
         }
     }
 }
@@ -234,6 +255,20 @@ fn build_ast_from_cst(
     match cst.rule.as_str() {
         "program" | "list" => {
             map_cst_children_to_list(&cst.children, build_ast_from_cst, &cst.span)
+        }
+        "spread_arg" => {
+            // Should have one child: a symbol
+            if cst.children.len() != 1 {
+                return Err(SutraAstBuildError::InvalidShape {
+                    span: cst.span.clone(),
+                    message: "Malformed spread_arg: expected one child (symbol)".to_string(),
+                });
+            }
+            let symbol_expr = build_ast_from_cst(&cst.children[0])?;
+            Ok(WithSpan {
+                value: Expr::Spread(Box::new(symbol_expr)),
+                span: cst.span.clone(),
+            })
         }
         "number" => {
             let s = &cst_text(cst);

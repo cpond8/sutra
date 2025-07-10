@@ -4,5 +4,4 @@
 //! following the protocol-compliant testing approach where all tests use
 //! only user-facing Sutra scripts and assert on observable behavior.
 
-mod common;
 mod eval_tests;

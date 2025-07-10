@@ -4,17 +4,24 @@ pub mod cli;
 pub mod macros;
 pub mod runtime;
 pub mod syntax;
+pub mod test_utils;
 
 use crate::ast::{Expr, Span, WithSpan};
 use crate::atoms::OutputSink;
 use crate::cli::output::StdoutSink;
-use crate::macros::{expand_macros, MacroDef, MacroEnv, MacroRegistry, MacroTemplate};
+use crate::macros::{expand_macros, MacroDef, MacroTemplate};
 use crate::runtime::eval::eval;
+use crate::runtime::registry::build_canonical_macro_env;
 use crate::runtime::registry::build_default_atom_registry;
 use crate::runtime::world::World;
 use crate::syntax::error::macro_error;
 use crate::syntax::error::SutraError;
 use crate::syntax::validate::validate;
+
+// TODO: Refactor macro environment construction in run_sutra_source_with_output to use build_canonical_macro_env() from registry.rs.
+// - Remove all ad-hoc macro loading logic.
+// - Propagate error handling as needed.
+// - See design draft and registry.rs for rationale and details.
 
 /// New API: Run Sutra source with injectable output sink.
 pub fn run_sutra_source_with_output(
@@ -28,31 +35,21 @@ pub fn run_sutra_source_with_output(
     let (macro_defs, user_code): (Vec<_>, Vec<_>) =
         ast_nodes.into_iter().partition(is_macro_definition);
 
-    // 3. Build macro registry from macro_defs
-    let mut user_macros = MacroRegistry::new();
+    // 3. Build canonical macro environment
+    let mut env = build_canonical_macro_env()?;
+
+    // 4. Extend env.user_macros with user-defined macros parsed from the source.
     for macro_expr in macro_defs {
         let (name, template) = parse_macro_definition(&macro_expr)?;
-        if user_macros.macros.contains_key(&name) {
+        if env.user_macros.contains_key(&name) {
             return Err(macro_error(
                 format!("Duplicate macro name '{}'.", name),
                 None,
             ));
         }
-        user_macros
-            .macros
+        env.user_macros
             .insert(name.clone(), MacroDef::Template(template));
     }
-
-    // 4. Build core macro registry (standard macros)
-    let mut core_macros = MacroRegistry::new();
-    macros::std::register_std_macros(&mut core_macros);
-
-    // 5. Build MacroEnv
-    let mut env = MacroEnv {
-        user_macros: user_macros.macros,
-        core_macros: core_macros.macros,
-        trace: Vec::new(),
-    };
 
     // 6. Wrap user_code in a (do ...) if needed
     let program = wrap_in_do(user_code);
@@ -96,17 +93,14 @@ pub fn run_sutra_source(source: &str, _filename: Option<&str>) -> Result<(), Sut
     run_sutra_source_with_output(source, &mut stdout_sink)
 }
 
+// Returns true if the given expression is a macro definition of the form (define ...).
 fn is_macro_definition(expr: &WithSpan<Expr>) -> bool {
-    match &expr.value {
-        Expr::List(items, _) if items.len() == 3 => {
-            if let Expr::Symbol(def, _) = &items[0].value {
-                def == "define"
-            } else {
-                false
-            }
-        }
-        _ => false,
+    let Expr::List(items, _) = &expr.value else { return false; };
+    if items.len() != 3 {
+        return false;
     }
+    let Expr::Symbol(def, _) = &items[0].value else { return false; };
+    def == "define"
 }
 
 fn parse_macro_definition(expr: &WithSpan<Expr>) -> Result<(String, MacroTemplate), SutraError> {

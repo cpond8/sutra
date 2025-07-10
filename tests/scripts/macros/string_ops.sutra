@@ -17,3 +17,11 @@
     (print first)
     (print second)))
 (print_two "Line 1" "Line 2")
+
+;; str+ macro tests
+(print (str+ "foo" "bar"))           ;; should print foobar
+(print (str+ "a" "b" "c"))           ;; should print abc
+(print (str+ "hello, " "world!"))    ;; should print hello, world!
+
+;; Error case: uncomment to test type error
+;; (print (str+ "foo" 42))

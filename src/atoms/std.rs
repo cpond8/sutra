@@ -7,8 +7,7 @@
 //! - **Canonical Arguments**: Atoms assume their arguments are canonical and valid.
 //!   For example, `set!` expects its first argument to evaluate to a `Value::Path`.
 //!   It does no parsing or transformation itself.
-
-// After function definitions, move all ATOM_* constants here:function definitions, move all ATOM_* constants here:e Propagation**: Atoms that modify state (like `set!`) must accept a
+//! - **State Propagation**: Atoms that modify state (like `set!`) must accept a
 //!   `World` and return a new, modified `World`.
 //! - **Clarity over Complexity**: Each atom has a single, clear responsibility.
 //!   Complex operations are built by composing atoms, not by creating complex atoms.
@@ -20,10 +19,13 @@ use crate::runtime::eval::{eval_expr, EvalContext};
 use crate::syntax::error::{eval_arity_error, eval_general_error, eval_type_error};
 use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
 
-// Convenient type alias for atom return values - modern Rust idiom
+// ============================================================================
+// TYPE ALIASES AND ERROR HELPERS
+// ============================================================================
+
+/// Convenient type alias for atom return values - modern Rust idiom
 pub type AtomResult = Result<(Value, crate::runtime::world::World), SutraError>;
 
-// Error construction functions to replace sutra_error! macro - cleaner than macro
 /// Creates an arity error for atoms with consistent messaging
 pub fn arity_error(
     span: Option<crate::ast::Span>,
@@ -78,25 +80,11 @@ macro_rules! sub_eval_context {
 // Also provide the local version for use within this module
 use sub_eval_context;
 
-// ---
-// Registry
-// ---
+// ============================================================================
+// HELPER EVALUATION FUNCTIONS
+// ============================================================================
 
-// ATOM_CORE_SET, ATOM_CORE_GET, ATOM_CORE_DEL, ATOM_ADD, ATOM_SUB, ATOM_MUL, ATOM_DIV, ATOM_MOD, ATOM_EQ, ATOM_GT, ATOM_LT, ATOM_GTE, ATOM_LTE, ATOM_NOT, ATOM_DO, ATOM_LIST, ATOM_LEN, ATOM_ERROR, ATOM_PRINT
-
-/*
-NOTE: Direct doctests for atoms (e.g., ATOM_ADD) are not feasible here because they require
-internal context types (EvalContext, EvalOptions, World) that are not public or do not implement
-required traits for doctesting. The previous doctest example was removed because it cannot compile
-outside the engine crate. Atom functions are best tested via integration or unit tests
-where the full engine context is available. See tests/ for examples.
-*/
-
-// ---
-// Error Handling & Helpers
-// ---
-
-// Update eval_args to use eval_expr with &mut context and manually update world.
+/// Evaluates all arguments in sequence, threading world state through each evaluation.
 fn eval_args(
     args: &[WithSpan<Expr>],
     context: &mut EvalContext<'_, '_>,
@@ -114,19 +102,6 @@ fn eval_args(
 
 /// Evaluates a binary numeric operation atomically, with optional validation.
 /// Handles arity, type checking, and error construction.
-///
-/// # Example
-/// ```ignore
-/// let result = eval_binary_numeric_op(
-///     args, context, parent_span,
-///     |a, b| Value::Number(a + b), // operation
-///     None,                        // no extra validation
-///     "+",
-///     "two Numbers",
-/// );
-/// ```
-/// # Safety
-/// Only operates on Value::Number. Returns error for invalid types or arity.
 fn eval_binary_numeric_op<F, V>(
     args: &[WithSpan<Expr>],
     context: &mut EvalContext<'_, '_>,
@@ -168,16 +143,6 @@ where
 
 /// Evaluates an n-ary numeric operation (e.g., sum, product).
 /// Handles arity, type checking, and error construction.
-///
-/// # Example
-/// ```ignore
-/// let result = eval_nary_numeric_op(
-///     args, context, parent_span,
-///     0.0, |acc, v| acc + v, "+"
-/// );
-/// ```
-/// # Safety
-/// Only operates on Value::Number. Returns error for invalid types or arity.
 fn eval_nary_numeric_op<F>(
     args: &[WithSpan<Expr>],
     context: &mut EvalContext<'_, '_>,
@@ -200,9 +165,7 @@ where
     let (values, world) = eval_args(args, context)?;
     let mut acc = init;
     for (i, v) in values.iter().enumerate() {
-        if let Value::Number(n) = v {
-            acc = fold(acc, *n);
-        } else {
+        let Value::Number(n) = v else {
             return Err(type_error(
                 Some(parent_span.clone()),
                 &args[i],
@@ -210,24 +173,14 @@ where
                 "a Number",
                 v,
             ));
-        }
+        };
+        acc = fold(acc, *n);
     }
     Ok((Value::Number(acc), world))
 }
 
 /// Evaluates a unary boolean operation.
 /// Handles arity, type checking, and error construction.
-///
-/// # Example
-/// ```ignore
-/// let result = eval_unary_bool_op(
-///     args, context, parent_span,
-///     |b| Value::Bool(!b),
-///     "not"
-/// );
-/// ```
-/// # Safety
-/// Only operates on Value::Bool. Returns error for invalid types or arity.
 fn eval_unary_bool_op<F>(
     args: &[WithSpan<Expr>],
     context: &mut EvalContext<'_, '_>,
@@ -257,17 +210,6 @@ where
 
 /// Evaluates a unary path operation (get, del).
 /// Handles arity, type checking, and error construction.
-///
-/// # Example
-/// ```ignore
-/// let result = eval_unary_path_op(
-///     args, context, parent_span,
-///     |path, world| Ok((Value::default(), world)),
-///     "core/get"
-/// );
-/// ```
-/// # Safety
-/// Only operates on Value::Path. Returns error for invalid types or arity.
 fn eval_unary_path_op<F>(
     args: &[WithSpan<Expr>],
     context: &mut EvalContext<'_, '_>,
@@ -286,32 +228,20 @@ where
     }
     let mut sub_context = sub_eval_context!(context, context.world);
     let (path_val, world) = eval_expr(&args[0], &mut sub_context)?;
-    if let Value::Path(path) = path_val {
-        op(path, world)
-    } else {
-        Err(type_error(
+    let Value::Path(path) = path_val else {
+        return Err(type_error(
             Some(parent_span.clone()),
             &args[0],
             name,
             "a Path",
             &path_val,
-        ))
-    }
+        ));
+    };
+    op(path, world)
 }
 
 /// Evaluates a binary path operation (set).
 /// Handles arity, type checking, and error construction.
-///
-/// # Example
-/// ```ignore
-/// let result = eval_binary_path_op(
-///     args, context, parent_span,
-///     |path, value, world| Ok((Value::default(), world)),
-///     "core/set!"
-/// );
-/// ```
-/// # Safety
-/// Only operates on Value::Path for first arg. Returns error for invalid types or arity.
 fn eval_binary_path_op<F>(
     args: &[WithSpan<Expr>],
     context: &mut EvalContext<'_, '_>,
@@ -333,32 +263,20 @@ where
     let (path_val, world1) = eval_expr(&args[0], &mut sub_context1)?;
     let mut sub_context2 = sub_eval_context!(context, &world1);
     let (value, world2) = eval_expr(&args[1], &mut sub_context2)?;
-    if let Value::Path(path) = path_val {
-        op(path, value, world2)
-    } else {
-        Err(type_error(
+    let Value::Path(path) = path_val else {
+        return Err(type_error(
             Some(parent_span.clone()),
             &args[0],
             name,
             "a Path",
             &path_val,
-        ))
-    }
+        ));
+    };
+    op(path, value, world2)
 }
 
 /// Evaluates a unary operation that takes any value.
 /// Handles arity and error construction.
-///
-/// # Example
-/// ```ignore
-/// let result = eval_unary_value_op(
-///     args, context, parent_span,
-///     |val, world, parent_span, context| Ok((Value::Nil, world)),
-///     "print"
-/// );
-/// ```
-/// # Safety
-/// Accepts any value. Returns error for invalid arity.
 fn eval_unary_value_op<F>(
     args: &[WithSpan<Expr>],
     context: &mut EvalContext<'_, '_>,
@@ -382,8 +300,74 @@ where
     op(val, world, parent_span, context)
 }
 
-// After function definitions, move all ATOM_* constants here:
-// ATOM_CORE_SET, ATOM_CORE_GET, ATOM_CORE_DEL, ATOM_ADD, ATOM_SUB, ATOM_MUL, ATOM_DIV, ATOM_MOD, ATOM_EQ, ATOM_GT, ATOM_LT, ATOM_GTE, ATOM_LTE, ATOM_NOT, ATOM_DO, ATOM_LIST, ATOM_LEN, ATOM_ERROR, ATOM_PRINT
+/// Evaluates normal arguments for apply (all except the last argument).
+/// Returns the evaluated arguments as expressions and the final world state.
+fn eval_apply_normal_args(
+    args: &[WithSpan<Expr>],
+    context: &mut EvalContext<'_, '_>,
+) -> Result<(Vec<WithSpan<Expr>>, crate::runtime::world::World), SutraError> {
+    let mut evald_args = Vec::with_capacity(args.len());
+    let mut world = context.world.clone();
+    for arg in args {
+        let mut sub_context = sub_eval_context!(context, &world);
+        let (val, next_world) = eval_expr(arg, &mut sub_context)?;
+        evald_args.push(WithSpan {
+            value: Expr::from(val),
+            span: arg.span.clone()
+        });
+        world = next_world;
+    }
+    Ok((evald_args, world))
+}
+
+/// Evaluates the list argument for apply (the last argument).
+/// Returns the list items as expressions and the final world state.
+fn eval_apply_list_arg(
+    arg: &WithSpan<Expr>,
+    context: &mut EvalContext<'_, '_>,
+    parent_span: &crate::ast::Span,
+) -> Result<(Vec<WithSpan<Expr>>, crate::runtime::world::World), SutraError> {
+    let mut sub_context = sub_eval_context!(context, context.world);
+    let (list_val, world) = eval_expr(arg, &mut sub_context)?;
+    let Value::List(items) = list_val else {
+        return Err(type_error(
+            Some(parent_span.clone()),
+            arg,
+            "apply",
+            "a List as the last argument",
+            &list_val,
+        ));
+    };
+    let list_items = items
+        .into_iter()
+        .map(|v| WithSpan {
+            value: Expr::from(v),
+            span: parent_span.clone()
+        })
+        .collect();
+    Ok((list_items, world))
+}
+
+/// Builds the call expression for apply by combining function, normal args, and list args.
+fn build_apply_call_expr(
+    func_expr: &WithSpan<Expr>,
+    normal_args: Vec<WithSpan<Expr>>,
+    list_args: Vec<WithSpan<Expr>>,
+    parent_span: &crate::ast::Span,
+) -> WithSpan<Expr> {
+    let mut call_items = Vec::with_capacity(1 + normal_args.len() + list_args.len());
+    call_items.push(func_expr.clone());
+    call_items.extend(normal_args);
+    call_items.extend(list_args);
+    WithSpan {
+        value: Expr::List(call_items, parent_span.clone()),
+        span: parent_span.clone(),
+    }
+}
+
+// ============================================================================
+// CORE ATOMS: World state manipulation
+// ============================================================================
 
 /// Sets a value at a path in the world state.
 ///
@@ -468,52 +452,9 @@ pub const ATOM_CORE_DEL: AtomFn = |args, context, parent_span| {
     )
 };
 
-/// Returns true if two values are equal.
-///
-/// Usage: (eq? <a> <b>)
-///   - <a>, <b>: Values to compare
-///
-///   Returns: Bool
-///
-/// Example:
-///   (eq? 1 1) ; => true
-///   (eq? 1 2) ; => false
-///
-/// # Safety
-/// Pure, does not mutate state.
-pub const ATOM_EQ: AtomFn = |args, context, parent_span| {
-    eval_binary_numeric_op(
-        args,
-        context,
-        parent_span,
-        |a, b| Value::Bool(a == b),
-        None::<fn(f64, f64) -> Result<(), &'static str>>,
-        "eq?",
-        "two Numbers",
-    )
-};
-
-/// Sequentially evaluates expressions, returning the last value.
-///
-/// Usage: (do <expr1> <expr2> ...)
-///   - <expr1>, <expr2>, ...: Expressions to evaluate in sequence
-///
-///   Returns: Value of last expression
-///
-/// Example:
-///   (do (core/set! x 1) (core/get x)) ; => 1
-///
-/// # Safety
-/// May mutate world if inner expressions do.
-pub const ATOM_DO: AtomFn = |args, context, _| {
-    // The `eval_args` helper function correctly threads the world state
-    // through the evaluation of each argument. We can simply use it
-    // and return the value of the last expression, which is the
-    // standard behavior of a `do` block.
-    let (values, world) = eval_args(args, context)?;
-    let last_value = values.last().cloned().unwrap_or_default();
-    Ok((last_value, world))
-};
+// ============================================================================
+// ARITHMETIC ATOMS: Basic mathematical operations
+// ============================================================================
 
 /// Adds numbers.
 ///
@@ -597,6 +538,67 @@ pub const ATOM_DIV: AtomFn = |args, context, parent_span| {
             }
         }),
         "/",
+        "two Numbers",
+    )
+};
+
+/// Modulo operation.
+///
+/// Usage: (mod <a> <b>)
+///   - <a>, <b>: Integers
+///
+///   Returns: Number (a % b)
+///
+/// Example:
+///   (mod 5 2) ; => 1
+///
+/// # Safety
+/// Pure, does not mutate state. Errors on division by zero or non-integer input.
+pub const ATOM_MOD: AtomFn = |args, context, parent_span| {
+    eval_binary_numeric_op(
+        args,
+        context,
+        parent_span,
+        |a, b| Value::Number((a as i64 % b as i64) as f64),
+        Some(|a: f64, b: f64| -> Result<(), &'static str> {
+            if b == 0.0 {
+                return Err("Modulo by zero");
+            }
+            if a.fract() != 0.0 || b.fract() != 0.0 {
+                return Err("Modulo expects integers");
+            }
+            Ok(())
+        }),
+        "mod",
+        "two Numbers",
+    )
+};
+
+// ============================================================================
+// COMPARISON ATOMS: Relational and equality operations
+// ============================================================================
+
+/// Returns true if two values are equal.
+///
+/// Usage: (eq? <a> <b>)
+///   - <a>, <b>: Values to compare
+///
+///   Returns: Bool
+///
+/// Example:
+///   (eq? 1 1) ; => true
+///   (eq? 1 2) ; => false
+///
+/// # Safety
+/// Pure, does not mutate state.
+pub const ATOM_EQ: AtomFn = |args, context, parent_span| {
+    eval_binary_numeric_op(
+        args,
+        context,
+        parent_span,
+        |a, b| Value::Bool(a == b),
+        None::<fn(f64, f64) -> Result<(), &'static str>>,
+        "eq?",
         "two Numbers",
     )
 };
@@ -697,6 +699,10 @@ pub const ATOM_LTE: AtomFn = |args, context, parent_span| {
     )
 };
 
+// ============================================================================
+// LOGIC ATOMS: Boolean operations
+// ============================================================================
+
 /// Logical negation.
 ///
 /// Usage: (not <a>)
@@ -712,6 +718,10 @@ pub const ATOM_LTE: AtomFn = |args, context, parent_span| {
 pub const ATOM_NOT: AtomFn = |args, context, parent_span| {
     eval_unary_bool_op(args, context, parent_span, |b: bool| Value::Bool(!b), "not")
 };
+
+// ============================================================================
+// LIST AND STRING ATOMS: Collection and text operations
+// ============================================================================
 
 /// Constructs a list from arguments.
 ///
@@ -762,36 +772,105 @@ pub const ATOM_LEN: AtomFn = |args, context, parent_span| {
     }
 };
 
-/// Modulo operation.
+/// Concatenates two or more strings into a single string.
 ///
-/// Usage: (mod <a> <b>)
-///   - <a>, <b>: Integers
+/// # Example (Sutra script)
 ///
-///   Returns: Number (a % b)
+/// ```sutra
+/// (str+ "foo" "bar" "baz") ; => "foobarbaz"
+/// ```
 ///
-/// Example:
-///   (mod 5 2) ; => 1
+/// This atom is not directly callable as a Rust function; it is invoked by the Sutra engine when evaluating `(core/str+ ...)` forms.
 ///
 /// # Safety
-/// Pure, does not mutate state. Errors on division by zero or non-integer input.
-pub const ATOM_MOD: AtomFn = |args, context, parent_span| {
-    eval_binary_numeric_op(
-        args,
-        context,
-        parent_span,
-        |a, b| Value::Number((a as i64 % b as i64) as f64),
-        Some(|a: f64, b: f64| -> Result<(), &'static str> {
-            if b == 0.0 {
-                Err("Modulo by zero")
-            } else if a.fract() != 0.0 || b.fract() != 0.0 {
-                Err("Modulo expects integers")
-            } else {
-                Ok(())
+/// This atom only accepts `Value::String` arguments. If any argument is not a string, a type error is returned.
+///
+pub const ATOM_CORE_STR_PLUS: AtomFn = |args, context, parent_span| {
+    // Handle zero arguments: return empty string
+    if args.is_empty() {
+        return Ok((Value::String(String::new()), context.world.clone()));
+    }
+
+    // Evaluate all arguments in the current context.
+    let (values, world) = eval_args(args, context)?;
+    // Collect string slices, error if any argument is not a string.
+    let mut result = String::new();
+    for (i, val) in values.iter().enumerate() {
+        match val {
+            Value::String(s) => result.push_str(s),
+            _ => {
+                return Err(type_error(
+                    Some(parent_span.clone()),
+                    &args[i],
+                    "core/str+",
+                    "a String",
+                    val,
+                ));
             }
-        }),
-        "mod",
-        "two Numbers",
-    )
+        }
+    }
+    Ok((Value::String(result), world))
+};
+
+/// Calls a function, macro, or atom with arguments, flattening the final list argument.
+///
+/// # Usage
+/// ```sutra
+/// (apply + 1 2 '(3 4)) ; => 10
+/// (apply str+ '("a" "b" "c")) ; => "abc"
+/// ```
+///
+/// # Errors
+/// Returns an error if the function is not callable or the last argument is not a list.
+///
+/// # Safety
+/// Pure, does not mutate state. All state is explicit.
+pub const ATOM_APPLY: AtomFn = |args, context, parent_span| {
+    if args.len() < 2 {
+        return Err(arity_error(Some(parent_span.clone()), args, "apply", "at least 2"));
+    }
+
+    let func_expr = &args[0];
+    let normal_args_slice = &args[1..args.len() - 1];
+    let list_arg = &args[args.len() - 1];
+
+    // Evaluate normal arguments
+    let (normal_args, world) = eval_apply_normal_args(normal_args_slice, context)?;
+
+    // Evaluate list argument
+    let mut context_with_world = sub_eval_context!(context, &world);
+    let (list_args, world) = eval_apply_list_arg(list_arg, &mut context_with_world, parent_span)?;
+
+    // Build and evaluate the call expression
+    let call_expr = build_apply_call_expr(func_expr, normal_args, list_args, parent_span);
+    let mut sub_context = sub_eval_context!(context, &world);
+    eval_expr(&call_expr, &mut sub_context)
+};
+
+// ============================================================================
+// CONTROL FLOW ATOMS: Program structure and flow control
+// ============================================================================
+
+/// Sequentially evaluates expressions, returning the last value.
+///
+/// Usage: (do <expr1> <expr2> ...)
+///   - <expr1>, <expr2>, ...: Expressions to evaluate in sequence
+///
+///   Returns: Value of last expression
+///
+/// Example:
+///   (do (core/set! x 1) (core/get x)) ; => 1
+///
+/// # Safety
+/// May mutate world if inner expressions do.
+pub const ATOM_DO: AtomFn = |args, context, _| {
+    // The `eval_args` helper function correctly threads the world state
+    // through the evaluation of each argument. We can simply use it
+    // and return the value of the last expression, which is the
+    // standard behavior of a `do` block.
+    let (values, world) = eval_args(args, context)?;
+    let last_value = values.last().cloned().unwrap_or_default();
+    Ok((last_value, world))
 };
 
 /// Raises an error with a message.
@@ -816,34 +895,37 @@ pub const ATOM_ERROR: AtomFn = |args, context, parent_span| {
          parent_span: &crate::ast::Span,
          _context: &mut EvalContext<'_, '_>|
          -> Result<(Value, crate::runtime::world::World), SutraError> {
-            if let Value::String(msg) = msg_val {
-                Err(SutraError {
-                    kind: SutraErrorKind::Eval(EvalError {
-                        message: msg,
-                        expanded_code: WithSpan {
-                            value: Expr::List(args.to_vec(), parent_span.clone()),
-                            span: parent_span.clone(),
-                        }
-                        .value
-                        .pretty(),
-                        original_code: None,
-                        suggestion: None,
-                    }),
-                    span: Some(parent_span.clone()),
-                })
-            } else {
-                Err(type_error(
+            let Value::String(msg) = msg_val else {
+                return Err(type_error(
                     Some(parent_span.clone()),
                     &args[0],
                     "error",
                     "a String",
                     &msg_val,
-                ))
-            }
+                ));
+            };
+            Err(SutraError {
+                kind: SutraErrorKind::Eval(EvalError {
+                    message: msg,
+                    expanded_code: WithSpan {
+                        value: Expr::List(args.to_vec(), parent_span.clone()),
+                        span: parent_span.clone(),
+                    }
+                    .value
+                    .pretty(),
+                    original_code: None,
+                    suggestion: None,
+                }),
+                span: Some(parent_span.clone()),
+            })
         },
         "error",
     )
 };
+
+// ============================================================================
+// I/O ATOMS: Input/output operations
+// ============================================================================
 
 /// Emits output to the output sink.
 ///
@@ -874,27 +956,46 @@ pub const ATOM_PRINT: AtomFn = |args, context, parent_span| {
     )
 };
 
+// ============================================================================
+// REGISTRATION: Atom registry population
+// ============================================================================
+
 #[cfg(any(test, feature = "test-atom", debug_assertions))]
 /// Registers all standard atoms in the given registry.
 pub fn register_std_atoms(registry: &mut AtomRegistry) {
+    // Core atoms
     registry.register("core/set!", ATOM_CORE_SET);
     registry.register("core/get", ATOM_CORE_GET);
     registry.register("core/del!", ATOM_CORE_DEL);
+
+    // Arithmetic atoms
     registry.register("+", ATOM_ADD);
     registry.register("-", ATOM_SUB);
     registry.register("*", ATOM_MUL);
     registry.register("/", ATOM_DIV);
     registry.register("mod", ATOM_MOD);
+
+    // Comparison atoms
     registry.register("eq?", ATOM_EQ);
     registry.register("gt?", ATOM_GT);
     registry.register("lt?", ATOM_LT);
     registry.register("gte?", ATOM_GTE);
     registry.register("lte?", ATOM_LTE);
+
+    // Logic atoms
     registry.register("not", ATOM_NOT);
-    registry.register("do", ATOM_DO);
+
+    // List and string atoms
     registry.register("list", ATOM_LIST);
     registry.register("len", ATOM_LEN);
+    registry.register("core/str+", ATOM_CORE_STR_PLUS);
+    registry.register("apply", ATOM_APPLY);
+
+    // Control flow atoms
+    registry.register("do", ATOM_DO);
     registry.register("error", ATOM_ERROR);
+
+    // I/O atoms
     registry.register("print", ATOM_PRINT);
     registry.register("core/print", ATOM_PRINT);
 }

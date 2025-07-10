@@ -8,6 +8,9 @@
 
 use crate::atoms::{self, AtomRegistry};
 use crate::macros::{self, MacroRegistry};
+use crate::macros::{load_macros_from_file, MacroDef, MacroEnv};
+use crate::syntax::error::{macro_error, SutraError};
+use std::collections::HashMap;
 
 /// Builds and returns a fully populated atom registry with all standard atoms registered.
 ///
@@ -40,4 +43,68 @@ pub fn build_default_macro_registry() -> MacroRegistry {
     let mut registry = MacroRegistry::new();
     macros::std::register_std_macros(&mut registry);
     registry
+}
+
+/// Builds and returns the canonical macro environment (MacroEnv) for the Sutra engine.
+///
+/// This function registers all core/built-in macros and loads all standard macros from
+/// `src/macros/macros.sutra`. It is the single source of truth for macro environment
+/// construction and must be used by all entrypoints (CLI, library, tests).
+///
+/// # Example
+/// ```
+/// use sutra::runtime::registry::build_canonical_macro_env;
+/// let env = build_canonical_macro_env().expect("Macro environment should build successfully");
+/// assert!(env.user_macros.contains_key("str+"));
+/// ```
+///
+/// # Errors
+/// Returns a `SutraError` if the standard macro file cannot be loaded or parsed.
+///
+/// # Safety
+/// This function is pure and has no side effects. All state is explicit.
+pub fn build_canonical_macro_env() -> Result<MacroEnv, SutraError> {
+    // 1. Register all core/built-in macros
+    let mut core_registry = MacroRegistry::new();
+    macros::std::register_std_macros(&mut core_registry);
+    #[cfg(any(test, feature = "test-atom", debug_assertions))]
+    {
+        // Register test-only macros here if/when they exist
+        // e.g., macros::test::register_test_macros(&mut core_registry);
+    }
+
+    // 2. Load and register all standard macros from src/macros/macros.sutra
+    let user_macros_path = "src/macros/macros.sutra";
+    let mut user_macros = HashMap::new();
+    match load_macros_from_file(user_macros_path) {
+        Ok(macros) => {
+            for (name, template) in macros {
+                if user_macros.contains_key(&name) {
+                    return Err(macro_error(
+                        format!("Duplicate macro name '{}' in standard macro library.", name),
+                        None,
+                    ));
+                }
+                user_macros.insert(name, MacroDef::Template(template));
+            }
+        }
+        Err(e) => {
+            #[cfg(debug_assertions)]
+            {
+                eprintln!(
+                    "[sutra:build_canonical_macro_env] Failed to load standard macros: {}",
+                    e
+                );
+            }
+            return Err(e);
+        }
+    }
+
+    // 3. Construct MacroEnv
+    let env = MacroEnv {
+        user_macros,
+        core_macros: core_registry.macros,
+        trace: Vec::new(),
+    };
+    Ok(env)
 }

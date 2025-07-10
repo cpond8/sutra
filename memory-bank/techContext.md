@@ -1,37 +1,38 @@
 # Sutra Engine - Technical Context
 
-## Recent Technical Improvements (2025-07-08)
-
-### Atom Standard Library Modernization
-
-**Technical Implementation**:
-
-- Macro-to-Function Conversion: All atom operations now use direct function calls instead of macros, improving maintainability and debuggability.
-- Error construction helpers: `arity_error()`, `type_error()`, `validation_error()`
-- Type alias for consistency: `pub type AtomResult = Result<(Value, World), SutraError>`
-- Evaluation helpers: `eval_binary_numeric_op()`, `eval_nary_numeric_op()`, etc.
-- Preserved context macro: `sub_eval_context!` for safe context management
-
 ## Technology Stack
 
-- **Language**: Rust (memory safety, performance, type system)
-- **Key dependencies**: im (immutable data), pest (PEG parser), rand, serde, clap, termcolor, difference, walkdir
+**Core Language**: Rust - Memory safety, performance, cross-platform support, zero-cost abstractions.
 
-## Technical Constraints
-
-- Pure functions and immutability
-- Modular, testable codebase
-- No global state except explicit world mutations
+**Key Dependencies**: `im` (persistent data structures), `pest` (PEG parser), `rand` (RNG), `serde` (serialization), `clap` (CLI), `termcolor` (terminal output), `difference` (text diffs), `walkdir` (directory traversal).
 
 ## Project Structure
 
-- `src/` – core modules (syntax, ast, atoms, macros, runtime, cli)
-- `tests/` – protocol-compliant .sutra scripts, test runner utilities
-- `debug/` – macro investigation files
-- `docs/` – architecture and design docs
-- `memory-bank/` – living documentation
+```
+sutra/
+├── src/
+│   ├── syntax/      # Parsing, error handling, validation
+│   ├── ast/         # AST types and span tracking
+│   ├── atoms/       # Core atom implementations
+│   ├── macros/      # Macro system and stdlib
+│   ├── runtime/     # Evaluation engine and world state
+│   ├── cli/         # CLI logic and argument parsing
+│   └── test_utils.rs # Centralized test utilities
+├── tests/
+│   ├── scripts/     # Protocol-compliant .sutra test scripts
+│   └── *.rs         # Rust integration tests
+```
 
-## Reference
+## Technical Architecture
 
-- See `systemPatterns.md` for architecture
-- See `progress.md` for implementation status
+**Data Structures**: AST as recursive enum with span information, World State as persistent HashMap with path-based addressing, Values as tagged union with direct JSON mapping.
+
+**Parsing**: Unified PEG parser with `pest`, handles s-expression and brace-block syntax.
+
+**Evaluation**: Tail-call optimized iterative loop, enables unbounded recursion.
+
+**Performance**: Sub-millisecond evaluation, minimal allocation, efficient serialization.
+
+**Testing**: Protocol-compliant `.sutra` scripts in `tests/scripts/` with file-based test runner in `tests/common.rs`.
+
+**Development**: Standard Rust/Cargo toolchain with GitHub Actions CI/CD.

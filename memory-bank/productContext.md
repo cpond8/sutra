@@ -1,29 +1,26 @@
-# Sutra Engine – Product Context
+# Sutra Engine - Product Context
 
-## Purpose
+## Problems Being Solved
 
-Sutra addresses the limitations of current game and narrative engines by providing a compositional, transparent, and extensible substrate for interactive systems.
+**Rigid Narrative Systems**: Current engines bake in specific narrative patterns, constraining authors to predetermined structures.
 
-## Problems Solved
+**Non-Compositional Game Logic**: Features implemented as monolithic systems, leading to feature bloat and brittle architectures.
 
-- Rigid, inflexible narrative systems
-- Non-compositional game logic
-- Poor authoring transparency
-- Limited extensibility
+**Poor Authoring Transparency**: Authors cannot inspect, debug, or understand content processing.
+
+**Limited Extensibility**: Adding features requires core modifications or forking.
 
 ## Product Goals
 
 - Empower authors to build any narrative or simulation system
-- Lower the barrier to experimentation
-- Provide full transparency into authoring and debugging
-- Enable robust, testable, and maintainable content
+- Lower barrier to experimentation through compositional systems
+- Provide full transparency into authoring, debugging, and state changes
+- Enable robust, testable, maintainable content through pure functions
 
 ## User Experience Principles
 
-- Compositionality, transparency, extensibility, minimalism, portability
-
-## Reference
-
-- See `projectbrief.md` for vision and scope
-- See `systemPatterns.md` for architecture
-- See `activeContext.md` for current work focus
+- **Compositionality**: Build from small, orthogonal primitives
+- **Transparency**: All computation and state inspectable
+- **Extensibility**: Add atoms/macros without core modifications
+- **Minimalism**: Engine exposes only necessary features
+- **Portability**: Works across platforms and frontends

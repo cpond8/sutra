@@ -1,18 +1,24 @@
 ---
 status: authoritative
-last-reviewed: 2024-07-03
+last-reviewed: 2024-07-09
 summary: Canonical language specification, always in sync with the implementation.
 ---
 
 # Sutra Language Specification
 
-**LAST EDITED: 2025-07-02**
+> **Canonical Reference Notice (2024-07-09):**
+>
+> The canonical reference for the Sutra engine language is **Lisp**, particularly **Scheme**. All language semantics, macro expansion, and test expectations are defined by and validated against canonical Scheme/Lisp behavior. The canonical syntax is the Scheme-inspired s-expression (list-style) language. There are two dialects of the Sutra language: (1) the canonical list-style (s-expression) dialect, and (2) a brace-based authoring dialect for game authors. **All engine, macro, and test logic is specified and validated exclusively in the canonical list-style dialect.**
 
 > **Note:** This document is a living specification, synchronized with the canonical implementation in the codebase. It reflects the actual, implemented state of the language, not a planned or aspirational one.
 
 ---
 
 ## **Changelog**
+
+### **2025-07-09: Canonical Reference Declaration**
+- Declared Lisp (Scheme) as the canonical reference for all Sutra language semantics, macro expansion, and test expectations.
+- Clarified that the canonical syntax is the Scheme-inspired s-expression (list-style) language; the brace-based dialect is for authoring convenience and is not canonical for engine or test purposes.
 
 ### **2025-07-02: Major Synchronization with Codebase**
 
@@ -161,6 +167,147 @@ All basic math/value operations are atoms and always author-facing; no macro wra
 
 > Authors may pass values or `(get path)`.
 > Optional macro for auto-get is allowed, but not required.
+
+---
+
+# Sutra Value Types — Canonical Reference
+
+The Sutra engine supports the following value types at the language level. These types are the only first-class values recognized by the engine and macro system.
+
+| Sutra Type | Example Literal      | Description                                 |
+|------------|---------------------|---------------------------------------------|
+| Nil        | `nil`               | Default/null value; absence of a value      |
+| Number     | `42`, `3.14`        | 64-bit floating point number                |
+| String     | `"hello"`           | UTF-8 string, double-quoted                 |
+| Bool       | `true`, `false`     | Boolean values                              |
+| List       | `(1 2 "a" true)`     | Ordered, heterogeneous list of values       |
+| Map        | `{foo: 1, bar: 2}`  | Key-value map (keys are strings)            |
+| Path       | `(path player hp)`  | Special type for world state access         |
+
+---
+
+# String Utilities — Canonical Specification
+
+This section documents the canonical string utility macros and atoms available in Sutra. All syntax is prefix, and all macros follow the canonical macro definition form.
+
+## Typecasting to String: `str`
+
+**Purpose:** Converts any value (number, boolean, symbol, etc.) to its string representation.
+
+**Signature:**
+```sutra
+(str x)
+```
+
+**Behavior:**
+- If `x` is already a string, returns it unchanged.
+- If `x` is a number, returns its canonical string form (e.g., `42` → `"42"`).
+- If `x` is a boolean, returns `"true"` or `"false"`.
+- If `x` is a symbol, returns its name as a string.
+- For other types, returns a canonical string representation or raises an error (TBD).
+
+**Status:** Planned
+
+---
+
+## String Concatenation: `str+`
+
+**Purpose:** Concatenates any number of string arguments into a single string.
+
+**Signature:**
+```sutra
+(str+ arg1 arg2 ... argN)
+```
+
+**Behavior:**
+- Accepts two or more arguments.
+- Each argument must be a string (no type coercion for now).
+- Returns a new string that is the concatenation of all arguments, in order.
+- If any argument is not a string, raises a type error (future: will use `str` for coercion).
+
+**Examples:**
+```sutra
+(str+ "foo" "bar")         ; => "foobar"
+(str+ "hello, " "world!")  ; => "hello, world!"
+(str+ "a" "b" "c" "d")     ; => "abcd"
+```
+
+**Status:** Implemented (Priority 1)
+
+---
+
+## String Join with Separator: `join-str+`
+
+**Purpose:** Concatenates any number of string arguments, inserting a separator string between each.
+
+**Signature:**
+```sutra
+(join-str+ sep arg1 arg2 ... argN)
+```
+
+**Behavior:**
+- `sep` is the separator string.
+- All other arguments must be strings (future: will use `str` for coercion).
+- Returns a new string with `sep` inserted between each argument.
+- If any argument is not a string, raises a type error.
+
+**Examples:**
+```sutra
+(join-str+ ", " "a" "b" "c")   ; => "a, b, c"
+(join-str+ "-" "foo" "bar")    ; => "foo-bar"
+```
+
+**Status:** Planned (deferred until after `str+` and `str`)
+
+---
+
+## String Utilities Summary Table
+
+| Macro/Atom   | Signature                  | Purpose                        | Status      |
+|--------------|----------------------------|--------------------------------|-------------|
+| `str`        | `(str x)`                  | Typecast any value to string   | Planned     |
+| `str+`       | `(str+ arg1 ... argN)`     | Concatenate strings            | Implemented |
+| `join-str+`  | `(join-str+ sep a ... n)`  | Join strings with separator    | Planned     |
+
+---
+
+# Macro Environment — Canonical Single Source of Truth (SSOT)
+
+The Sutra engine enforces a single source of truth for macro environment construction. All macro environments (for CLI, test harness, REPL, etc.) are built using a single, canonical function:
+
+**Function:**
+```rust
+build_canonical_macro_env() -> MacroEnv
+```
+
+**Location:**
+- `src/runtime/registry.rs`
+
+**Purpose:**
+- Registers all core/built-in macros.
+- Loads and registers all standard library macros from `src/macros/macros.sutra`.
+- Returns a fully populated `MacroEnv`.
+
+**Usage:**
+- All entrypoints (CLI, test harness, etc.) must use this function to construct the macro environment.
+- No ad-hoc macro loading is permitted elsewhere in the codebase.
+
+**Rationale:**
+- Guarantees that all user-facing and core macros are always available in every code path.
+- Prevents drift, duplication, and accidental omission of standard macros.
+- Greatly simplifies auditing, testing, and onboarding.
+
+**Example:**
+```rust
+let macro_env = build_canonical_macro_env();
+// Use macro_env for macro expansion, validation, and evaluation
+```
+
+**Test:**
+- The test suite includes a check that all expected macros are present in the canonical macro environment.
+
+**Documentation:**
+- This policy is documented here and in `CONTRIBUTING.md`.
 
 ---
 
@@ -1239,5 +1386,59 @@ define (macro-name param1 param2 ... [. variadic-param]) {
 - **Extensibility:** If you ever want to add metadata, docstrings, or type annotations, the parenthesized header is a natural place.
 
 ---
+
+## Variadic Macro Forwarding and Argument Splicing
+
+### Overview
+Sutra's macro system implements canonical Lisp/Scheme-style variadic macro forwarding and argument splicing. This allows macros to accept a variable number of arguments and forward them ergonomically, matching user expectations from other Lisp-family languages.
+
+### Canonical Behavior
+- **Variadic Macro Definition:**
+  - A macro can be defined with a variadic parameter using the `...param` syntax, e.g. `(define (str+ ...args) (core/str+ ...args))`.
+- **Call Position Splicing:**
+  - When a variadic parameter is referenced in call position (i.e., as an argument in a list), the macro expander splices its bound arguments as individual arguments, not as a single list.
+  - Example:
+    ```sutra
+    (define (str+ ...args)
+      (core/str+ ...args))
+    (str+ "a" "b" "c") ; expands to (core/str+ "a" "b" "c")
+    ```
+- **Explicit Spread:**
+  - The spread operator (`...expr`) is supported in call position. If the spread expression evaluates to a list, its elements are spliced into the parent list.
+
+### Edge Cases and Details
+- **Non-call Position:**
+  - If a variadic parameter is used outside of call position (e.g., as a value or in a non-list context), it is substituted as a list, not spliced.
+    ```sutra
+    (define (collect ...items) items)
+    (collect 1 2 3) ; expands to (list 1 2 3)
+    ```
+- **Empty Variadic:**
+  - If no arguments are provided for a variadic parameter, it is substituted as an empty list, and splicing results in no arguments being inserted.
+- **Multiple/Nested Spreads:**
+  - Multiple spreads or nested spreads are handled recursively; all are flattened in call position.
+- **Non-variadic Parameters:**
+  - Non-variadic parameters are substituted as single values. If (improperly) bound to a list, they are also spliced in call position (not recommended).
+
+### User-Facing Summary
+- Macros with variadic parameters behave as expected for both authors and users, supporting idiomatic macro patterns.
+- The macro expander ensures that argument lists are flattened as needed, matching the semantics of Scheme and other Lisps.
+
+### Examples
+```sutra
+;; Variadic macro forwarding
+(define (join sep ...items) (core/join sep ...items))
+(join "," "a" "b" "c") ; expands to (core/join "," "a" "b" "c")
+
+;; Spread operator
+(define (wrap x) (list ...x))
+(wrap (list 1 2 3)) ; expands to (list 1 2 3)
+
+;; Variadic parameter outside call position
+(define (collect ...items) items)
+(collect 1 2 3) ; expands to (list 1 2 3)
+```
+
+See the macro system implementation and tests for further details and edge cases.
 
 

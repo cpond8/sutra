@@ -1,0 +1,4 @@
+abc
+(1 2 3)
+()
+Evaluation error: SutraError { kind: Validation("eval: expected first element must be a symbol naming an atom argument(s), got 3"), span: Some(Span { start: 545, end: 546 }) }

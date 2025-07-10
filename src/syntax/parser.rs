@@ -121,6 +121,8 @@ pub static AST_BUILDERS: Lazy<HashMap<Rule, AstBuilderFn>> = Lazy::new(|| {
     m.insert(Rule::quote, build_quote as AstBuilderFn);
     m.insert(Rule::define_form, build_define_form as AstBuilderFn);
     m.insert(Rule::atom, build_atom as AstBuilderFn);
+    m.insert(Rule::spread_arg, build_spread_arg as AstBuilderFn);
+    m.insert(Rule::list_elem, build_list_elem as AstBuilderFn);
     m
 });
 
@@ -191,13 +193,6 @@ fn build_list(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     )
 }
 
-/// Enum representing the partitioned parameter list: either only required parameters, or required plus a single rest parameter.
-#[derive(Debug)]
-enum ParamListParts<'a> {
-    RequiredOnly(Vec<&'a Pair<'a, Rule>>),
-    RequiredAndRest(Vec<&'a Pair<'a, Rule>>, &'a Pair<'a, Rule>),
-}
-
 /// Parses a parameter list into an Expr::ParamList using a maximally functional, type-driven approach.
 ///
 /// # Invariants
@@ -211,81 +206,88 @@ enum ParamListParts<'a> {
 /// - Non-symbol after ...: error.
 /// - Invalid parameter type: error.
 ///
+/// # Safety
+/// This function assumes the CST structure matches the grammar. If the grammar changes, review this logic.
+///
 /// # Example
 /// ```ignore
 /// let pair = SutraParser::parse(Rule::param_list, "x y ...rest").unwrap().next().unwrap();
 /// let result = build_param_list(pair).unwrap();
 /// assert!(matches!(result.value, Expr::ParamList(_)));
 /// ```
+// Helper: construct param_list errors
+fn param_list_error(msg: impl Into<String>, span: Span) -> SutraError {
+    malformed_ast_error(msg.into(), Some(span))
+}
+// Helper: handle spread_arg
+fn extract_spread_symbol(item: &Pair<Rule>) -> Result<String, SutraError> {
+    let mut spread_inner = item.clone().into_inner();
+    let symbol_pair = spread_inner.next().ok_or_else(|| {
+        param_list_error(
+            "spread_arg: missing symbol after '...'",
+            get_span(item),
+        )
+    })?;
+    as_symbol(&symbol_pair)
+}
+
 fn build_param_list(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
     let span = get_span(&pair);
     let mut inner = pair.clone().into_inner();
 
     // The param_list rule contains a single param_items rule
     let param_items_pair = inner.next().ok_or_else(|| {
-        malformed_ast_error(
-            "param_list: Missing param_items".to_string(),
-            Some(span.clone()),
+        param_list_error(
+            "param_list: Missing param_items",
+            span.clone(),
         )
     })?;
 
-    // Now get the individual symbols from param_items
-    let pairs: Vec<_> = param_items_pair.clone().into_inner().collect();
+    let mut required_params = Vec::new();
+    let mut rest_param = None;
+    let mut found_rest = false;
 
-    let parts = partition_param_list(&pairs, &span)?;
-    let (required, rest) = match parts {
-        ParamListParts::RequiredOnly(req) => (req, None),
-        ParamListParts::RequiredAndRest(req, rest) => (req, Some(rest)),
-    };
-    let required_syms = required
-        .into_iter()
-        .map(as_symbol)
-        .collect::<Result<Vec<_>, _>>()?;
-    let rest_sym = rest.map(as_symbol).transpose()?;
+    for item in param_items_pair.into_inner() {
+        let item_span = get_span(&item);
+        match item.as_rule() {
+            Rule::symbol if !found_rest => {
+                // Regular parameter
+                required_params.push(as_symbol(&item)?);
+            }
+            Rule::spread_arg => {
+                if found_rest {
+                    return Err(param_list_error(
+                        "Multiple variadic ('...') parameters in param_list",
+                        item_span,
+                    ));
+                }
+                rest_param = Some(extract_spread_symbol(&item)?);
+                found_rest = true;
+            }
+            Rule::symbol if found_rest => {
+                return Err(param_list_error(
+                    "Required parameter after variadic ('...') parameter",
+                    item_span,
+                ));
+            }
+            rule => {
+                return Err(param_list_error(
+                    format!("Unexpected rule in param_items: {:?}", rule),
+                    item_span,
+                ));
+            }
+        }
+    }
+
     Ok(WithSpan {
         value: Expr::ParamList(crate::ast::ParamList {
-            required: required_syms,
-            rest: rest_sym,
+            required: required_params,
+            rest: rest_param,
             span: span.clone(),
         }),
         span,
     })
-}
-
-/// Partitions the parameter list into required and rest parameters using iterator combinators and type-driven invariants.
-/// Returns a ParamListParts enum, making illegal states unrepresentable.
-fn partition_param_list<'a>(
-    pairs: &'a [Pair<Rule>],
-    span: &Span,
-) -> Result<ParamListParts<'a>, SutraError> {
-    match pairs.iter().position(|p| p.as_str() == "...") {
-        Some(idx) => {
-            // "..." must be followed by a symbol and be the last two elements
-            if idx + 2 != pairs.len() {
-                return Err(parse_error(
-                    "Required parameter after ...rest in parameter list",
-                    Some(span.clone()),
-                ));
-            }
-            let rest_pair = pairs.get(idx + 1).ok_or_else(|| {
-                parse_error(
-                    "Expected symbol after ... in parameter list",
-                    Some(span.clone()),
-                )
-            })?;
-            if rest_pair.as_rule() != Rule::symbol {
-                return Err(parse_error(
-                    "Expected symbol after ... in parameter list",
-                    Some(span.clone()),
-                ));
-            }
-            Ok(ParamListParts::RequiredAndRest(
-                pairs[..idx].iter().collect(),
-                rest_pair,
-            ))
-        }
-        None => Ok(ParamListParts::RequiredOnly(pairs.iter().collect())),
-    }
+    // TODO: Add more tests for edge cases (multiple ..., misplaced ..., etc.)
 }
 
 /// Converts a Pair<Rule> to a symbol string, erroring if not a symbol.
@@ -402,23 +404,23 @@ fn unescape_string(pair: Pair<Rule>) -> Result<String, SutraError> {
     let mut result = String::with_capacity(inner_str.len());
     let mut chars = inner_str.chars();
     while let Some(c) = chars.next() {
-        if c == '\\' {
-            match chars.next() {
-                Some('n') => result.push('\n'),
-                Some('t') => result.push('\t'),
-                Some('\\') => result.push('\\'),
-                Some('"') => result.push('"'),
-                // If we encounter an invalid escape, we just push the characters
-                // literally. The grammar should prevent this, but this is safer.
-                Some(other) => {
-                    result.push('\\');
-                    result.push(other);
-                }
-                // A dangling escape at the end of a string.
-                None => result.push('\\'),
-            }
-        } else {
+        if c != '\\' {
             result.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('n') => result.push('\n'),
+            Some('t') => result.push('\t'),
+            Some('\\') => result.push('\\'),
+            Some('"') => result.push('"'),
+            // If we encounter an invalid escape, we just push the characters
+            // literally. The grammar should prevent this, but this is safer.
+            Some(other) => {
+                result.push('\\');
+                result.push(other);
+            }
+            // A dangling escape at the end of a string.
+            None => result.push('\\'),
         }
     }
     Ok(result)
@@ -639,4 +641,31 @@ fn build_define_form(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
         ),
         span,
     })
+}
+
+fn build_spread_arg(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
+    let span = get_span(&pair);
+    let mut inner = pair.clone().into_inner();
+    let symbol_pair = inner.next().ok_or_else(|| {
+        malformed_ast_error(
+            format!("Malformed spread_arg: missing symbol (input: '{}')", pair.as_str()),
+            Some(span.clone()),
+        )
+    })?;
+    let symbol_expr = build_symbol(symbol_pair)?;
+    Ok(WithSpan {
+        value: Expr::Spread(Box::new(symbol_expr)),
+        span,
+    })
+}
+
+fn build_list_elem(pair: Pair<Rule>) -> Result<WithSpan<Expr>, SutraError> {
+    let mut inner = pair.clone().into_inner();
+    let sub = inner.next().ok_or_else(|| {
+        malformed_ast_error(
+            format!("Empty list_elem pair (input: '{}')", pair.as_str()),
+            Some(get_span(&pair)),
+        )
+    })?;
+    build_ast_from_pair(sub)
 }

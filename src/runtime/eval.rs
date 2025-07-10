@@ -99,6 +99,12 @@ pub fn eval_expr(
             else_branch,
             ..
         } => eval_if(condition, then_branch, else_branch, context),
+        Expr::Spread(_) => Err(sutra_error!(
+            general,
+            Some(expr.span.clone()),
+            expr,
+            "Spread argument not allowed outside of call position (list context)"
+        )),
     }
 }
 
@@ -145,7 +151,32 @@ fn eval_list(
             "first element must be a symbol naming an atom"
         ));
     };
-    context.call_atom(atom_name, tail, span)
+    // Flatten spread arguments in tail
+    let mut flat_tail = Vec::new();
+    for arg in tail {
+        match &arg.value {
+            Expr::Spread(expr) => {
+                // Evaluate the spread expression in the current context
+                let (val, _) = eval_expr(expr, context)?;
+                if let Value::List(items) = val {
+                    for v in items {
+                        flat_tail.push(WithSpan { value: Expr::from(v), span: arg.span.clone() });
+                    }
+                } else {
+                    return Err(sutra_error!(
+                        type,
+                        Some(arg.span.clone()),
+                        arg,
+                        "spread",
+                        "List",
+                        &val
+                    ));
+                }
+            }
+            _ => flat_tail.push(arg.clone()),
+        }
+    }
+    context.call_atom(atom_name, &flat_tail, span)
 }
 
 /// Helper for evaluating Expr::Quote arms.
@@ -169,6 +200,12 @@ fn eval_quote(
                         Some(inner.span.clone()),
                         inner,
                         "Cannot evaluate parameter list (ParamList AST node) inside quote"
+                    )),
+                    Expr::Spread(_) => Err(sutra_error!(
+                        general,
+                        Some(e.span.clone()),
+                        e,
+                        "Spread argument not allowed inside quote"
                     )),
                     _ => Ok(Value::Nil),
                 })
@@ -228,6 +265,12 @@ fn eval_quote(
             Some(parent_expr.span.clone()),
             parent_expr,
             "Cannot evaluate parameter list (ParamList AST node) at runtime"
+        )),
+        Expr::Spread(_) => Err(sutra_error!(
+            general,
+            Some(inner.span.clone()),
+            inner,
+            "Spread argument not allowed inside quote"
         )),
     }
 }

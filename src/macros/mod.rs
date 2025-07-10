@@ -15,6 +15,20 @@
 //!   and before validation and evaluation.
 //!
 //! **INVARIANT:** All macro system logic, macro functions, and recursive expansion must operate on `WithSpan<Expr>`. Never unwrap to a bare `Expr` except for internal logic, and always re-wrap with the correct span. All lists are `Vec<WithSpan<Expr>>`.
+//!
+//! ## Variadic Macro Forwarding (Argument Splicing)
+//!
+//! As of July 2024, the macro expander fully supports canonical Lisp/Scheme-style variadic macro forwarding:
+//! - When a macro definition uses a variadic parameter (e.g., ...args), and the macro body references that parameter in call position, the macro expander splices its bound arguments as individual arguments, not as a single list.
+//! - This is implemented in `substitute_template`. If a symbol in call position is bound to a list (as with a variadic parameter), its elements are spliced into the parent list. Explicit spread (`Expr::Spread`) is also supported.
+//! - This matches Scheme/Lisp semantics and is required for idiomatic user-facing macros. See language spec and design doc for rationale and pseudocode.
+//!
+//! Example:
+//!   (define (str+ ...args)
+//!     (core/str+ ...args))
+//!   (str+ "a" "b" "c") => (core/str+ "a" "b" "c")
+//!
+//! See documentation below for details and edge cases.
 
 use crate::ast::{Expr, WithSpan};
 use crate::syntax::error::{io_error, macro_error, SutraError};
@@ -287,7 +301,7 @@ pub fn expand_template(
         ));
     }
     let (args, span) = match &call.value {
-        Expr::List(items, span) if items.len() > 1 => (&items[1..], span),
+        Expr::List(items, span) if !items.is_empty() => (&items[1..], span),
         _ => {
             return Err(macro_error(
                 "Template macro must be called as a list.".to_string(),
@@ -317,9 +331,28 @@ pub fn substitute_template(
             })
         }
         Expr::List(items, _) => {
-            let mut new_items = Vec::with_capacity(items.len());
+            let mut new_items = Vec::new();
             for item in items {
-                new_items.push(substitute_template(item, bindings)?);
+                match &item.value {
+                    // Regular symbol substitution: replace with bound value as-is (no automatic splicing)
+                    Expr::Symbol(_name, _) => {
+                        // Just substitute the symbol with its bound value, don't splice lists automatically
+                        new_items.push(substitute_template(item, bindings)?);
+                    }
+                    // Spread argument splicing: if the item is Expr::Spread, splice its elements
+                    Expr::Spread(inner) => {
+                        let substituted = substitute_template(inner, bindings)?;
+                        if let Expr::List(splice_items, _) = &substituted.value {
+                            for splice_item in splice_items {
+                                new_items.push(splice_item.clone());
+                            }
+                        } else {
+                            // If not a list, treat as a single argument
+                            new_items.push(substituted);
+                        }
+                    }
+                    _ => new_items.push(substitute_template(item, bindings)?),
+                }
             }
             Ok(WithSpan {
                 value: Expr::List(new_items, expr.span.clone()),

@@ -67,3 +67,9 @@
   (= (len lst) 0))
 
 ;; TODO: Add/verify helpers: car, cdr, cadr, null?, error, len, eq?, not, =
+
+;; String concatenation macro: str+
+;; Concatenates any number of string arguments into a single string.
+;; Usage: (str+ "foo" "bar" "baz") => "foobarbaz"
+(define (str+ ...args)
+  (core/str+ ...args))

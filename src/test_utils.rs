@@ -3,11 +3,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Shared utilities for file-based testing in the Sutra Engine test suite.
-///
-/// This module provides a protocol-compliant test runner that executes .sutra
-/// scripts and compares their output to corresponding .expected files.
-/// All tests should use this approach for consistency and maintainability.
+// Shared utilities for file-based testing in the Sutra Engine test suite.
+//
+// This module provides a protocol-compliant test runner that executes .sutra
+// scripts and compares their output to corresponding .expected files.
+// All tests should use this approach for consistency and maintainability.
 
 /// Result type for test operations
 pub type TestResult = Result<(), Box<dyn std::error::Error>>;
