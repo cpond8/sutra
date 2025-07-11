@@ -15,7 +15,7 @@
 //! ## Changelog
 //! - 2025-07-05: Modular validator system by AI. Rationale: Canonical modular pipeline contract.
 
-use crate::ast::{Expr as SutraAstNode, Span as SutraSpan, WithSpan};
+use crate::ast::{AstNode, Expr as SutraAstNode, Span as SutraSpan};
 use serde::{Deserialize, Serialize};
 
 /// Severity of a diagnostic.
@@ -37,7 +37,7 @@ pub struct SutraDiagnostic {
 /// Trait for all validators (built-in and user-defined).
 pub trait SutraValidator: Send + Sync {
     /// Validates the macroexpanded AST. Returns a list of diagnostics.
-    fn validate(&self, ast: &WithSpan<SutraAstNode>) -> Vec<SutraDiagnostic>;
+    fn validate(&self, ast: &AstNode) -> Vec<SutraDiagnostic>;
 }
 
 /// Registry for validator rules (built-in and user-defined).
@@ -55,7 +55,7 @@ impl ValidatorRegistry {
         self.validators.push(validator);
     }
     /// Runs all registered validators and collects diagnostics.
-    pub fn validate_all(&self, ast: &WithSpan<SutraAstNode>) -> Vec<SutraDiagnostic> {
+    pub fn validate_all(&self, ast: &AstNode) -> Vec<SutraDiagnostic> {
         self.validators
             .iter()
             .flat_map(|v| v.validate(ast))
@@ -72,9 +72,9 @@ impl Default for ValidatorRegistry {
 /// Example: Validator that checks for empty lists.
 pub struct NoEmptyListValidator;
 impl SutraValidator for NoEmptyListValidator {
-    fn validate(&self, ast: &WithSpan<SutraAstNode>) -> Vec<SutraDiagnostic> {
+    fn validate(&self, ast: &AstNode) -> Vec<SutraDiagnostic> {
         let mut diags = Vec::new();
-        match &ast.value {
+        match &*ast.value {
             SutraAstNode::List(items, _) if items.is_empty() => {
                 diags.push(SutraDiagnostic {
                     severity: SutraSeverity::Warning,

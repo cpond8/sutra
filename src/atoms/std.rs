@@ -13,6 +13,7 @@
 //!   Complex operations are built by composing atoms, not by creating complex atoms.
 
 use crate::ast::value::Value;
+use crate::ast::AstNode;
 use crate::ast::{Expr, WithSpan};
 use crate::atoms::{AtomFn, AtomRegistry};
 use crate::runtime::eval::{eval_expr, EvalContext};
@@ -284,7 +285,14 @@ pub const ATOM_MIN: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_MAX: AtomFn = |args, context, parent_span| {
-    eval_nary_numeric_op(args, context, parent_span, f64::NEG_INFINITY, f64::max, "max")
+    eval_nary_numeric_op(
+        args,
+        context,
+        parent_span,
+        f64::NEG_INFINITY,
+        f64::max,
+        "max",
+    )
 };
 
 // ----------------------------------------------------------------------------
@@ -341,7 +349,7 @@ pub const ATOM_GT: AtomFn = |args, context, parent_span| {
 /// Returns true if a < b.
 ///
 /// Usage: (lt? <a> <b>)
-///   - <a>, <b>: Numbers
+///   - <a>, <b: Numbers
 ///
 ///   Returns: Bool
 ///
@@ -588,7 +596,9 @@ pub const ATOM_CORE_PUSH: AtomFn = |args, context, parent_span| {
                         message: format!("Cannot push to non-list value at path '{}'", path),
                         expanded_code: format!("(core/push! {} {:?})", path, value),
                         original_code: None,
-                        suggestion: Some("Ensure the path contains a list before pushing".to_string()),
+                        suggestion: Some(
+                            "Ensure the path contains a list before pushing".to_string(),
+                        ),
                     }),
                     span: Some(parent_span.clone()),
                 });
@@ -630,7 +640,9 @@ pub const ATOM_CORE_PULL: AtomFn = |args, context, parent_span| {
                         message: format!("Cannot pull from non-list value at path '{}'", path),
                         expanded_code: format!("(core/pull! {})", path),
                         original_code: None,
-                        suggestion: Some("Ensure the path contains a list before pulling".to_string()),
+                        suggestion: Some(
+                            "Ensure the path contains a list before pulling".to_string(),
+                        ),
                     }),
                     span: Some(parent_span.clone()),
                 });
@@ -663,9 +675,9 @@ pub const ATOM_RAND: AtomFn = |args, context, parent_span| {
     }
 
     // Generate pseudo-random number using system time as seed
-    use std::time::{SystemTime, UNIX_EPOCH};
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
     let nanos = duration.as_nanos();
@@ -734,7 +746,12 @@ pub const ATOM_CORE_STR_PLUS: AtomFn = |args, context, parent_span| {
 /// Pure, does not mutate state. All state is explicit.
 pub const ATOM_APPLY: AtomFn = |args, context, parent_span| {
     if args.len() < 2 {
-        return Err(arity_error(Some(parent_span.clone()), args, "apply", "at least 2"));
+        return Err(arity_error(
+            Some(parent_span.clone()),
+            args,
+            "apply",
+            "at least 2",
+        ));
     }
 
     let func_expr = &args[0];
@@ -814,12 +831,13 @@ pub const ATOM_ERROR: AtomFn = |args, context, parent_span| {
             Err(SutraError {
                 kind: SutraErrorKind::Eval(EvalError {
                     message: msg,
-                    expanded_code: WithSpan {
-                        value: Expr::List(args.to_vec(), parent_span.clone()),
-                        span: parent_span.clone(),
-                    }
-                    .value
-                    .pretty(),
+                    expanded_code: format!(
+                        "{:?}",
+                        WithSpan {
+                            value: Expr::List(args.to_vec(), parent_span.clone()),
+                            span: parent_span.clone(),
+                        }
+                    ), // FIX: use format! to get String, not .into()
                     original_code: None,
                     suggestion: None,
                 }),
@@ -863,6 +881,12 @@ pub const ATOM_PRINT: AtomFn = |args, context, parent_span| {
     )
 };
 
+// --- FIX: Arc migration issues ---
+// 1. Wrap Expr in .into() where AstNode expects Arc<Expr>.
+// 2. Update Vec<WithSpan<Expr>> to Vec<AstNode> (WithSpan<Arc<Expr>>).
+// 3. Update pattern matches and dereferences to work with Arc<Expr>.
+// 4. Update function signatures and calls to use AstNode.
+// 5. Add comments for non-obvious changes.
 // ============================================================================
 // INFRASTRUCTURE/TRAITS - TYPE EXTRACTION AND ARGUMENT EVALUATION
 // ============================================================================
@@ -871,7 +895,7 @@ pub const ATOM_PRINT: AtomFn = |args, context, parent_span| {
 trait ExtractValue<T> {
     fn extract(
         &self,
-        args: &[WithSpan<Expr>],
+        args: &[AstNode],
         arg_index: usize,
         parent_span: &crate::ast::Span,
         name: &str,
@@ -882,7 +906,7 @@ trait ExtractValue<T> {
 impl ExtractValue<f64> for Value {
     fn extract(
         &self,
-        args: &[WithSpan<Expr>],
+        args: &[AstNode],
         arg_index: usize,
         parent_span: &crate::ast::Span,
         name: &str,
@@ -904,7 +928,7 @@ impl ExtractValue<f64> for Value {
 impl ExtractValue<bool> for Value {
     fn extract(
         &self,
-        args: &[WithSpan<Expr>],
+        args: &[AstNode],
         arg_index: usize,
         parent_span: &crate::ast::Span,
         name: &str,
@@ -926,7 +950,7 @@ impl ExtractValue<bool> for Value {
 impl ExtractValue<crate::runtime::path::Path> for Value {
     fn extract(
         &self,
-        args: &[WithSpan<Expr>],
+        args: &[AstNode],
         arg_index: usize,
         parent_span: &crate::ast::Span,
         name: &str,
@@ -956,7 +980,7 @@ impl ExtractValue<crate::runtime::path::Path> for Value {
 /// Creates an arity error for atoms with consistent messaging
 pub fn arity_error(
     span: Option<crate::ast::Span>,
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     name: &str,
     expected: impl ToString,
 ) -> SutraError {
@@ -966,7 +990,7 @@ pub fn arity_error(
 /// Creates a type error for atoms with consistent messaging
 pub fn type_error(
     span: Option<crate::ast::Span>,
-    arg: &WithSpan<Expr>,
+    arg: &AstNode,
     name: &str,
     expected: &str,
     found: &Value,
@@ -977,7 +1001,7 @@ pub fn type_error(
 /// Creates a validation error for atoms with consistent messaging
 pub fn validation_error(
     span: Option<crate::ast::Span>,
-    arg: &WithSpan<Expr>,
+    arg: &AstNode,
     message: &str,
 ) -> SutraError {
     eval_general_error(span, arg, message)
@@ -1013,7 +1037,7 @@ use sub_eval_context;
 
 /// Evaluates all arguments in sequence, threading world state through each evaluation.
 fn eval_args(
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     context: &mut EvalContext<'_, '_>,
 ) -> Result<(Vec<Value>, crate::runtime::world::World), SutraError> {
     args.iter().try_fold(
@@ -1029,7 +1053,7 @@ fn eval_args(
 
 /// Generic argument evaluation with compile-time arity checking
 fn eval_n_args<const N: usize>(
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     context: &mut EvalContext<'_, '_>,
     parent_span: &crate::ast::Span,
     name: &str,
@@ -1049,7 +1073,8 @@ fn eval_n_args<const N: usize>(
     }
 
     // Convert Vec to array - this is safe because we checked length
-    let values_array: [Value; N] = values.try_into()
+    let values_array: [Value; N] = values
+        .try_into()
         .map_err(|_| arity_error(Some(parent_span.clone()), args, name, N))?;
 
     Ok((values_array, world))
@@ -1057,7 +1082,7 @@ fn eval_n_args<const N: usize>(
 
 /// Evaluates a single argument and returns the value and world
 fn eval_single_arg(
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     context: &mut EvalContext<'_, '_>,
     parent_span: &crate::ast::Span,
     name: &str,
@@ -1068,7 +1093,7 @@ fn eval_single_arg(
 
 /// Evaluates two arguments and returns both values and the final world
 fn eval_binary_args(
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     context: &mut EvalContext<'_, '_>,
     parent_span: &crate::ast::Span,
     name: &str,
@@ -1085,7 +1110,7 @@ fn eval_binary_args(
 fn extract_numbers(
     val1: &Value,
     val2: &Value,
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     parent_span: &crate::ast::Span,
     name: &str,
 ) -> Result<(f64, f64), SutraError> {
@@ -1097,7 +1122,7 @@ fn extract_numbers(
 /// Extracts a single number from a value with type checking using the trait
 fn extract_number(
     val: &Value,
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     parent_span: &crate::ast::Span,
     name: &str,
 ) -> Result<f64, SutraError> {
@@ -1107,7 +1132,7 @@ fn extract_number(
 /// Extracts a boolean from a value with type checking using the trait
 fn extract_bool(
     val: &Value,
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     parent_span: &crate::ast::Span,
     name: &str,
 ) -> Result<bool, SutraError> {
@@ -1117,7 +1142,7 @@ fn extract_bool(
 /// Extracts a path from a value with type checking using the trait
 fn extract_path(
     val: &Value,
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     parent_span: &crate::ast::Span,
     name: &str,
 ) -> Result<crate::runtime::path::Path, SutraError> {
@@ -1131,7 +1156,7 @@ fn extract_path(
 /// Evaluates a binary numeric operation atomically, with optional validation.
 /// Handles arity, type checking, and error construction.
 fn eval_binary_numeric_op<F, V>(
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     context: &mut EvalContext<'_, '_>,
     parent_span: &crate::ast::Span,
     op: F,
@@ -1156,7 +1181,7 @@ where
 /// Evaluates an n-ary numeric operation (e.g., sum, product).
 /// Handles arity, type checking, and error construction.
 fn eval_nary_numeric_op<F>(
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     context: &mut EvalContext<'_, '_>,
     parent_span: &crate::ast::Span,
     init: f64,
@@ -1190,7 +1215,7 @@ where
 /// Evaluates a unary boolean operation.
 /// Handles arity, type checking, and error construction.
 fn eval_unary_bool_op<F>(
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     context: &mut EvalContext<'_, '_>,
     parent_span: &crate::ast::Span,
     op: F,
@@ -1207,7 +1232,7 @@ where
 /// Evaluates a unary path operation (get, del).
 /// Handles arity, type checking, and error construction.
 fn eval_unary_path_op<F>(
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     context: &mut EvalContext<'_, '_>,
     parent_span: &crate::ast::Span,
     op: F,
@@ -1227,7 +1252,7 @@ where
 /// Evaluates a binary path operation (set).
 /// Handles arity, type checking, and error construction.
 fn eval_binary_path_op<F>(
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     context: &mut EvalContext<'_, '_>,
     parent_span: &crate::ast::Span,
     op: F,
@@ -1248,7 +1273,7 @@ where
 /// Evaluates a unary operation that takes any value.
 /// Handles arity and error construction.
 fn eval_unary_value_op<F>(
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     context: &mut EvalContext<'_, '_>,
     parent_span: &crate::ast::Span,
     op: F,
@@ -1273,17 +1298,17 @@ where
 /// Evaluates normal arguments for apply (all except the last argument).
 /// Returns the evaluated arguments as expressions and the final world state.
 fn eval_apply_normal_args(
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     context: &mut EvalContext<'_, '_>,
-) -> Result<(Vec<WithSpan<Expr>>, crate::runtime::world::World), SutraError> {
+) -> Result<(Vec<AstNode>, crate::runtime::world::World), SutraError> {
     let mut evald_args = Vec::with_capacity(args.len());
     let mut world = context.world.clone();
     for arg in args {
         let mut sub_context = sub_eval_context!(context, &world);
         let (val, next_world) = eval_expr(arg, &mut sub_context)?;
         evald_args.push(WithSpan {
-            value: Expr::from(val),
-            span: arg.span.clone()
+            value: Expr::from(val).into(), // FIX: wrap Expr in Arc via .into()
+            span: arg.span.clone(),
         });
         world = next_world;
     }
@@ -1293,10 +1318,10 @@ fn eval_apply_normal_args(
 /// Evaluates the list argument for apply (the last argument).
 /// Returns the list items as expressions and the final world state.
 fn eval_apply_list_arg(
-    arg: &WithSpan<Expr>,
+    arg: &AstNode,
     context: &mut EvalContext<'_, '_>,
     parent_span: &crate::ast::Span,
-) -> Result<(Vec<WithSpan<Expr>>, crate::runtime::world::World), SutraError> {
+) -> Result<(Vec<AstNode>, crate::runtime::world::World), SutraError> {
     let mut sub_context = sub_eval_context!(context, context.world);
     let (list_val, world) = eval_expr(arg, &mut sub_context)?;
     let Value::List(items) = list_val else {
@@ -1311,8 +1336,8 @@ fn eval_apply_list_arg(
     let list_items = items
         .into_iter()
         .map(|v| WithSpan {
-            value: Expr::from(v),
-            span: parent_span.clone()
+            value: Expr::from(v).into(), // FIX: wrap Expr in Arc via .into()
+            span: parent_span.clone(),
         })
         .collect();
     Ok((list_items, world))
@@ -1320,17 +1345,17 @@ fn eval_apply_list_arg(
 
 /// Builds the call expression for apply by combining function, normal args, and list args.
 fn build_apply_call_expr(
-    func_expr: &WithSpan<Expr>,
-    normal_args: Vec<WithSpan<Expr>>,
-    list_args: Vec<WithSpan<Expr>>,
+    func_expr: &AstNode,
+    normal_args: Vec<AstNode>,
+    list_args: Vec<AstNode>,
     parent_span: &crate::ast::Span,
-) -> WithSpan<Expr> {
+) -> AstNode {
     let mut call_items = Vec::with_capacity(1 + normal_args.len() + list_args.len());
     call_items.push(func_expr.clone());
     call_items.extend(normal_args);
     call_items.extend(list_args);
     WithSpan {
-        value: Expr::List(call_items, parent_span.clone()),
+        value: Expr::List(call_items, parent_span.clone()).into(), // FIX: wrap Expr in Arc via .into()
         span: parent_span.clone(),
     }
 }

@@ -4,20 +4,21 @@
 //! and edge cases that complement the script-based integration tests.
 //! Specifically targets the kinds of issues that caused the variadic macro bug.
 
-use sutra::ast::{Expr, ParamList, Span, WithSpan};
+use std::sync::Arc;
 use sutra::ast::value::Value;
-use sutra::syntax::error::{eval_arity_error, eval_type_error, eval_general_error};
+use sutra::ast::{AstNode, Expr, ParamList, Span, WithSpan};
 use sutra::macros::check_arity;
+use sutra::syntax::error::{eval_arity_error, eval_general_error, eval_type_error};
 
 #[cfg(test)]
 mod arity_tests {
     use super::*;
 
-        #[test]
+    #[test]
     fn test_enhanced_arity_error_formatting() {
         let span = Span::default();
         let args = vec![WithSpan {
-            value: Expr::Number(1.0, span.clone()),
+            value: Arc::new(Expr::Number(1.0, span.clone())),
             span: span.clone(),
         }];
 
@@ -31,10 +32,10 @@ mod arity_tests {
         assert!(error_msg.contains("number 1")); // The number should be in the message
     }
 
-            #[test]
+    #[test]
     fn test_arity_error_with_no_args() {
         let span = Span::default();
-        let args: Vec<WithSpan<Expr>> = vec![];
+        let args: Vec<AstNode> = vec![];
 
         let error = eval_arity_error(Some(span.clone()), &args, "*", "at least 2");
 
@@ -50,10 +51,12 @@ mod arity_tests {
     #[test]
     fn test_arity_error_with_many_args() {
         let span = Span::default();
-        let args: Vec<WithSpan<Expr>> = (1..=5).map(|i| WithSpan {
-            value: Expr::Number(i as f64, span.clone()),
-            span: span.clone(),
-        }).collect();
+        let args: Vec<AstNode> = (1..=5)
+            .map(|i| WithSpan {
+                value: Arc::new(Expr::Number(i as f64, span.clone())),
+                span: span.clone(),
+            })
+            .collect();
 
         let error = eval_arity_error(Some(span.clone()), &args, "not", "exactly 1");
 
@@ -72,7 +75,7 @@ mod type_error_tests {
     fn test_enhanced_type_error_formatting() {
         let span = Span::default();
         let arg = WithSpan {
-            value: Expr::String("hello".to_string(), span.clone()),
+            value: Arc::new(Expr::String("hello".to_string(), span.clone())),
             span: span.clone(),
         };
         let value = Value::String("hello".to_string());
@@ -89,7 +92,7 @@ mod type_error_tests {
     fn test_type_error_with_conversion_suggestion() {
         let span = Span::default();
         let arg = WithSpan {
-            value: Expr::String("123".to_string(), span.clone()),
+            value: Arc::new(Expr::String("123".to_string(), span.clone())),
             span: span.clone(),
         };
         let value = Value::String("123".to_string());
@@ -113,7 +116,7 @@ mod type_error_tests {
 
         for (value, expected_type) in test_cases {
             let arg = WithSpan {
-                value: Expr::Number(42.0, span.clone()),
+                value: Arc::new(Expr::Number(42.0, span.clone())),
                 span: span.clone(),
             };
 
@@ -209,7 +212,7 @@ mod general_error_tests {
     fn test_enhanced_general_error_formatting() {
         let span = Span::default();
         let arg = WithSpan {
-            value: Expr::Number(42.0, span.clone()),
+            value: Arc::new(Expr::Number(42.0, span.clone())),
             span: span.clone(),
         };
 
@@ -225,11 +228,17 @@ mod general_error_tests {
     fn test_general_error_with_complex_expression() {
         let span = Span::default();
         let inner_list = vec![
-            WithSpan { value: Expr::Number(1.0, span.clone()), span: span.clone() },
-            WithSpan { value: Expr::Number(2.0, span.clone()), span: span.clone() },
+            WithSpan {
+                value: Arc::new(Expr::Number(1.0, span.clone())),
+                span: span.clone(),
+            },
+            WithSpan {
+                value: Arc::new(Expr::Number(2.0, span.clone())),
+                span: span.clone(),
+            },
         ];
         let arg = WithSpan {
-            value: Expr::List(inner_list, span.clone()),
+            value: Arc::new(Expr::List(inner_list, span.clone())),
             span: span.clone(),
         };
 
@@ -250,12 +259,18 @@ mod error_integration_tests {
         // Test that all error types follow consistent formatting patterns
         let span = Span::default();
         let arg = WithSpan {
-            value: Expr::String("test".to_string(), span.clone()),
+            value: Arc::new(Expr::String("test".to_string(), span.clone())),
             span: span.clone(),
         };
 
         let arity_error = eval_arity_error(Some(span.clone()), &[arg.clone()], "test_fn", "2");
-        let type_error = eval_type_error(Some(span.clone()), &arg, "test_fn", "Number", &Value::String("test".to_string()));
+        let type_error = eval_type_error(
+            Some(span.clone()),
+            &arg,
+            "test_fn",
+            "Number",
+            &Value::String("test".to_string()),
+        );
         let general_error = eval_general_error(Some(span.clone()), &arg, "General error");
 
         // All errors should have spans

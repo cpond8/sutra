@@ -9,7 +9,7 @@ const SHORT_STRING_LIMIT: usize = 20;
 const LONG_STRING_LIMIT: usize = 30;
 const TRUNCATION_SUFFIX: &str = "...";
 
-use crate::ast::{Expr, Span, WithSpan};
+use crate::ast::{AstNode, Expr, Span};
 use crate::ast::value::Value;
 
 // =============================================================================
@@ -184,12 +184,12 @@ pub fn internal_parse_error(msg: impl Into<String>, span: Option<Span>) -> Sutra
 /// use sutra::ast::{Expr, Span, WithSpan};
 ///
 /// let span = Span { start: 0, end: 10 };
-/// let args: Vec<WithSpan<Expr>> = vec![];
+/// let args: Vec<AstNode> = vec![];
 /// let error = eval_arity_error(Some(span), &args, "core/set!", "exactly 2");
 /// ```
 pub fn eval_arity_error(
     span: Option<Span>,
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     func_name: &str,
     expected: impl ToString,
 ) -> SutraError {
@@ -234,13 +234,13 @@ pub fn eval_arity_error(
 /// use sutra::ast::value::Value;
 ///
 /// let span = Span { start: 0, end: 10 };
-/// let arg = WithSpan { value: Expr::String("hello".to_string(), span.clone()), span: span.clone() };
+/// let arg = WithSpan { value: Arc::new(Expr::String("hello".to_string(), span.clone())), span: span.clone() };
 /// let value = Value::String("hello".to_string());
 /// let error = eval_type_error(Some(span), &arg, "core/get", "a Path", &value);
 /// ```
 pub fn eval_type_error(
     span: Option<Span>,
-    arg: &WithSpan<Expr>,
+    arg: &AstNode,
     func_name: &str,
     expected: &str,
     found: &Value,
@@ -280,12 +280,12 @@ pub fn eval_type_error(
 /// use sutra::ast::{Expr, Span, WithSpan};
 ///
 /// let span = Span { start: 0, end: 10 };
-/// let arg = WithSpan { value: Expr::Symbol("x".to_string(), span.clone()), span: span.clone() };
+/// let arg = WithSpan { value: Arc::new(Expr::Symbol("x".to_string(), span.clone())), span: span.clone() };
 /// let error = eval_general_error(Some(span), &arg, "Division by zero");
 /// ```
 pub fn eval_general_error(
     span: Option<Span>,
-    arg: &WithSpan<Expr>,
+    arg: &AstNode,
     msg: impl Into<String>,
 ) -> SutraError {
     let message = msg.into();
@@ -498,7 +498,7 @@ fn build_arity_context_message(expected_str: &str, actual_count: usize) -> Strin
 }
 
 /// Builds the argument summary for arity errors.
-fn build_arity_args_summary(args: &[WithSpan<Expr>]) -> String {
+fn build_arity_args_summary(args: &[AstNode]) -> String {
     if args.is_empty() {
         "No arguments provided".to_string()
     } else {
@@ -515,7 +515,7 @@ fn build_arity_args_summary(args: &[WithSpan<Expr>]) -> String {
 }
 
 /// Builds the expanded code representation for arity errors.
-fn build_arity_expanded_code(func_name: &str, args: &[WithSpan<Expr>]) -> String {
+fn build_arity_expanded_code(func_name: &str, args: &[AstNode]) -> String {
     format!(
         "({} {})",
         func_name,
@@ -555,7 +555,7 @@ fn build_type_context_message(expected: &str, found: &Value) -> String {
 }
 
 /// Builds the value information for type errors.
-fn build_type_value_info(found: &Value, arg: &WithSpan<Expr>) -> String {
+fn build_type_value_info(found: &Value, arg: &AstNode) -> String {
     format!(
         "Argument provided: {} (from expression: {})",
         format_any_value_for_error(found),
@@ -581,7 +581,7 @@ fn build_general_main_message(message: &str) -> String {
 }
 
 /// Builds the context message for general errors.
-fn build_general_context_message(arg: &WithSpan<Expr>) -> String {
+fn build_general_context_message(arg: &AstNode) -> String {
     format!(
         "Error occurred while evaluating: {}",
         summarize_expr(&arg.value)

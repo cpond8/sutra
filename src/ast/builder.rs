@@ -17,34 +17,13 @@
 
 use crate::syntax::cst_parser::SutraSpan;
 use crate::syntax::parser::SutraCstNode;
+use crate::ast::{AstNode};
 use serde::{Deserialize, Serialize};
 
 /// Main trait for the AST builder stage.
 pub trait SutraAstBuilder {
     /// Builds a canonical AST from a CST node. Returns AST or build error.
-    fn build_ast(&self, cst: &SutraCstNode) -> Result<WithSpan<SutraAstNode>, SutraAstBuildError>;
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct WithSpan<T> {
-    pub value: T,
-    pub span: SutraSpan,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum SutraAstNode {
-    List(Vec<WithSpan<SutraAstNode>>),
-    Symbol(String),
-    Number(f64),
-    String(String),
-    Bool(bool),
-    Path(Vec<String>),
-    If {
-        condition: Box<WithSpan<SutraAstNode>>,
-        then_branch: Box<WithSpan<SutraAstNode>>,
-        else_branch: Box<WithSpan<SutraAstNode>>,
-    },
-    // ... extend as needed ...
+    fn build_ast(&self, cst: &SutraCstNode) -> Result<AstNode, SutraAstBuildError>;
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

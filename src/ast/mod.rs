@@ -9,6 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 use crate::runtime::path::Path;
+use std::sync::Arc;
 
 // ============================================================================
 // CORE DATA STRUCTURES
@@ -40,6 +41,9 @@ pub struct WithSpan<T> {
     pub span: Span,
 }
 
+/// Canonical AST node type with shared ownership for efficient macro expansion.
+pub type AstNode = WithSpan<Arc<Expr>>;
+
 /// The core AST node for Sutra expressions.
 ///
 /// # Examples
@@ -52,23 +56,23 @@ pub struct WithSpan<T> {
 /// ```
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Expr {
-    // BREAKING: Now uses Vec<WithSpan<Expr>> for full span-carrying compliance
-    List(Vec<WithSpan<Expr>>, Span),
+    // BREAKING: Now uses Vec<AstNode> for full span-carrying compliance
+    List(Vec<AstNode>, Span),
     Symbol(String, Span),
     Path(Path, Span),
     String(String, Span),
     Number(f64, Span),
     Bool(bool, Span),
     If {
-        condition: Box<WithSpan<Expr>>,
-        then_branch: Box<WithSpan<Expr>>,
-        else_branch: Box<WithSpan<Expr>>,
+        condition: Box<AstNode>,
+        then_branch: Box<AstNode>,
+        else_branch: Box<AstNode>,
         span: Span,
     },
-    Quote(Box<WithSpan<Expr>>, Span),
+    Quote(Box<AstNode>, Span),
     ParamList(ParamList),
     /// Spread argument (e.g., ...args) for use in call position
-    Spread(Box<WithSpan<Expr>>),
+    Spread(Box<AstNode>),
 }
 
 /// Parameter list for function definitions
@@ -127,7 +131,7 @@ impl Expr {
     /// let expr2 = Expr::Number(1.0, Span::default());
     /// assert_eq!(expr2.into_list(), None);
     /// ```
-    pub fn into_list(self) -> Option<Vec<WithSpan<Expr>>> {
+    pub fn into_list(self) -> Option<Vec<AstNode>> {
         if let Expr::List(items, _) = self {
             Some(items)
         } else {
@@ -168,7 +172,7 @@ impl Expr {
     // ------------------------------------------------------------------------
 
     /// Helper for pretty-printing list expressions
-    fn pretty_list(exprs: &[WithSpan<Expr>]) -> String {
+    fn pretty_list(exprs: &[AstNode]) -> String {
         let inner = exprs
             .iter()
             .map(|e| e.value.pretty())
@@ -178,7 +182,7 @@ impl Expr {
     }
 
     /// Helper for pretty-printing if expressions
-    fn pretty_if(condition: &WithSpan<Expr>, then_branch: &WithSpan<Expr>, else_branch: &WithSpan<Expr>) -> String {
+    fn pretty_if(condition: &AstNode, then_branch: &AstNode, else_branch: &AstNode) -> String {
         format!(
             "(if {} {} {})",
             condition.value.pretty(),
@@ -220,7 +224,7 @@ impl From<crate::ast::value::Value> for Expr {
             Value::String(s) => Expr::String(s, Span::default()),
             Value::Bool(b) => Expr::Bool(b, Span::default()),
             Value::List(items) => {
-                Expr::List(items.into_iter().map(|v| WithSpan { value: Expr::from(v), span: Span::default() }).collect(), Span::default())
+                Expr::List(items.into_iter().map(|v| WithSpan { value: Arc::new(Expr::from(v)), span: Span::default() }).collect(), Span::default())
             },
             Value::Map(_) => Expr::List(vec![], Span::default()), // TODO: Map to a canonical representation if needed
             Value::Path(p) => Expr::Path(p, Span::default()),
@@ -237,7 +241,7 @@ pub trait SutraAstBuilder {
     fn build_ast(
         &self,
         cst: &crate::syntax::parser::SutraCstNode,
-    ) -> Result<WithSpan<Expr>, SutraAstBuildError>;
+    ) -> Result<AstNode, SutraAstBuildError>;
 }
 
 /// Trivial AST builder for pipeline scaffolding (Sprint 2).
@@ -247,9 +251,9 @@ impl SutraAstBuilder for TrivialAstBuilder {
     fn build_ast(
         &self,
         cst: &crate::syntax::parser::SutraCstNode,
-    ) -> Result<WithSpan<Expr>, SutraAstBuildError> {
+    ) -> Result<AstNode, SutraAstBuildError> {
         Ok(WithSpan {
-            value: Expr::List(vec![], cst.span.clone()),
+            value: Arc::new(Expr::List(vec![], cst.span.clone())),
             span: cst.span.clone(),
         })
     }
@@ -262,7 +266,7 @@ impl SutraAstBuilder for CanonicalAstBuilder {
     fn build_ast(
         &self,
         cst: &crate::syntax::parser::SutraCstNode,
-    ) -> Result<WithSpan<Expr>, SutraAstBuildError> {
+    ) -> Result<AstNode, SutraAstBuildError> {
         build_ast_from_cst(cst)
     }
 }
@@ -274,7 +278,7 @@ impl SutraAstBuilder for CanonicalAstBuilder {
 /// Main CST to AST conversion function
 fn build_ast_from_cst(
     cst: &crate::syntax::parser::SutraCstNode,
-) -> Result<WithSpan<Expr>, SutraAstBuildError> {
+) -> Result<AstNode, SutraAstBuildError> {
     match cst.rule.as_str() {
         "program" | "list" => {
             map_cst_children_to_list(&cst.children, build_ast_from_cst, &cst.span)
@@ -297,16 +301,16 @@ fn build_ast_from_cst(
 // ----------------------------------------------------------------------------
 
 /// Helper for building number expressions from CST
-fn build_number_expr(cst: &crate::syntax::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError> {
+fn build_number_expr(cst: &crate::syntax::parser::SutraCstNode) -> Result<AstNode, SutraAstBuildError> {
     let text = cst_text(cst);
     let number = text.parse::<f64>()
         .map_err(|_| invalid_shape_error(&cst.span, format!("Invalid number: {}", text)))?;
 
-    Ok(with_span(Expr::Number(number, cst.span.clone()), &cst.span))
+    Ok(with_span(Arc::new(Expr::Number(number, cst.span.clone())), &cst.span))
 }
 
 /// Helper for building boolean expressions from CST
-fn build_boolean_expr(cst: &crate::syntax::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError> {
+fn build_boolean_expr(cst: &crate::syntax::parser::SutraCstNode) -> Result<AstNode, SutraAstBuildError> {
     let text = cst_text(cst);
     let bool_value = match text.as_str() {
         "true" => true,
@@ -314,26 +318,26 @@ fn build_boolean_expr(cst: &crate::syntax::parser::SutraCstNode) -> Result<WithS
         _ => return Err(invalid_shape_error(&cst.span, format!("Invalid boolean: {}", text))),
     };
 
-    Ok(with_span(Expr::Bool(bool_value, cst.span.clone()), &cst.span))
+    Ok(with_span(Arc::new(Expr::Bool(bool_value, cst.span.clone())), &cst.span))
 }
 
 /// Helper for building string expressions from CST
-fn build_string_expr(cst: &crate::syntax::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError> {
+fn build_string_expr(cst: &crate::syntax::parser::SutraCstNode) -> Result<AstNode, SutraAstBuildError> {
     let text = cst_text(cst);
     let unescaped = unescape_string(&text)
         .map_err(|msg| invalid_shape_error(&cst.span, msg))?;
 
-    Ok(with_span(Expr::String(unescaped, cst.span.clone()), &cst.span))
+    Ok(with_span(Arc::new(Expr::String(unescaped, cst.span.clone())), &cst.span))
 }
 
 /// Helper for building symbol expressions from CST
-fn build_symbol_expr(cst: &crate::syntax::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError> {
+fn build_symbol_expr(cst: &crate::syntax::parser::SutraCstNode) -> Result<AstNode, SutraAstBuildError> {
     let text = cst_text(cst);
-    Ok(with_span(Expr::Symbol(text, cst.span.clone()), &cst.span))
+    Ok(with_span(Arc::new(Expr::Symbol(text, cst.span.clone())), &cst.span))
 }
 
 /// Helper for building spread expressions from CST
-fn build_spread_expr(cst: &crate::syntax::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError> {
+fn build_spread_expr(cst: &crate::syntax::parser::SutraCstNode) -> Result<AstNode, SutraAstBuildError> {
     // Guard clause: ensure exactly one child
     if cst.children.len() != 1 {
         return Err(invalid_shape_error(
@@ -343,7 +347,7 @@ fn build_spread_expr(cst: &crate::syntax::parser::SutraCstNode) -> Result<WithSp
     }
 
     let symbol_expr = build_ast_from_cst(&cst.children[0])?;
-    Ok(with_span(Expr::Spread(Box::new(symbol_expr)), &cst.span))
+    Ok(with_span(Arc::new(Expr::Spread(Box::new(symbol_expr))), &cst.span))
 }
 
 // ----------------------------------------------------------------------------
@@ -355,22 +359,22 @@ fn map_cst_children_to_list<F>(
     children: &[crate::syntax::parser::SutraCstNode],
     builder: F,
     span: &Span,
-) -> Result<WithSpan<Expr>, SutraAstBuildError>
+) -> Result<AstNode, SutraAstBuildError>
 where
-    F: FnMut(&crate::syntax::parser::SutraCstNode) -> Result<WithSpan<Expr>, SutraAstBuildError>,
+    F: FnMut(&crate::syntax::parser::SutraCstNode) -> Result<AstNode, SutraAstBuildError>,
 {
     let exprs = children
         .iter()
         .map(builder)
         .collect::<Result<Vec<_>, _>>()?;
     Ok(WithSpan {
-        value: Expr::List(exprs, span.clone()),
+        value: Arc::new(Expr::List(exprs, span.clone())),
         span: span.clone(),
     })
 }
 
-/// Helper for creating WithSpan<Expr> with less boilerplate
-fn with_span(expr: Expr, span: &Span) -> WithSpan<Expr> {
+/// Helper to construct an AstNode from an Arc<Expr> and a span.
+fn with_span(expr: Arc<Expr>, span: &Span) -> AstNode {
     WithSpan {
         value: expr,
         span: span.clone(),

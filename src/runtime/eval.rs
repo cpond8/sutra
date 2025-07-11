@@ -10,7 +10,7 @@
 
 // The atom registry is a single source of truth and must be passed by reference to all validation and evaluation code. Never construct a local/hidden registry.
 use crate::ast::value::Value;
-use crate::ast::{Expr, WithSpan};
+use crate::ast::{AstNode, Expr, WithSpan};
 use crate::atoms::{AtomRegistry, OutputSink};
 use crate::runtime::world::World;
 use crate::syntax::error::{
@@ -56,7 +56,7 @@ impl EvalContext<'_, '_> {
     pub fn call_atom(
         &mut self,
         atom_name: &str,
-        args: &[WithSpan<Expr>],
+        args: &[AstNode],
         span: &crate::ast::Span,
     ) -> Result<(Value, World), SutraError> {
         // Guard clause: ensure atom exists in registry
@@ -86,7 +86,7 @@ fn wrap_value_with_world(value: Value, world: &World) -> Result<(Value, World), 
 
 /// Helper to evaluate a conditional expression and return a boolean result.
 fn eval_condition_as_bool(
-    condition: &WithSpan<Expr>,
+    condition: &AstNode,
     context: &mut EvalContext,
 ) -> Result<(bool, World), SutraError> {
     let (cond_val, next_world) = eval_expr(condition, context)?;
@@ -107,8 +107,8 @@ fn eval_condition_as_bool(
 }
 
 /// Evaluates literal value expressions (Path, String, Number, Bool).
-fn eval_literal_value(expr: &WithSpan<Expr>, world: &World) -> Result<(Value, World), SutraError> {
-    let value = match &expr.value {
+fn eval_literal_value(expr: &AstNode, world: &World) -> Result<(Value, World), SutraError> {
+    let value = match &*expr.value {
         Expr::Path(p, _) => Value::Path(p.clone()),
         Expr::String(s, _) => Value::String(s.clone()),
         Expr::Number(n, _) => Value::Number(*n),
@@ -119,8 +119,8 @@ fn eval_literal_value(expr: &WithSpan<Expr>, world: &World) -> Result<(Value, Wo
 }
 
 /// Handles evaluation of invalid expression types that cannot be evaluated at runtime.
-fn eval_invalid_expr(expr: &WithSpan<Expr>) -> Result<(Value, World), SutraError> {
-    match &expr.value {
+fn eval_invalid_expr(expr: &AstNode) -> Result<(Value, World), SutraError> {
+    match &*expr.value {
         Expr::ParamList(_) => Err(sutra_error!(
             general,
             Some(expr.span.clone()),
@@ -154,14 +154,14 @@ fn eval_invalid_expr(expr: &WithSpan<Expr>) -> Result<(Value, World), SutraError
 /// # Note
 /// This is a low-level, internal function. Most users should use the higher-level `eval` API.
 pub fn eval_expr(
-    expr: &WithSpan<Expr>,
+    expr: &AstNode,
     context: &mut EvalContext,
 ) -> Result<(Value, World), SutraError> {
     if context.depth > context.max_depth {
         return Err(sutra_error!(recursion, Some(expr.span.clone())));
     }
 
-    match &expr.value {
+    match &*expr.value {
         // Complex expression types with dedicated handlers
         Expr::List(items, span) => eval_list(items, span, context),
         Expr::Quote(inner, _) => eval_quote(inner, context, expr),
@@ -183,7 +183,7 @@ pub fn eval_expr(
 
 /// Public API: evaluates an expression with the given world, output, atom registry, and max depth.
 pub fn eval(
-    expr: &WithSpan<Expr>,
+    expr: &AstNode,
     world: &World,
     output: &mut dyn OutputSink,
     atom_registry: &AtomRegistry,
@@ -207,7 +207,7 @@ pub fn eval(
 
 /// Helper for evaluating Expr::List arms.
 fn eval_list(
-    items: &[WithSpan<Expr>],
+    items: &[AstNode],
     span: &crate::ast::Span,
     context: &mut EvalContext,
 ) -> Result<(Value, World), SutraError> {
@@ -218,7 +218,7 @@ fn eval_list(
     // Extract atom name using guard clause pattern
     let head = &items[0];
     let tail = &items[1..];
-    let Expr::Symbol(atom_name, _) = &head.value else {
+    let Expr::Symbol(atom_name, _) = &*head.value else { // FIX: only one deref for Arc<Expr>
         return Err(sutra_error!(
             arity,
             Some(head.span.clone()),
@@ -234,11 +234,11 @@ fn eval_list(
 
 /// Helper for evaluating Expr::Quote arms.
 fn eval_quote(
-    inner: &WithSpan<Expr>,
+    inner: &AstNode,
     context: &mut EvalContext,
-    parent_expr: &WithSpan<Expr>,
+    parent_expr: &AstNode,
 ) -> Result<(Value, World), SutraError> {
-    match &inner.value {
+    match &*inner.value {
         Expr::Symbol(s, _) => wrap_value_with_world(Value::String(s.clone()), context.world),
         Expr::List(exprs, _) => wrap_value_with_world(eval_quoted_list(exprs)?, context.world),
         Expr::Number(n, _) => wrap_value_with_world(Value::Number(*n), context.world),
@@ -269,9 +269,9 @@ fn eval_quote(
 
 /// Helper for evaluating Expr::If arms.
 fn eval_if(
-    condition: &WithSpan<Expr>,
-    then_branch: &WithSpan<Expr>,
-    else_branch: &WithSpan<Expr>,
+    condition: &AstNode,
+    then_branch: &AstNode,
+    else_branch: &AstNode,
     context: &mut EvalContext,
 ) -> Result<(Value, World), SutraError> {
     let (is_true, next_world) = eval_condition_as_bool(condition, context)?;
@@ -290,8 +290,8 @@ fn eval_if(
 // --- Quote Expression Helpers ---
 
 /// Evaluates a single expression within a quote context.
-fn eval_quoted_expr(expr: &WithSpan<Expr>) -> Result<Value, SutraError> {
-    match &expr.value {
+fn eval_quoted_expr(expr: &AstNode) -> Result<Value, SutraError> {
+    match &*expr.value {
         Expr::Symbol(s, _) => Ok(Value::String(s.clone())),
         Expr::Number(n, _) => Ok(Value::Number(*n)),
         Expr::Bool(b, _) => Ok(Value::Bool(*b)),
@@ -313,7 +313,7 @@ fn eval_quoted_expr(expr: &WithSpan<Expr>) -> Result<Value, SutraError> {
 }
 
 /// Evaluates a quoted list by converting each element to a value.
-fn eval_quoted_list(exprs: &[WithSpan<Expr>]) -> Result<Value, SutraError> {
+fn eval_quoted_list(exprs: &[AstNode]) -> Result<Value, SutraError> {
     let vals: Result<Vec<_>, SutraError> = exprs
         .iter()
         .map(eval_quoted_expr)
@@ -323,9 +323,9 @@ fn eval_quoted_list(exprs: &[WithSpan<Expr>]) -> Result<Value, SutraError> {
 
 /// Evaluates a quoted if expression.
 fn eval_quoted_if(
-    condition: &WithSpan<Expr>,
-    then_branch: &WithSpan<Expr>,
-    else_branch: &WithSpan<Expr>,
+    condition: &AstNode,
+    then_branch: &AstNode,
+    else_branch: &AstNode,
     context: &mut EvalContext,
 ) -> Result<(Value, World), SutraError> {
     let (is_true, next_world) = eval_condition_as_bool(condition, context)?;
@@ -345,14 +345,14 @@ fn eval_quoted_if(
 
 /// Flattens spread arguments in function call arguments.
 fn flatten_spread_args(
-    tail: &[WithSpan<Expr>],
+    tail: &[AstNode],
     context: &mut EvalContext,
-) -> Result<Vec<WithSpan<Expr>>, SutraError> {
+) -> Result<Vec<AstNode>, SutraError> {
     let mut flat_tail = Vec::new();
 
     for arg in tail {
         // Guard clause: handle non-spread expressions immediately
-        let Expr::Spread(expr) = &arg.value else {
+        let Expr::Spread(expr) = &*arg.value else { // FIX: only one deref for Arc<Expr>
             flat_tail.push(arg.clone());
             continue;
         };
@@ -375,7 +375,7 @@ fn flatten_spread_args(
         // Process list items without nesting
         for v in items {
             flat_tail.push(WithSpan {
-                value: Expr::from(v),
+                value: Expr::from(v).into(), // FIX: wrap Expr in Arc via .into()
                 span: arg.span.clone(),
             });
         }

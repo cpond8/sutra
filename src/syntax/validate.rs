@@ -3,11 +3,11 @@
 //! This module provides structural and semantic validation for Sutra ASTs.
 //! All errors are span-carrying and user-friendly.
 
-use crate::ast::{Expr, Span, WithSpan};
+use crate::ast::{AstNode, Expr, Span};
 use crate::macros::MacroEnv;
-use crate::syntax::error::validation_error;
-use crate::syntax::error::SutraError;
+use crate::syntax::error::{validation_error, SutraError};
 use serde::{Deserialize, Serialize};
+
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SutraSeverity {
@@ -25,14 +25,14 @@ pub struct SutraDiagnostic {
 }
 
 pub trait SutraValidator {
-    fn validate(&self, ast: &WithSpan<Expr>) -> Vec<SutraDiagnostic>;
+    fn validate(&self, ast: &AstNode) -> Vec<SutraDiagnostic>;
 }
 
 /// Trivial validator for pipeline scaffolding (Sprint 2).
 pub struct TrivialValidator;
 
 impl SutraValidator for TrivialValidator {
-    fn validate(&self, _ast: &WithSpan<Expr>) -> Vec<SutraDiagnostic> {
+    fn validate(&self, _ast: &AstNode) -> Vec<SutraDiagnostic> {
         vec![]
     }
 }
@@ -41,11 +41,11 @@ impl SutraValidator for TrivialValidator {
 /// Returns Ok(()) if valid, or Err(SutraError) with span and message.
 // The atom registry is a single source of truth and must be passed by reference to all validation and evaluation code. Never construct a local/hidden registry.
 pub fn validate(
-    expr: &WithSpan<Expr>,
+    expr: &AstNode,
     env: &MacroEnv,
     atom_registry: &crate::atoms::AtomRegistry,
 ) -> Result<(), SutraError> {
-    match &expr.value {
+    match &*expr.value {
         Expr::List(items, _) => {
             for item in items {
                 validate(item, env, atom_registry)?;

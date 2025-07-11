@@ -1,17 +1,18 @@
 // The atom registry is a single source of truth and must be passed by reference to all validation and evaluation code. Never construct a local/hidden registry.
 use crate::ast::value::Value;
-use crate::ast::{Expr, Span, WithSpan};
+use crate::ast::{Span};
 use crate::runtime::eval::EvalContext;
 use crate::runtime::world::World;
 use crate::syntax::error::SutraError;
 use im::HashMap;
+use crate::ast::AstNode;
 
 // Atom function type: takes AST arguments, the current evaluation context,
 // and the span of the parent expression for better error reporting.
 // It returns a tuple containing the resulting Value and the new World state,
 // ensuring that all state changes are explicit and pure.
 pub type AtomFn = fn(
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     context: &mut EvalContext,
     parent_span: &Span,
 ) -> Result<(Value, World), SutraError>;

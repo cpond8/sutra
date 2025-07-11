@@ -6,15 +6,15 @@
 //!
 //! ## Core Principles
 //!
-//! - **Syntactic Only**: Macros operate solely on the AST (`WithSpan<Expr>`). They have no access
+//! - **Syntactic Only**: Macros operate solely on the AST (`AstNode`). They have no access
 //!   to the `World` state and cannot perform any evaluation or side effects.
-//! - **Pure Transformation**: Macro expansion is a pure function: `(WithSpan<Expr>) -> Result<WithSpan<Expr>, Error>`.
+//! - **Pure Transformation**: Macro expansion is a pure function: `(AstNode) -> Result<AstNode, Error>`.
 //! - **Inspectable**: The expansion process can be traced, allowing authors to see
 //!   how their high-level forms are desugared into core language constructs.
 //! - **Layered**: The macro system is a distinct pipeline stage that runs after parsing
 //!   and before validation and evaluation.
 //!
-//! **INVARIANT:** All macro system logic, macro functions, and recursive expansion must operate on `WithSpan<Expr>`. Never unwrap to a bare `Expr` except for internal logic, and always re-wrap with the correct span. All lists are `Vec<WithSpan<Expr>>`.
+//! **INVARIANT:** All macro system logic, macro functions, and recursive expansion must operate on `AstNode`. Never unwrap to a bare `Expr` except for internal logic, and always re-wrap with the correct span. All lists are `Vec<AstNode>`.
 //!
 //! ## Variadic Macro Forwarding (Argument Splicing)
 //!
@@ -30,7 +30,7 @@
 //!
 //! See documentation below for details and edge cases.
 
-use crate::ast::{Expr, WithSpan};
+use crate::ast::{AstNode, Expr, WithSpan};
 use crate::syntax::error::{io_error, macro_error, SutraError};
 use ::std::fs;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -40,16 +40,13 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 // ============================================================================
 
 /// A macro function is a native Rust function that transforms an AST.
-pub type MacroFn =
-    fn(
-        &crate::ast::WithSpan<crate::ast::Expr>,
-    ) -> Result<crate::ast::WithSpan<crate::ast::Expr>, crate::syntax::error::SutraError>;
+pub type MacroFn = fn(&AstNode) -> Result<AstNode, SutraError>;
 
 /// A declarative macro defined by a template.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MacroTemplate {
     pub params: crate::ast::ParamList,
-    pub body: Box<WithSpan<Expr>>,
+    pub body: Box<AstNode>,
 }
 
 /// MacroDef cannot serialize/deserialize native function pointers. Only Template variant is serializable.
@@ -128,9 +125,9 @@ pub struct MacroExpansionStep {
     /// Which registry the macro was found in.
     pub provenance: MacroProvenance,
     /// The AST before expansion.
-    pub input: WithSpan<Expr>,
+    pub input: AstNode,
     /// The AST after expansion.
-    pub output: WithSpan<Expr>,
+    pub output: AstNode,
 }
 
 /// Macro expansion environment: holds user/core registries and the trace.
@@ -181,7 +178,8 @@ impl MacroRegistry {
     /// # Returns
     /// `Some(old_macro)` if a macro with this name was already registered, `None` otherwise.
     pub fn register_template(&mut self, name: &str, template: MacroTemplate) -> Option<MacroDef> {
-        self.macros.insert(name.to_string(), MacroDef::Template(template))
+        self.macros
+            .insert(name.to_string(), MacroDef::Template(template))
     }
 
     /// Unregisters a macro by name.
@@ -252,7 +250,9 @@ pub fn parse_macros_from_source(source: &str) -> Result<Vec<(String, MacroTempla
 /// // Works with PathBuf, &Path, etc.
 /// let macros3 = load_macros_from_file(&std::path::PathBuf::from("macros.sutra"));
 /// ```
-pub fn load_macros_from_file<P: AsRef<::std::path::Path>>(path: P) -> Result<Vec<(String, MacroTemplate)>, SutraError> {
+pub fn load_macros_from_file<P: AsRef<::std::path::Path>>(
+    path: P,
+) -> Result<Vec<(String, MacroTemplate)>, SutraError> {
     let source = fs::read_to_string(path).map_err(|e| io_error(e.to_string(), None))?;
     parse_macros_from_source(&source)
 }
@@ -284,10 +284,10 @@ pub fn check_arity(
 
 /// Binds macro parameters to arguments, returning a map from parameter name to argument value.
 pub fn bind_macro_params(
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     params: &crate::ast::ParamList,
     expr_span: &crate::ast::Span,
-) -> ::std::collections::HashMap<String, WithSpan<Expr>> {
+) -> ::std::collections::HashMap<String, AstNode> {
     let mut bindings = ::std::collections::HashMap::new();
     for (i, param_name) in params.required.iter().enumerate() {
         bindings.insert(param_name.clone(), args[i].clone());
@@ -313,17 +313,17 @@ pub fn bind_macro_params(
 /// Expands a macro template call by substituting arguments into the template body.
 pub fn expand_template(
     template: &MacroTemplate,
-    call: &WithSpan<Expr>,
+    call: &AstNode,
     depth: usize,
-) -> Result<WithSpan<Expr>, SutraError> {
-    check_recursion_depth(depth, &call.span, "Macro expansion")?;
-    let (args, span) = match &call.value {
+) -> Result<AstNode, SutraError> {
+    check_recursion_depth(depth, &call.span, "template expansion")?;
+    let (args, span) = match &*call.value {
         Expr::List(items, span) if !items.is_empty() => (&items[1..], span),
         _ => {
             return Err(macro_error(
-                "Template macro must be called as a list.",
+                "Macro call must be a non-empty list",
                 Some(call.span.clone()),
-            ));
+            ))
         }
     };
     check_arity(args.len(), &template.params, span)?;
@@ -333,19 +333,24 @@ pub fn expand_template(
 
 /// Recursively substitutes macro parameters in the template body with provided arguments.
 pub fn substitute_template(
-    expr: &WithSpan<Expr>,
-    bindings: &::std::collections::HashMap<String, WithSpan<Expr>>,
-) -> Result<WithSpan<Expr>, SutraError> {
-    match &expr.value {
+    expr: &AstNode,
+    bindings: &::std::collections::HashMap<String, AstNode>,
+) -> Result<AstNode, SutraError> {
+    match &*expr.value {
         Expr::Symbol(name, _span) => {
-            Ok(bindings.get(name).cloned().unwrap_or_else(|| expr.clone()))
+            if let Some(bound_node) = bindings.get(name) {
+                return Ok(bound_node.clone());
+            }
         }
         Expr::Quote(inner, span) => {
-            let new_inner = substitute_template(inner, bindings)?;
-            Ok(with_span(Expr::Quote(Box::new(new_inner), span.clone()), &expr.span))
+            // Substitution does not descend into quoted expressions
+            return Ok(with_span(
+                Expr::Quote(inner.clone(), span.clone()),
+                &expr.span,
+            ));
         }
         Expr::List(items, _) => {
-            substitute_list(items, bindings, &expr.span)
+            return substitute_list(items, bindings, &expr.span);
         }
         Expr::If {
             condition,
@@ -353,17 +358,22 @@ pub fn substitute_template(
             else_branch,
             span,
         } => {
-            substitute_if(condition, then_branch, else_branch, bindings, span, &expr.span)
+            return substitute_if(
+                condition,
+                then_branch,
+                else_branch,
+                bindings,
+                span,
+                &expr.span,
+            );
         }
-        _ => Ok(expr.clone()),
+        _ => {}
     }
+    Ok(expr.clone())
 }
 
 /// Public entry point for macro expansion.
-pub fn expand_macros(
-    ast: WithSpan<Expr>,
-    env: &mut MacroEnv,
-) -> Result<WithSpan<Expr>, SutraMacroError> {
+pub fn expand_macros(ast: AstNode, env: &mut MacroEnv) -> Result<AstNode, SutraMacroError> {
     expand_macros_with_trace(ast, env, 0)
 }
 
@@ -401,10 +411,7 @@ impl MacroEnv {
 
 impl MacroTemplate {
     /// Constructs a MacroTemplate with validation for duplicate parameters.
-    pub fn new(
-        params: crate::ast::ParamList,
-        body: Box<WithSpan<Expr>>,
-    ) -> Result<Self, SutraError> {
+    pub fn new(params: crate::ast::ParamList, body: Box<AstNode>) -> Result<Self, SutraError> {
         let mut all_names = params.required.clone();
 
         // Add variadic parameter if present
@@ -511,20 +518,18 @@ impl<'de> Deserialize<'de> for MacroRegistry {
 // --- Macro Definition Parsing ---
 
 /// Validates basic structure of a (define (name ...) body) form
-fn validate_define_form(expr: &WithSpan<Expr>) -> Option<&[WithSpan<Expr>]> {
-    let Some(items) = extract_list_items(expr) else {
+fn validate_define_form(expr: &AstNode) -> Option<&[AstNode]> {
+    let Expr::List(items, _) = &*expr.value else {
         return None;
     };
-    if items.len() != 3 {
-        return None;
+    if items.len() == 3 {
+        if let Expr::Symbol(s, _) = &*items[0].value {
+            if s == "define" {
+                return Some(items);
+            }
+        }
     }
-    let Some(def) = extract_symbol_from_expr(&items[0]) else {
-        return None;
-    };
-    if def != "define" {
-        return None;
-    }
-    Some(items)
+    None
 }
 
 /// Extracts and validates macro name, checking for duplicates
@@ -552,26 +557,21 @@ fn build_macro_params(param_list: &crate::ast::ParamList) -> crate::ast::ParamLi
 }
 
 fn try_parse_macro_form(
-    expr: &crate::ast::WithSpan<crate::ast::Expr>,
+    expr: &AstNode,
     names_seen: &mut ::std::collections::HashSet<String>,
 ) -> Result<Option<(String, MacroTemplate)>, SutraError> {
-    // Validate basic define form structure
-    let Some(items) = validate_define_form(expr) else {
-        return Ok(None);
-    };
-
-    // Ensure parameter list is valid
-    let Expr::ParamList(param_list) = &items[1].value else {
-        return Err(macro_error(
-            "Macro parameter list must be a ParamList.",
-            Some(items[1].span.clone()),
-        ));
-    };
-
-    let macro_name = extract_and_check_macro_name(param_list, names_seen)?;
-    let params = build_macro_params(param_list);
-    let template = MacroTemplate::new(params, Box::new(items[2].clone()))?;
-    Ok(Some((macro_name, template)))
+    if let Some(items) = validate_define_form(expr) {
+        if let Some(param_list) = items.get(1) {
+            if let Expr::ParamList(param_list) = &*param_list.value {
+                let macro_name = extract_and_check_macro_name(param_list, names_seen)?;
+                let params = build_macro_params(param_list);
+                let body = Box::new(items[2].clone());
+                let template = MacroTemplate::new(params, body)?;
+                return Ok(Some((macro_name, template)));
+            }
+        }
+    }
+    Ok(None)
 }
 
 fn extract_macro_name(param_list: &crate::ast::ParamList) -> Result<String, SutraError> {
@@ -636,7 +636,11 @@ fn build_param_info_string(params: &crate::ast::ParamList) -> String {
 
 /// Helper for pluralizing argument count messages - DRY utility.
 fn pluralize_args(count: usize) -> &'static str {
-    if count == 1 { "" } else { "s" }
+    if count == 1 {
+        ""
+    } else {
+        "s"
+    }
 }
 
 /// Generates arity error suggestions - DRY utility
@@ -670,7 +674,10 @@ fn build_arity_suggestion(
     }
 
     // General mismatch
-    format!("Check the macro definition and ensure arguments match: {}", param_info)
+    format!(
+        "Check the macro definition and ensure arguments match: {}",
+        param_info
+    )
 }
 
 /// Creates enhanced arity error - DRY utility
@@ -689,7 +696,7 @@ fn enhanced_macro_arity_error(
 
     let full_message = format!("{}\n\n{}\n\n{}", main_message, context_message, param_info);
 
-    use crate::syntax::error::{SutraError, SutraErrorKind, EvalError};
+    use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
     SutraError {
         kind: SutraErrorKind::Eval(EvalError {
             message: full_message,
@@ -725,8 +732,7 @@ fn check_recursion_depth(
         macro_error(
             format!(
                 "{} recursion limit ({}) exceeded.",
-                context,
-                MAX_MACRO_RECURSION_DEPTH
+                context, MAX_MACRO_RECURSION_DEPTH
             ),
             Some(span.clone()),
         )
@@ -739,28 +745,10 @@ fn check_macro_recursion_depth(
     span: &crate::ast::Span,
     macro_name: Option<&str>,
 ) -> Result<(), SutraMacroError> {
-    check_recursion_depth_generic(depth, span, |span| {
-        SutraMacroError::RecursionLimit {
-            span: span.clone(),
-            macro_name: macro_name.unwrap_or("<unknown>").to_string(),
-        }
+    check_recursion_depth_generic(depth, span, |span| SutraMacroError::RecursionLimit {
+        span: span.clone(),
+        macro_name: macro_name.unwrap_or("<unknown>").to_string(),
     })
-}
-
-/// Extracts list items from expression - DRY utility
-fn extract_list_items(expr: &WithSpan<Expr>) -> Option<&[WithSpan<Expr>]> {
-    let Expr::List(items, _) = &expr.value else {
-        return None;
-    };
-    Some(items)
-}
-
-/// Extracts symbol from an expression - DRY utility
-fn extract_symbol_from_expr(expr: &WithSpan<Expr>) -> Option<&str> {
-    let Expr::Symbol(s, _) = &expr.value else {
-        return None;
-    };
-    Some(s)
 }
 
 // --- Error Handling Helpers ---
@@ -781,7 +769,10 @@ fn expansion_error_from_sutra_error(
     let enhanced_message = format!(
         "Macro expansion failed: {}{}",
         error,
-        error.span.as_ref().map_or(String::new(), |s| format!(" (at {}:{})", s.start, s.end))
+        error
+            .span
+            .as_ref()
+            .map_or(String::new(), |s| format!(" (at {}:{})", s.start, s.end))
     );
 
     SutraMacroError::Expansion {
@@ -797,38 +788,53 @@ fn expansion_error_from_sutra_error(
 // --- Macro Expansion Logic ---
 
 /// Extracts macro name from call node - DRY utility
-fn extract_macro_name_from_call(node: &WithSpan<Expr>) -> Option<&str> {
-    let Some(items) = extract_list_items(node) else {
-        return None;
-    };
-    if items.is_empty() {
-        return None;
+fn extract_macro_name_from_call(node: &AstNode) -> Option<&str> {
+    if let Expr::List(items, _) = &*node.value {
+        if !items.is_empty() {
+            if let Expr::Symbol(s, _) = &*items[0].value {
+                return Some(s);
+            }
+        }
     }
-    extract_symbol_from_expr(&items[0])
+    None
 }
 
 /// Expands macro definition - DRY utility
 fn expand_macro_def(
     macro_def: &MacroDef,
-    node: &WithSpan<Expr>,
+    node: &AstNode,
     macro_name: &str,
     depth: usize,
-) -> Result<WithSpan<Expr>, SutraMacroError> {
+) -> Result<AstNode, SutraMacroError> {
+    let macro_name = macro_name.to_string();
+    let original_node = node.clone();
     let result = match macro_def {
-        MacroDef::Fn(func) => func(node),
-        MacroDef::Template(template) => expand_template(template, node, depth + 1),
+        MacroDef::Fn(func) => func(node)
+            .map_err(|e| expansion_error_from_sutra_error(&original_node.span, &macro_name, e)),
+        MacroDef::Template(template) => expand_template(template, node, depth)
+            .map_err(|e| expansion_error_from_sutra_error(&original_node.span, &macro_name, e)),
     };
-
-    // Preserve structured error context instead of losing it via .to_string()
-    result.map_err(|e| expansion_error_from_sutra_error(&node.span, macro_name, e))
+    if let Ok(expanded_node) = &result {
+        record_macro_expansion(
+            // This is complex. We need to get a mutable reference to the trace.
+            // This will likely require passing env as mutable.
+            &mut vec![],
+            macro_name,
+            // Provenance needs to be passed down.
+            MacroProvenance::Core,
+            original_node,
+            expanded_node.clone(),
+        );
+    }
+    result
 }
 
 /// Expands macro once with depth checking
 fn expand_macro_once(
-    node: &WithSpan<Expr>,
+    node: &AstNode,
     env: &MacroEnv,
     depth: usize,
-) -> Result<Option<(String, MacroProvenance, WithSpan<Expr>)>, SutraMacroError> {
+) -> Result<Option<(String, MacroProvenance, AstNode)>, SutraMacroError> {
     // Extract macro name from call first to provide better error context
     let Some(macro_name) = extract_macro_name_from_call(node) else {
         return Ok(None);
@@ -850,15 +856,15 @@ fn expand_macro_once(
 
 /// Maps function over List items - AST helper
 fn map_list<F>(
-    items: &[WithSpan<Expr>],
+    items: &[AstNode],
     f: &F,
     env: &mut MacroEnv,
     depth: usize,
     original_span: &crate::ast::Span,
     list_span: &crate::ast::Span,
-) -> Result<WithSpan<Expr>, SutraMacroError>
+) -> Result<AstNode, SutraMacroError>
 where
-    F: Fn(WithSpan<Expr>, &mut MacroEnv, usize) -> Result<WithSpan<Expr>, SutraMacroError>,
+    F: Fn(AstNode, &mut MacroEnv, usize) -> Result<AstNode, SutraMacroError>,
 {
     let new_items: Result<Vec<_>, _> = items
         .iter()
@@ -872,17 +878,17 @@ where
 
 /// Maps function over If branches - AST helper
 fn map_if<F>(
-    condition: &WithSpan<Expr>,
-    then_branch: &WithSpan<Expr>,
-    else_branch: &WithSpan<Expr>,
+    condition: &AstNode,
+    then_branch: &AstNode,
+    else_branch: &AstNode,
     f: &F,
     env: &mut MacroEnv,
     depth: usize,
     if_span: &crate::ast::Span,
     original_span: &crate::ast::Span,
-) -> Result<WithSpan<Expr>, SutraMacroError>
+) -> Result<AstNode, SutraMacroError>
 where
-    F: Fn(WithSpan<Expr>, &mut MacroEnv, usize) -> Result<WithSpan<Expr>, SutraMacroError>,
+    F: Fn(AstNode, &mut MacroEnv, usize) -> Result<AstNode, SutraMacroError>,
 {
     let cond = f(condition.clone(), env, depth + 1)?;
     let then_b = f(then_branch.clone(), env, depth + 1)?;
@@ -900,15 +906,15 @@ where
 
 /// Maps function over Quote content - AST helper
 fn map_quote<F>(
-    inner: &WithSpan<Expr>,
+    inner: &AstNode,
     f: &F,
     env: &mut MacroEnv,
     depth: usize,
     quote_span: &crate::ast::Span,
     original_span: &crate::ast::Span,
-) -> Result<WithSpan<Expr>, SutraMacroError>
+) -> Result<AstNode, SutraMacroError>
 where
-    F: Fn(WithSpan<Expr>, &mut MacroEnv, usize) -> Result<WithSpan<Expr>, SutraMacroError>,
+    F: Fn(AstNode, &mut MacroEnv, usize) -> Result<AstNode, SutraMacroError>,
 {
     let new_inner = f(inner.clone(), env, depth + 1)?;
     Ok(with_span(
@@ -919,50 +925,48 @@ where
 
 /// Maps function over Spread content - AST helper
 fn map_spread<F>(
-    inner: &WithSpan<Expr>,
+    inner: &AstNode,
     f: &F,
     env: &mut MacroEnv,
     depth: usize,
     original_span: &crate::ast::Span,
-) -> Result<WithSpan<Expr>, SutraMacroError>
+) -> Result<AstNode, SutraMacroError>
 where
-    F: Fn(WithSpan<Expr>, &mut MacroEnv, usize) -> Result<WithSpan<Expr>, SutraMacroError>,
+    F: Fn(AstNode, &mut MacroEnv, usize) -> Result<AstNode, SutraMacroError>,
 {
     let new_inner = f(inner.clone(), env, depth + 1)?;
-    Ok(with_span(
-        Expr::Spread(Box::new(new_inner)),
-        original_span,
-    ))
+    Ok(with_span(Expr::Spread(Box::new(new_inner)), original_span))
 }
 
 /// Maps function over AST nodes recursively
 fn map_ast<F>(
-    node: WithSpan<Expr>,
+    node: AstNode,
     f: &F,
     env: &mut MacroEnv,
     depth: usize,
-) -> Result<WithSpan<Expr>, SutraMacroError>
+) -> Result<AstNode, SutraMacroError>
 where
-    F: Fn(WithSpan<Expr>, &mut MacroEnv, usize) -> Result<WithSpan<Expr>, SutraMacroError>,
+    F: Fn(AstNode, &mut MacroEnv, usize) -> Result<AstNode, SutraMacroError>,
 {
-    match &node.value {
-        Expr::List(items, span) => {
-            map_list(items, f, env, depth, &node.span, span)
-        }
+    match &*node.value {
+        Expr::List(items, span) => map_list(items, f, env, depth, &node.span, span),
         Expr::If {
             condition,
             then_branch,
             else_branch,
             span,
-        } => {
-            map_if(condition, then_branch, else_branch, f, env, depth, span, &node.span)
-        }
-        Expr::Quote(inner, span) => {
-            map_quote(inner, f, env, depth, span, &node.span)
-        }
-        Expr::Spread(inner) => {
-            map_spread(inner, f, env, depth, &node.span)
-        }
+        } => map_if(
+            condition,
+            then_branch,
+            else_branch,
+            f,
+            env,
+            depth,
+            span,
+            &node.span,
+        ),
+        Expr::Quote(inner, span) => map_quote(inner, f, env, depth, span, &node.span),
+        Expr::Spread(inner) => map_spread(inner, f, env, depth, &node.span),
         // ParamList doesn't contain nested expressions
         // Atomic types (Symbol, Path, String, Number, Bool) don't need traversal
         _ => Ok(node),
@@ -972,31 +976,44 @@ where
 // --- Template Substitution Helpers ---
 
 /// Creates a WithSpan wrapper with consistent span handling - DRY utility
-fn with_span(value: Expr, original_span: &crate::ast::Span) -> WithSpan<Expr> {
+fn with_span(value: Expr, original_span: &crate::ast::Span) -> AstNode {
     WithSpan {
-        value,
+        value: value.into(),
         span: original_span.clone(),
     }
 }
 
 /// Substitutes parameters in List with splicing
 fn substitute_list(
-    items: &[WithSpan<Expr>],
-    bindings: &::std::collections::HashMap<String, WithSpan<Expr>>,
+    items: &[AstNode],
+    bindings: &::std::collections::HashMap<String, AstNode>,
     original_span: &crate::ast::Span,
-) -> Result<WithSpan<Expr>, SutraError> {
+) -> Result<AstNode, SutraError> {
     let mut new_items = Vec::new();
     for item in items {
-        match &item.value {
+        match &*item.value {
             // Spread argument splicing requires special handling for list elements
             Expr::Spread(inner) => {
                 substitute_spread_item(inner, bindings, &mut new_items)?;
+                continue;
             }
-            // All other expressions get regular substitution (Symbol, literals, etc.)
-            _ => {
-                new_items.push(substitute_template(item, bindings)?);
+            Expr::Symbol(name, _span) => {
+                // Check if this symbol is a variadic parameter bound to a list
+                if let Some(bound_node) = bindings.get(name) {
+                    if let Expr::List(elems, _) = &*bound_node.value {
+                        // Splice each element into the parent list
+                        for elem in elems {
+                            new_items.push(elem.clone());
+                        }
+                        continue;
+                    }
+                }
             }
+            _ => {}
         }
+        // Substitute other items normally
+        let substituted_item = substitute_template(item, bindings)?;
+        new_items.push(substituted_item);
     }
     Ok(with_span(
         Expr::List(new_items, original_span.clone()),
@@ -1006,32 +1023,28 @@ fn substitute_list(
 
 /// Handles spread argument substitution with guard clauses - focused helper
 fn substitute_spread_item(
-    inner: &WithSpan<Expr>,
-    bindings: &::std::collections::HashMap<String, WithSpan<Expr>>,
-    new_items: &mut Vec<WithSpan<Expr>>,
+    inner: &AstNode,
+    bindings: &::std::collections::HashMap<String, AstNode>,
+    new_items: &mut Vec<AstNode>,
 ) -> Result<(), SutraError> {
     let substituted = substitute_template(inner, bindings)?;
-
-    // If not a list, treat as single argument
-    let Expr::List(splice_items, _) = &substituted.value else {
-        new_items.push(substituted);
-        return Ok(());
-    };
-
-    // Splice list elements into parent
-    new_items.extend(splice_items.iter().cloned());
+    let span = substituted.span.clone();
+    new_items.push(WithSpan {
+        value: Expr::Spread(Box::new(substituted)).into(),
+        span,
+    });
     Ok(())
 }
 
 /// Substitutes parameters in If expression
 fn substitute_if(
-    condition: &WithSpan<Expr>,
-    then_branch: &WithSpan<Expr>,
-    else_branch: &WithSpan<Expr>,
-    bindings: &::std::collections::HashMap<String, WithSpan<Expr>>,
+    condition: &AstNode,
+    then_branch: &AstNode,
+    else_branch: &AstNode,
+    bindings: &::std::collections::HashMap<String, AstNode>,
     if_span: &crate::ast::Span,
     original_span: &crate::ast::Span,
-) -> Result<WithSpan<Expr>, SutraError> {
+) -> Result<AstNode, SutraError> {
     let new_condition = substitute_template(condition, bindings)?;
     let new_then = substitute_template(then_branch, bindings)?;
     let new_else = substitute_template(else_branch, bindings)?;
@@ -1053,8 +1066,8 @@ fn record_macro_expansion(
     trace: &mut Vec<MacroExpansionStep>,
     macro_name: String,
     provenance: MacroProvenance,
-    input: WithSpan<Expr>,
-    output: WithSpan<Expr>,
+    input: AstNode,
+    output: AstNode,
 ) {
     trace.push(MacroExpansionStep {
         macro_name,
@@ -1066,10 +1079,10 @@ fn record_macro_expansion(
 
 /// Expands macros with trace recording
 fn expand_macros_with_trace(
-    node: WithSpan<Expr>,
+    node: AstNode,
     env: &mut MacroEnv,
     depth: usize,
-) -> Result<WithSpan<Expr>, SutraMacroError> {
+) -> Result<AstNode, SutraMacroError> {
     if let Some((macro_name, provenance, expanded)) = expand_macro_once(&node, env, depth)? {
         record_macro_expansion(
             &mut env.trace,

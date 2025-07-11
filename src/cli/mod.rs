@@ -3,6 +3,7 @@
 //! This module is the main entry point for all CLI commands and orchestrates
 //! the core library functions.
 
+use crate::ast::AstNode;
 use crate::cli::args::{Command, SutraArgs};
 use crate::cli::output::StdoutSink;
 use crate::macros::{expand_macros, MacroDef, MacroRegistry};
@@ -74,19 +75,21 @@ fn read_file_trimmed(path: &std::path::Path) -> std::io::Result<String> {
 // ============================================================================
 
 /// Parses Sutra source code into AST nodes.
-fn parse_source_to_ast(source: &str) -> Result<Vec<WithSpan<Expr>>, Box<dyn std::error::Error>> {
+fn parse_source_to_ast(source: &str) -> Result<Vec<AstNode>, Box<dyn std::error::Error>> {
     Ok(crate::syntax::parser::parse(source).map_err(|e| e.with_source(source))?)
 }
 
 /// Common pipeline: read file and parse to AST nodes.
-fn load_file_to_ast(path: &std::path::Path) -> Result<(String, Vec<WithSpan<Expr>>), Box<dyn std::error::Error>> {
+fn load_file_to_ast(
+    path: &std::path::Path,
+) -> Result<(String, Vec<AstNode>), Box<dyn std::error::Error>> {
     let source = read_file_to_string(path)?;
     let ast_nodes = parse_source_to_ast(&source)?;
     Ok((source, ast_nodes))
 }
 
 /// Wraps AST nodes in a (do ...) if needed.
-fn wrap_in_do_if_needed(ast_nodes: Vec<WithSpan<Expr>>, source: &str) -> WithSpan<Expr> {
+fn wrap_in_do_if_needed(ast_nodes: Vec<AstNode>, source: &str) -> AstNode {
     if ast_nodes.len() == 1 {
         return ast_nodes.into_iter().next().unwrap();
     }
@@ -95,21 +98,21 @@ fn wrap_in_do_if_needed(ast_nodes: Vec<WithSpan<Expr>>, source: &str) -> WithSpa
         end: source.len(),
     };
     let do_symbol = WithSpan {
-        value: Expr::Symbol("do".to_string(), span.clone()),
+        value: Expr::Symbol("do".to_string(), span.clone()).into(), // FIX: wrap Expr in Arc via .into()
         span: span.clone(),
     };
     let mut items = Vec::with_capacity(ast_nodes.len() + 1);
     items.push(do_symbol);
     items.extend(ast_nodes);
     WithSpan {
-        value: Expr::List(items, span.clone()),
+        value: Expr::List(items, span.clone()).into(),
         span,
     }
 }
 
 /// Partitions AST nodes into macro definitions and user code, and builds a user macro registry.
-type MacroParseResult = Result<(MacroRegistry, Vec<WithSpan<Expr>>), Box<dyn std::error::Error>>;
-fn partition_and_build_user_macros(ast_nodes: Vec<WithSpan<Expr>>) -> MacroParseResult {
+type MacroParseResult = Result<(MacroRegistry, Vec<AstNode>), Box<dyn std::error::Error>>;
+fn partition_and_build_user_macros(ast_nodes: Vec<AstNode>) -> MacroParseResult {
     let (macro_defs, user_code): (Vec<_>, Vec<_>) =
         ast_nodes.into_iter().partition(crate::is_macro_definition);
     let mut user_macros = MacroRegistry::new();
@@ -128,9 +131,9 @@ fn partition_and_build_user_macros(ast_nodes: Vec<WithSpan<Expr>>) -> MacroParse
 /// Builds a complete macro environment with user macros and expands a program.
 /// Returns the expanded AST ready for execution or further processing.
 fn build_macro_environment_and_expand(
-    ast_nodes: Vec<WithSpan<Expr>>,
+    ast_nodes: Vec<AstNode>,
     source: &str,
-) -> Result<WithSpan<Expr>, Box<dyn std::error::Error>> {
+) -> Result<AstNode, Box<dyn std::error::Error>> {
     let (user_macros, user_code) = partition_and_build_user_macros(ast_nodes)?;
 
     // Build complete macro environment
@@ -141,8 +144,8 @@ fn build_macro_environment_and_expand(
     let program = wrap_in_do_if_needed(user_code, source);
 
     // Expand macros
-    let expanded = expand_macros(program, &mut env)
-        .map_err(|e| format!("Macro expansion error: {:?}", e))?;
+    let expanded =
+        expand_macros(program, &mut env).map_err(|e| format!("Macro expansion error: {:?}", e))?;
 
     Ok(expanded)
 }
@@ -187,11 +190,7 @@ fn print_registry_listing<T: AsRef<str>>(
 /// Sets color for terminal output.
 fn set_output_color(stdout: &mut termcolor::StandardStream, color: termcolor::Color, bold: bool) {
     use termcolor::ColorSpec;
-    let _ = stdout.set_color(
-        ColorSpec::new()
-            .set_fg(Some(color))
-            .set_bold(bold),
-    );
+    let _ = stdout.set_color(ColorSpec::new().set_fg(Some(color)).set_bold(bold));
 }
 
 /// Resets terminal color.
@@ -245,7 +244,11 @@ fn execute_script(source: &str) -> (Result<(), crate::SutraError>, String) {
 }
 
 /// Compares test output with expected result.
-fn compare_test_results(result: Result<(), crate::SutraError>, actual: &str, expected: &str) -> bool {
+fn compare_test_results(
+    result: Result<(), crate::SutraError>,
+    actual: &str,
+    expected: &str,
+) -> bool {
     match result {
         Ok(_) => actual == expected,
         Err(e) => {
@@ -291,7 +294,10 @@ fn print_test_result(
             set_output_color(stdout, termcolor::Color::Green, true);
             let _ = writeln!(stdout, "PASS: {script_name}");
         }
-        TestOutcome::Fail { ref expected, ref actual } => {
+        TestOutcome::Fail {
+            ref expected,
+            ref actual,
+        } => {
             set_output_color(stdout, termcolor::Color::Red, true);
             let _ = writeln!(stdout, "FAIL: {script_name}");
             set_output_color(stdout, termcolor::Color::Yellow, false);
@@ -368,10 +374,7 @@ fn handle_validate(path: &std::path::Path) -> Result<(), Box<dyn std::error::Err
             );
         }
         Err(e) => {
-            println!(
-                "❌ Validation failed in {}:",
-                safe_path_display(path)
-            );
+            println!("❌ Validation failed in {}:", safe_path_display(path));
             println!("   {}", e);
             return Err(e.into());
         }
@@ -505,21 +508,30 @@ fn handle_test(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>>
 // --- Utility Commands: test setup and file generation ---
 
 /// Processes a single file for expected output generation.
-fn process_single_file(path: &std::path::Path, config: &crate::test_utils::TestConfig) -> Result<(), Box<dyn std::error::Error>> {
+fn process_single_file(
+    path: &std::path::Path,
+    config: &crate::test_utils::TestConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
     crate::test_utils::generate_expected_output(path, config)?;
     println!("Generated expected output for {}", path.display());
     Ok(())
 }
 
 /// Processes a directory for expected output generation.
-fn process_directory(path: &std::path::Path, config: &crate::test_utils::TestConfig) -> Result<(), Box<dyn std::error::Error>> {
+fn process_directory(
+    path: &std::path::Path,
+    config: &crate::test_utils::TestConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
     let test_cases = crate::test_utils::discover_test_cases(path)?;
     for case in test_cases {
         if let Err(e) = crate::test_utils::generate_expected_output(&case.sutra_file, config) {
             eprintln!("Failed for {}: {}", case.sutra_file.display(), e);
             continue;
         }
-        println!("Generated expected output for {}", case.sutra_file.display());
+        println!(
+            "Generated expected output for {}",
+            case.sutra_file.display()
+        );
     }
     Ok(())
 }

@@ -6,7 +6,7 @@ pub mod runtime;
 pub mod syntax;
 pub mod test_utils;
 
-use crate::ast::{Expr, Span, WithSpan};
+use crate::ast::{AstNode, Expr, Span, WithSpan};
 use crate::atoms::OutputSink;
 use crate::cli::output::StdoutSink;
 use crate::macros::{expand_macros, MacroDef, MacroTemplate};
@@ -94,31 +94,31 @@ pub fn run_sutra_source(source: &str, _filename: Option<&str>) -> Result<(), Sut
 }
 
 // Returns true if the given expression is a macro definition of the form (define ...).
-fn is_macro_definition(expr: &WithSpan<Expr>) -> bool {
-    let Expr::List(items, _) = &expr.value else { return false; };
+fn is_macro_definition(expr: &AstNode) -> bool {
+    let Expr::List(items, _) = &*expr.value else { return false; }; // FIX: only one deref for Arc<Expr>
     if items.len() != 3 {
         return false;
     }
-    let Expr::Symbol(def, _) = &items[0].value else { return false; };
+    let Expr::Symbol(def, _) = &*items[0].value else { return false; }; // FIX: only one deref
     def == "define"
 }
 
-fn parse_macro_definition(expr: &WithSpan<Expr>) -> Result<(String, MacroTemplate), SutraError> {
+fn parse_macro_definition(expr: &AstNode) -> Result<(String, MacroTemplate), SutraError> {
     use crate::ast::Expr;
     use crate::macros::MacroTemplate;
-    let Expr::List(items, _) = &expr.value else {
+    let Expr::List(items, _) = &*expr.value else {
         return Err(macro_error("Not a macro definition list.", None));
     };
     if items.len() != 3 {
         return Err(macro_error("Macro definition must have 3 elements.", None));
     }
-    let Expr::Symbol(def, _) = &items[0].value else {
+    let Expr::Symbol(def, _) = &*items[0].value else {
         return Err(macro_error("First element must be 'define'.", None));
     };
     if def != "define" {
         return Err(macro_error("First element must be 'define'.", None));
     }
-    let Expr::ParamList(param_list) = &items[1].value else {
+    let Expr::ParamList(param_list) = &*items[1].value else {
         return Err(macro_error(
             "Second element must be a parameter list.",
             None,
@@ -138,10 +138,10 @@ fn parse_macro_definition(expr: &WithSpan<Expr>) -> Result<(String, MacroTemplat
     Ok((macro_name, template))
 }
 
-fn wrap_in_do(exprs: Vec<WithSpan<Expr>>) -> WithSpan<Expr> {
+fn wrap_in_do(exprs: Vec<AstNode>) -> AstNode {
     match exprs.len() {
         0 => WithSpan {
-            value: Expr::List(vec![], Span { start: 0, end: 0 }),
+            value: Expr::List(vec![], Span { start: 0, end: 0 }).into(), // FIX: wrap Expr in Arc via .into()
             span: Span { start: 0, end: 0 },
         },
         1 => exprs
@@ -162,14 +162,14 @@ fn wrap_in_do(exprs: Vec<WithSpan<Expr>>) -> WithSpan<Expr> {
                     .end,
             };
             let do_symbol = WithSpan {
-                value: Expr::Symbol("do".to_string(), span.clone()),
+                value: Expr::Symbol("do".to_string(), span.clone()).into(), // FIX: wrap Expr in Arc via .into()
                 span: span.clone(),
             };
             let mut items = Vec::with_capacity(exprs.len() + 1);
             items.push(do_symbol);
             items.extend(exprs);
             WithSpan {
-                value: Expr::List(items, span.clone()),
+                value: Expr::List(items, span.clone()).into(), // FIX: wrap Expr in Arc via .into()
                 span,
             }
         }

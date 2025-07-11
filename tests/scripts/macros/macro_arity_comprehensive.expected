@@ -3,7 +3,27 @@ Fixed arity macro (2 params):
 Success case:
 (1 2)
 Expected failures:
+Macro expansion error: Expansion { span: Span { start: 1201, end: 1216 }, macro_name: "inner", message: "Macro expansion failed: Evaluation Error: Macro arity mismatch\n\nExpected exactly 2 arguments, but received 1. This macro requires a specific number of arguments.\n\nMacro parameters: a, b\n\nSuggestion: Add 1 more argument to match the macro definition: Macro parameters: a, b\n\nExpanded Code:\n  <macro call with 1 arguments> (at 1201:1216)", source_error_kind: Some(Eval(EvalError { message: "Macro arity mismatch\n\nExpected exactly 2 arguments, but received 1. This macro requires a specific number of arguments.\n\nMacro parameters: a, b", expanded_code: "<macro call with 1 arguments>", original_code: None, suggestion: Some("Add 1 more argument to match the macro definition: Macro parameters: a, b") })), suggestion: Some("Add 1 more argument to match the macro definition: Macro parameters: a, b"), source_span: Some(Span { start: 1201, end: 1216 }) }
 Variadic macro (any number of args):
 Success cases:
 ()
-Evaluation error: SutraError { kind: Eval(EvalError { message: "Arity mismatch in call to 'eval'\n\nExpected first element must be a symbol naming an atom arguments, but received 1.\n\nArguments provided (1):   1: number 1", expanded_code: "(eval 1)", original_code: None, suggestion: Some("Check the function documentation for correct usage") }), span: Some(Span { start: 691, end: 692 }) }
+(1)
+(1 2 3)
+Mixed parameter macro (1 required + variadic):
+Success cases:
+("req" ())
+("req" ("opt1"))
+("req" ("opt1" "opt2" "opt3"))
+Nested macro with parameter forwarding:
+Success case:
+7
+Spread operator in macro body:
+Success cases:
+(1 2 3)
+Parameter binding:
+Success cases:
+test
+42
+(1 2 3)
+=== MACRO ARITY TESTING COMPLETE ===
+All macro arity patterns tested successfully

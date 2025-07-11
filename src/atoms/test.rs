@@ -17,6 +17,7 @@ use crate::atoms::AtomRegistry;
 use crate::runtime::eval::EvalContext;
 use crate::runtime::world::World;
 use crate::syntax::error::SutraError;
+use crate::ast::AstNode;
 
 // Use the public context helper macro
 use crate::sub_eval_context;
@@ -33,7 +34,7 @@ use crate::sub_eval_context;
 /// # Safety
 /// Emits output, does not mutate world state.
 fn test_echo_atom(
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     ctx: &mut EvalContext,
     span: &Span,
 ) -> Result<(Value, World), SutraError> {
@@ -43,7 +44,7 @@ fn test_echo_atom(
         ctx.output.emit(&val.to_string(), Some(span));
         return Ok((val, world));
     };
-    let val = match &first.value {
+    let val = match &*first.value {
         Expr::String(s, _) => Value::String(s.clone()),
         _ => Value::String(format!("{:?}", first.value)),
     };
@@ -72,19 +73,19 @@ fn test_echo_atom(
 /// Emits output, does not mutate world state. May recurse up to max_depth.
 // Type alias for test atom function signatures
 type TestAtomFn =
-    fn(&[WithSpan<Expr>], &mut EvalContext, &Span) -> Result<(Value, World), SutraError>;
+    fn(&[AstNode], &mut EvalContext, &Span) -> Result<(Value, World), SutraError>;
 
 /// Parse arguments for borrow stress test.
-fn parse_borrow_stress_args(args: &[WithSpan<Expr>]) -> (i64, String) {
+fn parse_borrow_stress_args(args: &[AstNode]) -> (i64, String) {
     let first = args.first();
     let second = args.get(1);
     match (first, second) {
         (Some(d), Some(m)) => {
-            let d = match &d.value {
+            let d = match &*d.value {
                 Expr::Number(n, _) => *n as i64,
                 _ => 0,
             };
-            let m = match &m.value {
+            let m = match &*m.value {
                 Expr::String(s, _) => s.clone(),
                 _ => format!("{:?}", m.value),
             };
@@ -122,11 +123,11 @@ fn handle_borrow_stress_recursion(
     sub_context.depth = ctx.depth + 1; // Manually set incremented depth
     let nested_args = vec![
         WithSpan {
-            value: Expr::Number((depth - 1) as f64, span.clone()),
+            value: Expr::Number((depth - 1) as f64, span.clone()).into(), // FIX: wrap Expr in Arc via .into()
             span: span.clone(),
         },
         WithSpan {
-            value: Expr::String(msg.to_string(), span.clone()),
+            value: Expr::String(msg.to_string(), span.clone()).into(), // FIX: wrap Expr in Arc via .into()
             span: span.clone(),
         },
     ];
@@ -143,7 +144,7 @@ fn handle_borrow_stress_base_case(
     let mut sub_context = sub_eval_context!(ctx, ctx.world);
     sub_context.depth = ctx.depth + 1; // Manually set incremented depth
     let echo_arg = WithSpan {
-        value: Expr::String(msg.to_string(), span.clone()),
+        value: Expr::String(msg.to_string(), span.clone()).into(), // FIX: wrap Expr in Arc via .into()
         span: span.clone(),
     };
     test_echo_atom(&[echo_arg], &mut sub_context, span)
@@ -151,7 +152,7 @@ fn handle_borrow_stress_base_case(
 
 /// Main borrow stress test atom implementation.
 fn test_borrow_stress_atom(
-    args: &[WithSpan<Expr>],
+    args: &[AstNode],
     ctx: &mut EvalContext,
     span: &Span,
 ) -> Result<(Value, World), SutraError> {

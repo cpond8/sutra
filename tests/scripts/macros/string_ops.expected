@@ -4,6 +4,4 @@ Alice
 Bob
 Line 1
 Line 2
-foobar
-abc
-hello, world!
+Evaluation error: SutraError { kind: Eval(EvalError { message: "Arity mismatch in call to 'eval'\n\nExpected first element must be a symbol naming an atom arguments, but received 2.\n\nArguments provided (2):   1: string \"foo\"\n  2: string \"bar\"", expanded_code: "(eval \"foo\" \"bar\")", original_code: None, suggestion: Some("Check the function documentation for correct usage") }), span: Some(Span { start: 523, end: 528 }) }
