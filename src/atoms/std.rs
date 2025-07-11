@@ -236,6 +236,57 @@ pub const ATOM_MOD: AtomFn = |args, context, parent_span| {
     )
 };
 
+/// Absolute value of a number.
+///
+/// Usage: (abs <n>)
+///   - <n>: Number
+///
+///   Returns: Number (absolute value)
+///
+/// Example:
+///   (abs -5) ; => 5
+///   (abs 3.14) ; => 3.14
+///
+/// # Safety
+/// Pure, does not mutate state.
+pub const ATOM_ABS: AtomFn = |args, context, parent_span| {
+    let (val, world) = eval_single_arg(args, context, parent_span, "abs")?;
+    let n = extract_number(&val, args, parent_span, "abs")?;
+    Ok((Value::Number(n.abs()), world))
+};
+
+/// Minimum of multiple numbers.
+///
+/// Usage: (min <a> <b> ...)
+///   - <a>, <b>, ...: Numbers
+///
+///   Returns: Number (minimum value)
+///
+/// Example:
+///   (min 3 1 4) ; => 1
+///
+/// # Safety
+/// Pure, does not mutate state.
+pub const ATOM_MIN: AtomFn = |args, context, parent_span| {
+    eval_nary_numeric_op(args, context, parent_span, f64::INFINITY, f64::min, "min")
+};
+
+/// Maximum of multiple numbers.
+///
+/// Usage: (max <a> <b> ...)
+///   - <a>, <b>, ...: Numbers
+///
+///   Returns: Number (maximum value)
+///
+/// Example:
+///   (max 3 1 4) ; => 4
+///
+/// # Safety
+/// Pure, does not mutate state.
+pub const ATOM_MAX: AtomFn = |args, context, parent_span| {
+    eval_nary_numeric_op(args, context, parent_span, f64::NEG_INFINITY, f64::max, "max")
+};
+
 // ----------------------------------------------------------------------------
 // Comparison atoms: Relational and equality operations
 // ----------------------------------------------------------------------------
@@ -356,6 +407,33 @@ pub const ATOM_LTE: AtomFn = |args, context, parent_span| {
     )
 };
 
+/// Returns true if a path exists in the world state.
+///
+/// Usage: (core/exists? <path>)
+///   - <path>: Path to check (must evaluate to a Value::Path)
+///
+///   Returns: Bool
+///
+/// Example:
+///   (core/exists? player.score) ; => true if path exists, false otherwise
+///
+/// # Safety
+/// Pure, does not mutate state.
+pub const ATOM_EXISTS: AtomFn = |args, context, parent_span| {
+    eval_unary_path_op(
+        args,
+        context,
+        parent_span,
+        |path: crate::runtime::path::Path,
+         world: crate::runtime::world::World|
+         -> Result<(Value, crate::runtime::world::World), SutraError> {
+            let exists = world.get(&path).is_some();
+            Ok((Value::Bool(exists), world))
+        },
+        "core/exists?",
+    )
+};
+
 // ----------------------------------------------------------------------------
 // Logic atoms: Boolean operations
 // ----------------------------------------------------------------------------
@@ -427,6 +505,178 @@ pub const ATOM_LEN: AtomFn = |args, context, parent_span| {
             &val,
         )),
     }
+};
+
+/// Tests if a collection contains a value or key.
+///
+/// Usage: (has? <collection> <value>)
+///   - <collection>: List or Map to search in
+///   - <value>: Value to search for (element in List, key in Map)
+///
+///   Returns: Bool (true if found, false otherwise)
+///
+/// Example:
+///   (has? (list 1 2 3) 2) ; => true
+///   (has? {"key" "value"} "key") ; => true
+///   (has? (list 1 2 3) 4) ; => false
+///
+/// # Safety
+/// Pure, does not mutate state.
+pub const ATOM_HAS: AtomFn = |args, context, parent_span| {
+    if args.len() != 2 {
+        return Err(arity_error(Some(parent_span.clone()), args, "has?", 2));
+    }
+
+    let (collection_val, search_val, world) = eval_binary_args(args, context, parent_span, "has?")?;
+
+    let found = match collection_val {
+        Value::List(ref items) => items.contains(&search_val),
+        Value::Map(ref map) => {
+            // For maps, check if the search value exists as a key
+            let Value::String(key) = search_val else {
+                return Err(type_error(
+                    Some(parent_span.clone()),
+                    &args[1],
+                    "has?",
+                    "a String when searching in a Map",
+                    &search_val,
+                ));
+            };
+            map.contains_key(&key)
+        }
+        _ => {
+            return Err(type_error(
+                Some(parent_span.clone()),
+                &args[0],
+                "has?",
+                "a List or Map",
+                &collection_val,
+            ));
+        }
+    };
+
+    Ok((Value::Bool(found), world))
+};
+
+/// Appends a value to a list at a path in the world state.
+///
+/// Usage: (core/push! <path> <value>)
+///   - <path>: Path to the list (must evaluate to a Value::Path)
+///   - <value>: Value to append to the list
+///
+///   Returns: Nil. Mutates world state (returns new world).
+///
+/// Example:
+///   (core/push! items 42)  ; Appends 42 to the list at 'items'
+///
+/// # Safety
+/// Mutates the world at the given path. Creates empty list if path doesn't exist.
+pub const ATOM_CORE_PUSH: AtomFn = |args, context, parent_span| {
+    eval_binary_path_op(
+        args,
+        context,
+        parent_span,
+        |path: crate::runtime::path::Path,
+         value: Value,
+         world: crate::runtime::world::World|
+         -> Result<(Value, crate::runtime::world::World), SutraError> {
+            let mut current = world.get(&path).cloned().unwrap_or(Value::List(vec![]));
+
+            let Value::List(ref mut items) = current else {
+                return Err(SutraError {
+                    kind: SutraErrorKind::Eval(EvalError {
+                        message: format!("Cannot push to non-list value at path '{}'", path),
+                        expanded_code: format!("(core/push! {} {:?})", path, value),
+                        original_code: None,
+                        suggestion: Some("Ensure the path contains a list before pushing".to_string()),
+                    }),
+                    span: Some(parent_span.clone()),
+                });
+            };
+
+            items.push(value);
+            let new_world = world.set(&path, current);
+            Ok((Value::default(), new_world))
+        },
+        "core/push!",
+    )
+};
+
+/// Removes and returns the last element from a list at a path in the world state.
+///
+/// Usage: (core/pull! <path>)
+///   - <path>: Path to the list (must evaluate to a Value::Path)
+///
+///   Returns: The removed element, or Nil if list is empty or doesn't exist.
+///
+/// Example:
+///   (core/pull! items)  ; Removes and returns last element from 'items'
+///
+/// # Safety
+/// Mutates the world at the given path. Creates empty list if path doesn't exist.
+pub const ATOM_CORE_PULL: AtomFn = |args, context, parent_span| {
+    eval_unary_path_op(
+        args,
+        context,
+        parent_span,
+        |path: crate::runtime::path::Path,
+         world: crate::runtime::world::World|
+         -> Result<(Value, crate::runtime::world::World), SutraError> {
+            let mut current = world.get(&path).cloned().unwrap_or(Value::List(vec![]));
+
+            let Value::List(ref mut items) = current else {
+                return Err(SutraError {
+                    kind: SutraErrorKind::Eval(EvalError {
+                        message: format!("Cannot pull from non-list value at path '{}'", path),
+                        expanded_code: format!("(core/pull! {})", path),
+                        original_code: None,
+                        suggestion: Some("Ensure the path contains a list before pulling".to_string()),
+                    }),
+                    span: Some(parent_span.clone()),
+                });
+            };
+
+            let pulled_value = items.pop().unwrap_or_default();
+            let new_world = world.set(&path, current);
+            Ok((pulled_value, new_world))
+        },
+        "core/pull!",
+    )
+};
+
+/// Generates a pseudo-random number between 0.0 (inclusive) and 1.0 (exclusive).
+///
+/// Usage: (rand)
+///   - No arguments
+///
+///   Returns: Number (pseudo-random float between 0.0 and 1.0)
+///
+/// Example:
+///   (rand) ; => 0.7234567 (example)
+///
+/// # Safety
+/// Pure random generation, does not mutate world state.
+/// Uses a simple pseudo-random generator based on system time.
+pub const ATOM_RAND: AtomFn = |args, context, parent_span| {
+    if !args.is_empty() {
+        return Err(arity_error(Some(parent_span.clone()), args, "rand", 0));
+    }
+
+    // Generate pseudo-random number using system time as seed
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    let nanos = duration.as_nanos();
+
+    let mut hasher = DefaultHasher::new();
+    nanos.hash(&mut hasher);
+    let hash = hasher.finish();
+
+    // Convert to 0.0..1.0 range
+    let random_value = (hash as f64) / (u64::MAX as f64);
+    Ok((Value::Number(random_value), context.world.clone()))
 };
 
 /// Concatenates two or more strings into a single string.
@@ -1103,6 +1353,9 @@ pub fn register_std_atoms(registry: &mut AtomRegistry) {
     registry.register("*", ATOM_MUL);
     registry.register("/", ATOM_DIV);
     registry.register("mod", ATOM_MOD);
+    registry.register("abs", ATOM_ABS);
+    registry.register("min", ATOM_MIN);
+    registry.register("max", ATOM_MAX);
 
     // Comparison atoms
     registry.register("eq?", ATOM_EQ);
@@ -1110,6 +1363,7 @@ pub fn register_std_atoms(registry: &mut AtomRegistry) {
     registry.register("lt?", ATOM_LT);
     registry.register("gte?", ATOM_GTE);
     registry.register("lte?", ATOM_LTE);
+    registry.register("core/exists?", ATOM_EXISTS);
 
     // Logic atoms
     registry.register("not", ATOM_NOT);
@@ -1117,12 +1371,18 @@ pub fn register_std_atoms(registry: &mut AtomRegistry) {
     // List and string atoms
     registry.register("list", ATOM_LIST);
     registry.register("len", ATOM_LEN);
+    registry.register("has?", ATOM_HAS);
+    registry.register("core/push!", ATOM_CORE_PUSH);
+    registry.register("core/pull!", ATOM_CORE_PULL);
     registry.register("core/str+", ATOM_CORE_STR_PLUS);
     registry.register("apply", ATOM_APPLY);
 
     // Control flow atoms
     registry.register("do", ATOM_DO);
     registry.register("error", ATOM_ERROR);
+
+    // Random number generation
+    registry.register("rand", ATOM_RAND);
 
     // I/O atoms
     registry.register("print", ATOM_PRINT);

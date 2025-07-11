@@ -1,0 +1,21 @@
+;; Phase 2 atoms test - has?, core/push!, core/pull!, rand
+;; Test new phase 2 atom implementations
+
+;; Test has? atom
+(print (has? (list 1 2 3) 2))
+(print (has? (list 1 2 3) 4))
+
+;; Test core/push! and core/pull!
+(set! testlist (list 1 2))
+(print (get testlist))
+
+(core/push! testlist 3)
+(print (get testlist))
+
+(print (core/pull! testlist))
+(print (get testlist))
+
+;; Test rand
+(print (rand))
+
+(print "Phase 2 atoms test complete")

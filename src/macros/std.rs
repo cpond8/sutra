@@ -20,27 +20,31 @@ use crate::syntax::error::SutraError;
 // ===================================================================================================
 
 /// Registers all standard macros in the given registry.
+///
+/// Return values are ignored since these are built-in macros that shouldn't conflict.
+#[allow(unused_must_use)]
 pub fn register_std_macros(registry: &mut MacroRegistry) {
-    // Core operations
-    registry.register("set!", expand_set);
-    registry.register("get", expand_get);
+    // Core path operations (alphabetical)
     registry.register("del!", expand_del);
+    registry.register("exists?", expand_exists);
+    registry.register("get", expand_get);
+    registry.register("set!", expand_set);
 
-    // Conditional macros
+    // Control flow
     registry.register("if", expand_if);
 
-    // Predicate macros
+    // Predicates (building on core/get - alphabetical)
     registry.register("is?", expand_is);
     registry.register("over?", expand_over);
     registry.register("under?", expand_under);
 
-    // Assignment macros
+    // Compound assignments (building on core/get and core/set! - alphabetical)
     registry.register("add!", expand_add);
-    registry.register("sub!", expand_sub);
-    registry.register("inc!", expand_inc);
     registry.register("dec!", expand_dec);
+    registry.register("inc!", expand_inc);
+    registry.register("sub!", expand_sub);
 
-    // I/O macros
+    // I/O utilities
     registry.register("print", expand_print);
 
     // Standard macros like cond are now loaded from macros.sutra at startup.
@@ -103,7 +107,9 @@ fn wrap_in_get(expr: &WithSpan<Expr>) -> WithSpan<Expr> {
 // INTERNAL HELPERS: Macro Construction Utilities
 // ===================================================================================================
 
-// --- Validation Helpers ---
+// -----------------------------------------------
+// Validation Helpers
+// -----------------------------------------------
 
 /// Validates that the given expression is a list with the expected number of arguments.
 /// Returns the items and span if valid, or a SutraError otherwise.
@@ -116,7 +122,7 @@ fn expect_list_with_n_args<'a>(
         Expr::List(items, span) if items.len() == n => Ok((items, span)),
         Expr::List(items, span) => Err(validation_error(
             format!(
-                "Macro '{}' expects {} arguments, but got {}",
+                "Macro '{}' expects {} arguments, but got {}.",
                 macro_name,
                 n - 1,
                 items.len() - 1
@@ -130,7 +136,9 @@ fn expect_list_with_n_args<'a>(
     }
 }
 
-// --- AST Construction Helpers ---
+// -----------------------------------------------
+// AST Construction Helpers
+// -----------------------------------------------
 
 /// Creates a `WithSpan<Expr>` containing a symbol with the given name and span.
 fn create_symbol(name: &str, span: &crate::ast::Span) -> WithSpan<Expr> {
@@ -156,7 +164,40 @@ fn create_canonical_path(path_arg: &WithSpan<Expr>) -> Result<WithSpan<Expr>, Su
     })
 }
 
-// --- Macro Pattern Generators ---
+// -----------------------------------------------
+// Macro Pattern Generators
+// -----------------------------------------------
+
+/// Helper for unary core path operations like `get`, `del!`, `exists?`.
+fn create_unary_core_macro(
+    expr: &WithSpan<Expr>,
+    macro_name: &str,
+    core_name: &str,
+) -> Result<WithSpan<Expr>, SutraError> {
+    let (items, span) = expect_list_with_n_args(expr, 2, macro_name)?;
+    let atom_symbol = create_symbol(core_name, &items[0].span);
+    let canonical_path = create_canonical_path(&items[1])?;
+    Ok(WithSpan {
+        value: Expr::List(vec![atom_symbol, canonical_path], span.clone()),
+        span: span.clone(),
+    })
+}
+
+/// Helper for binary core path operations like `set!`.
+fn create_binary_core_macro(
+    expr: &WithSpan<Expr>,
+    macro_name: &str,
+    core_name: &str,
+) -> Result<WithSpan<Expr>, SutraError> {
+    let (items, span) = expect_list_with_n_args(expr, 3, macro_name)?;
+    let atom_symbol = create_symbol(core_name, &items[0].span);
+    let canonical_path = create_canonical_path(&items[1])?;
+    let value_arg = items[2].clone();
+    Ok(WithSpan {
+        value: Expr::List(vec![atom_symbol, canonical_path, value_arg], span.clone()),
+        span: span.clone(),
+    })
+}
 
 /// Helper for binary predicate macros like `is?`, `over?`, etc.
 fn create_binary_predicate_macro(
@@ -182,13 +223,12 @@ fn create_assignment_macro(
 ) -> Result<WithSpan<Expr>, SutraError> {
     let (items, span) = expect_list_with_n_args(expr, 3, macro_name)?;
     let set_symbol = create_symbol("core/set!", &items[0].span);
-    let path_arg = &items[1];
-    let canonical_path = create_canonical_path(path_arg)?;
+    let canonical_path = create_canonical_path(&items[1])?;
     let value_arg = items[2].clone();
     let atom_symbol = create_symbol(op_symbol, &items[0].span);
     let inner_expr = WithSpan {
         value: Expr::List(
-            vec![atom_symbol, wrap_in_get(path_arg), value_arg],
+            vec![atom_symbol, wrap_in_get(&items[1]), value_arg],
             span.clone(),
         ),
         span: span.clone(),
@@ -207,12 +247,11 @@ fn create_unary_assignment_macro(
 ) -> Result<WithSpan<Expr>, SutraError> {
     let (items, span) = expect_list_with_n_args(expr, 2, macro_name)?;
     let set_symbol = create_symbol("core/set!", &items[0].span);
-    let path_arg = &items[1];
-    let canonical_path = create_canonical_path(path_arg)?;
+    let canonical_path = create_canonical_path(&items[1])?;
     let op_symbol_expr = create_symbol(op_symbol, &items[0].span);
     let one = create_number(1.0, &items[0].span);
     let inner_expr = WithSpan {
-        value: Expr::List(vec![op_symbol_expr, wrap_in_get(path_arg), one], span.clone()),
+        value: Expr::List(vec![op_symbol_expr, wrap_in_get(&items[1]), one], span.clone()),
         span: span.clone(),
     };
     Ok(WithSpan {
@@ -225,164 +264,83 @@ fn create_unary_assignment_macro(
 // PUBLIC API: Standard Macro Implementations
 // ===================================================================================================
 
-// --- Core Operations ---
+// -----------------------------------------------
+// Core Path Operations
+// -----------------------------------------------
 
 /// Expands `(set! foo bar)` to `(core/set! (path foo) bar)`.
-///
-/// Usage: (set! foo bar)
-/// Example:
-///   (set! foo bar) ; expands to (core/set! (path foo) bar)
-///
-/// # Caveats
-/// Only works for two arguments.
 pub fn expand_set(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
-    let (items, span) = expect_list_with_n_args(expr, 3, "set!")?;
-    let atom_symbol = create_symbol("core/set!", &items[0].span);
-    let path_arg = &items[1];
-    let canonical_path = create_canonical_path(path_arg)?;
-    let value_arg = items[2].clone();
-    Ok(WithSpan {
-        value: Expr::List(vec![atom_symbol, canonical_path, value_arg], span.clone()),
-        span: span.clone(),
-    })
+    create_binary_core_macro(expr, "set!", "core/set!")
 }
 
 /// Expands `(get foo)` to `(core/get (path foo))`.
-///
-/// Usage: (get foo)
-/// Example:
-///   (get foo) ; expands to (core/get (path foo))
-///
-/// # Caveats
-/// Only works for one argument.
 pub fn expand_get(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
-    let (items, span) = expect_list_with_n_args(expr, 2, "get")?;
-    let atom_symbol = create_symbol("core/get", &items[0].span);
-    let path_arg = &items[1];
-    let canonical_path = create_canonical_path(path_arg)?;
-    Ok(WithSpan {
-        value: Expr::List(vec![atom_symbol, canonical_path], span.clone()),
-        span: span.clone(),
-    })
+    create_unary_core_macro(expr, "get", "core/get")
 }
 
 /// Expands `(del! foo)` to `(core/del! (path foo))`.
-///
-/// Usage: (del! foo)
-/// Example:
-///   (del! foo) ; expands to (core/del! (path foo))
-///
-/// # Caveats
-/// Only works for one argument.
 pub fn expand_del(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
-    let (items, span) = expect_list_with_n_args(expr, 2, "del!")?;
-    let atom_symbol = create_symbol("core/del!", &items[0].span);
-    let path_arg = &items[1];
-    let canonical_path = create_canonical_path(path_arg)?;
-    Ok(WithSpan {
-        value: Expr::List(vec![atom_symbol, canonical_path], span.clone()),
-        span: span.clone(),
-    })
+    create_unary_core_macro(expr, "del!", "core/del!")
 }
 
-// --- Predicate Macros ---
+/// Expands `(exists? foo)` to `(core/exists? (path foo))`.
+pub fn expand_exists(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
+    create_unary_core_macro(expr, "exists?", "core/exists?")
+}
+
+// -----------------------------------------------
+// Predicate Operations
+// -----------------------------------------------
 
 /// Expands `(is? a b)` to `(eq? (core/get a) (core/get b))`.
-///
-/// Usage: (is? a b)
-/// Example:
-///   (is? foo bar) ; expands to (eq? (core/get foo) (core/get bar))
-///
-/// # Caveats
-/// Only works for two arguments.
 pub fn expand_is(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     create_binary_predicate_macro(expr, "is?", "eq?")
 }
 
 /// Expands `(over? a b)` to `(gt? (core/get a) (core/get b))`.
-///
-/// Usage: (over? a b)
-/// Example:
-///   (over? foo bar) ; expands to (gt? (core/get foo) (core/get bar))
-///
-/// # Caveats
-/// Only works for two arguments.
 pub fn expand_over(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     create_binary_predicate_macro(expr, "over?", "gt?")
 }
 
 /// Expands `(under? a b)` to `(lt? (core/get a) (core/get b))`.
-///
-/// Usage: (under? a b)
-/// Example:
-///   (under? foo bar) ; expands to (lt? (core/get foo) (core/get bar))
-///
-/// # Caveats
-/// Only works for two arguments.
 pub fn expand_under(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     create_binary_predicate_macro(expr, "under?", "lt?")
 }
 
-// --- Assignment Operations ---
+// -----------------------------------------------
+// Assignment Operations
+// -----------------------------------------------
 
 /// Expands `(add! foo 1)` to `(core/set! (path foo) (+ (core/get foo) 1))`.
-///
-/// Usage: (add! foo 1)
-/// Example:
-///   (add! foo 1) ; expands to (core/set! (path foo) (+ (core/get foo) 1))
-///
-/// # Caveats
-/// Only works for two arguments.
 pub fn expand_add(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     create_assignment_macro(expr, "add!", "+")
 }
 
 /// Expands `(sub! foo 1)` to `(core/set! (path foo) (- (core/get foo) 1))`.
-///
-/// Usage: (sub! foo 1)
-/// Example:
-///   (sub! foo 1) ; expands to (core/set! (path foo) (- (core/get foo) 1))
-///
-/// # Caveats
-/// Only works for two arguments.
 pub fn expand_sub(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     create_assignment_macro(expr, "sub!", "-")
 }
 
 /// Expands `(inc! foo)` to `(core/set! (path foo) (+ (core/get foo) 1))`.
-///
-/// Usage: (inc! foo)
-/// Example:
-///   (inc! foo) ; expands to (core/set! (path foo) (+ (core/get foo) 1))
-///
-/// # Caveats
-/// Only works for one argument.
 pub fn expand_inc(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     create_unary_assignment_macro(expr, "inc!", "+")
 }
 
 /// Expands `(dec! foo)` to `(core/set! (path foo) (- (core/get foo) 1))`.
-///
-/// Usage: (dec! foo)
-/// Example:
-///   (dec! foo) ; expands to (core/set! (path foo) (- (core/get foo) 1))
-///
-/// # Caveats
-/// Only works for one argument.
 pub fn expand_dec(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     create_unary_assignment_macro(expr, "dec!", "-")
 }
 
-// --- Control Flow ---
+// -----------------------------------------------
+// Control Flow
+// -----------------------------------------------
 
 /// Expands `(if cond then else)` to a canonical conditional form.
 ///
-/// Usage: (if cond then else)
-/// Example:
-///   (if (eq? x 1) (print "yes") (print "no"))
-///
-/// # Caveats
-/// Only works for three arguments.
+/// # Example
+/// ```
+/// (if (eq? x 1) (print "yes") (print "no"))
+/// ```
 pub fn expand_if(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     let (items, span) = expect_list_with_n_args(expr, 4, "if")?;
     Ok(WithSpan {
@@ -396,16 +354,11 @@ pub fn expand_if(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     })
 }
 
-// --- I/O Operations ---
+// -----------------------------------------------
+// I/O Operations
+// -----------------------------------------------
 
-/// Expands `(print x)` to a canonical print form.
-///
-/// Usage: (print x)
-/// Example:
-///   (print x) ; expands to (print x)
-///
-/// # Caveats
-/// Only works for one argument.
+/// Expands `(print x)` to `(core/print x)`.
 pub fn expand_print(expr: &WithSpan<Expr>) -> Result<WithSpan<Expr>, SutraError> {
     let (items, span) = expect_list_with_n_args(expr, 2, "print")?;
     let atom_symbol = create_symbol("core/print", &items[0].span);

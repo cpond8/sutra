@@ -60,19 +60,52 @@ pub enum MacroDef {
 }
 
 /// Macro registry for built-in and template macros.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct MacroRegistry {
     /// Map from macro name to macro definition (built-in or template).
     pub macros: ::std::collections::HashMap<String, MacroDef>,
 }
 
 /// Macro expansion errors with contextual information.
+///
+/// The `Expansion` variant now preserves structured error information from the underlying
+/// error instead of flattening it to a string, allowing better debugging and error handling.
+///
+/// # Examples
+///
+/// ```rust
+/// use sutra::macros::SutraMacroError;
+///
+/// // Access structured error information for debugging
+/// if let SutraMacroError::Expansion { suggestion, source_error_kind, .. } = error {
+///     if let Some(suggestion) = suggestion {
+///         println!("Suggestion: {}", suggestion);
+///     }
+///     // Access the original error type for specific handling
+///     match source_error_kind {
+///         Some(crate::syntax::error::SutraErrorKind::Eval(eval_err)) => {
+///             println!("Eval error with code: {}", eval_err.expanded_code);
+///         }
+///         _ => {}
+///     }
+/// }
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SutraMacroError {
     Expansion {
         span: crate::ast::Span,
         macro_name: String,
         message: String,
+        /// Preserved source error for structured information access.
+        /// Contains the original error kind that caused the macro expansion failure,
+        /// allowing access to detailed error information like suggestions and expanded code.
+        source_error_kind: Option<crate::syntax::error::SutraErrorKind>,
+        /// Optional suggestion from the original error for better debugging.
+        /// Extracted from EvalError when available to provide actionable guidance.
+        suggestion: Option<String>,
+        /// Original span from the source error, if different from macro call span.
+        /// Helps pinpoint the exact location where the underlying error occurred.
+        source_span: Option<crate::ast::Span>,
     },
     RecursionLimit {
         span: crate::ast::Span,
@@ -123,14 +156,76 @@ impl MacroRegistry {
     }
 
     /// Registers a new macro with the given name.
-    pub fn register(&mut self, name: &str, func: MacroFn) {
+    ///
+    /// # Returns
+    /// `Some(old_macro)` if a macro with this name was already registered, `None` otherwise.
+    /// This allows callers to detect silent overwrites.
+    pub fn register(&mut self, name: &str, func: MacroFn) -> Option<MacroDef> {
+        self.macros.insert(name.to_string(), MacroDef::Fn(func))
+    }
+
+    /// Registers a new macro with the given name, returning an error if it already exists.
+    ///
+    /// # Errors
+    /// Returns an error if a macro with this name is already registered.
+    pub fn register_or_error(&mut self, name: &str, func: MacroFn) -> Result<(), String> {
+        if self.macros.contains_key(name) {
+            return Err(format!("Macro '{}' is already registered", name));
+        }
         self.macros.insert(name.to_string(), MacroDef::Fn(func));
+        Ok(())
+    }
+
+    /// Registers a template macro with the given name.
+    ///
+    /// # Returns
+    /// `Some(old_macro)` if a macro with this name was already registered, `None` otherwise.
+    pub fn register_template(&mut self, name: &str, template: MacroTemplate) -> Option<MacroDef> {
+        self.macros.insert(name.to_string(), MacroDef::Template(template))
+    }
+
+    /// Unregisters a macro by name.
+    ///
+    /// # Returns
+    /// `Some(macro)` if the macro was found and removed, `None` if it didn't exist.
+    pub fn unregister(&mut self, name: &str) -> Option<MacroDef> {
+        self.macros.remove(name)
+    }
+
+    /// Checks if a macro with the given name is registered.
+    pub fn contains(&self, name: &str) -> bool {
+        self.macros.contains_key(name)
+    }
+
+    /// Returns the number of registered macros.
+    pub fn len(&self) -> usize {
+        self.macros.len()
+    }
+
+    /// Returns true if the registry is empty.
+    pub fn is_empty(&self) -> bool {
+        self.macros.is_empty()
+    }
+
+    /// Returns an iterator over macro names.
+    pub fn names(&self) -> impl Iterator<Item = &String> {
+        self.macros.keys()
     }
 }
 
 // --- Macro Loading and Parsing ---
 
 /// Parses Sutra macro definitions from a source string.
+///
+/// # Examples
+/// ```rust
+/// # use sutra::macros::parse_macros_from_source;
+/// let source = "(define (my-macro x) (+ x 1))";
+/// let macros = parse_macros_from_source(source)?;
+/// assert_eq!(macros.len(), 1);
+/// assert_eq!(macros[0].0, "my-macro");
+/// # Ok::<(), sutra::syntax::error::SutraError>(())
+/// ```
 pub fn parse_macros_from_source(source: &str) -> Result<Vec<(String, MacroTemplate)>, SutraError> {
     let exprs = crate::syntax::parser::parse(source)?;
     let mut macros = Vec::new();
@@ -144,8 +239,20 @@ pub fn parse_macros_from_source(source: &str) -> Result<Vec<(String, MacroTempla
     Ok(macros)
 }
 
-/// Thin wrapper: loads macro definitions from a file.
-pub fn load_macros_from_file(path: &str) -> Result<Vec<(String, MacroTemplate)>, SutraError> {
+/// Loads macro definitions from a file with improved path ergonomics.
+///
+/// # Examples
+/// ```rust
+/// # use sutra::macros::load_macros_from_file;
+/// # use std::path::Path;
+/// // Works with &str
+/// let macros1 = load_macros_from_file("macros.sutra");
+/// // Works with Path
+/// let macros2 = load_macros_from_file(std::path::Path::new("macros.sutra"));
+/// // Works with PathBuf, &Path, etc.
+/// let macros3 = load_macros_from_file(&std::path::PathBuf::from("macros.sutra"));
+/// ```
+pub fn load_macros_from_file<P: AsRef<::std::path::Path>>(path: P) -> Result<Vec<(String, MacroTemplate)>, SutraError> {
     let source = fs::read_to_string(path).map_err(|e| io_error(e.to_string(), None))?;
     parse_macros_from_source(&source)
 }
@@ -161,17 +268,17 @@ pub fn check_arity(
     let required_len = params.required.len();
     let has_variadic = params.rest.is_some();
 
-    // Check for arity mismatch
-    let has_mismatch = args_len < required_len || (!has_variadic && args_len > required_len);
-
-    if has_mismatch {
-        return Err(enhanced_macro_arity_error(
-            args_len,
-            params,
-            span,
-        ));
+    // Too few arguments
+    if args_len < required_len {
+        return Err(enhanced_macro_arity_error(args_len, params, span));
     }
 
+    // Too many arguments for non-variadic macro
+    if args_len > required_len && !has_variadic {
+        return Err(enhanced_macro_arity_error(args_len, params, span));
+    }
+
+    // Arity is correct
     Ok(())
 }
 
@@ -186,7 +293,7 @@ pub fn bind_macro_params(
         bindings.insert(param_name.clone(), args[i].clone());
     }
 
-    // Guard clause: handle variadic parameters if present
+    // Handle variadic parameters if present
     let Some(variadic_name) = &params.rest else {
         return bindings;
     };
@@ -194,7 +301,7 @@ pub fn bind_macro_params(
     let rest_args = if args.len() > params.required.len() {
         args[params.required.len()..].to_vec()
     } else {
-        vec![]
+        Vec::new()
     };
     bindings.insert(
         variadic_name.clone(),
@@ -214,7 +321,7 @@ pub fn expand_template(
         Expr::List(items, span) if !items.is_empty() => (&items[1..], span),
         _ => {
             return Err(macro_error(
-                "Template macro must be called as a list.".to_string(),
+                "Template macro must be called as a list.",
                 Some(call.span.clone()),
             ));
         }
@@ -299,10 +406,16 @@ impl MacroTemplate {
         body: Box<WithSpan<Expr>>,
     ) -> Result<Self, SutraError> {
         let mut all_names = params.required.clone();
+
+        // Add variadic parameter if present
         if let Some(var) = &params.rest {
             all_names.push(var.clone());
         }
+
+        // Validate no duplicate parameters
         check_no_duplicate_params(&all_names, &params.span)?;
+
+        // Construct template
         Ok(MacroTemplate { params, body })
     }
 }
@@ -314,11 +427,14 @@ impl Serialize for MacroDef {
     {
         match self {
             MacroDef::Template(tmpl) => {
-                serializer.serialize_newtype_variant("MacroDef", 1, "Template", tmpl)
+                serializer.serialize_newtype_variant("MacroDef", 0, "Template", tmpl)
             }
             MacroDef::Fn(_) => {
-                // Native functions are not serializable; skip or error.
-                serializer.serialize_unit_variant("MacroDef", 0, "Fn")
+                // Native functions cannot be serialized - this should never be reached
+                // when using the MacroRegistry serializer that filters them out
+                Err(serde::ser::Error::custom(
+                    "Cannot serialize MacroDef::Fn variant - use MacroRegistry serialization instead"
+                ))
             }
         }
     }
@@ -328,24 +444,63 @@ impl Serialize for MacroDef {
 #[serde(rename_all = "lowercase")]
 enum MacroDefHelper {
     Template(MacroTemplate),
-    Fn,
 }
 
 impl<'de> Deserialize<'de> for MacroDef {
-    /// Only the Template variant is deserializable. Fn is not supported and will error.
-    ///
-    /// # Errors
-    /// Returns an error if the Fn variant is encountered.
+    /// Only the Template variant is deserializable.
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
         match MacroDefHelper::deserialize(deserializer)? {
             MacroDefHelper::Template(tmpl) => Ok(MacroDef::Template(tmpl)),
-            MacroDefHelper::Fn => Err(serde::de::Error::custom(
-                "Cannot deserialize MacroDef::Fn variant",
-            )),
         }
+    }
+}
+
+impl Serialize for MacroRegistry {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Only serialize Template macros, skip Fn variants
+        let template_macros: ::std::collections::HashMap<String, &MacroTemplate> = self
+            .macros
+            .iter()
+            .filter_map(|(name, def)| {
+                if let MacroDef::Template(template) = def {
+                    Some((name.clone(), template))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        use serde::ser::SerializeStruct;
+        let mut s = serializer.serialize_struct("MacroRegistry", 1)?;
+        s.serialize_field("macros", &template_macros)?;
+        s.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for MacroRegistry {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct MacroRegistryHelper {
+            macros: ::std::collections::HashMap<String, MacroTemplate>,
+        }
+
+        let helper = MacroRegistryHelper::deserialize(deserializer)?;
+        let macros = helper
+            .macros
+            .into_iter()
+            .map(|(name, template)| (name, MacroDef::Template(template)))
+            .collect();
+
+        Ok(MacroRegistry { macros })
     }
 }
 
@@ -353,7 +508,7 @@ impl<'de> Deserialize<'de> for MacroDef {
 // SECTION 5: INTERNAL HELPERS
 // ============================================================================
 
-// --- Parsing Helpers ---
+// --- Macro Definition Parsing ---
 
 /// Validates basic structure of a (define (name ...) body) form
 fn validate_define_form(expr: &WithSpan<Expr>) -> Option<&[WithSpan<Expr>]> {
@@ -400,15 +555,15 @@ fn try_parse_macro_form(
     expr: &crate::ast::WithSpan<crate::ast::Expr>,
     names_seen: &mut ::std::collections::HashSet<String>,
 ) -> Result<Option<(String, MacroTemplate)>, SutraError> {
-    // Guard clause: validate basic define form structure
+    // Validate basic define form structure
     let Some(items) = validate_define_form(expr) else {
         return Ok(None);
     };
 
-    // Guard clause: ensure parameter list is valid
+    // Ensure parameter list is valid
     let Expr::ParamList(param_list) = &items[1].value else {
         return Err(macro_error(
-            "Macro parameter list must be a ParamList.".to_string(),
+            "Macro parameter list must be a ParamList.",
             Some(items[1].span.clone()),
         ));
     };
@@ -420,10 +575,10 @@ fn try_parse_macro_form(
 }
 
 fn extract_macro_name(param_list: &crate::ast::ParamList) -> Result<String, SutraError> {
-    // Guard clause: ensure parameter list has at least one element
+    // Ensure parameter list has at least one element
     let Some(name) = param_list.required.first() else {
         return Err(macro_error(
-            "Macro name must be the first element of the parameter list.".to_string(),
+            "Macro name must be the first element of the parameter list.",
             Some(param_list.span.clone()),
         ));
     };
@@ -449,7 +604,76 @@ fn check_no_duplicate_params(
 
 // --- Arity and Binding Helpers ---
 
-/// Creates an enhanced macro arity error with debugging context and suggestions.
+/// Builds arity error context message - DRY utility
+fn build_arity_context_message(args_len: usize, required_len: usize, has_variadic: bool) -> String {
+    // Handle variadic case early
+    if has_variadic {
+        return format!(
+            "Expected at least {} arguments, but received {}. This macro accepts additional arguments via '...' parameter.",
+            required_len, args_len
+        );
+    }
+
+    // Exact argument count required
+    format!(
+        "Expected exactly {} arguments, but received {}. This macro requires a specific number of arguments.",
+        required_len, args_len
+    )
+}
+
+/// Builds parameter info string - DRY utility
+fn build_param_info_string(params: &crate::ast::ParamList) -> String {
+    format!(
+        "Macro parameters: {}{}",
+        params.required.join(", "),
+        if let Some(rest) = &params.rest {
+            format!(" ...{}", rest)
+        } else {
+            String::new()
+        }
+    )
+}
+
+/// Helper for pluralizing argument count messages - DRY utility.
+fn pluralize_args(count: usize) -> &'static str {
+    if count == 1 { "" } else { "s" }
+}
+
+/// Generates arity error suggestions - DRY utility
+fn build_arity_suggestion(
+    args_len: usize,
+    required_len: usize,
+    has_variadic: bool,
+    param_info: &str,
+) -> String {
+    // Too few arguments
+    if args_len < required_len {
+        let missing = required_len - args_len;
+        return format!(
+            "Add {} more argument{} to match the macro definition: {}",
+            missing,
+            pluralize_args(missing),
+            param_info
+        );
+    }
+
+    // Too many arguments (non-variadic)
+    if args_len > required_len && !has_variadic {
+        let extra = args_len - required_len;
+        return format!(
+            "Remove {} argument{} - this macro only accepts {} arguments: {}",
+            extra,
+            pluralize_args(extra),
+            required_len,
+            param_info
+        );
+    }
+
+    // General mismatch
+    format!("Check the macro definition and ensure arguments match: {}", param_info)
+}
+
+/// Creates enhanced arity error - DRY utility
 fn enhanced_macro_arity_error(
     args_len: usize,
     params: &crate::ast::ParamList,
@@ -458,64 +682,13 @@ fn enhanced_macro_arity_error(
     let required_len = params.required.len();
     let has_variadic = params.rest.is_some();
 
-    // Create main error message
-    let main_message = "Macro arity mismatch".to_string();
+    let main_message = "Macro arity mismatch";
+    let context_message = build_arity_context_message(args_len, required_len, has_variadic);
+    let param_info = build_param_info_string(params);
+    let suggestion = build_arity_suggestion(args_len, required_len, has_variadic, &param_info);
 
-    // Build detailed context message
-    let context_message = if has_variadic {
-        format!(
-            "Expected at least {} arguments, but received {}. This macro accepts additional arguments via '...' parameter.",
-            required_len, args_len
-        )
-    } else {
-        format!(
-            "Expected exactly {} arguments, but received {}. This macro requires a specific number of arguments.",
-            required_len, args_len
-        )
-    };
+    let full_message = format!("{}\n\n{}\n\n{}", main_message, context_message, param_info);
 
-    // Show parameter information
-    let param_info = format!(
-        "Macro parameters: {}{}",
-        params.required.join(", "),
-        if let Some(rest) = &params.rest {
-            format!(" ...{}", rest)
-        } else {
-            String::new()
-        }
-    );
-
-    // Generate suggestion
-    let suggestion = if args_len < required_len {
-        let missing = required_len - args_len;
-        format!(
-            "Add {} more argument{} to match the macro definition: {}",
-            missing,
-            if missing == 1 { "" } else { "s" },
-            param_info
-        )
-    } else if args_len > required_len && !has_variadic {
-        let extra = args_len - required_len;
-        format!(
-            "Remove {} argument{} - this macro only accepts {} arguments: {}",
-            extra,
-            if extra == 1 { "" } else { "s" },
-            required_len,
-            param_info
-        )
-    } else {
-        format!("Check the macro definition and ensure arguments match: {}", param_info)
-    };
-
-    // Combine all information
-    let full_message = format!(
-        "{}\n\n{}\n\n{}",
-        main_message,
-        context_message,
-        param_info
-    );
-
-    // Use EvalError for richer error structure
     use crate::syntax::error::{SutraError, SutraErrorKind, EvalError};
     SutraError {
         kind: SutraErrorKind::Eval(EvalError {
@@ -530,40 +703,51 @@ fn enhanced_macro_arity_error(
 
 // --- Validation Helpers ---
 
+/// Generic recursion depth checker - DRY utility
+fn check_recursion_depth_generic<E>(
+    depth: usize,
+    span: &crate::ast::Span,
+    error_fn: impl FnOnce(&crate::ast::Span) -> E,
+) -> Result<(), E> {
+    if depth > MAX_MACRO_RECURSION_DEPTH {
+        return Err(error_fn(span));
+    }
+    Ok(())
+}
+
 /// Checks recursion depth limit - DRY utility
 fn check_recursion_depth(
     depth: usize,
     span: &crate::ast::Span,
     context: &str,
 ) -> Result<(), SutraError> {
-    if depth > MAX_MACRO_RECURSION_DEPTH {
-        return Err(macro_error(
+    check_recursion_depth_generic(depth, span, |span| {
+        macro_error(
             format!(
                 "{} recursion limit ({}) exceeded.",
                 context,
                 MAX_MACRO_RECURSION_DEPTH
             ),
             Some(span.clone()),
-        ));
-    }
-    Ok(())
+        )
+    })
 }
 
 /// Checks recursion depth limit for macro operations - DRY utility
 fn check_macro_recursion_depth(
     depth: usize,
     span: &crate::ast::Span,
+    macro_name: Option<&str>,
 ) -> Result<(), SutraMacroError> {
-    if depth > MAX_MACRO_RECURSION_DEPTH {
-        return Err(SutraMacroError::RecursionLimit {
+    check_recursion_depth_generic(depth, span, |span| {
+        SutraMacroError::RecursionLimit {
             span: span.clone(),
-            macro_name: "<unknown>".to_string(),
-        });
-    }
-    Ok(())
+            macro_name: macro_name.unwrap_or("<unknown>").to_string(),
+        }
+    })
 }
 
-/// Extracts list items from an expression - DRY utility
+/// Extracts list items from expression - DRY utility
 fn extract_list_items(expr: &WithSpan<Expr>) -> Option<&[WithSpan<Expr>]> {
     let Expr::List(items, _) = &expr.value else {
         return None;
@@ -579,22 +763,40 @@ fn extract_symbol_from_expr(expr: &WithSpan<Expr>) -> Option<&str> {
     Some(s)
 }
 
-// --- Expansion Helpers ---
+// --- Error Handling Helpers ---
 
-/// Creates a macro expansion error with consistent formatting - DRY utility
-fn expansion_error(
+/// Creates macro expansion error preserving context
+fn expansion_error_from_sutra_error(
     span: &crate::ast::Span,
     macro_name: &str,
-    message: String,
+    error: SutraError,
 ) -> SutraMacroError {
+    // Extract structured information from the source error before losing it
+    let suggestion = match &error.kind {
+        crate::syntax::error::SutraErrorKind::Eval(eval_error) => eval_error.suggestion.clone(),
+        _ => None,
+    };
+
+    // Create enhanced message that still provides human-readable context
+    let enhanced_message = format!(
+        "Macro expansion failed: {}{}",
+        error,
+        error.span.as_ref().map_or(String::new(), |s| format!(" (at {}:{})", s.start, s.end))
+    );
+
     SutraMacroError::Expansion {
         span: span.clone(),
         macro_name: macro_name.to_string(),
-        message,
+        message: enhanced_message,
+        source_error_kind: Some(error.kind),
+        suggestion,
+        source_span: error.span,
     }
 }
 
-/// Extracts macro name from a function call node
+// --- Macro Expansion Logic ---
+
+/// Extracts macro name from call node - DRY utility
 fn extract_macro_name_from_call(node: &WithSpan<Expr>) -> Option<&str> {
     let Some(items) = extract_list_items(node) else {
         return None;
@@ -605,35 +807,37 @@ fn extract_macro_name_from_call(node: &WithSpan<Expr>) -> Option<&str> {
     extract_symbol_from_expr(&items[0])
 }
 
-/// Expands a macro definition (function or template)
+/// Expands macro definition - DRY utility
 fn expand_macro_def(
     macro_def: &MacroDef,
     node: &WithSpan<Expr>,
     macro_name: &str,
     depth: usize,
 ) -> Result<WithSpan<Expr>, SutraMacroError> {
-    match macro_def {
-        MacroDef::Fn(func) => func(node)
-            .map_err(|e| expansion_error(&node.span, macro_name, e.to_string())),
-        MacroDef::Template(template) => expand_template(template, node, depth + 1)
-            .map_err(|e| expansion_error(&node.span, macro_name, e.to_string())),
-    }
+    let result = match macro_def {
+        MacroDef::Fn(func) => func(node),
+        MacroDef::Template(template) => expand_template(template, node, depth + 1),
+    };
+
+    // Preserve structured error context instead of losing it via .to_string()
+    result.map_err(|e| expansion_error_from_sutra_error(&node.span, macro_name, e))
 }
 
+/// Expands macro once with depth checking
 fn expand_macro_once(
     node: &WithSpan<Expr>,
     env: &MacroEnv,
     depth: usize,
 ) -> Result<Option<(String, MacroProvenance, WithSpan<Expr>)>, SutraMacroError> {
-    // Guard clause: check recursion depth
-    check_macro_recursion_depth(depth, &node.span)?;
-
-    // Guard clause: extract macro name from call
+    // Extract macro name from call first to provide better error context
     let Some(macro_name) = extract_macro_name_from_call(node) else {
         return Ok(None);
     };
 
-    // Guard clause: lookup macro definition
+    // Check recursion depth with actual macro name
+    check_macro_recursion_depth(depth, &node.span, Some(macro_name))?;
+
+    // Lookup macro definition
     let Some((provenance, macro_def)) = env.lookup_macro(macro_name) else {
         return Ok(None);
     };
@@ -644,7 +848,7 @@ fn expand_macro_once(
 
 // --- AST Traversal Helpers ---
 
-/// Maps a function over List items, preserving structure
+/// Maps function over List items - AST helper
 fn map_list<F>(
     items: &[WithSpan<Expr>],
     f: &F,
@@ -666,7 +870,7 @@ where
     ))
 }
 
-/// Maps a function over If expression branches
+/// Maps function over If branches - AST helper
 fn map_if<F>(
     condition: &WithSpan<Expr>,
     then_branch: &WithSpan<Expr>,
@@ -694,6 +898,44 @@ where
     ))
 }
 
+/// Maps function over Quote content - AST helper
+fn map_quote<F>(
+    inner: &WithSpan<Expr>,
+    f: &F,
+    env: &mut MacroEnv,
+    depth: usize,
+    quote_span: &crate::ast::Span,
+    original_span: &crate::ast::Span,
+) -> Result<WithSpan<Expr>, SutraMacroError>
+where
+    F: Fn(WithSpan<Expr>, &mut MacroEnv, usize) -> Result<WithSpan<Expr>, SutraMacroError>,
+{
+    let new_inner = f(inner.clone(), env, depth + 1)?;
+    Ok(with_span(
+        Expr::Quote(Box::new(new_inner), quote_span.clone()),
+        original_span,
+    ))
+}
+
+/// Maps function over Spread content - AST helper
+fn map_spread<F>(
+    inner: &WithSpan<Expr>,
+    f: &F,
+    env: &mut MacroEnv,
+    depth: usize,
+    original_span: &crate::ast::Span,
+) -> Result<WithSpan<Expr>, SutraMacroError>
+where
+    F: Fn(WithSpan<Expr>, &mut MacroEnv, usize) -> Result<WithSpan<Expr>, SutraMacroError>,
+{
+    let new_inner = f(inner.clone(), env, depth + 1)?;
+    Ok(with_span(
+        Expr::Spread(Box::new(new_inner)),
+        original_span,
+    ))
+}
+
+/// Maps function over AST nodes recursively
 fn map_ast<F>(
     node: WithSpan<Expr>,
     f: &F,
@@ -715,7 +957,14 @@ where
         } => {
             map_if(condition, then_branch, else_branch, f, env, depth, span, &node.span)
         }
-        // Add more composite node types as needed
+        Expr::Quote(inner, span) => {
+            map_quote(inner, f, env, depth, span, &node.span)
+        }
+        Expr::Spread(inner) => {
+            map_spread(inner, f, env, depth, &node.span)
+        }
+        // ParamList doesn't contain nested expressions
+        // Atomic types (Symbol, Path, String, Number, Bool) don't need traversal
         _ => Ok(node),
     }
 }
@@ -730,7 +979,7 @@ fn with_span(value: Expr, original_span: &crate::ast::Span) -> WithSpan<Expr> {
     }
 }
 
-/// Substitutes template parameters in a List expression, handling splicing and symbols
+/// Substitutes parameters in List with splicing
 fn substitute_list(
     items: &[WithSpan<Expr>],
     bindings: &::std::collections::HashMap<String, WithSpan<Expr>>,
@@ -739,32 +988,42 @@ fn substitute_list(
     let mut new_items = Vec::new();
     for item in items {
         match &item.value {
-            // Regular symbol substitution: replace with bound value as-is (no automatic splicing)
-            Expr::Symbol(_name, _) => {
-                // Just substitute the symbol with its bound value, don't splice lists automatically
+            // Spread argument splicing requires special handling for list elements
+            Expr::Spread(inner) => {
+                substitute_spread_item(inner, bindings, &mut new_items)?;
+            }
+            // All other expressions get regular substitution (Symbol, literals, etc.)
+            _ => {
                 new_items.push(substitute_template(item, bindings)?);
             }
-            // Spread argument splicing: if the item is Expr::Spread, splice its elements
-            Expr::Spread(inner) => {
-                let substituted = substitute_template(inner, bindings)?;
-                let Expr::List(splice_items, _) = &substituted.value else {
-                    // If not a list, treat as a single argument
-                    new_items.push(substituted);
-                    continue;
-                };
-
-                // Main logic: splice list elements
-                for splice_item in splice_items {
-                    new_items.push(splice_item.clone());
-                }
-            }
-            _ => new_items.push(substitute_template(item, bindings)?),
         }
     }
-    Ok(with_span(Expr::List(new_items, original_span.clone()), original_span))
+    Ok(with_span(
+        Expr::List(new_items, original_span.clone()),
+        original_span,
+    ))
 }
 
-/// Substitutes template parameters in an If expression
+/// Handles spread argument substitution with guard clauses - focused helper
+fn substitute_spread_item(
+    inner: &WithSpan<Expr>,
+    bindings: &::std::collections::HashMap<String, WithSpan<Expr>>,
+    new_items: &mut Vec<WithSpan<Expr>>,
+) -> Result<(), SutraError> {
+    let substituted = substitute_template(inner, bindings)?;
+
+    // If not a list, treat as single argument
+    let Expr::List(splice_items, _) = &substituted.value else {
+        new_items.push(substituted);
+        return Ok(());
+    };
+
+    // Splice list elements into parent
+    new_items.extend(splice_items.iter().cloned());
+    Ok(())
+}
+
+/// Substitutes parameters in If expression
 fn substitute_if(
     condition: &WithSpan<Expr>,
     then_branch: &WithSpan<Expr>,
@@ -787,8 +1046,9 @@ fn substitute_if(
     ))
 }
 
-// --- Trace Helpers ---
+// --- Tracing and Debugging Helpers ---
 
+/// Records macro expansion step in trace
 fn record_macro_expansion(
     trace: &mut Vec<MacroExpansionStep>,
     macro_name: String,
@@ -804,6 +1064,7 @@ fn record_macro_expansion(
     });
 }
 
+/// Expands macros with trace recording
 fn expand_macros_with_trace(
     node: WithSpan<Expr>,
     env: &mut MacroEnv,
@@ -814,7 +1075,7 @@ fn expand_macros_with_trace(
             &mut env.trace,
             macro_name,
             provenance,
-            node.clone(),
+            node,
             expanded.clone(),
         );
         return expand_macros_with_trace(expanded, env, depth + 1);
