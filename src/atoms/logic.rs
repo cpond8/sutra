@@ -15,8 +15,44 @@
 //! - **Numeric Comparison**: Comparison operations work with `Value::Number`
 
 use crate::ast::value::Value;
-use crate::atoms::helpers::*;
-use crate::atoms::AtomFn;
+use crate::atoms::PureAtomFn;
+use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
+
+// ============================================================================
+// ERROR HELPERS
+// ============================================================================
+
+/// Helper function to create a simple error for pure atoms
+fn simple_error(message: &str) -> SutraError {
+    SutraError {
+        kind: SutraErrorKind::Eval(EvalError {
+            message: message.to_string(),
+            expanded_code: String::new(),
+            original_code: None,
+            suggestion: None,
+        }),
+        span: None,
+    }
+}
+
+/// Helper function to extract a number from a Value
+fn extract_number(value: &Value, index: usize, atom_name: &str) -> Result<f64, SutraError> {
+    match value {
+        Value::Number(n) => Ok(*n),
+        _ => Err(simple_error(&format!(
+            "{}: expected Number at position {}, got {:?}",
+            atom_name, index, value
+        ))),
+    }
+}
+
+/// Helper function to create arity error
+fn arity_error(actual: usize, expected: usize, atom_name: &str) -> SutraError {
+    simple_error(&format!(
+        "{}: expected {} arguments, got {}",
+        atom_name, expected, actual
+    ))
+}
 
 // ============================================================================
 // COMPARISON OPERATIONS
@@ -35,15 +71,11 @@ use crate::atoms::AtomFn;
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_EQ: AtomFn = |args, context, parent_span| {
-    eval_binary_numeric_op(
-        args,
-        context,
-        parent_span,
-        |a, b| Value::Bool(a == b),
-        None::<fn(f64, f64) -> Result<(), &'static str>>,
-        "eq?",
-    )
+pub const ATOM_EQ: PureAtomFn = |args| {
+    if args.len() != 2 {
+        return Err(arity_error(args.len(), 2, "eq?"));
+    }
+    Ok(Value::Bool(args[0] == args[1]))
 };
 
 /// Returns true if a > b.
@@ -58,15 +90,13 @@ pub const ATOM_EQ: AtomFn = |args, context, parent_span| {
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_GT: AtomFn = |args, context, parent_span| {
-    eval_binary_numeric_op(
-        args,
-        context,
-        parent_span,
-        |a, b| Value::Bool(a > b),
-        None::<fn(f64, f64) -> Result<(), &'static str>>,
-        "gt?",
-    )
+pub const ATOM_GT: PureAtomFn = |args| {
+    if args.len() != 2 {
+        return Err(arity_error(args.len(), 2, "gt?"));
+    }
+    let a = extract_number(&args[0], 0, "gt?")?;
+    let b = extract_number(&args[1], 1, "gt?")?;
+    Ok(Value::Bool(a > b))
 };
 
 /// Returns true if a < b.
@@ -81,15 +111,13 @@ pub const ATOM_GT: AtomFn = |args, context, parent_span| {
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_LT: AtomFn = |args, context, parent_span| {
-    eval_binary_numeric_op(
-        args,
-        context,
-        parent_span,
-        |a, b| Value::Bool(a < b),
-        None::<fn(f64, f64) -> Result<(), &'static str>>,
-        "lt?",
-    )
+pub const ATOM_LT: PureAtomFn = |args| {
+    if args.len() != 2 {
+        return Err(arity_error(args.len(), 2, "lt?"));
+    }
+    let a = extract_number(&args[0], 0, "lt?")?;
+    let b = extract_number(&args[1], 1, "lt?")?;
+    Ok(Value::Bool(a < b))
 };
 
 /// Returns true if a >= b.
@@ -104,15 +132,13 @@ pub const ATOM_LT: AtomFn = |args, context, parent_span| {
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_GTE: AtomFn = |args, context, parent_span| {
-    eval_binary_numeric_op(
-        args,
-        context,
-        parent_span,
-        |a, b| Value::Bool(a >= b),
-        None::<fn(f64, f64) -> Result<(), &'static str>>,
-        "gte?",
-    )
+pub const ATOM_GTE: PureAtomFn = |args| {
+    if args.len() != 2 {
+        return Err(arity_error(args.len(), 2, "gte?"));
+    }
+    let a = extract_number(&args[0], 0, "gte?")?;
+    let b = extract_number(&args[1], 1, "gte?")?;
+    Ok(Value::Bool(a >= b))
 };
 
 /// Returns true if a <= b.
@@ -127,15 +153,13 @@ pub const ATOM_GTE: AtomFn = |args, context, parent_span| {
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_LTE: AtomFn = |args, context, parent_span| {
-    eval_binary_numeric_op(
-        args,
-        context,
-        parent_span,
-        |a, b| Value::Bool(a <= b),
-        None::<fn(f64, f64) -> Result<(), &'static str>>,
-        "lte?",
-    )
+pub const ATOM_LTE: PureAtomFn = |args| {
+    if args.len() != 2 {
+        return Err(arity_error(args.len(), 2, "lte?"));
+    }
+    let a = extract_number(&args[0], 0, "lte?")?;
+    let b = extract_number(&args[1], 1, "lte?")?;
+    Ok(Value::Bool(a <= b))
 };
 
 // ============================================================================
@@ -154,8 +178,17 @@ pub const ATOM_LTE: AtomFn = |args, context, parent_span| {
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_NOT: AtomFn = |args, context, parent_span| {
-    eval_unary_bool_op(args, context, parent_span, |b: bool| Value::Bool(!b), "not")
+pub const ATOM_NOT: PureAtomFn = |args| {
+    if args.len() != 1 {
+        return Err(arity_error(args.len(), 1, "not"));
+    }
+    match &args[0] {
+        Value::Bool(b) => Ok(Value::Bool(!b)),
+        _ => Err(simple_error(&format!(
+            "not: expected Bool at position 0, got {:?}",
+            args[0]
+        ))),
+    }
 };
 
 // ============================================================================
@@ -165,12 +198,12 @@ pub const ATOM_NOT: AtomFn = |args, context, parent_span| {
 /// Registers all logic and comparison atoms with the given registry.
 pub fn register_logic_atoms(registry: &mut crate::atoms::AtomRegistry) {
     // Comparison operations
-    registry.register("eq?", ATOM_EQ);
-    registry.register("gt?", ATOM_GT);
-    registry.register("lt?", ATOM_LT);
-    registry.register("gte?", ATOM_GTE);
-    registry.register("lte?", ATOM_LTE);
+    registry.register("eq?", crate::atoms::Atom::Pure(ATOM_EQ));
+    registry.register("gt?", crate::atoms::Atom::Pure(ATOM_GT));
+    registry.register("lt?", crate::atoms::Atom::Pure(ATOM_LT));
+    registry.register("gte?", crate::atoms::Atom::Pure(ATOM_GTE));
+    registry.register("lte?", crate::atoms::Atom::Pure(ATOM_LTE));
 
     // Logic operations
-    registry.register("not", ATOM_NOT);
+    registry.register("not", crate::atoms::Atom::Pure(ATOM_NOT));
 }

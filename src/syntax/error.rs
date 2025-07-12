@@ -608,6 +608,7 @@ fn summarize_expr(expr: &Expr) -> String {
         Expr::Quote(_, _) => "quoted expression".to_string(),
         Expr::ParamList(_) => "parameter list".to_string(),
         Expr::Spread(_) => "spread argument".to_string(),
+        Expr::Define { .. } => "define expression".to_string(),
     }
 }
 

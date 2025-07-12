@@ -140,9 +140,9 @@ pub const ATOM_APPLY: AtomFn = |args, context, parent_span| {
 /// Registers all execution control atoms with the given registry.
 pub fn register_execution_atoms(registry: &mut crate::atoms::AtomRegistry) {
     // Control flow
-    registry.register("do", ATOM_DO);
-    registry.register("error", ATOM_ERROR);
+    registry.register("do", crate::atoms::Atom::Legacy(ATOM_DO));
+    registry.register("error", crate::atoms::Atom::Legacy(ATOM_ERROR));
 
     // Higher-order functions
-    registry.register("apply", ATOM_APPLY);
+    registry.register("apply", crate::atoms::Atom::Legacy(ATOM_APPLY));
 }

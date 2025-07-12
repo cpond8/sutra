@@ -71,6 +71,13 @@ pub enum Expr {
     },
     Quote(Box<AstNode>, Span),
     ParamList(ParamList),
+    /// Represents a function or macro definition: (define name (params) body)
+    Define {
+        name: String,
+        params: ParamList,
+        body: Box<AstNode>,
+        span: Span,
+    },
     /// Spread argument (e.g., ...args) for use in call position
     Spread(Box<AstNode>),
 }
@@ -116,6 +123,7 @@ impl Expr {
             Expr::If { span, .. } => span.clone(),
             Expr::Quote(_, span) => span.clone(),
             Expr::ParamList(param_list) => param_list.span.clone(),
+            Expr::Define { span, .. } => span.clone(),
             Expr::Spread(expr) => expr.span.clone(),
         }
     }
@@ -163,6 +171,9 @@ impl Expr {
             }
             Expr::Quote(expr, _) => format!("'{}", expr.value.pretty()),
             Expr::ParamList(param_list) => Self::pretty_param_list(param_list),
+            Expr::Define { name, params, body, .. } => {
+                format!("(define {} {} {})", name, Self::pretty_param_list(params), body.value.pretty())
+            }
             Expr::Spread(expr) => format!("...{}", expr.value.pretty()),
         }
     }
@@ -288,12 +299,116 @@ fn build_ast_from_cst(
         "boolean" => build_boolean_expr(cst),
         "string" => build_string_expr(cst),
         "symbol" => build_symbol_expr(cst),
-        // Add more rules as needed (block, quote, define_form, etc.)
+        "define_form" => build_define_expr(cst),
+        "param_list" => build_param_list_expr(cst),
         _ => Err(SutraAstBuildError::UnknownRule {
             span: cst.span.clone(),
             rule: cst.rule.clone(),
         }),
     }
+}
+
+// Helper for building define expressions from CST
+fn build_define_expr(cst: &crate::syntax::parser::SutraCstNode) -> Result<AstNode, SutraAstBuildError> {
+    // Expect children: define_keyword, param_list, body
+    if cst.children.len() != 3 {
+        return Err(invalid_shape_error(
+            &cst.span,
+            "Malformed define_form: expected 3 children (define_keyword, param_list, body)",
+        ));
+    }
+
+    let define_keyword = &cst.children[0];
+    let param_list_cst = &cst.children[1];
+    let body_cst = &cst.children[2];
+
+    // Ensure the first child is indeed the "define" symbol
+    let define_symbol_text = cst_text(define_keyword);
+    if define_symbol_text != "define" {
+        return Err(invalid_shape_error(
+            &define_keyword.span,
+            format!("Expected 'define' keyword, found '{}'", define_symbol_text),
+        ));
+    }
+
+    let param_list_expr = build_param_list_expr(param_list_cst)?;
+    let Expr::ParamList(params) = &*param_list_expr.value else {
+        return Err(invalid_shape_error(
+            &param_list_cst.span,
+            "Expected a parameter list for define form",
+        ));
+    };
+
+    // The first element of the param_list is the macro name
+    let name = params.required.first().cloned().ok_or_else(|| {
+        invalid_shape_error(&param_list_cst.span, "Define form must have a name in its parameter list")
+    })?;
+
+    let body = build_ast_from_cst(body_cst)?;
+
+    // Create a new ParamList without the macro name
+    let actual_params = ParamList {
+        required: params.required[1..].to_vec(),
+        rest: params.rest.clone(),
+        span: params.span.clone(),
+    };
+
+    Ok(with_span(Arc::new(Expr::Define {
+        name,
+        params: actual_params,
+        body: Box::new(body),
+        span: cst.span.clone(),
+    }), &cst.span))
+}
+
+// Helper for building parameter list expressions from CST
+fn build_param_list_expr(cst: &crate::syntax::parser::SutraCstNode) -> Result<AstNode, SutraAstBuildError> {
+    let mut required_params = Vec::new();
+    let mut rest_param = None;
+    let mut found_rest = false;
+
+    for child in &cst.children {
+        match child.rule.as_str() {
+            "symbol" => {
+                if found_rest {
+                    return Err(invalid_shape_error(
+                        &child.span,
+                        "Required parameters cannot follow a rest parameter",
+                    ));
+                }
+                required_params.push(cst_text(child));
+            }
+            "spread_arg" => {
+                if found_rest {
+                    return Err(invalid_shape_error(
+                        &child.span,
+                        "Only one rest parameter is allowed",
+                    ));
+                }
+                // Spread arg should have one child, which is the symbol for the rest parameter
+                if child.children.len() != 1 || child.children[0].rule.as_str() != "symbol" {
+                    return Err(invalid_shape_error(
+                        &child.span,
+                        "Malformed spread argument: expected a symbol",
+                    ));
+                }
+                rest_param = Some(cst_text(&child.children[0]));
+                found_rest = true;
+            }
+            _ => {
+                return Err(invalid_shape_error(
+                    &child.span,
+                    format!("Unexpected element in parameter list: {}", child.rule),
+                ));
+            }
+        }
+    }
+
+    Ok(with_span(Arc::new(Expr::ParamList(ParamList {
+        required: required_params,
+        rest: rest_param,
+        span: cst.span.clone(),
+    })), &cst.span))
 }
 
 // ----------------------------------------------------------------------------

@@ -1,0 +1,274 @@
+- name: Arity Arithmetic Add Basic
+  style: list
+  input: (print (+ 1 2))
+  expected: "3"
+- name: Arity Arithmetic Add Multiple
+  style: list
+  input: (print (+ 1 2 3))
+  expected: "6"
+- name: Arity Arithmetic Add Many
+  style: list
+  input: (print (+ 1 2 3 4 5))
+  expected: "15"
+- name: Arity Arithmetic Add No Args Error
+  style: list
+  input: (+)
+  expect_error: "Arity mismatch in call to '+'"
+- name: Arity Arithmetic Subtract Basic
+  style: list
+  input: (print (- 5 2))
+  expected: "3"
+- name: Arity Arithmetic Subtract Multiple
+  style: list
+  input: (print (- 10 3 1))
+  expected: "6"
+- name: Arity Arithmetic Subtract No Args Error
+  style: list
+  input: (-)
+  expect_error: "Arity mismatch in call to '-'"
+- name: Arity Arithmetic Subtract One Arg Error
+  style: list
+  input: (- 5)
+  expect_error: "Arity mismatch in call to '-'"
+- name: Arity Arithmetic Multiply Basic
+  style: list
+  input: (print (* 2 3))
+  expected: "6"
+- name: Arity Arithmetic Multiply Multiple
+  style: list
+  input: (print (* 2 3 4))
+  expected: "24"
+- name: Arity Arithmetic Multiply No Args Error
+  style: list
+  input: (*)
+  expect_error: "Arity mismatch in call to '*'"
+- name: Arity Arithmetic Multiply One Arg Error
+  style: list
+  input: (* 2)
+  expect_error: "Arity mismatch in call to '*'"
+- name: Arity Arithmetic Divide Basic
+  style: list
+  input: (print (/ 8 2))
+  expected: "4"
+- name: Arity Arithmetic Divide Multiple
+  style: list
+  input: (print (/ 24 2 3))
+  expected: "4"
+- name: Arity Arithmetic Divide No Args Error
+  style: list
+  input: (/)
+  expect_error: "Arity mismatch in call to '/'"
+- name: Arity Arithmetic Divide One Arg Error
+  style: list
+  input: (/ 8)
+  expect_error: "Arity mismatch in call to '/'"
+- name: Arity Arithmetic Modulo Basic
+  style: list
+  input: (print (mod 7 3))
+  expected: "1"
+- name: Arity Arithmetic Modulo No Args Error
+  style: list
+  input: (mod)
+  expect_error: "Arity mismatch in call to 'mod'"
+- name: Arity Arithmetic Modulo One Arg Error
+  style: list
+  input: (mod 7)
+  expect_error: "Arity mismatch in call to 'mod'"
+- name: Arity Arithmetic Modulo Too Many Args Error
+  style: list
+  input: (mod 7 3 2)
+  expect_error: "Arity mismatch in call to 'mod'"
+
+- name: Arity Comparison Equal Basic
+  style: list
+  input: (print (eq? 1 1))
+  expected: "true"
+- name: Arity Comparison Equal No Args Error
+  style: list
+  input: (eq?)
+  expect_error: "Arity mismatch in call to 'eq?'"
+- name: Arity Comparison Equal One Arg Error
+  style: list
+  input: (eq? 1)
+  expect_error: "Arity mismatch in call to 'eq?'"
+- name: Arity Comparison Equal Too Many Args Error
+  style: list
+  input: (eq? 1 1 1)
+  expect_error: "Arity mismatch in call to 'eq?'"
+- name: Arity Comparison Greater Than Basic
+  style: list
+  input: (print (gt? 5 3))
+  expected: "true"
+- name: Arity Comparison Greater Than No Args Error
+  style: list
+  input: (gt?)
+  expect_error: "Arity mismatch in call to 'gt?'"
+- name: Arity Comparison Greater Than One Arg Error
+  style: list
+  input: (gt? 5)
+  expect_error: "Arity mismatch in call to 'gt?'"
+- name: Arity Comparison Greater Than Too Many Args Error
+  style: list
+  input: (gt? 5 3 1)
+  expect_error: "Arity mismatch in call to 'gt?'"
+
+- name: Arity Logical Not True
+  style: list
+  input: (print (not true))
+  expected: "false"
+- name: Arity Logical Not False
+  style: list
+  input: (print (not false))
+  expected: "true"
+- name: Arity Logical Not No Args Error
+  style: list
+  input: (not)
+  expect_error: "Arity mismatch in call to 'not'"
+- name: Arity Logical Not Too Many Args Error
+  style: list
+  input: (not true false)
+  expect_error: "Arity mismatch in call to 'not'"
+
+- name: Arity Core Set Basic
+  style: list
+  input: |
+    (set! temp 42)
+    (print (get temp))
+  expected: "42"
+- name: Arity Core Set No Args Error
+  style: list
+  input: (set!)
+  expect_error: "Arity mismatch in call to 'set!'"
+- name: Arity Core Set One Arg Error
+  style: list
+  input: (set! temp)
+  expect_error: "Arity mismatch in call to 'set!'"
+- name: Arity Core Set Too Many Args Error
+  style: list
+  input: (set! temp 1 2)
+  expect_error: "Arity mismatch in call to 'set!'"
+- name: Arity Core Get Basic
+  style: list
+  input: |
+    (set! temp 42)
+    (print (get temp))
+  expected: "42"
+- name: Arity Core Get No Args Error
+  style: list
+  input: (get)
+  expect_error: "Arity mismatch in call to 'get'"
+- name: Arity Core Get Too Many Args Error
+  style: list
+  input: (get temp extra)
+  expect_error: "Arity mismatch in call to 'get'"
+
+- name: Arity List Empty
+  style: list
+  input: (print (list))
+  expected: "()"
+- name: Arity List Single Element
+  style: list
+  input: (print (list 1))
+  expected: "(1)"
+- name: Arity List Multiple Elements
+  style: list
+  input: (print (list 1 2 3))
+  expected: "(1 2 3)"
+- name: Arity List Len Basic
+  style: list
+  input: (print (len (list 1 2 3)))
+  expected: "3"
+- name: Arity List Len No Args Error
+  style: list
+  input: (len)
+  expect_error: "Arity mismatch in call to 'len'"
+- name: Arity List Len Too Many Args Error
+  style: list
+  input: (len (list 1 2) (list 3 4))
+  expect_error: "Arity mismatch in call to 'len'"
+
+- name: Arity IO Print Basic
+  style: list
+  input: (print "hello")
+  expected: "hello"
+
+- name: Arity Control Flow Do Empty
+  style: list
+  input: (print (do))
+  expected: "Nil"
+- name: Arity Control Flow Do Single
+  style: list
+  input: (print (do 1))
+  expected: "1"
+- name: Arity Control Flow Do Multiple
+  style: list
+  input: (print (do 1 2 3))
+  expected: "3"
+- name: Arity Control Flow Error Basic
+  style: list
+  input: (error "This is an error")
+  expect_error: "This is an error"
+
+- name: Arity String Concat Empty
+  style: list
+  input: (print (core/str+))
+  expected: ""
+- name: Arity String Concat Single
+  style: list
+  input: (print (core/str+ "hello"))
+  expected: "hello"
+- name: Arity String Concat Multiple
+  style: list
+  input: (print (core/str+ "hello" " " "world"))
+  expected: "hello world"
+
+- name: Type Error Arithmetic Add
+  style: list
+  input: (+ "hello" 5)
+  expect_error: "Type mismatch in call to '+'"
+- name: Type Error Arithmetic Subtract
+  style: list
+  input: (- 10 "a")
+  expect_error: "Type mismatch in call to '-'"
+- name: Type Error Arithmetic Multiply
+  style: list
+  input: (* 2 "b")
+  expect_error: "Type mismatch in call to '*'"
+- name: Type Error Arithmetic Divide
+  style: list
+  input: (/ 10 "c")
+  expect_error: "Type mismatch in call to '/'"
+- name: Type Error Arithmetic Modulo
+  style: list
+  input: (mod 7 "d")
+  expect_error: "Type mismatch in call to 'mod'"
+
+- name: Phase 2 Atoms Has True
+  style: list
+  input: (print (has? (list 1 2 3) 2))
+  expected: "true"
+- name: Phase 2 Atoms Has False
+  style: list
+  input: (print (has? (list 1 2 3) 4))
+  expected: "false"
+- name: Phase 2 Atoms Push Pull
+  style: list
+  input: |
+    (set! testlist (list 1 2))
+    (print (get testlist))
+    (core/push! testlist 3)
+    (print (get testlist))
+    (print (core/pull! testlist))
+    (print (get testlist))
+  expected: |
+    (1 2)
+    (1 2 3)
+    3
+    (1 2)
+- name: Phase 2 Atoms Rand
+  style: list
+  input: (print (rand))
+  # Expected output is random, so we can't assert a specific value.
+  # This test primarily checks for successful execution without error.
+  # We can add a regex check if needed, but for now, just ensure it doesn't fail.
+  expected: "" # This will pass if rand returns any non-empty string, which it should.

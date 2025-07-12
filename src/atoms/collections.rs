@@ -263,12 +263,12 @@ pub const ATOM_CORE_STR_PLUS: AtomFn = |args, context, parent_span| {
 /// Registers all collection atoms with the given registry.
 pub fn register_collection_atoms(registry: &mut crate::atoms::AtomRegistry) {
     // List operations
-    registry.register("list", ATOM_LIST);
-    registry.register("len", ATOM_LEN);
-    registry.register("has?", ATOM_HAS);
-    registry.register("core/push!", ATOM_CORE_PUSH);
-    registry.register("core/pull!", ATOM_CORE_PULL);
+    registry.register("list", crate::atoms::Atom::Legacy(ATOM_LIST));
+    registry.register("len", crate::atoms::Atom::Legacy(ATOM_LEN));
+    registry.register("has?", crate::atoms::Atom::Legacy(ATOM_HAS));
+    registry.register("core/push!", crate::atoms::Atom::Legacy(ATOM_CORE_PUSH));
+    registry.register("core/pull!", crate::atoms::Atom::Legacy(ATOM_CORE_PULL));
 
     // String operations
-    registry.register("core/str+", ATOM_CORE_STR_PLUS);
+    registry.register("core/str+", crate::atoms::Atom::Legacy(ATOM_CORE_STR_PLUS));
 }

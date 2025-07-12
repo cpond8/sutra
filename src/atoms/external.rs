@@ -99,9 +99,9 @@ pub const ATOM_RAND: AtomFn = |args, context, parent_span| {
 /// Registers all external interface atoms with the given registry.
 pub fn register_external_atoms(registry: &mut crate::atoms::AtomRegistry) {
     // I/O operations
-    registry.register("print", ATOM_PRINT);
-    registry.register("core/print", ATOM_PRINT);
+    registry.register("print", crate::atoms::Atom::Legacy(ATOM_PRINT));
+    registry.register("core/print", crate::atoms::Atom::Legacy(ATOM_PRINT));
 
     // Randomness
-    registry.register("rand", ATOM_RAND);
+    registry.register("rand", crate::atoms::Atom::Legacy(ATOM_RAND));
 }

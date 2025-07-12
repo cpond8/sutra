@@ -138,8 +138,8 @@ pub const ATOM_EXISTS: AtomFn = |args, context, parent_span| {
 
 /// Registers all world state atoms with the given registry.
 pub fn register_world_atoms(registry: &mut crate::atoms::AtomRegistry) {
-    registry.register("core/set!", ATOM_CORE_SET);
-    registry.register("core/get", ATOM_CORE_GET);
-    registry.register("core/del!", ATOM_CORE_DEL);
-    registry.register("core/exists?", ATOM_EXISTS);
+    registry.register("core/set!", crate::atoms::Atom::Legacy(ATOM_CORE_SET));
+    registry.register("core/get", crate::atoms::Atom::Legacy(ATOM_CORE_GET));
+    registry.register("core/del!", crate::atoms::Atom::Legacy(ATOM_CORE_DEL));
+    registry.register("core/exists?", crate::atoms::Atom::Legacy(ATOM_EXISTS));
 }

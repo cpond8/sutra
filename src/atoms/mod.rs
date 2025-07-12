@@ -20,12 +20,12 @@
 //! - **Consistent Interface**: All atoms use the same `AtomFn` signature
 
 use crate::ast::value::Value;
-use crate::ast::{Span};
+use crate::ast::AstNode;
+use crate::ast::Span;
 use crate::runtime::eval::EvalContext;
 use crate::runtime::world::World;
 use crate::syntax::error::SutraError;
 use im::HashMap;
-use crate::ast::AstNode;
 
 // ============================================================================
 // CORE TYPES AND TRAITS
@@ -41,6 +41,40 @@ pub type AtomFn = fn(
     parent_span: &Span,
 ) -> Result<(Value, World), SutraError>;
 
+// ============================================================================
+// NEW ATOM ARCHITECTURE TYPES
+// ============================================================================
+
+/// Pure atoms: operate only on values, no state access
+pub type PureAtomFn = fn(args: &[Value]) -> Result<Value, SutraError>;
+
+/// Stateful atoms: need limited state access via Context facade
+pub type StatefulAtomFn =
+    fn(args: &[Value], context: &mut dyn StateContext) -> Result<(Value, World), SutraError>;
+
+/// Legacy atoms: for incremental migration only (will be removed)
+pub type LegacyAtomFn = fn(
+    args: &[AstNode],
+    context: &mut EvalContext,
+    parent_span: &Span,
+) -> Result<(Value, World), SutraError>;
+
+/// The unified atom representation supporting three calling conventions
+#[derive(Clone)]
+pub enum Atom {
+    Pure(PureAtomFn),
+    Stateful(StatefulAtomFn),
+    Legacy(LegacyAtomFn), // Remove after migration
+}
+
+/// Minimal state interface for stateful atoms
+pub trait StateContext {
+    fn get_value(&self, path: &crate::runtime::path::Path) -> Option<Value>;
+    fn set_value(&mut self, path: &crate::runtime::path::Path, value: Value);
+    fn delete_value(&mut self, path: &crate::runtime::path::Path);
+    fn exists(&self, path: &crate::runtime::path::Path) -> bool;
+}
+
 // Output sink for `print`, etc., to make I/O testable and injectable.
 pub trait OutputSink {
     fn emit(&mut self, text: &str, span: Option<&Span>);
@@ -55,7 +89,7 @@ impl OutputSink for NullSink {
 // Registry for all atoms, inspectable at runtime.
 #[derive(Default)]
 pub struct AtomRegistry {
-    pub atoms: HashMap<String, AtomFn>,
+    pub atoms: HashMap<String, Atom>, // Changed from AtomFn to Atom
 }
 
 impl AtomRegistry {
@@ -63,7 +97,8 @@ impl AtomRegistry {
         Self::default()
     }
 
-    pub fn get(&self, name: &str) -> Option<&AtomFn> {
+    pub fn get(&self, name: &str) -> Option<&Atom> {
+        // Changed return type
         self.atoms.get(name)
     }
 
@@ -72,7 +107,8 @@ impl AtomRegistry {
     }
 
     // API for extensibility.
-    pub fn register(&mut self, name: &str, func: AtomFn) {
+    pub fn register(&mut self, name: &str, func: Atom) {
+        // Changed parameter type
         self.atoms.insert(name.to_string(), func);
     }
 
@@ -80,7 +116,8 @@ impl AtomRegistry {
         self.atoms.clear();
     }
 
-    pub fn remove(&mut self, name: &str) -> Option<AtomFn> {
+    pub fn remove(&mut self, name: &str) -> Option<Atom> {
+        // Changed return type
         self.atoms.remove(name)
     }
 
@@ -105,12 +142,12 @@ impl AtomRegistry {
 pub mod helpers;
 
 // Domain-specific atom modules
-pub mod math;
-pub mod logic;
-pub mod world;
 pub mod collections;
 pub mod execution;
 pub mod external;
+pub mod logic;
+pub mod math;
+pub mod world;
 
 // Test atoms module - only available in debug/test builds
 #[cfg(any(test, feature = "test-atom", debug_assertions))]

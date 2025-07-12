@@ -8,7 +8,11 @@ summary: Canonical language specification, always in sync with the implementatio
 
 > **Canonical Reference Notice (2024-07-09):**
 >
-> The canonical reference for the Sutra engine language is **Lisp**, particularly **Scheme**. All language semantics, macro expansion, and test expectations are defined by and validated against canonical Scheme/Lisp behavior. The canonical syntax is the Scheme-inspired s-expression (list-style) language. There are two dialects of the Sutra language: (1) the canonical list-style (s-expression) dialect, and (2) a brace-based authoring dialect for game authors. **All engine, macro, and test logic is specified and validated exclusively in the canonical list-style dialect.**
+> The Sutra engine language has two canonical syntaxes:
+> - **List style**: The canonical, Scheme/Lisp-inspired s-expression syntax. All engine, macro, and test logic is specified and validated exclusively in this style. This is the ground truth for the language.
+> - **Block style**: The brace-based, authoring-friendly syntax for game authors. This style is compiled to list style and is not canonical for engine or test purposes.
+>
+> All references to 's-expression', 'brace-based', or 'authoring dialect' in this document are now replaced with 'list style' and 'block style' respectively.
 
 > **Note:** This document is a living specification, synchronized with the canonical implementation in the codebase. It reflects the actual, implemented state of the language, not a planned or aspirational one.
 
@@ -17,8 +21,8 @@ summary: Canonical language specification, always in sync with the implementatio
 ## **Changelog**
 
 ### **2025-07-09: Canonical Reference Declaration**
-- Declared Lisp (Scheme) as the canonical reference for all Sutra language semantics, macro expansion, and test expectations.
-- Clarified that the canonical syntax is the Scheme-inspired s-expression (list-style) language; the brace-based dialect is for authoring convenience and is not canonical for engine or test purposes.
+- Declared **list style** (Scheme/Lisp s-expression) as the canonical reference for all Sutra language semantics, macro expansion, and test expectations.
+- Clarified that the canonical syntax is the **list style**; the **block style** is for authoring convenience and is not canonical for engine or test purposes.
 
 ### **2025-07-02: Major Synchronization with Codebase**
 

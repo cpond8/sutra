@@ -238,6 +238,12 @@ impl MacroEnv {
         }
     }
 
+    /// Adds a user-defined macro to the environment.
+    pub fn with_user_macro(mut self, name: String, def: MacroDef) -> Self {
+        self.user_macros.insert(name, def);
+        self
+    }
+
     /// Looks up a macro by name, returning provenance and definition.
     ///
     /// Searches first in user macros, then in core macros.

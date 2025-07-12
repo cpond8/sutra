@@ -59,19 +59,41 @@ impl EvalContext<'_, '_> {
         args: &[AstNode],
         span: &crate::ast::Span,
     ) -> Result<(Value, World), SutraError> {
-        // Guard clause: ensure atom exists in registry
-        let Some(atom_fn) = self.atom_registry.get(atom_name) else {
+        // Use a more specific error message for undefined atoms.
+        let Some(atom) = self.atom_registry.get(atom_name).cloned() else {
             return Err(sutra_error!(
-                type,
+                general,
                 Some(span.clone()),
                 &args[0],
-                "eval",
-                "atom",
-                &Value::String(atom_name.to_string())
+                &format!("Undefined atom: '{}'", atom_name)
             ));
         };
 
-        atom_fn(args, self, span)
+        // Dispatch to the correct atom type.
+        match atom {
+            // The legacy path, for atoms not yet migrated.
+            crate::atoms::Atom::Legacy(legacy_fn) => {
+                legacy_fn(args, self, span)
+            }
+
+            // The new path for atoms that need to interact with the world state.
+            crate::atoms::Atom::Stateful(_stateful_fn) => {
+                // TODO: Implement stateful dispatch
+                todo!("Stateful atoms not yet implemented")
+            }
+
+            // The new path for pure functions that have no side effects.
+            crate::atoms::Atom::Pure(pure_fn) => {
+                // Convert AstNodes to Values for pure atoms
+                let mut values = Vec::new();
+                for arg in args {
+                    let (val, _) = eval_expr(arg, self)?;
+                    values.push(val);
+                }
+                let result = pure_fn(&values)?;
+                Ok((result, self.world.clone()))
+            }
+        }
     }
 }
 
@@ -168,6 +190,10 @@ pub fn eval_expr(
         Expr::If { condition, then_branch, else_branch, .. } => {
             eval_if(condition, then_branch, else_branch, context)
         }
+        Expr::Define { .. } => {
+            // TODO: Handle define expressions
+            Err(sutra_error!(general, Some(expr.span.clone()), expr, "Define expressions not yet implemented"))
+        }
 
         // Literal value types
         Expr::Path(..) | Expr::String(..) | Expr::Number(..) | Expr::Bool(..) => {
@@ -252,6 +278,12 @@ fn eval_quote(
             ..
         } => eval_quoted_if(condition, then_branch, else_branch, context),
         Expr::Quote(_, _) => wrap_value_with_world(Value::Nil, context.world),
+        Expr::Define { .. } => Err(sutra_error!(
+            general,
+            Some(parent_expr.span.clone()),
+            parent_expr,
+            "Cannot quote define expressions"
+        )),
         Expr::ParamList(_) => Err(sutra_error!(
             general,
             Some(parent_expr.span.clone()),

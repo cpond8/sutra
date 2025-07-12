@@ -15,12 +15,38 @@
 //! - **Error Handling**: Proper validation for edge cases (division by zero, etc.)
 
 use crate::ast::value::Value;
-use crate::atoms::helpers::*;
-use crate::atoms::AtomFn;
+use crate::atoms::PureAtomFn;
+use crate::syntax::error::{SutraError, SutraErrorKind, EvalError};
 
 // ============================================================================
 // ARITHMETIC OPERATIONS
 // ============================================================================
+
+/// Helper function to create a simple error for pure atoms
+fn simple_error(message: &str) -> SutraError {
+    SutraError {
+        kind: SutraErrorKind::Eval(EvalError {
+            message: message.to_string(),
+            expanded_code: String::new(),
+            original_code: None,
+            suggestion: None,
+        }),
+        span: None,
+    }
+}
+
+/// Helper function to extract a number from a Value
+fn extract_number(value: &Value, index: Option<usize>, atom_name: &str) -> Result<f64, SutraError> {
+    match value {
+        Value::Number(n) => Ok(*n),
+        _ => Err(simple_error(&format!("{}: expected Number at position {:?}, got {:?}", atom_name, index, value))),
+    }
+}
+
+/// Helper function to create arity error
+fn arity_error(actual: usize, expected: usize, atom_name: &str) -> SutraError {
+    simple_error(&format!("{}: expected {} arguments, got {}", atom_name, expected, actual))
+}
 
 /// Adds numbers.
 ///
@@ -34,8 +60,17 @@ use crate::atoms::AtomFn;
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_ADD: AtomFn = |args, context, parent_span| {
-    eval_nary_numeric_op(args, context, parent_span, 0.0, |a, b| a + b, "+")
+pub const ATOM_ADD: PureAtomFn = |args| {
+    if args.is_empty() {
+        return Ok(Value::Number(0.0));
+    }
+
+    let mut result = 0.0;
+    for (i, arg) in args.iter().enumerate() {
+        let n = extract_number(arg, Some(i), "+")?;
+        result += n;
+    }
+    Ok(Value::Number(result))
 };
 
 /// Subtracts two numbers.
@@ -50,15 +85,13 @@ pub const ATOM_ADD: AtomFn = |args, context, parent_span| {
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_SUB: AtomFn = |args, context, parent_span| {
-    eval_binary_numeric_op(
-        args,
-        context,
-        parent_span,
-        |a, b| Value::Number(a - b),
-        None::<fn(f64, f64) -> Result<(), &'static str>>,
-        "-",
-    )
+pub const ATOM_SUB: PureAtomFn = |args| {
+    if args.len() != 2 {
+        return Err(arity_error(args.len(), 2, "-"));
+    }
+    let a = extract_number(&args[0], Some(0), "-")?;
+    let b = extract_number(&args[1], Some(1), "-")?;
+    Ok(Value::Number(a - b))
 };
 
 /// Multiplies numbers.
@@ -73,8 +106,17 @@ pub const ATOM_SUB: AtomFn = |args, context, parent_span| {
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_MUL: AtomFn = |args, context, parent_span| {
-    eval_nary_numeric_op(args, context, parent_span, 1.0, |a, b| a * b, "*")
+pub const ATOM_MUL: PureAtomFn = |args| {
+    if args.is_empty() {
+        return Ok(Value::Number(1.0));
+    }
+
+    let mut result = 1.0;
+    for (i, arg) in args.iter().enumerate() {
+        let n = extract_number(arg, Some(i), "*")?;
+        result *= n;
+    }
+    Ok(Value::Number(result))
 };
 
 /// Divides two numbers.
@@ -89,21 +131,18 @@ pub const ATOM_MUL: AtomFn = |args, context, parent_span| {
 ///
 /// # Safety
 /// Pure, does not mutate state. Errors on division by zero.
-pub const ATOM_DIV: AtomFn = |args, context, parent_span| {
-    eval_binary_numeric_op(
-        args,
-        context,
-        parent_span,
-        |a, b| Value::Number(a / b),
-        Some(|_a, b| {
-            if b == 0.0 {
-                Err("Division by zero")
-            } else {
-                Ok(())
-            }
-        }),
-        "/",
-    )
+pub const ATOM_DIV: PureAtomFn = |args| {
+    if args.len() != 2 {
+        return Err(arity_error(args.len(), 2, "/"));
+    }
+    let a = extract_number(&args[0], Some(0), "/")?;
+    let b = extract_number(&args[1], Some(1), "/")?;
+
+    if b == 0.0 {
+        return Err(simple_error("/: division by zero"));
+    }
+
+    Ok(Value::Number(a / b))
 };
 
 /// Modulo operation.
@@ -118,23 +157,22 @@ pub const ATOM_DIV: AtomFn = |args, context, parent_span| {
 ///
 /// # Safety
 /// Pure, does not mutate state. Errors on division by zero or non-integer input.
-pub const ATOM_MOD: AtomFn = |args, context, parent_span| {
-    eval_binary_numeric_op(
-        args,
-        context,
-        parent_span,
-        |a, b| Value::Number((a as i64 % b as i64) as f64),
-        Some(|a: f64, b: f64| -> Result<(), &'static str> {
-            if b == 0.0 {
-                return Err("Modulo by zero");
-            }
-            if a.fract() != 0.0 || b.fract() != 0.0 {
-                return Err("Modulo expects integers");
-            }
-            Ok(())
-        }),
-        "mod",
-    )
+pub const ATOM_MOD: PureAtomFn = |args| {
+    if args.len() != 2 {
+        return Err(arity_error(args.len(), 2, "mod"));
+    }
+    let a = extract_number(&args[0], Some(0), "mod")?;
+    let b = extract_number(&args[1], Some(1), "mod")?;
+
+    if b == 0.0 {
+        return Err(simple_error("mod: modulo by zero"));
+    }
+
+    if a.fract() != 0.0 || b.fract() != 0.0 {
+        return Err(simple_error("mod: expects integer arguments"));
+    }
+
+    Ok(Value::Number((a as i64 % b as i64) as f64))
 };
 
 // ============================================================================
@@ -154,10 +192,12 @@ pub const ATOM_MOD: AtomFn = |args, context, parent_span| {
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_ABS: AtomFn = |args, context, parent_span| {
-    let (val, world) = eval_single_arg(args, context, parent_span, "abs")?;
-    let n = extract_number(&val, args, parent_span, "abs")?;
-    Ok((Value::Number(n.abs()), world))
+pub const ATOM_ABS: PureAtomFn = |args| {
+    if args.len() != 1 {
+        return Err(arity_error(args.len(), 1, "abs"));
+    }
+    let n = extract_number(&args[0], Some(0), "abs")?;
+    Ok(Value::Number(n.abs()))
 };
 
 /// Minimum of multiple numbers.
@@ -172,8 +212,17 @@ pub const ATOM_ABS: AtomFn = |args, context, parent_span| {
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_MIN: AtomFn = |args, context, parent_span| {
-    eval_nary_numeric_op(args, context, parent_span, f64::INFINITY, f64::min, "min")
+pub const ATOM_MIN: PureAtomFn = |args| {
+    if args.is_empty() {
+        return Err(simple_error("min: requires at least 1 argument"));
+    }
+
+    let mut result = f64::INFINITY;
+    for (i, arg) in args.iter().enumerate() {
+        let n = extract_number(arg, Some(i), "min")?;
+        result = result.min(n);
+    }
+    Ok(Value::Number(result))
 };
 
 /// Maximum of multiple numbers.
@@ -188,15 +237,17 @@ pub const ATOM_MIN: AtomFn = |args, context, parent_span| {
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_MAX: AtomFn = |args, context, parent_span| {
-    eval_nary_numeric_op(
-        args,
-        context,
-        parent_span,
-        f64::NEG_INFINITY,
-        f64::max,
-        "max",
-    )
+pub const ATOM_MAX: PureAtomFn = |args| {
+    if args.is_empty() {
+        return Err(simple_error("max: requires at least 1 argument"));
+    }
+
+    let mut result = f64::NEG_INFINITY;
+    for (i, arg) in args.iter().enumerate() {
+        let n = extract_number(arg, Some(i), "max")?;
+        result = result.max(n);
+    }
+    Ok(Value::Number(result))
 };
 
 // ============================================================================
@@ -206,14 +257,14 @@ pub const ATOM_MAX: AtomFn = |args, context, parent_span| {
 /// Registers all mathematical atoms with the given registry.
 pub fn register_math_atoms(registry: &mut crate::atoms::AtomRegistry) {
     // Arithmetic operations
-    registry.register("+", ATOM_ADD);
-    registry.register("-", ATOM_SUB);
-    registry.register("*", ATOM_MUL);
-    registry.register("/", ATOM_DIV);
-    registry.register("mod", ATOM_MOD);
+    registry.register("+", crate::atoms::Atom::Pure(ATOM_ADD));
+    registry.register("-", crate::atoms::Atom::Pure(ATOM_SUB));
+    registry.register("*", crate::atoms::Atom::Pure(ATOM_MUL));
+    registry.register("/", crate::atoms::Atom::Pure(ATOM_DIV));
+    registry.register("mod", crate::atoms::Atom::Pure(ATOM_MOD));
 
     // Math functions
-    registry.register("abs", ATOM_ABS);
-    registry.register("min", ATOM_MIN);
-    registry.register("max", ATOM_MAX);
+    registry.register("abs", crate::atoms::Atom::Pure(ATOM_ABS));
+    registry.register("min", crate::atoms::Atom::Pure(ATOM_MIN));
+    registry.register("max", crate::atoms::Atom::Pure(ATOM_MAX));
 }

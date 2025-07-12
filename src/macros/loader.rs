@@ -70,83 +70,20 @@ fn try_parse_macro_form(
     expr: &AstNode,
     names_seen: &mut HashSet<String>,
 ) -> Result<Option<(String, MacroTemplate)>, SutraError> {
-    let Some(items) = validate_define_form(expr) else {
-        return Ok(None);
+    let Expr::Define { name, params, body, span: _ } = &*expr.value else {
+        return Ok(None); // Not a define form
     };
 
-    let Some(param_list) = items.get(1) else {
-        return Ok(None);
-    };
-
-    let Expr::ParamList(param_list) = &*param_list.value else {
-        return Ok(None);
-    };
-
-    let macro_name = extract_and_check_macro_name(param_list, names_seen)?;
-    let params = build_macro_params(param_list);
-    let body = Box::new(items[2].clone());
-    let template = MacroTemplate::new(params, body)?;
-
-    Ok(Some((macro_name, template)))
-}
-
-// Validates the basic `(define (name ...) body)` structure.
-fn validate_define_form(expr: &AstNode) -> Option<&[AstNode]> {
-    let Expr::List(items, _) = &*expr.value else {
-        return None;
-    };
-
-    if items.len() != 3 {
-        return None;
-    }
-
-    let Expr::Symbol(s, _) = &*items[0].value else {
-        return None;
-    };
-
-    if s != "define" {
-        return None;
-    }
-
-    Some(items)
-}
-
-// Extracts and validates macro name, checking for duplicates.
-fn extract_and_check_macro_name(
-    param_list: &ParamList,
-    names_seen: &mut HashSet<String>,
-) -> Result<String, SutraError> {
-    let macro_name = extract_macro_name(param_list)?;
-
-    if !names_seen.insert(macro_name.clone()) {
+    if !names_seen.insert(name.clone()) {
         return Err(macro_error(
-            format!("Duplicate macro name '{}'.", macro_name),
-            Some(param_list.span.clone()),
+            format!("Duplicate macro name '{}'.", name),
+            Some(expr.span.clone()), // Use the span of the define form
         ));
     }
 
-    Ok(macro_name)
-}
+    let template = MacroTemplate::new(params.clone(), body.clone())?;
 
-// Extracts the macro name from a parameter list (first element).
-fn extract_macro_name(param_list: &ParamList) -> Result<String, SutraError> {
-    let Some(name) = param_list.required.first() else {
-        return Err(macro_error(
-            "Macro name must be the first element of the parameter list.",
-            Some(param_list.span.clone()),
-        ));
-    };
-
-    Ok(name.clone())
-}
-
-// Builds macro parameters by excluding the macro name from the list.
-fn build_macro_params(param_list: &ParamList) -> ParamList {
-    ParamList {
-        required: param_list.required[1..].to_vec(),
-        rest: param_list.rest.clone(),
-        span: param_list.span.clone(),
-    }
+    Ok(Some((name.clone(), template)))
 }
 
 // =============================

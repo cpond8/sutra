@@ -1,0 +1,170 @@
+- name: Parser Edge Case Multiple Expressions
+  style: list
+  input: |
+    (print "first") (print "second")
+  expected: |
+    first
+    second
+- name: Parser Edge Case Nested Arithmetic
+  style: list
+  input: |
+    (print (+ 1 (+ 2 3)))
+  expected: "6"
+- name: Parser Edge Case List Mixed Types
+  style: list
+  input: |
+    (print (list 1 "text" true))
+  expected: "(1 text true)"
+- name: Parser Edge Case After Comment
+  style: list
+  input: |
+    (print "after comment")
+  expected: "after comment"
+- name: Parser Edge Case Indented Expression
+  style: list
+  input: |
+      (print "indented expression")
+  expected: "indented expression"
+- name: Parser Edge Case Empty List
+  style: list
+  input: |
+    (print (list))
+  expected: "()"
+- name: Parser Edge Case Complex Arithmetic
+  style: list
+  input: |
+    (print (+ 1 (* 2 (+ 3 4))))
+  expected: "15"
+
+- name: Grammar Edge Case No Parameters
+  style: list
+  input: |
+    (define (no_params) "no parameters")
+    (print (no_params))
+  expected: "no parameters"
+- name: Grammar Edge Case One Parameter
+  style: list
+  input: |
+    (define (one_param x) x)
+    (print (one_param "test"))
+  expected: "test"
+- name: Grammar Edge Case Two Parameters
+  style: list
+  input: |
+    (define (two_params a b) (list a b))
+    (print (two_params 1 2))
+  expected: "(1 2)"
+- name: Grammar Edge Case Many Parameters
+  style: list
+  input: |
+    (define (many_params a b c d e) (list a b c d e))
+    (print (many_params 1 2 3 4 5))
+  expected: "(1 2 3 4 5)"
+- name: Grammar Edge Case Variadic Only
+  style: list
+  input: |
+    (define (variadic_only ...args) args)
+    (print (variadic_only 1 2 3))
+  expected: "(1 2 3)"
+- name: Grammar Edge Case Mixed Variadic
+  style: list
+  input: |
+    (define (mixed_variadic req ...rest) (list req rest))
+    (print (mixed_variadic "required" 1 2 3))
+  expected: "(required (1 2 3))"
+- name: Grammar Edge Case Multiple Required Variadic
+  style: list
+  input: |
+    (define (multiple_required a b ...rest) (list a b rest))
+    (print (multiple_required "a" "b" 1 2 3))
+  expected: "(a b (1 2 3))"
+- name: Grammar Edge Case Spread In List
+  style: list
+  input: |
+    (define (spread_in_list ...items) (list ...items))
+    (print (spread_in_list 1 2 3))
+  expected: "(1 2 3)"
+- name: Grammar Edge Case Spread Forwarding
+  style: list
+  input: |
+    (define (spread_forwarding ...args) (variadic_only ...args))
+    (define (variadic_only ...args) args)
+    (print (spread_forwarding "a" "b" "c"))
+  expected: "(a b c)"
+- name: Grammar Edge Case Nested Parameter Handling
+  style: list
+  input: |
+    (define (nested_calls ...args)
+      (do
+        (print "Inner call:")
+        (print args)
+        args))
+    (print (nested_calls 1 2 3))
+  expected: |
+    Inner call:
+    (1 2 3)
+    (1 2 3)
+- name: Grammar Edge Case Parameter Shadowing
+  style: list
+  input: |
+    (define (outer x)
+      (define (inner x) x)
+      (inner (+ x 1)))
+    (print (outer 10))
+  expected: "11"
+- name: Grammar Edge Case Complex Expression Parameter Arithmetic
+  style: list
+  input: |
+    (define (complex_expr_param x) x)
+    (print (complex_expr_param (+ 1 (* 2 3))))
+  expected: "7"
+- name: Grammar Edge Case Complex Expression Parameter List
+  style: list
+  input: |
+    (define (complex_expr_param x) x)
+    (print (complex_expr_param (list 1 2 (+ 3 4))))
+  expected: "(1 2 7)"
+- name: Grammar Edge Case Empty List Literal
+  style: list
+  input: |
+    (print (list))
+  expected: "()"
+- name: Grammar Edge Case Nested Empty Lists
+  style: list
+  input: |
+    (print (list (list) (list (list))))
+  expected: "(() (()))"
+- name: Grammar Edge Case No Space Define
+  style: list
+  input: |
+    (define(no_space_define x)x)
+    (print (no_space_define "test"))
+  expected: "test"
+- name: Grammar Edge Case Extra Whitespace In Params
+  style: list
+  input: |
+    (define ( spaced_params  a   b  ) (list a b))
+    (print (spaced_params 1 2))
+  expected: "(1 2)"
+- name: Grammar Edge Case Comments In Parameter List
+  style: list
+  input: |
+    (define (commented_params a ; first param
+                              b ; second param
+                              ) (list a b))
+    (print (commented_params "first" "second"))
+  expected: "(first second)"
+- name: Grammar Edge Case Complex Macro Call
+  style: list
+  input: |
+    (define (macro_with_complex_call ...args) args)
+    (print (macro_with_complex_call
+             (+ 1 2)
+             (list "a" "b")
+             (not false)))
+  expected: "(3 (a b) true)"
+- name: Grammar Edge Case Define Error
+  style: list
+  input: |
+    (define (no_params) "no parameters")
+  expect_error: "Validation Error: Unknown macro or atom: define"

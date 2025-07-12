@@ -1,0 +1,17 @@
+- name: add (list style)
+  style: list
+  input: (add! player.gold 5)
+  expected: (core/set! (path player gold) (+ (core/get (path player gold)) 5))
+
+- name: add (block style)
+  style: block
+  input: |
+    {
+      add! player.gold 5
+    }
+  expected: (core/set! (path player gold) (+ (core/get (path player gold)) 5))
+
+- name: arity error (list)
+  style: list
+  input: (set! player.hp)
+  expect_error: "Arity error: set! expects 2 arguments"

@@ -73,8 +73,8 @@ pub fn run_sutra_source_with_output(
     })?;
 
     // 9. Evaluate the expanded AST
-    let world = World::default();
-    let result = eval(&expanded, &world, output, &atom_registry, 1000).map_err(|e| {
+    let mut world = World::default();
+    let result = eval(&expanded, &mut world, output, &atom_registry, 1000).map_err(|e| {
         output.emit(&format!("Evaluation error: {:?}", e), None);
         e
     })?;

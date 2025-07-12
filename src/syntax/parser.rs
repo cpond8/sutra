@@ -588,24 +588,42 @@ fn build_define_form(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
 
     // The grammar: define_form = { "(" ~ "define" ~ param_list ~ expr ~ ")" }
     // The CST children are: param_list, expr (body)
-    let param_list = inner.next().ok_or_else(|| {
+    let param_list_pair = inner.next().ok_or_else(|| {
         malformed_ast_error("Missing parameter list in define form", Some(span.clone()))
     })?;
-    let body = inner.next().ok_or_else(|| {
-        malformed_ast_error("Missing body expression in define form", Some(span.clone()))
+    let param_list_node = build_param_list(param_list_pair)?;
+    let Expr::ParamList(full_params) = &*param_list_node.value else {
+        return Err(malformed_ast_error(
+            "Expected ParamList AST node for define form parameters",
+            Some(param_list_node.span.clone()),
+        ));
+    };
+
+    // The first element of the param_list is the macro name
+    let name = full_params.required.first().cloned().ok_or_else(|| {
+        malformed_ast_error("Define form must have a name in its parameter list", Some(span.clone()))
     })?;
 
-    let list_items = vec![
-        WithSpan {
-            value: Expr::Symbol("define".to_string(), span.clone()).into(),
-            span: span.clone(),
-        },
-        build_param_list(param_list)?,
-        build_expr(body)?,
-    ];
+    // Create a new ParamList without the macro name (the actual parameters)
+    let actual_params = crate::ast::ParamList {
+        required: full_params.required[1..].to_vec(),
+        rest: full_params.rest.clone(),
+        span: full_params.span.clone(),
+    };
+
+    let body_pair = inner.next().ok_or_else(|| {
+        malformed_ast_error("Missing body expression in define form", Some(span.clone()))
+    })?;
+    let body = build_expr(body_pair)?;
 
     Ok(WithSpan {
-        value: Expr::List(list_items, span.clone()).into(),
+        value: Expr::Define {
+            name,
+            params: actual_params,
+            body: Box::new(body),
+            span: span.clone(),
+        }
+        .into(),
         span,
     })
 }

@@ -178,6 +178,6 @@ fn test_borrow_stress_atom(
 /// # Safety
 /// Test atoms may have side effects (output, recursion) intended for testing.
 pub fn register_test_atoms(registry: &mut AtomRegistry) {
-    registry.register("test/echo", test_echo_atom);
-    registry.register("test/borrow_stress", test_borrow_stress_atom);
+    registry.register("test/echo", crate::atoms::Atom::Legacy(test_echo_atom));
+    registry.register("test/borrow_stress", crate::atoms::Atom::Legacy(test_borrow_stress_atom));
 }

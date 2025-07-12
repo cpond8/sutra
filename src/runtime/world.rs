@@ -1,4 +1,5 @@
 use crate::ast::value::Value;
+use crate::macros;
 use crate::runtime::path::Path;
 use im::HashMap;
 use rand::{RngCore, SeedableRng};
@@ -11,6 +12,7 @@ type SmallRng = Xoshiro256StarStar;
 pub struct World {
     data: Value,
     prng: SmallRng,
+    pub macros: crate::macros::MacroEnv,
 }
 
 impl World {
@@ -18,6 +20,7 @@ impl World {
         Self {
             data: Value::Map(HashMap::new()),
             prng: SmallRng::from_entropy(),
+            macros: macros::MacroEnv::new(),
         }
     }
 
@@ -25,6 +28,7 @@ impl World {
         Self {
             data: Value::Map(HashMap::new()),
             prng: SmallRng::from_seed(seed),
+            macros: macros::MacroEnv::new(),
         }
     }
 
@@ -54,6 +58,7 @@ impl World {
         Self {
             data: new_data,
             prng: self.prng.clone(),
+            macros: self.macros.clone(),
         }
     }
 
@@ -65,11 +70,20 @@ impl World {
         Self {
             data: new_data,
             prng: self.prng.clone(),
+            macros: self.macros.clone(),
         }
     }
 
     pub fn next_u32(&mut self) -> u32 {
         self.prng.next_u32()
+    }
+
+    pub fn with_macros(self, macros: crate::macros::MacroEnv) -> Self {
+        Self {
+            data: self.data,
+            prng: self.prng,
+            macros,
+        }
     }
 }
 
@@ -152,4 +166,26 @@ fn del_recursive(current: &Value, path_segments: &[String]) -> Value {
     }
 
     Value::Map(map)
+}
+
+// ============================================================================
+// STATE CONTEXT IMPLEMENTATION
+// ============================================================================
+
+impl crate::atoms::StateContext for World {
+    fn get_value(&self, path: &crate::runtime::path::Path) -> Option<crate::ast::value::Value> {
+        self.get(path).cloned()
+    }
+
+    fn set_value(&mut self, path: &crate::runtime::path::Path, value: crate::ast::value::Value) {
+        *self = self.set(path, value);
+    }
+
+    fn delete_value(&mut self, path: &crate::runtime::path::Path) {
+        *self = self.del(path);
+    }
+
+    fn exists(&self, path: &crate::runtime::path::Path) -> bool {
+        self.get(path).is_some()
+    }
 }
