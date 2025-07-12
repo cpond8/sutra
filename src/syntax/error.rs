@@ -75,7 +75,6 @@ pub struct SutraError {
 /// ```rust
 /// use sutra::syntax::error::parse_error;
 /// use sutra::ast::Span;
-///
 /// let span = Span { start: 0, end: 5 };
 /// let error = parse_error("Unexpected token ')'", Some(span));
 /// ```
@@ -92,7 +91,6 @@ pub fn parse_error(msg: impl Into<String>, span: Option<Span>) -> SutraError {
 /// ```rust
 /// use sutra::syntax::error::macro_error;
 /// use sutra::ast::Span;
-///
 /// let span = Span { start: 10, end: 20 };
 /// let error = macro_error("Duplicate macro name 'my-macro'", Some(span));
 /// ```
@@ -109,7 +107,6 @@ pub fn macro_error(msg: impl Into<String>, span: Option<Span>) -> SutraError {
 /// ```rust
 /// use sutra::syntax::error::validation_error;
 /// use sutra::ast::Span;
-///
 /// let span = Span { start: 5, end: 15 };
 /// let error = validation_error("Invalid macro usage in this context", Some(span));
 /// ```
@@ -125,7 +122,6 @@ pub fn validation_error(msg: impl Into<String>, span: Option<Span>) -> SutraErro
 /// # Example
 /// ```rust
 /// use sutra::syntax::error::io_error;
-///
 /// let error = io_error("Failed to read config file", None);
 /// ```
 pub fn io_error(msg: impl Into<String>, span: Option<Span>) -> SutraError {
@@ -141,7 +137,6 @@ pub fn io_error(msg: impl Into<String>, span: Option<Span>) -> SutraError {
 /// ```rust
 /// use sutra::syntax::error::malformed_ast_error;
 /// use sutra::ast::Span;
-///
 /// let span = Span { start: 0, end: 10 };
 /// let error = malformed_ast_error("Empty expression pair in AST", Some(span));
 /// ```
@@ -158,7 +153,6 @@ pub fn malformed_ast_error(msg: impl Into<String>, span: Option<Span>) -> SutraE
 /// ```rust
 /// use sutra::syntax::error::internal_parse_error;
 /// use sutra::ast::Span;
-///
 /// let span = Span { start: 20, end: 30 };
 /// let error = internal_parse_error("Parser generated empty tree", Some(span));
 /// ```
@@ -182,7 +176,8 @@ pub fn internal_parse_error(msg: impl Into<String>, span: Option<Span>) -> Sutra
 /// ```rust
 /// use sutra::syntax::error::eval_arity_error;
 /// use sutra::ast::{Expr, Span, WithSpan};
-///
+/// use std::sync::Arc;
+/// type AstNode = WithSpan<Arc<Expr>>;
 /// let span = Span { start: 0, end: 10 };
 /// let args: Vec<AstNode> = vec![];
 /// let error = eval_arity_error(Some(span), &args, "core/set!", "exactly 2");
@@ -232,7 +227,8 @@ pub fn eval_arity_error(
 /// use sutra::syntax::error::eval_type_error;
 /// use sutra::ast::{Expr, Span, WithSpan};
 /// use sutra::ast::value::Value;
-///
+/// use std::sync::Arc;
+/// type AstNode = WithSpan<Arc<Expr>>;
 /// let span = Span { start: 0, end: 10 };
 /// let arg = WithSpan { value: Arc::new(Expr::String("hello".to_string(), span.clone())), span: span.clone() };
 /// let value = Value::String("hello".to_string());
@@ -278,7 +274,8 @@ pub fn eval_type_error(
 /// ```rust
 /// use sutra::syntax::error::eval_general_error;
 /// use sutra::ast::{Expr, Span, WithSpan};
-///
+/// use std::sync::Arc;
+/// type AstNode = WithSpan<Arc<Expr>>;
 /// let span = Span { start: 0, end: 10 };
 /// let arg = WithSpan { value: Arc::new(Expr::Symbol("x".to_string(), span.clone())), span: span.clone() };
 /// let error = eval_general_error(Some(span), &arg, "Division by zero");
@@ -316,7 +313,6 @@ pub fn eval_general_error(
 /// ```rust
 /// use sutra::syntax::error::recursion_depth_error;
 /// use sutra::ast::Span;
-///
 /// let span = Span { start: 0, end: 10 };
 /// let error = recursion_depth_error(Some(span));
 /// ```

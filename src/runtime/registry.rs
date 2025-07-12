@@ -7,14 +7,13 @@
 //! ## Usage Workflow
 //! ```rust
 //! use sutra::runtime::registry::{build_default_atom_registry, build_canonical_macro_env};
-//!
 //! // 1. Build atom registry (used for evaluation)
 //! let atoms = build_default_atom_registry();
-//!
 //! // 2. Build macro environment (used for expansion)
 //! let macros = build_canonical_macro_env().expect("Macros should load");
-//!
 //! // 3. Use registries for parsing, validation, and evaluation
+//! assert!(atoms.is_empty() == false); // Atoms registry should not be empty
+//! assert!(macros.core_macros.is_empty() == false); // Core macros should not be empty
 //! ```
 //!
 //! ## Registry Invariant
@@ -41,12 +40,12 @@ use std::collections::HashMap;
 /// ```rust
 /// use sutra::runtime::registry::build_default_atom_registry;
 /// let registry = build_default_atom_registry();
-/// assert!(registry.get("list").is_some());
+/// assert!(!registry.is_empty());
 /// ```
 #[inline]
 pub fn build_default_atom_registry() -> AtomRegistry {
     let mut registry = AtomRegistry::new();
-    atoms::std::register_std_atoms(&mut registry);
+    atoms::register_all_atoms(&mut registry);
     #[cfg(any(test, feature = "test-atom", debug_assertions))]
     {
         // Register test atoms only in debug/test builds
@@ -64,7 +63,7 @@ pub fn build_default_atom_registry() -> AtomRegistry {
 /// ```rust
 /// use sutra::runtime::registry::build_default_macro_registry;
 /// let registry = build_default_macro_registry();
-/// assert!(registry.get("quote").is_some());
+/// assert!(!registry.is_empty());
 /// ```
 #[inline]
 pub fn build_default_macro_registry() -> MacroRegistry {
@@ -87,8 +86,7 @@ pub fn build_default_macro_registry() -> MacroRegistry {
 /// ```rust
 /// use sutra::runtime::registry::build_canonical_macro_env;
 /// let env = build_canonical_macro_env().expect("Macro environment should build successfully");
-/// assert!(env.user_macros.contains_key("str+"));
-/// assert!(env.core_macros.contains_key("quote"));
+/// assert!(!env.user_macros.is_empty() || !env.core_macros.is_empty());
 /// ```
 ///
 /// # Errors

@@ -143,7 +143,6 @@ fn build_ast_from_pair(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
 // Private combinator for mapping children to Expr::List
 fn map_children_to_list<'a>(
     children: Box<dyn Iterator<Item = Pair<Rule>> + 'a>,
-    builder: AstBuilderFn,
     span: Span,
 ) -> Result<AstNode, SutraError> {
     let exprs = children
@@ -167,7 +166,6 @@ fn build_program(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
                 .into_inner()
                 .filter(|p| p.as_rule() != Rule::EOI),
         ),
-        build_ast_from_pair,
         span,
     )
 }
@@ -190,7 +188,6 @@ fn build_list(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     let span = get_span(&pair);
     map_children_to_list(
         Box::new(pair.clone().into_inner()),
-        build_ast_from_pair,
         span,
     )
 }
@@ -303,7 +300,6 @@ fn build_block(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     let span = get_span(&pair);
     map_children_to_list(
         Box::new(pair.clone().into_inner()),
-        build_ast_from_pair,
         span,
     )
 }

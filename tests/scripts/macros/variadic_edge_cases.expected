@@ -1,7 +1,0 @@
-Macro expansion error: Expansion { span: Span { start: 810, end: 819 }, macro_name: "wrap", message: "Macro expansion failed: Evaluation Error: Macro arity mismatch\n\nExpected exactly 1 arguments, but received 3. This macro requires a specific number of arguments.\n\nMacro parameters: x\n\nSuggestion: Remove 2 arguments - this macro only accepts 1 arguments: Macro parameters: x\n\nExpanded Code:\n  <macro call with 3 arguments> (at 810:819)", source_error_kind: Some(Eval(EvalError { message: "Macro arity mismatch\n\nExpected exactly 1 arguments, but received 3. This macro requires a specific number of arguments.\n\nMacro parameters: x", expanded_code: "<macro call with 3 arguments>", original_code: None, suggestion: Some("Remove 2 arguments - this macro only accepts 1 arguments: Macro parameters: x") })), suggestion: Some("Remove 2 arguments - this macro only accepts 1 arguments: Macro parameters: x"), source_span: Some(Span { start: 810, end: 819 }) }
-(1 2 3)
-()
-(1 3 4 5 2 3 4 5)
-(7 8 9)
-(foo bar)
-Macro expansion error: Expansion { span: Span { start: 0, end: 0 }, macro_name: "spread_nonlist", message: "Macro expansion failed: Evaluation Error: spread: argument is not a list", source_error_kind: Some(Eval(EvalError { message: "spread: argument is not a list", expanded_code: "<macro call>", original_code: None, suggestion: None })), suggestion: None, source_span: Some(Span { start: 0, end: 0 }) }

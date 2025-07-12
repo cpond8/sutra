@@ -35,11 +35,11 @@ pub fn build_canonical_atom_registry() -> CanonicalAtomRegistry {
     let mut registry = AtomRegistry::new();
 
     // All standard registration logic centralized here
-    crate::atoms::std::register_std_atoms(&mut registry);
+    crate::atoms::register_all_atoms(&mut registry);
 
     #[cfg(any(test, feature = "test-atom"))]
     {
-        crate::atoms::std::register_test_atoms(&mut registry);
+        crate::atoms::test::register_test_atoms(&mut registry);
     }
 
     CanonicalAtomRegistry {

@@ -86,7 +86,7 @@ pub struct CanonicalAtomRegistry {
 /// The ONLY way to create a canonical registry
 pub fn build_canonical_atom_registry() -> CanonicalAtomRegistry {
     let mut registry = AtomRegistry::new();
-    crate::atoms::std::register_std_atoms(&mut registry);
+    crate::atoms::register_all_atoms(&mut registry);
 
     CanonicalAtomRegistry {
         registry,

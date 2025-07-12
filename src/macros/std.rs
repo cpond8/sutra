@@ -280,10 +280,7 @@ pub fn expand_dec(expr: &AstNode) -> Result<AstNode, SutraError> {
 
 /// Expands `(if cond then else)` to a canonical conditional form.
 ///
-/// # Example
-/// ```
 /// (if (eq? x 1) (print "yes") (print "no"))
-/// ```
 pub fn expand_if(expr: &AstNode) -> Result<AstNode, SutraError> {
     let (items, span) = expect_args(4, expr)?;
     Ok(WithSpan {
