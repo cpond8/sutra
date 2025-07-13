@@ -160,6 +160,7 @@ pub mod execution;
 pub mod external;
 pub mod logic;
 pub mod math;
+pub mod string;
 pub mod world;
 
 // Test atoms module - only available in debug/test builds
@@ -180,6 +181,7 @@ pub fn register_all_atoms(registry: &mut AtomRegistry) {
     collections::register_collection_atoms(registry);
     execution::register_execution_atoms(registry);
     external::register_external_atoms(registry);
+    string::register_string_atoms(registry);
 }
 
 // ============================================================================

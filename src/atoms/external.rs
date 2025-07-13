@@ -35,11 +35,22 @@ use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
 /// # Safety
 /// Emits output, does not mutate world state.
 pub const ATOM_PRINT: StatefulAtomFn = |args, context| {
-    // Minimal: only print first argument if present
-    if !args.is_empty() {
-        context.output.emit(&args[0].to_string(), None);
+    if args.len() != 1 {
+        return Err(SutraError {
+            kind: SutraErrorKind::Eval(EvalError {
+                kind: crate::syntax::error::EvalErrorKind::Arity {
+                    func_name: "print".to_string(),
+                    expected: "1".to_string(),
+                    actual: args.len(),
+                },
+                expanded_code: String::new(),
+                original_code: None,
+            }),
+            span: None,
+        });
     }
 
+    context.output.emit(&args[0].to_string(), None);
     Ok(Value::Nil)
 };
 

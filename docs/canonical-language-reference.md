@@ -25,20 +25,20 @@ Sutra is a minimal, homoiconic, expression-based language designed for composabl
 
 ### 2.1 Atoms (Primitives)
 
-| Type    | Example         | Description                                         | Implementation  |
-| ------- | --------------- | --------------------------------------------------- | --------------- |
-| Number  | `42`, `-3.14`   | 64-bit float                                        | `Value::Number` |
-| Boolean | `true`, `false` | Boolean                                             | `Value::Bool`   |
-| String  | `"foo\nbar"`    | Double-quoted, escapes: `\\n`, `\\t`, `\\"`, `\\\\` | `Value::String` |
-| Symbol  | `foo`, `+`      | Variable/function names                             | `Value::Symbol` |
-| Nil     | `nil`           | Absence of value                                    | `Value::Nil`    |
+| Type    | Example         | Description                                           | Impl.   |
+|:--------|:----------------|:------------------------------------------------------|:-----------------|
+| Number  | `42`, `-3.14`   | 64-bit float                                          | `Value::Number`  |
+| Boolean | `true`, `false` | Boolean                                               | `Value::Bool`    |
+| String  | `"foo\nbar"`    | Double-quoted, escapes: `\\n`, `\\t`, `\\"`, `\\\\`  | `Value::String`  |
+| Symbol  | `foo`, `+`      | Variable/function names                               | `Value::Symbol`  |
+| Nil     | `nil`           | Absence of value                                      | `Value::Nil`     |
 
 ### 2.2 Collections
 
-| Type | Example            | Description            | Implementation |
-| ---- | ------------------ | ---------------------- | -------------- |
-| List | `(1 2 "a" true)`   | Ordered, heterogeneous | `Value::List`  |
-| Map  | `{foo: 1, bar: 2}` | Key-value, string keys | `Value::Map`   |
+| Type | Example            | Description              | Impl. |
+|:-----|:-------------------|:-------------------------|:---------------|
+| List | `(1 2 "a" true)`   | Ordered, heterogeneous   | `Value::List`  |
+| Map  | `{foo: 1, bar: 2}` | Key-value, string keys   | `Value::Map`   |
 
 ### 2.3 Paths
 
@@ -72,86 +72,138 @@ Sutra is a minimal, homoiconic, expression-based language designed for composabl
 
 ### 3.3 Control Flow
 
-| Construct | Example                | Description              | Implementation |
-| --------- | ---------------------- | ------------------------ | -------------- |
-| `if`      | `(if cond then else)`  | Conditional, not a macro | `Expr::If`     |
-| `do`      | `(do expr1 expr2 ...)` | Sequence, returns last   | Atom: `do`     |
+| Construct  | Arity | Example                 | Description              | Impl.      | Status  |
+|:-----------|:------|:------------------------|:-------------------------|:-----------|:--------|
+| `if`       | 3     | `(if cond then else)`   | Conditional              | `Expr::If` | impl.   |
+| `do`       | 0..   | `(do expr1 expr2 ...)`  | Sequence, returns last   | Atom: `do` | impl.   |
+| `when`     | 2..   | `(when cond ...)`       | Conditional `if` w/ `do` | Macro      | Planned |
+| `let`      | 2     | `(let (...) ...)`       | Lexical bindings         | Macro      | Planned |
+| `for-each` | 3     | `(for-each ...)`        | Looping construct        | Macro      | Planned |
+
+### 3.4 Arity (Function & Macro Arguments)
+
+Arity refers to the number of arguments a function or macro accepts. Sutra supports several kinds of arity:
+
+-   **Fixed Arity:** The function takes an exact number of arguments (e.g., `(lt? a b)` has an arity of 2).
+-   **Variadic Arity:** The function can take a variable number of arguments. This is indicated by `..` in the arity column.
+    -   `N..` means at least N arguments are required (e.g., `+` requires at least two arguments).
+    -   `..N` means at most N arguments are allowed.
+-   **Optional Arguments:** While not a formal feature, optionality can be implemented within a macro or function's logic.
+
+In function definitions, a variadic parameter is specified using `...` before the parameter name (e.g., `(define (my-func ...args) ...)`) which collects all subsequent arguments into a single list named `args`.
 
 ---
 
-## 4. Assignment & State
+## 4. Design Notes & Edge Cases
 
-| Macro  | Expansion Pattern                                        | Status      | Implementation |
-| ------ | -------------------------------------------------------- | ----------- | -------------- |
-| `set!` | `(core/set! (path ...) value)`                           | Implemented | Macro, Atom    |
-| `del!` | `(core/del! (path ...))`                                 | Implemented | Macro, Atom    |
-| `add!` | `(core/set! (path ...) (+ (core/get (path ...)) value))` | Implemented | Macro, Atom    |
-| `sub!` | `(core/set! (path ...) (- (core/get (path ...)) value))` | Implemented | Macro, Atom    |
-| `inc!` | `(core/set! (path ...) (+ (core/get (path ...)) 1))`     | Implemented | Macro, Atom    |
-| `dec!` | `(core/set! (path ...) (- (core/get (path ...)) 1))`     | Implemented | Macro, Atom    |
+This section highlights specific behaviors and design choices in Sutra that might be non-obvious but are intentional. Understanding these can help in writing more robust and idiomatic Sutra code.
 
----
+*   **Identity Values for Arithmetic Atoms:** When called with no arguments, `+` returns its identity value `0`, and `*` returns its identity value `1`. This is a common convention in Lisp-family languages.
+    *   `(+)` => `0`
+    *   `(*)` => `1`
 
-## 5. Predicates & Logic
+*   **Unary Negation and Reciprocal:** The `-` and `/` atoms can be called with a single argument.
+    *   `(- x)` returns the negation of `x`.
+    *   `(/ x)` returns the reciprocal `1/x`.
 
-| Macro    | Expands to | Purpose         | Status      | Implementation |
-| -------- | ---------- | --------------- | ----------- | -------------- |
-| `is?`    | `eq?`      | Equality/truthy | Implemented | Macro, Atom    |
-| `over?`  | `gt?`      | Greater than    | Implemented | Macro, Atom    |
-| `under?` | `lt?`      | Less than       | Implemented | Macro, Atom    |
-| `not`    | `not`      | Negation        | Implemented | Macro, Atom    |
-| `eq?`    | —          | Equality        | Implemented | Atom           |
-| `gt?`    | —          | Greater than    | Implemented | Atom           |
-| `lt?`    | —          | Less than       | Implemented | Atom           |
-| `gte?`   | —          | Greater/equal   | Implemented | Atom           |
-| `lte?`   | —          | Less/equal      | Implemented | Atom           |
+*   **Trivial Truth for Comparison Atoms:** Comparison atoms (`eq?`, `gt?`, `lt?`, `gte?`, `lte?`) return `true` when given zero or one argument. The logic is that any sequence with one or zero elements is trivially ordered or equal.
+    *   `(gt? 5)` => `true`
+    *   `(lt?)` => `true`
+
+*   **`print` Arity:** The `print` atom strictly requires one argument. Providing a different number of arguments will raise an arity mismatch error. For multi-argument printing, use the `display` macro.
 
 ---
 
-## 6. Math & Value Operations
+## 5. Assignment & State
 
-| Atom  | Purpose              | Status      | Implementation |
-| ----- | -------------------- | ----------- | -------------- |
-| `+`   | Addition             | Implemented | Atom           |
-| `-`   | Subtraction/Negation | Implemented | Atom           |
-| `*`   | Multiplication       | Implemented | Atom           |
-| `/`   | Division             | Implemented | Atom           |
-| `mod` | Modulo (int)         | Implemented | Atom           |
-| `len` | Length (list/string) | Implemented | Atom           |
-
----
-
-## 7. String Utilities
-
-| Macro/Atom  | Signature                 | Purpose             | Status      | Implementation |
-| ----------- | ------------------------- | ------------------- | ----------- | -------------- |
-| `str+`      | `(str+ a b ...)`          | Concatenate strings | Implemented | Macro, Atom    |
-| `str`       | `(str x)`                 | Typecast to string  | Planned     | —              |
-| `join-str+` | `(join-str+ sep a b ...)` | Join with separator | Planned     | —              |
+| Macro   | Arity | Expansion Pattern                             | Impl.       | Status  |
+|:--------|:------|:----------------------------------------------|:------------|:--------|
+| `set!`  | 2     | `(core/set! (path ...) value)`                | Macro, Atom | impl.   |
+| `del!`  | 1     | `(core/del! (path ...))`                      | Macro, Atom | impl.   |
+| `add!`  | 2     | `(core/set! (path ...) (+ (get ...) value))`  | Macro, Atom | impl.   |
+| `sub!`  | 2     | `(core/set! (path ...) (- (get ...) value))`  | Macro, Atom | impl.   |
+| `inc!`  | 1     | `(core/set! (path ...) (+ (get ...) 1))`      | Macro, Atom | impl.   |
+| `dec!`  | 1     | `(core/set! (path ...) (- (get ...) 1))`      | Macro, Atom | impl.   |
+| `mul!`  | 2     | `(core/set! (path ...) (* (get ...) value))`  | Macro, Atom | Planned |
+| `div!`  | 2     | `(core/set! (path ...) (/ (get ...) value))`  | Macro, Atom | Planned |
+| `push!` | 1..   | `(core/push! (path ...) value ...)`           | Macro, Atom | Planned |
+| `pull!` | 1..   | `(core/pull! (path ...) value ...)`           | Macro, Atom | Planned |
 
 ---
 
-## 8. World Interaction
+## 6. Predicates & Logic
 
-| Atom           | Purpose              | Status      | Implementation |
-| -------------- | -------------------- | ----------- | -------------- |
-| `core/set!`    | Set value at path    | Implemented | Atom           |
-| `core/get`     | Get value at path    | Implemented | Atom           |
-| `core/del!`    | Delete value at path | Implemented | Atom           |
-| `core/exists?` | Path existence       | Implemented | Atom           |
+| Macro       | Arity | Expands to     | Purpose                  | Impl.       | Status  |
+|:------------|:------|:---------------|:-------------------------|:------------|:--------|
+| `is?`       | 2     | `eq?`          | Equality/truthy          | Macro, Atom | impl.   |
+| `over?`     | 2     | `gt?`          | Greater than             | Macro, Atom | impl.   |
+| `under?`    | 2     | `lt?`          | Less than                | Macro, Atom | impl.   |
+| `not`       | 1     | `not`          | Negation                 | Macro, Atom | impl.   |
+| `at-least?` | 2     | `gte?`         | Greater or equal         | Macro       | Planned |
+| `at-most?`  | 2     | `lte?`         | Less or equal            | Macro       | Planned |
+| `has?`      | 2..   | `has?`         | Membership in collection | Macro, Atom | Planned |
+| `exists?`   | 1     | `core/exists?` | Path/value existence     | Macro       | Planned |
+| `and`       | 0..   | `(if ...)`     | Logical AND              | Macro       | Planned |
+| `or`        | 0..   | `(if ...)`     | Logical OR               | Macro       | Planned |
+| `empty?`    | 1     | `eq?` + `len`  | Collection is empty      | Macro       | Planned |
+| `eq?`       | 2..   | —             | Equality                 | Atom        | impl.   |
+| `gt?`       | 2..   | —             | Greater than             | Atom        | impl.   |
+| `lt?`       | 2..   | —             | Less than                | Atom        | impl.   |
+| `gte?`      | 2..   | —             | Greater/equal            | Atom        | impl.   |
+| `lte?`      | 2..   | —             | Less/equal               | Atom        | impl.   |
 
 ---
 
-## 9. I/O & Random
+## 7. Math & Value Operations
 
-| Atom    | Purpose      | Status      | Implementation |
-| ------- | ------------ | ----------- | -------------- |
-| `print` | Output value | Implemented | Atom           |
-| `rand`  | Random float | Implemented | Atom           |
+| Atom  | Arity | Purpose                | Impl. | Status  |
+|:------|:------|:-----------------------|:------|:--------|
+| `+`   | 0..   | Addition               | Atom  | impl.   |
+| `-`   | 1..   | Subtraction/Negation   | Atom  | impl.   |
+| `*`   | 0..   | Multiplication         | Atom  | impl.   |
+| `/`   | 1..   | Division               | Atom  | impl.   |
+| `mod` | 2     | Modulo (int)           | Atom  | impl.   |
+| `len` | 1     | Length (list/string)   | Atom  | impl.   |
+| `min` | 1..   | Minimum                | Atom  | Planned |
+| `max` | 1..   | Maximum                | Atom  | Planned |
+| `abs` | 1     | Absolute value         | Atom  | Planned |
 
 ---
 
-## 10. Error Handling
+## 8. String Utilities
+
+| Macro/Atom  | Arity | Signature                 | Purpose                         | Impl. | Status  |
+|:------------|:------|:--------------------------|:--------------------------------|:---------------|:--------|
+| `display`   | 0..   | `(display a b ...)`       | Print multiple values           | Macro          | impl.   |
+| `str+`      | 0..   | `(str+ a b ...)`          | Concatenate strings             | Macro, Atom    | impl.   |
+| `str`       | 1     | `(str x)`                 | Typecast to string              | Atom           | Planned |
+| `join-str+` | 2..   | `(join-str+ sep a b ...)` | Join strings with a separator   | Macro          | Planned |
+
+---
+
+## 9. World Interaction
+
+| Atom           | Arity | Purpose              | Impl. |
+|:---------------|:------|:---------------------|:---------------|
+| `core/set!`    | 2     | Set value at path    | Atom           |
+| `core/get`     | 1     | Get value at path    | Atom           |
+| `core/del!`    | 1     | Delete value at path | Atom           |
+| `core/exists?` | 1     | Path existence       | Atom           |
+
+---
+
+## 10. I/O & Random
+
+| Atom/Macro | Arity | Purpose                    | Impl. | Status  |
+|:-----------|:------|:---------------------------|:---------------|:--------|
+| `print`    | 1     | Output single value        | Atom           | impl.   |
+| `display`  | 0..   | Output multiple values     | Macro          | impl.   |
+| `rand`     | 0     | Random float               | Atom           | impl.   |
+| `chance?`  | 1     | Macro: true with X% chance | Macro          | Planned |
+
+---
+
+## 11. Error Handling
 
 - **Parse-time:** Invalid tokens, unmatched delimiters, bad escapes.
 - **Validation:** Unknown macros/atoms, arity/type errors, invalid paths.
@@ -159,13 +211,13 @@ Sutra is a minimal, homoiconic, expression-based language designed for composabl
 
 ---
 
-## 11. Comments
+## 12. Comments
 
 - Start with `;` and continue to end of line.
 
 ---
 
-## 12. Example Program
+## 13. Example Program
 
 ```sutra
 ; Factorial function
@@ -178,14 +230,14 @@ Sutra is a minimal, homoiconic, expression-based language designed for composabl
 
 ---
 
-## 13. Grammar Summary
+## 14. Grammar Summary
 
 - See `src/syntax/grammar.pest` for the full PEG grammar.
 - All syntax is formally specified and enforced by the parser.
 
 ---
 
-## 14. Macro System
+## 15. Macro System
 
 - All author-facing macros are defined in `src/macros/macros.sutra` and registered at startup.
 - Macro expansion is canonical and deterministic.
@@ -193,7 +245,7 @@ Sutra is a minimal, homoiconic, expression-based language designed for composabl
 
 ---
 
-## 15. Validation & Evaluation
+## 16. Validation & Evaluation
 
 - All code is parsed, macroexpanded, validated, and then evaluated.
 - Validation checks for unknown macros/atoms, arity, and type errors.
@@ -201,10 +253,10 @@ Sutra is a minimal, homoiconic, expression-based language designed for composabl
 
 ---
 
-## 16. Value Types
+## 17. Value Types
 
 | Type   | Example         | Description            |
-| ------ | --------------- | ---------------------- |
+|:-------|:----------------|:-----------------------|
 | Nil    | `nil`           | Absence of value       |
 | Number | `42`, `3.14`    | 64-bit float           |
 | String | `"hello"`       | UTF-8 string           |
@@ -215,29 +267,29 @@ Sutra is a minimal, homoiconic, expression-based language designed for composabl
 
 ---
 
-## 17. CLI & Tooling
+## 18. CLI & Tooling
 
 - CLI supports: run, macroexpand, macrotrace, validate, format, test, list-macros, list-atoms, ast, gen-expected.
 - Output is pretty-printed and colorized.
 
 ---
 
-## 18. Extensibility
+## 19. Extensibility
 
 - New atoms/macros can be added via Rust or Sutra macro files.
 - All macro and atom registration is centralized and canonical.
 
 ---
 
-## 19. Not Yet Implemented (Planned)
+## 20. Not Yet impl. (Planned)
 
-- Tier 2+ macros (e.g., `when`, `let`, `for-each`, `debug`, `fail`, `error`, `assert`, `min`, `max`, `abs`, `str`, `join-str+`).
+- Tier 2+ high-level macros (e.g., `requires`, `threshold`, `hub`, `select`).
 - Map literals and advanced collection utilities.
 - Advanced error handling and debugging macros.
 
 ---
 
-## 20. References
+## 21. References
 
 - Canonical spec: `docs/specs/language-spec.md`
 - Macro library: `src/macros/macros.sutra`

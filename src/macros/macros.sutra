@@ -73,3 +73,19 @@
 ;; Usage: (str+ "foo" "bar" "baz") => "foobarbaz"
 (define (str+ ...args)
   (core/str+ ...args))
+;; Join strings with a separator
+;; Usage: (join-str+ " " "a" "b" "c") => "a b c"
+(define (join-str+ sep ...args)
+  (letrec ((interleave
+            (lambda (acc remaining)
+              (if (null? remaining)
+                  acc
+                  (if (null? acc)
+                      (interleave (list (car remaining)) (cdr remaining))
+                      (interleave (append acc (list sep (car remaining))) (cdr remaining)))))))
+    (apply str+ (interleave '() args))))
+
+;; Display multiple values to the output, separated by spaces.
+;; Usage: (display "hello" 123 true) => prints "hello 123 true"
+(define (display ...args)
+  (print (apply join-str+ " " ...args)))

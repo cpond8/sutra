@@ -77,15 +77,15 @@ Sutra's design distinguishes between two fundamental concepts: **Core Atoms** an
 | **Data Access** |               |                                            |                                                                   |
 |                 | `Implemented` | `core/get`, `list`, `len`                  | `get`                                                             |
 | **Predicates**  |               |                                            |                                                                   |
-|                 | `Implemented` | `eq?`, `gt?`, `lt?`, `gte?`, `lte?`, `not` | `is?`, `over?`, `under?`                                          |
-|                 | `Planned`     | `has?`, `exists?`                          | `at-least?`, `at-most?`, `has?`, `exists?`, `and`, `or`, `empty?` |
+|                 | `Implemented` | `eq?`, `gt?`, `lt?`, `gte?`, `lte?`, `not`, `core/exists?` | `is?`, `over?`, `under?`                                          |
+|                 | `Planned`     | `has?`                                     | `at-least?`, `at-most?`, `has?`, `exists?`, `and`, `or`, `empty?` |
 | **Math/Value**  |               |                                            |                                                                   |
 |                 | `Implemented` | `+`, `-`, `*`, `/`, `mod`                  |                                                                   |
 |                 | `Planned`     | `min`, `max`, `abs`                        |                                                                   |
 | **Output**      |               |                                            |                                                                   |
-|                 | `Planned`     | `print`                                    |                                                                   |
+|                 | `Implemented` | `print`                                    | `display`                                                         |
 | **Random**      |               |                                            |                                                                   |
-|                 | `Planned`     | `rand`                                     | `chance?`                                                         |
+|                 | `Implemented` | `rand`                                     | `chance?`                                                         |
 | **Utility**     |               |                                            |                                                                   |
 |                 | `Implemented` | (Auto-get is a macro feature)              |                                                                   |
 |                 | `Planned`     |                                            | `path`, `first`, `last`, `nth`                                    |
@@ -173,6 +173,22 @@ All basic math/value operations are atoms and always author-facing; no macro wra
 > Optional macro for auto-get is allowed, but not required.
 
 ---
+
+## Core Atom Semantics and Edge Cases
+
+This section highlights specific behaviors and design choices in Sutra that might be non-obvious but are intentional. Understanding these can help in writing more robust and idiomatic Sutra code.
+
+*   **Identity Values for Arithmetic Atoms:** When called with no arguments, `+` returns its identity value `0`, and `*` returns its identity value `1`. This is a common convention in Lisp-family languages.
+    *   `(+)` => `0`
+    *   `(*)` => `1`
+
+*   **Unary Negation and Reciprocal:** The `-` and `/` atoms can be called with a single argument.
+    *   `(- x)` returns the negation of `x`.
+    *   `(/ x)` returns the reciprocal `1/x`.
+
+*   **Trivial Truth for Comparison Atoms:** Comparison atoms (`eq?`, `gt?`, `lt?`, `gte?`, `lte?`) return `true` when given zero or one argument. The logic is that any sequence with one or zero elements is trivially ordered or equal.
+    *   `(gt? 5)` => `true`
+    *   `(lt?)` => `true`
 
 # Sutra Value Types — Canonical Reference
 
@@ -347,13 +363,21 @@ The following control macros are planned but not yet implemented: `when`, `let`,
 
 ---
 
-## Output Atom
+## Output Atoms and Macros
 
-- **`print`**: Atom; author-facing for narrative/UI/debug output.
+- **`print`**: Atom; author-facing for narrative/UI/debug output. `print` is a unary atom and strictly requires one argument.
   **Example:**
 
   ```lisp
   print "You open the door."
+  ```
+
+- **`display`**: Macro; author-facing for printing multiple values to output, separated by spaces.
+  **Example:**
+
+  ```lisp
+  (display "Your score is:" 100)
+  ; Output: Your score is: 100
   ```
 
 ---
