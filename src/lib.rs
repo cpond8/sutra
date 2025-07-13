@@ -14,8 +14,7 @@ use crate::runtime::eval::eval;
 use crate::runtime::registry::build_canonical_macro_env;
 use crate::runtime::registry::build_default_atom_registry;
 use crate::runtime::world::World;
-use crate::syntax::error::macro_error;
-use crate::syntax::error::SutraError;
+use crate::syntax::error::{SutraError, SutraErrorKind};
 use crate::syntax::validate::validate;
 
 // TODO: Refactor macro environment construction in run_sutra_source_with_output to use build_canonical_macro_env() from registry.rs.
@@ -42,10 +41,15 @@ pub fn run_sutra_source_with_output(
     for macro_expr in macro_defs {
         let (name, template) = parse_macro_definition(&macro_expr)?;
         if env.user_macros.contains_key(&name) {
-            return Err(macro_error(
-                format!("Duplicate macro name '{}'.", name),
-                None,
-            ));
+            return Err(SutraError {
+                kind: SutraErrorKind::Validation(
+                    crate::syntax::error::ValidationErrorKind::General(format!(
+                        "Duplicate macro name '{}'.",
+                        name
+                    )),
+                ),
+                span: None,
+            });
         }
         env.user_macros
             .insert(name.clone(), MacroDef::Template(template));
@@ -57,7 +61,7 @@ pub fn run_sutra_source_with_output(
     // 7. Expand macros
     let expanded = expand_macros(program, &mut env).map_err(|e| {
         output.emit(&format!("Macro expansion error: {:?}", e), None);
-        macro_error(format!("Macro expansion error: {:?}", e), None)
+        e
     })?;
 
     // 8. Validation step
@@ -107,28 +111,47 @@ fn parse_macro_definition(expr: &AstNode) -> Result<(String, MacroTemplate), Sut
     use crate::ast::Expr;
     use crate::macros::MacroTemplate;
     let Expr::List(items, _) = &*expr.value else {
-        return Err(macro_error("Not a macro definition list.", None));
+        return Err(SutraError {
+            kind: SutraErrorKind::InternalParse("Not a macro definition list.".to_string()),
+            span: None,
+        });
     };
     if items.len() != 3 {
-        return Err(macro_error("Macro definition must have 3 elements.", None));
+        return Err(SutraError {
+            kind: SutraErrorKind::InternalParse("Macro definition must have 3 elements.".to_string()),
+            span: None,
+        });
     }
     let Expr::Symbol(def, _) = &*items[0].value else {
-        return Err(macro_error("First element must be 'define'.", None));
+        return Err(SutraError {
+            kind: SutraErrorKind::InternalParse("First element must be 'define'.".to_string()),
+            span: None,
+        });
     };
     if def != "define" {
-        return Err(macro_error("First element must be 'define'.", None));
+        return Err(SutraError {
+            kind: SutraErrorKind::InternalParse("First element must be 'define'.".to_string()),
+            span: None,
+        });
     }
     let Expr::ParamList(param_list) = &*items[1].value else {
-        return Err(macro_error(
-            "Second element must be a parameter list.",
-            None,
-        ));
+        return Err(SutraError {
+            kind: SutraErrorKind::InternalParse(
+                "Second element must be a parameter list.".to_string(),
+            ),
+            span: None,
+        });
     };
     let macro_name = param_list
         .required
         .first()
         .cloned()
-        .ok_or_else(|| macro_error("Macro name missing in parameter list.", None))?;
+        .ok_or_else(|| SutraError {
+            kind: SutraErrorKind::InternalParse(
+                "Macro name missing in parameter list.".to_string(),
+            ),
+            span: None,
+        })?;
     let params = crate::ast::ParamList {
         required: param_list.required[1..].to_vec(),
         rest: param_list.rest.clone(),

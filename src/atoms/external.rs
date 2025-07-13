@@ -16,7 +16,7 @@
 
 use crate::ast::value::Value;
 use crate::atoms::StatefulAtomFn;
-use crate::syntax::error::SutraError;
+use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
 
 // ============================================================================
 // I/O OPERATIONS
@@ -63,11 +63,14 @@ pub const ATOM_PRINT: StatefulAtomFn = |args, context| {
 pub const ATOM_RAND: StatefulAtomFn = |args, context| {
     if !args.is_empty() {
         return Err(SutraError {
-            kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
-                message: format!("rand: expected 0 arguments, got {}", args.len()),
+            kind: SutraErrorKind::Eval(EvalError {
+                kind: crate::syntax::error::EvalErrorKind::Arity {
+                    func_name: "rand".to_string(),
+                    expected: "0".to_string(),
+                    actual: args.len(),
+                },
                 expanded_code: String::new(),
                 original_code: None,
-                suggestion: None,
             }),
             span: None,
         });

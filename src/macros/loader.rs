@@ -5,7 +5,7 @@
 
 use crate::ast::{AstNode, Expr, ParamList, Span};
 use crate::macros::types::MacroTemplate;
-use crate::syntax::error::{io_error, macro_error, SutraError};
+use crate::syntax::error::{SutraError, SutraErrorKind};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
@@ -33,7 +33,8 @@ pub fn parse_macros_from_source(source: &str) -> Result<Vec<(String, MacroTempla
 pub fn load_macros_from_file<P: AsRef<Path>>(
     path: P,
 ) -> Result<Vec<(String, MacroTemplate)>, SutraError> {
-    let source = fs::read_to_string(path).map_err(|e| io_error(e.to_string(), None))?;
+    let source = fs::read_to_string(path)
+        .map_err(|e| SutraError { kind: SutraErrorKind::Io(e.to_string()), span: None })?;
     parse_macros_from_source(&source)
 }
 
@@ -45,16 +46,34 @@ pub fn check_arity(args_len: usize, params: &ParamList, span: &Span) -> Result<(
 
     // Too few arguments
     if args_len < required_len {
-        return Err(crate::macros::error::enhanced_macro_arity_error(
-            args_len, params, span,
-        ));
+        return Err(SutraError {
+            kind: SutraErrorKind::Eval(crate::syntax::error::EvalError {
+                kind: crate::syntax::error::EvalErrorKind::Arity {
+                    func_name: "macro".to_string(),
+                    expected: format!("at least {}", required_len),
+                    actual: args_len,
+                },
+                expanded_code: "".to_string(),
+                original_code: None,
+            }),
+            span: Some(span.clone()),
+        });
     }
 
     // Too many arguments for non-variadic macro
     if args_len > required_len && !has_variadic {
-        return Err(crate::macros::error::enhanced_macro_arity_error(
-            args_len, params, span,
-        ));
+        return Err(SutraError {
+            kind: SutraErrorKind::Eval(crate::syntax::error::EvalError {
+                kind: crate::syntax::error::EvalErrorKind::Arity {
+                    func_name: "macro".to_string(),
+                    expected: format!("exactly {}", required_len),
+                    actual: args_len,
+                },
+                expanded_code: "".to_string(),
+                original_code: None,
+            }),
+            span: Some(span.clone()),
+        });
     }
 
     // Arity is correct
@@ -75,10 +94,15 @@ fn try_parse_macro_form(
     };
 
     if !names_seen.insert(name.clone()) {
-        return Err(macro_error(
-            format!("Duplicate macro name '{}'.", name),
-            Some(expr.span.clone()), // Use the span of the define form
-        ));
+        return Err(SutraError {
+            kind: SutraErrorKind::Validation(
+                crate::syntax::error::ValidationErrorKind::General(format!(
+                    "Duplicate macro name '{}'.",
+                    name
+                )),
+            ),
+            span: Some(expr.span.clone()),
+        });
     }
 
     let template = MacroTemplate::new(params.clone(), body.clone())?;

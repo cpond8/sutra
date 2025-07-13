@@ -1,8 +1,0 @@
-=== ARITHMETIC ATOMS ARITY TESTS ===
-Testing + arity:
-Success cases:
-3
-6
-15
-Expected failures (too few args):
-Evaluation error: SutraError { kind: Eval(EvalError { message: "Arity mismatch in call to '+'\n\nExpected at least 2 arguments, but received 0. This function accepts a variable number of arguments.\n\nNo arguments provided", expanded_code: "(+ )", original_code: None, suggestion: Some("Usage: (+ a b) or (+ a b c ...) - These arithmetic functions require at least 2 arguments You need to provide at least one argument.") }), span: Some(Span { start: 517, end: 520 }) }

@@ -1,5 +1,6 @@
 use crate::runtime::path::Path;
 use im::HashMap;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Represents a value in the Sutra engine.
@@ -8,14 +9,14 @@ use std::fmt;
 ///
 /// ```rust
 /// use sutra::ast::value::Value;
-/// let n = Value::Number(3.14);
+/// let n = Value.Number(3.14);
 /// assert_eq!(n.type_name(), "Number");
 /// let s = Value::String("hello".to_string());
 /// assert_eq!(s.type_name(), "String");
 /// let nil = Value::default();
 /// assert!(nil.is_nil());
 /// ```
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub enum Value {
     #[default]
     Nil,

@@ -24,7 +24,7 @@
 use crate::atoms::{self, AtomRegistry};
 use crate::macros::{self, MacroRegistry};
 use crate::macros::{load_macros_from_file, MacroDef, MacroEnv};
-use crate::syntax::error::{macro_error, SutraError};
+use crate::syntax::error::{SutraError, SutraErrorKind};
 use std::collections::HashMap;
 
 // ============================================================================
@@ -155,10 +155,15 @@ fn load_and_process_user_macros(path: &str) -> Result<HashMap<String, MacroDef>,
     let mut user_macros = HashMap::new();
     for (name, template) in macros {
         if user_macros.contains_key(&name) {
-            return Err(macro_error(
-                format!("Duplicate macro name '{}' in standard macro library.", name),
-                None,
-            ));
+            return Err(SutraError {
+                kind: SutraErrorKind::Validation(
+                    crate::syntax::error::ValidationErrorKind::General(format!(
+                        "Duplicate macro name '{}' in standard macro library.",
+                        name
+                    )),
+                ),
+                span: None,
+            });
         }
         user_macros.insert(name, MacroDef::Template(template));
     }

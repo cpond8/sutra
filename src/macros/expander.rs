@@ -4,9 +4,10 @@
 //! ensuring proper error handling and recursion depth checking.
 
 use crate::ast::{AstNode, Expr, ParamList, Span, WithSpan};
-use crate::macros::error::{ expansion_error_from_sutra_error, SutraMacroError, check_macro_recursion_depth };
-use crate::macros::types::{ MacroDef, MacroEnv, MacroExpansionStep, MacroProvenance, MacroTemplate };
-use crate::syntax::error::{ macro_error, SutraError };
+use crate::macros::types::{
+    MacroDef, MacroEnv, MacroExpansionStep, MacroProvenance, MacroTemplate,
+};
+use crate::syntax::error::{from_kind, SutraError, SutraErrorKind};
 use std::collections::HashMap;
 
 // =============================
@@ -15,7 +16,7 @@ use std::collections::HashMap;
 
 /// Public entry point for macro expansion.
 /// Expands all macro calls recursively within an AST node, tracing expansions.
-pub fn expand_macros(ast: AstNode, env: &mut MacroEnv) -> Result<AstNode, SutraMacroError> {
+pub fn expand_macros(ast: AstNode, env: &mut MacroEnv) -> Result<AstNode, SutraError> {
     expand_macros_with_trace(ast, env, 0)
 }
 
@@ -26,15 +27,22 @@ pub fn expand_template(
     call: &AstNode,
     depth: usize,
 ) -> Result<AstNode, SutraError> {
-    crate::macros::error::check_recursion_depth(depth, &call.span, "template expansion")?;
+    if depth > crate::macros::MAX_MACRO_RECURSION_DEPTH {
+        return Err(from_kind(
+            SutraErrorKind::Validation(
+                crate::syntax::error::ValidationErrorKind::RecursionLimitExceeded,
+            ),
+            Some(call.span.clone()),
+        ));
+    }
 
     let (args, span) = match &*call.value {
         Expr::List(items, span) if !items.is_empty() => (&items[1..], span),
         _ => {
-            return Err(macro_error(
-                "Macro call must be a non-empty list",
-                Some(call.span.clone()),
-            ))
+            return Err(SutraError {
+                kind: SutraErrorKind::InternalParse("Macro call must be a non-empty list".to_string()),
+                span: Some(call.span.clone()),
+            });
         }
     };
 
@@ -138,7 +146,7 @@ fn expand_macros_with_trace(
     node: AstNode,
     env: &mut MacroEnv,
     depth: usize,
-) -> Result<AstNode, SutraMacroError> {
+) -> Result<AstNode, SutraError> {
     if let Some((_macro_name, _provenance, expanded)) = expand_macro_once(&node, env, depth)? {
         // trace is already handled in expand_macro_def via env.trace
         return expand_macros_with_trace(expanded, env, depth + 1);
@@ -151,12 +159,19 @@ fn expand_macro_once(
     node: &AstNode,
     env: &mut MacroEnv,
     depth: usize,
-) -> Result<Option<(String, MacroProvenance, AstNode)>, SutraMacroError> {
+) -> Result<Option<(String, MacroProvenance, AstNode)>, SutraError> {
     let Some(macro_name) = extract_macro_name_from_call(node) else {
         return Ok(None);
     };
 
-    check_macro_recursion_depth(depth, &node.span, Some(macro_name))?;
+    if depth > crate::macros::MAX_MACRO_RECURSION_DEPTH {
+        return Err(from_kind(
+            SutraErrorKind::Validation(
+                crate::syntax::error::ValidationErrorKind::RecursionLimitExceeded,
+            ),
+            Some(node.span.clone()),
+        ));
+    }
 
     // Clone MacroDef to avoid holding a borrow of env
     let (provenance, macro_def) = match env.lookup_macro(macro_name) {
@@ -183,15 +198,15 @@ fn expand_macro_def(
     depth: usize,
     trace: &mut Vec<MacroExpansionStep>,
     provenance: MacroProvenance,
-) -> Result<AstNode, SutraMacroError> {
+) -> Result<AstNode, SutraError> {
     let macro_name = macro_name.to_string();
     let original_node = node.clone();
 
     let result = match macro_def {
         MacroDef::Fn(func) => func(node)
-            .map_err(|e| expansion_error_from_sutra_error(&original_node.span, &macro_name, e)),
+            .map_err(|e| from_kind(SutraErrorKind::MacroExpansion(Box::new(e)), Some(original_node.span.clone()))),
         MacroDef::Template(template) => expand_template(template, node, depth)
-            .map_err(|e| expansion_error_from_sutra_error(&original_node.span, &macro_name, e)),
+            .map_err(|e| from_kind(SutraErrorKind::MacroExpansion(Box::new(e)), Some(original_node.span.clone()))),
     };
 
     if let Ok(expanded_node) = &result {
@@ -333,8 +348,8 @@ fn substitute_spread_item(
     if let Some(name) = extract_variadic_param_name(inner, bindings) {
         let bound_node = &bindings[name];
         let Expr::List(elements, _) = &*bound_node.value else {
-            return Err(macro_error(
-                format!("Variadic parameter '{}' is not a list", name),
+            return Err(from_kind(
+                SutraErrorKind::InternalParse(format!("Variadic parameter '{}' is not a list", name)),
                 Some(inner.span.clone()),
             ));
         };
@@ -361,8 +376,8 @@ fn handle_non_symbol_spread(
             new_items.push(element.clone());
         }
     } else {
-        return Err(macro_error(
-            "Spread argument did not evaluate to a list",
+        return Err(from_kind(
+            SutraErrorKind::InternalParse("Spread argument did not evaluate to a list".to_string()),
             Some(inner.span.clone()),
         ));
     }
@@ -435,9 +450,9 @@ fn map_ast<F>(
     f: &F,
     env: &mut MacroEnv,
     depth: usize,
-) -> Result<AstNode, SutraMacroError>
+) -> Result<AstNode, SutraError>
 where
-    F: Fn(AstNode, &mut MacroEnv, usize) -> Result<AstNode, SutraMacroError>,
+    F: Fn(AstNode, &mut MacroEnv, usize) -> Result<AstNode, SutraError>,
 {
     match &*node.value {
         Expr::List(items, span) => map_list(items, f, env, depth, &node.span, span),
@@ -471,9 +486,9 @@ fn map_list<F>(
     depth: usize,
     original_span: &Span,
     list_span: &Span,
-) -> Result<AstNode, SutraMacroError>
+) -> Result<AstNode, SutraError>
 where
-    F: Fn(AstNode, &mut MacroEnv, usize) -> Result<AstNode, SutraMacroError>,
+    F: Fn(AstNode, &mut MacroEnv, usize) -> Result<AstNode, SutraError>,
 {
     let new_items: Result<Vec<_>, _> = items
         .iter()
@@ -496,9 +511,9 @@ fn map_if<F>(
     depth: usize,
     if_span: &Span,
     original_span: &Span,
-) -> Result<AstNode, SutraMacroError>
+) -> Result<AstNode, SutraError>
 where
-    F: Fn(AstNode, &mut MacroEnv, usize) -> Result<AstNode, SutraMacroError>,
+    F: Fn(AstNode, &mut MacroEnv, usize) -> Result<AstNode, SutraError>,
 {
     let cond = f(condition.clone(), env, depth + 1)?;
     let then_b = f(then_branch.clone(), env, depth + 1)?;
@@ -523,9 +538,9 @@ fn map_quote<F>(
     depth: usize,
     quote_span: &Span,
     original_span: &Span,
-) -> Result<AstNode, SutraMacroError>
+) -> Result<AstNode, SutraError>
 where
-    F: Fn(AstNode, &mut MacroEnv, usize) -> Result<AstNode, SutraMacroError>,
+    F: Fn(AstNode, &mut MacroEnv, usize) -> Result<AstNode, SutraError>,
 {
     let new_inner = f(inner.clone(), env, depth + 1)?;
     Ok(with_span(
@@ -541,9 +556,9 @@ fn map_spread<F>(
     env: &mut MacroEnv,
     depth: usize,
     original_span: &Span,
-) -> Result<AstNode, SutraMacroError>
+) -> Result<AstNode, SutraError>
 where
-    F: Fn(AstNode, &mut MacroEnv, usize) -> Result<AstNode, SutraMacroError>,
+    F: Fn(AstNode, &mut MacroEnv, usize) -> Result<AstNode, SutraError>,
 {
     let new_inner = f(inner.clone(), env, depth + 1)?;
     Ok(with_span(Expr::Spread(Box::new(new_inner)), original_span))

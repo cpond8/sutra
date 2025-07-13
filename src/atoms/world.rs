@@ -26,10 +26,9 @@ use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
 fn simple_error(message: &str) -> SutraError {
     SutraError {
         kind: SutraErrorKind::Eval(EvalError {
-            message: message.to_string(),
+            kind: crate::syntax::error::EvalErrorKind::General(message.to_string()),
             expanded_code: String::new(),
             original_code: None,
-            suggestion: None,
         }),
         span: None,
     }

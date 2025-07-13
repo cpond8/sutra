@@ -51,7 +51,6 @@
 // MODULE DECLARATIONS
 // ============================================================================
 
-mod error;
 mod expander;
 mod loader;
 mod registry;
@@ -70,7 +69,6 @@ pub use types::{
 };
 
 // Error types - re-exported from error module
-pub use error::SutraMacroError;
 
 // Registry operations - re-exported from registry module
 pub use registry::MacroRegistry;

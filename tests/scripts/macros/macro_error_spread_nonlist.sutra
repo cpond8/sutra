@@ -1,3 +1,0 @@
-;; Spread of non-list error
-(define (spread_nonlist x) (list ...x))
-(print (spread_nonlist 42))

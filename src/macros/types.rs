@@ -337,10 +337,15 @@ fn check_no_duplicate_params(
     let mut seen = std::collections::HashSet::new();
     for name in all_names {
         if !seen.insert(name) {
-            return Err(crate::syntax::error::macro_error(
-                format!("Duplicate parameter name '{}' in macro definition.", name),
-                Some(span.clone()),
-            ));
+            return Err(crate::syntax::error::SutraError {
+                kind: crate::syntax::error::SutraErrorKind::Validation(
+                    crate::syntax::error::ValidationErrorKind::General(format!(
+                        "Duplicate parameter name '{}' in macro definition.",
+                        name
+                    )),
+                ),
+                span: Some(span.clone()),
+            });
         }
     }
     Ok(())

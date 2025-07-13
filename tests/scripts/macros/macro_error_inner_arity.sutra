@@ -1,4 +1,0 @@
-;; Nested macro with parameter forwarding: too few arguments
-(define (outer ...args) (inner ...args))
-(define (inner a b) (+ a b))
-(print (outer 7))

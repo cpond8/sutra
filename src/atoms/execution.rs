@@ -84,7 +84,7 @@ pub const ATOM_ERROR: SpecialFormAtomFn = |args, context, parent_span| {
     };
     Err(SutraError {
         kind: SutraErrorKind::Eval(EvalError {
-            message: msg,
+            kind: crate::syntax::error::EvalErrorKind::General(msg),
             expanded_code: format!(
                 "{:?}",
                 WithSpan {
@@ -93,7 +93,6 @@ pub const ATOM_ERROR: SpecialFormAtomFn = |args, context, parent_span| {
                 }
             ),
             original_code: None,
-            suggestion: None,
         }),
         span: Some(parent_span.clone()),
     })

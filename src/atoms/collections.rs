@@ -17,7 +17,7 @@
 use crate::ast::value::Value;
 // use crate::atoms::helpers::*;
 use crate::atoms::{PureAtomFn, StatefulAtomFn};
-use crate::syntax::error::SutraError;
+use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
 
 // ============================================================================
 // LIST OPERATIONS
@@ -53,11 +53,14 @@ pub const ATOM_LIST: PureAtomFn = |args| Ok(Value::List(args.to_vec()));
 pub const ATOM_LEN: PureAtomFn = |args| {
     if args.len() != 1 {
         return Err(SutraError {
-            kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
-                message: format!("len: expected 1 argument, got {}", args.len()),
+            kind: SutraErrorKind::Eval(EvalError {
+                kind: crate::syntax::error::EvalErrorKind::Arity {
+                    func_name: "len".to_string(),
+                    expected: "1".to_string(),
+                    actual: args.len(),
+                },
                 expanded_code: String::new(),
                 original_code: None,
-                suggestion: None,
             }),
             span: None,
         });
@@ -66,11 +69,14 @@ pub const ATOM_LEN: PureAtomFn = |args| {
         Value::List(items) => Ok(Value::Number(items.len() as f64)),
         Value::String(s) => Ok(Value::Number(s.len() as f64)),
         val => Err(SutraError {
-            kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
-                message: format!("len: expected a List or String, got {:?}", val),
+            kind: SutraErrorKind::Eval(EvalError {
+                kind: crate::syntax::error::EvalErrorKind::Type {
+                    func_name: "len".to_string(),
+                    expected: "a List or String".to_string(),
+                    found: val.clone(),
+                },
                 expanded_code: String::new(),
                 original_code: None,
-                suggestion: None,
             }),
             span: None,
         }),
@@ -95,11 +101,14 @@ pub const ATOM_LEN: PureAtomFn = |args| {
 pub const ATOM_HAS: PureAtomFn = |args| {
     if args.len() != 2 {
         return Err(SutraError {
-            kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
-                message: format!("has?: expected 2 arguments, got {}", args.len()),
+            kind: SutraErrorKind::Eval(EvalError {
+                kind: crate::syntax::error::EvalErrorKind::Arity {
+                    func_name: "has?".to_string(),
+                    expected: "2".to_string(),
+                    actual: args.len(),
+                },
                 expanded_code: String::new(),
                 original_code: None,
-                suggestion: None,
             }),
             span: None,
         });
@@ -111,14 +120,15 @@ pub const ATOM_HAS: PureAtomFn = |args| {
         Value::Map(map) => {
             let Value::String(key) = search_val else {
                 return Err(SutraError {
-                    kind: crate::syntax::error::SutraErrorKind::Eval(
-                        crate::syntax::error::EvalError {
-                            message: "has?: expected a String for Map key".to_string(),
-                            expanded_code: String::new(),
-                            original_code: None,
-                            suggestion: None,
+                    kind: SutraErrorKind::Eval(EvalError {
+                        kind: crate::syntax::error::EvalErrorKind::Type {
+                            func_name: "has?".to_string(),
+                            expected: "a String for Map key".to_string(),
+                            found: search_val.clone(),
                         },
-                    ),
+                        expanded_code: String::new(),
+                        original_code: None,
+                    }),
                     span: None,
                 });
             };
@@ -126,11 +136,14 @@ pub const ATOM_HAS: PureAtomFn = |args| {
         }
         _ => {
             return Err(SutraError {
-                kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
-                    message: "has?: expected a List or Map as first argument".to_string(),
+                kind: SutraErrorKind::Eval(EvalError {
+                    kind: crate::syntax::error::EvalErrorKind::Type {
+                        func_name: "has?".to_string(),
+                        expected: "a List or Map as first argument".to_string(),
+                        found: collection_val.clone(),
+                    },
                     expanded_code: String::new(),
                     original_code: None,
-                    suggestion: None,
                 }),
                 span: None,
             });
@@ -155,11 +168,14 @@ pub const ATOM_HAS: PureAtomFn = |args| {
 pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
     if args.len() != 2 {
         return Err(SutraError {
-            kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
-                message: format!("core/push!: expected 2 arguments, got {}", args.len()),
+            kind: SutraErrorKind::Eval(EvalError {
+                kind: crate::syntax::error::EvalErrorKind::Arity {
+                    func_name: "core/push!".to_string(),
+                    expected: "2".to_string(),
+                    actual: args.len(),
+                },
                 expanded_code: String::new(),
                 original_code: None,
-                suggestion: None,
             }),
             span: None,
         });
@@ -168,14 +184,14 @@ pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
         Value::Path(p) => p,
         val => {
             return Err(SutraError {
-                kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
-                    message: format!(
-                        "core/push!: expected a Path as first argument, got {:?}",
-                        val
-                    ),
+                kind: SutraErrorKind::Eval(EvalError {
+                    kind: crate::syntax::error::EvalErrorKind::Type {
+                        func_name: "core/push!".to_string(),
+                        expected: "a Path as first argument".to_string(),
+                        found: val.clone(),
+                    },
                     expanded_code: String::new(),
                     original_code: None,
-                    suggestion: None,
                 }),
                 span: None,
             })
@@ -191,11 +207,14 @@ pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
         Value::List(items) => items.push(args[1].clone()),
         val => {
             return Err(SutraError {
-                kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
-                    message: format!("core/push!: expected a List at path, got {:?}", val),
+                kind: SutraErrorKind::Eval(EvalError {
+                    kind: crate::syntax::error::EvalErrorKind::Type {
+                        func_name: "core/push!".to_string(),
+                        expected: "a List at path".to_string(),
+                        found: val.clone(),
+                    },
                     expanded_code: String::new(),
                     original_code: None,
-                    suggestion: None,
                 }),
                 span: None,
             })
@@ -220,11 +239,14 @@ pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
 pub const ATOM_CORE_PULL: StatefulAtomFn = |args, context| {
     if args.len() != 1 {
         return Err(SutraError {
-            kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
-                message: format!("core/pull!: expected 1 argument, got {}", args.len()),
+            kind: SutraErrorKind::Eval(EvalError {
+                kind: crate::syntax::error::EvalErrorKind::Arity {
+                    func_name: "core/pull!".to_string(),
+                    expected: "1".to_string(),
+                    actual: args.len(),
+                },
                 expanded_code: String::new(),
                 original_code: None,
-                suggestion: None,
             }),
             span: None,
         });
@@ -233,14 +255,14 @@ pub const ATOM_CORE_PULL: StatefulAtomFn = |args, context| {
         Value::Path(p) => p,
         val => {
             return Err(SutraError {
-                kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
-                    message: format!(
-                        "core/pull!: expected a Path as first argument, got {:?}",
-                        val
-                    ),
+                kind: SutraErrorKind::Eval(EvalError {
+                    kind: crate::syntax::error::EvalErrorKind::Type {
+                        func_name: "core/pull!".to_string(),
+                        expected: "a Path as first argument".to_string(),
+                        found: val.clone(),
+                    },
                     expanded_code: String::new(),
                     original_code: None,
-                    suggestion: None,
                 }),
                 span: None,
             })
@@ -256,11 +278,14 @@ pub const ATOM_CORE_PULL: StatefulAtomFn = |args, context| {
         Value::List(items) => items.pop().unwrap_or_default(),
         val => {
             return Err(SutraError {
-                kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
-                    message: format!("core/pull!: expected a List at path, got {:?}", val),
+                kind: SutraErrorKind::Eval(EvalError {
+                    kind: crate::syntax::error::EvalErrorKind::Type {
+                        func_name: "core/pull!".to_string(),
+                        expected: "a List at path".to_string(),
+                        found: val.clone(),
+                    },
                     expanded_code: String::new(),
                     original_code: None,
-                    suggestion: None,
                 }),
                 span: None,
             })
@@ -296,14 +321,15 @@ pub const ATOM_CORE_STR_PLUS: PureAtomFn = |args| {
             Value::String(s) => result.push_str(&s[..]),
             _ => {
                 return Err(SutraError {
-                    kind: crate::syntax::error::SutraErrorKind::Eval(
-                        crate::syntax::error::EvalError {
-                            message: "core/str+: expected all arguments to be Strings".to_string(),
-                            expanded_code: String::new(),
-                            original_code: None,
-                            suggestion: None,
+                    kind: SutraErrorKind::Eval(EvalError {
+                        kind: crate::syntax::error::EvalErrorKind::Type {
+                            func_name: "core/str+".to_string(),
+                            expected: "all arguments to be Strings".to_string(),
+                            found: val.clone(),
                         },
-                    ),
+                        expanded_code: String::new(),
+                        original_code: None,
+                    }),
                     span: None,
                 });
             }

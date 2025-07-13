@@ -22,30 +22,39 @@ use crate::syntax::error::{SutraError, SutraErrorKind, EvalError};
 // ARITHMETIC OPERATIONS
 // ============================================================================
 
-/// Helper function to create a simple error for pure atoms
-fn simple_error(message: &str) -> SutraError {
-    SutraError {
-        kind: SutraErrorKind::Eval(EvalError {
-            message: message.to_string(),
-            expanded_code: String::new(),
-            original_code: None,
-            suggestion: None,
-        }),
-        span: None,
-    }
-}
-
 /// Helper function to extract a number from a Value
-fn extract_number(value: &Value, index: Option<usize>, atom_name: &str) -> Result<f64, SutraError> {
+fn extract_number(value: &Value, _index: Option<usize>, atom_name: &str) -> Result<f64, SutraError> {
     match value {
         Value::Number(n) => Ok(*n),
-        _ => Err(simple_error(&format!("{}: expected Number at position {:?}, got {:?}", atom_name, index, value))),
+        _ => Err(SutraError {
+            kind: SutraErrorKind::Eval(EvalError {
+                kind: crate::syntax::error::EvalErrorKind::Type {
+                    func_name: atom_name.to_string(),
+                    expected: "Number".to_string(),
+                    found: value.clone(),
+                },
+                expanded_code: String::new(),
+                original_code: None,
+            }),
+            span: None,
+        }),
     }
 }
 
 /// Helper function to create arity error
 fn arity_error(actual: usize, expected: usize, atom_name: &str) -> SutraError {
-    simple_error(&format!("{}: expected {} arguments, got {}", atom_name, expected, actual))
+    SutraError {
+        kind: SutraErrorKind::Eval(EvalError {
+            kind: crate::syntax::error::EvalErrorKind::Arity {
+                func_name: atom_name.to_string(),
+                expected: expected.to_string(),
+                actual,
+            },
+            expanded_code: String::new(),
+            original_code: None,
+        }),
+        span: None,
+    }
 }
 
 /// Adds numbers.
@@ -126,7 +135,14 @@ pub const ATOM_DIV: PureAtomFn = |args| {
     let first = extract_number(&args[0], Some(0), "/")?;
     if args.len() == 1 {
         if first == 0.0 {
-            return Err(simple_error("/: division by zero"));
+            return Err(SutraError {
+                kind: SutraErrorKind::Eval(EvalError {
+                    kind: crate::syntax::error::EvalErrorKind::DivisionByZero,
+                    expanded_code: String::new(),
+                    original_code: None,
+                }),
+                span: None,
+            });
         }
         return Ok(Value::Number(1.0 / first));
     }
@@ -135,7 +151,14 @@ pub const ATOM_DIV: PureAtomFn = |args| {
     for (i, arg) in args.iter().enumerate().skip(1) {
         let n = extract_number(arg, Some(i), "/")?;
         if n == 0.0 {
-            return Err(simple_error("/: division by zero"));
+            return Err(SutraError {
+                kind: SutraErrorKind::Eval(EvalError {
+                    kind: crate::syntax::error::EvalErrorKind::DivisionByZero,
+                    expanded_code: String::new(),
+                    original_code: None,
+                }),
+                span: None,
+            });
         }
         result /= n;
     }
@@ -161,7 +184,16 @@ pub const ATOM_MOD: PureAtomFn = |args| {
     let b = extract_number(&args[1], Some(1), "mod")?;
 
     if b == 0.0 {
-        return Err(simple_error("mod: modulo by zero"));
+        return Err(SutraError {
+            kind: SutraErrorKind::Eval(EvalError {
+                kind: crate::syntax::error::EvalErrorKind::General(
+                    "mod: modulo by zero".to_string(),
+                ),
+                expanded_code: String::new(),
+                original_code: None,
+            }),
+            span: None,
+        });
     }
 
     Ok(Value::Number(a % b))
@@ -200,7 +232,18 @@ pub const ATOM_ABS: PureAtomFn = |args| {
 ///   (min 3 1 4) ; => 1
 pub const ATOM_MIN: PureAtomFn = |args| {
     if args.is_empty() {
-        return Err(simple_error("min: requires at least 1 argument"));
+        return Err(SutraError {
+            kind: SutraErrorKind::Eval(EvalError {
+                kind: crate::syntax::error::EvalErrorKind::Arity {
+                    func_name: "min".to_string(),
+                    expected: "at least 1".to_string(),
+                    actual: 0,
+                },
+                expanded_code: String::new(),
+                original_code: None,
+            }),
+            span: None,
+        });
     }
 
     let mut result = f64::INFINITY;
@@ -222,7 +265,18 @@ pub const ATOM_MIN: PureAtomFn = |args| {
 ///   (max 3 1 4) ; => 4
 pub const ATOM_MAX: PureAtomFn = |args| {
     if args.is_empty() {
-        return Err(simple_error("max: requires at least 1 argument"));
+        return Err(SutraError {
+            kind: SutraErrorKind::Eval(EvalError {
+                kind: crate::syntax::error::EvalErrorKind::Arity {
+                    func_name: "max".to_string(),
+                    expected: "at least 1".to_string(),
+                    actual: 0,
+                },
+                expanded_code: String::new(),
+                original_code: None,
+            }),
+            span: None,
+        });
     }
 
     let mut result = f64::NEG_INFINITY;

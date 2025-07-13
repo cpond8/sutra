@@ -22,36 +22,39 @@ use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
 // ERROR HELPERS
 // ============================================================================
 
-/// Helper function to create a simple error for pure atoms
-fn simple_error(message: &str) -> SutraError {
-    SutraError {
-        kind: SutraErrorKind::Eval(EvalError {
-            message: message.to_string(),
-            expanded_code: String::new(),
-            original_code: None,
-            suggestion: None,
-        }),
-        span: None,
-    }
-}
-
 /// Helper function to extract a number from a Value
-fn extract_number(value: &Value, index: usize, atom_name: &str) -> Result<f64, SutraError> {
+fn extract_number(value: &Value, _index: usize, atom_name: &str) -> Result<f64, SutraError> {
     match value {
         Value::Number(n) => Ok(*n),
-        _ => Err(simple_error(&format!(
-            "{}: expected Number at position {}, got {:?}",
-            atom_name, index, value
-        ))),
+        _ => Err(SutraError {
+            kind: SutraErrorKind::Eval(EvalError {
+                kind: crate::syntax::error::EvalErrorKind::Type {
+                    func_name: atom_name.to_string(),
+                    expected: "Number".to_string(),
+                    found: value.clone(),
+                },
+                expanded_code: String::new(),
+                original_code: None,
+            }),
+            span: None,
+        }),
     }
 }
 
 /// Helper function to create arity error
 fn arity_error(actual: usize, expected: usize, atom_name: &str) -> SutraError {
-    simple_error(&format!(
-        "{}: expected {} arguments, got {}",
-        atom_name, expected, actual
-    ))
+    SutraError {
+        kind: SutraErrorKind::Eval(EvalError {
+            kind: crate::syntax::error::EvalErrorKind::Arity {
+                func_name: atom_name.to_string(),
+                expected: expected.to_string(),
+                actual,
+            },
+            expanded_code: String::new(),
+            original_code: None,
+        }),
+        span: None,
+    }
 }
 
 // ============================================================================
@@ -209,10 +212,18 @@ pub const ATOM_NOT: PureAtomFn = |args| {
     }
     match &args[0] {
         Value::Bool(b) => Ok(Value::Bool(!b)),
-        _ => Err(simple_error(&format!(
-            "not: expected Bool at position 0, got {:?}",
-            args[0]
-        ))),
+        val => Err(SutraError {
+            kind: SutraErrorKind::Eval(EvalError {
+                kind: crate::syntax::error::EvalErrorKind::Type {
+                    func_name: "not".to_string(),
+                    expected: "Bool".to_string(),
+                    found: val.clone(),
+                },
+                expanded_code: String::new(),
+                original_code: None,
+            }),
+            span: None,
+        }),
     }
 };
 

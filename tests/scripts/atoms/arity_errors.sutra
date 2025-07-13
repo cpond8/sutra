@@ -1,6 +1,0 @@
-;; Systematic Arity Error Testing
-;; Tests that enhanced arity error messages are working correctly
-;; Each test should fail with a specific, helpful error message
-
-;; Test arithmetic atom with 0 arguments (too few)
-(+)

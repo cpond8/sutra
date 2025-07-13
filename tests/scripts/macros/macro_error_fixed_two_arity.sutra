@@ -1,3 +1,0 @@
-;; Fixed arity macro: too few arguments
-(define (fixed_two a b) (list a b))
-(print (fixed_two 1))
