@@ -14,6 +14,7 @@ use std::process;
 use termcolor::WriteColor;
 
 pub mod args;
+pub mod diagnostics;
 pub mod output;
 
 /// The main entry point for the CLI.
@@ -21,44 +22,59 @@ pub fn run() {
     let args = SutraArgs::parse();
 
     // Dispatch to the appropriate subcommand handler.
-    let result = match args.command {
-        Command::Macrotrace { file } => handle_macrotrace(&file),
-        Command::Run { file } => handle_run(&file),
+    let result = match &args.command {
+        Command::Macrotrace { file } => handle_macrotrace(file),
+        Command::Run { file } => handle_run(file),
         Command::ListMacros => handle_list_macros(),
         Command::ListAtoms => handle_list_atoms(),
-        Command::Ast { file } => handle_ast(&file),
-        Command::Validate { file } => handle_validate(&file),
-        Command::Macroexpand { file } => handle_macroexpand(&file),
-        Command::Format { file } => handle_format(&file),
-        Command::Test { path } => handle_test(&path),
+        Command::Ast { file } => handle_ast(file),
+        Command::Validate { file } => handle_validate(file),
+        Command::Macroexpand { file } => handle_macroexpand(file),
+        Command::Format { file } => handle_format(file),
+        Command::Test { path } => handle_test(path),
     };
 
     if let Err(e) = result {
-        eprintln!("Error: {}", e);
+        use crate::cli::diagnostics::{SutraDiagnostic, print_diagnostic_to_stderr};
+        let file_path = match &args.command {
+            Command::Macrotrace { file } => Some(file.as_path()),
+            Command::Run { file } => Some(file.as_path()),
+            Command::Ast { file } => Some(file.as_path()),
+            Command::Validate { file } => Some(file.as_path()),
+            Command::Macroexpand { file } => Some(file.as_path()),
+            Command::Format { file } => Some(file.as_path()),
+            Command::Test { path } => Some(path.as_path()),
+            _ => None,
+        };
+        let source = file_path.and_then(|p| read_file_to_string(p).ok());
+        let diagnostic = SutraDiagnostic::new(&e, source.as_deref());
+        print_diagnostic_to_stderr(&diagnostic);
         process::exit(1);
     }
 }
 
 use crate::ast::{Expr, Span, WithSpan};
+use crate::syntax::error::{io_error, SutraError};
 
 // ============================================================================
 // CORE UTILITIES - Fundamental operations used throughout the CLI
 // ============================================================================
 
 /// Converts a Path to a &str, returning an error if invalid.
-fn path_to_str(path: &std::path::Path) -> Result<&str, Box<dyn std::error::Error>> {
-    path.to_str().ok_or_else(|| "Invalid filename".into())
+fn path_to_str(path: &std::path::Path) -> Result<&str, SutraError> {
+    path.to_str()
+        .ok_or_else(|| io_error("Invalid filename", None))
 }
 
 /// Gets a safe display name for a path, with fallback for invalid paths.
 fn safe_path_display(path: &std::path::Path) -> &str {
-    path_to_str(path).unwrap_or("<unknown>")
+    path.to_str().unwrap_or("<unknown>")
 }
 
 /// Reads a file to a String, given a path.
-fn read_file_to_string(path: &std::path::Path) -> Result<String, Box<dyn std::error::Error>> {
+fn read_file_to_string(path: &std::path::Path) -> Result<String, SutraError> {
     let filename = path_to_str(path)?;
-    Ok(std::fs::read_to_string(filename)?)
+    std::fs::read_to_string(filename).map_err(|e| io_error(e.to_string(), None))
 }
 
 /// Reads a file and normalizes line endings, trimming whitespace.
@@ -74,14 +90,12 @@ fn read_file_trimmed(path: &std::path::Path) -> std::io::Result<String> {
 // ============================================================================
 
 /// Parses Sutra source code into AST nodes.
-fn parse_source_to_ast(source: &str) -> Result<Vec<AstNode>, Box<dyn std::error::Error>> {
-    Ok(crate::syntax::parser::parse(source).map_err(|e| e.with_source(source))?)
+fn parse_source_to_ast(source: &str) -> Result<Vec<AstNode>, SutraError> {
+    crate::syntax::parser::parse(source)
 }
 
 /// Common pipeline: read file and parse to AST nodes.
-fn load_file_to_ast(
-    path: &std::path::Path,
-) -> Result<(String, Vec<AstNode>), Box<dyn std::error::Error>> {
+fn load_file_to_ast(path: &std::path::Path) -> Result<(String, Vec<AstNode>), SutraError> {
     let source = read_file_to_string(path)?;
     let ast_nodes = parse_source_to_ast(&source)?;
     Ok((source, ast_nodes))
@@ -110,7 +124,7 @@ fn wrap_in_do_if_needed(ast_nodes: Vec<AstNode>, source: &str) -> AstNode {
 }
 
 /// Partitions AST nodes into macro definitions and user code, and builds a user macro registry.
-type MacroParseResult = Result<(MacroRegistry, Vec<AstNode>), Box<dyn std::error::Error>>;
+type MacroParseResult = Result<(MacroRegistry, Vec<AstNode>), SutraError>;
 fn partition_and_build_user_macros(ast_nodes: Vec<AstNode>) -> MacroParseResult {
     let (macro_defs, user_code): (Vec<_>, Vec<_>) =
         ast_nodes.into_iter().partition(crate::is_macro_definition);
@@ -118,7 +132,7 @@ fn partition_and_build_user_macros(ast_nodes: Vec<AstNode>) -> MacroParseResult 
     for macro_expr in macro_defs {
         let (name, template) = crate::parse_macro_definition(&macro_expr)?;
         if user_macros.macros.contains_key(&name) {
-            return Err(format!("Duplicate macro name '{}'.", name).into());
+            return Err(io_error(format!("Duplicate macro name '{}'.", name), None));
         }
         user_macros
             .macros
@@ -132,7 +146,7 @@ fn partition_and_build_user_macros(ast_nodes: Vec<AstNode>) -> MacroParseResult 
 fn build_macro_environment_and_expand(
     ast_nodes: Vec<AstNode>,
     source: &str,
-) -> Result<AstNode, Box<dyn std::error::Error>> {
+) -> Result<AstNode, SutraError> {
     let (user_macros, user_code) = partition_and_build_user_macros(ast_nodes)?;
 
     // Build complete macro environment
@@ -143,8 +157,7 @@ fn build_macro_environment_and_expand(
     let program = wrap_in_do_if_needed(user_code, source);
 
     // Expand macros
-    let expanded =
-        expand_macros(program, &mut env).map_err(|e| format!("Macro expansion error: {:?}", e))?;
+    let expanded = expand_macros(program, &mut env)?;
 
     Ok(expanded)
 }
@@ -261,9 +274,9 @@ fn compare_test_results(
 fn process_test_file(
     script: &std::path::Path,
     expected: &std::path::Path,
-) -> Result<TestOutcome, Box<dyn std::error::Error>> {
-    let script_src = read_file_trimmed(script)?;
-    let expected_output = read_file_trimmed(expected)?;
+) -> Result<TestOutcome, SutraError> {
+    let script_src = read_file_trimmed(script).map_err(|e| io_error(e.to_string(), None))?;
+    let expected_output = read_file_trimmed(expected).map_err(|e| io_error(e.to_string(), None))?;
 
     // Guard clause: check if test should be skipped
     if should_skip_test(&script_src) {
@@ -316,7 +329,7 @@ fn run_single_test(
     script: &std::path::Path,
     expected: &std::path::Path,
     stdout: &mut termcolor::StandardStream,
-) -> Result<TestOutcome, Box<dyn std::error::Error>> {
+) -> Result<TestOutcome, SutraError> {
     let script_name = script.file_name().unwrap().to_string_lossy();
     let outcome = process_test_file(script, expected)?;
     print_test_result(&script_name, outcome.clone(), stdout);
@@ -336,7 +349,7 @@ fn run_single_test(
 // --- Analysis Commands: AST, validation, macro expansion, formatting ---
 
 /// Handles the `ast` subcommand.
-fn handle_ast(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+fn handle_ast(path: &std::path::Path) -> Result<(), SutraError> {
     let (_source, ast_nodes) = load_file_to_ast(path)?;
 
     let filename = safe_path_display(path);
@@ -358,32 +371,25 @@ fn handle_ast(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> 
 }
 
 /// Handles the `validate` subcommand.
-fn handle_validate(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+fn handle_validate(path: &std::path::Path) -> Result<(), SutraError> {
     let (source, ast_nodes) = load_file_to_ast(path)?;
     let expanded = build_macro_environment_and_expand(ast_nodes, &source)?;
 
     // Validation step
     let env = build_canonical_macro_env()?; // Rebuild for validation context
     let atom_registry = crate::runtime::registry::build_default_atom_registry();
-    match crate::syntax::validate::validate(&expanded, &env, &atom_registry) {
-        Ok(_) => {
-            println!(
-                "✅ Validation successful: No errors found in {}",
-                safe_path_display(path)
-            );
-        }
-        Err(e) => {
-            println!("❌ Validation failed in {}:", safe_path_display(path));
-            println!("   {}", e);
-            return Err(e.into());
-        }
-    }
+    crate::syntax::validate::validate(&expanded, &env, &atom_registry)?;
+
+    println!(
+        "✅ Validation successful: No errors found in {}",
+        safe_path_display(path)
+    );
 
     Ok(())
 }
 
 /// Handles the `macroexpand` subcommand.
-fn handle_macroexpand(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+fn handle_macroexpand(path: &std::path::Path) -> Result<(), SutraError> {
     let (source, ast_nodes) = load_file_to_ast(path)?;
     let expanded = build_macro_environment_and_expand(ast_nodes, &source)?;
 
@@ -394,7 +400,7 @@ fn handle_macroexpand(path: &std::path::Path) -> Result<(), Box<dyn std::error::
 }
 
 /// Handles the `format` subcommand.
-fn handle_format(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+fn handle_format(path: &std::path::Path) -> Result<(), SutraError> {
     let (_source, ast_nodes) = load_file_to_ast(path)?;
 
     // Pretty-print each top-level AST node
@@ -408,21 +414,19 @@ fn handle_format(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error
 // --- Execution Commands: run and macro tracing ---
 
 /// Handles the `run` subcommand.
-fn handle_run(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+fn handle_run(path: &std::path::Path) -> Result<(), SutraError> {
     let source = read_file_to_string(path)?;
     let mut stdout_sink = StdoutSink;
-    crate::run_sutra_source_with_output(&source, &mut stdout_sink)
-        .map_err(|e| format!("Sutra error: {}", e))?;
+    crate::run_sutra_source_with_output(&source, &mut stdout_sink)?;
     Ok(())
 }
 
 /// Handles the `macrotrace` subcommand.
-fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+fn handle_macrotrace(path: &std::path::Path) -> Result<(), SutraError> {
     let (source, ast_nodes) = load_file_to_ast(path)?;
     let program = wrap_in_do_if_needed(ast_nodes, &source);
     let mut env = build_canonical_macro_env()?;
-    let expanded = expand_macros(program.clone(), &mut env)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("{:?}", e)))?;
+    let expanded = expand_macros(program.clone(), &mut env)?;
     println!("{}", expanded.value.pretty());
     Ok(())
 }
@@ -430,7 +434,7 @@ fn handle_macrotrace(path: &std::path::Path) -> Result<(), Box<dyn std::error::E
 // --- Information Commands: listing available components ---
 
 /// Handles the `list-macros` subcommand.
-fn handle_list_macros() -> Result<(), Box<dyn std::error::Error>> {
+fn handle_list_macros() -> Result<(), SutraError> {
     let env = build_canonical_macro_env()?;
 
     let core_names: Vec<_> = env.core_macros.keys().map(|k| k.as_str()).collect();
@@ -449,7 +453,7 @@ fn handle_list_macros() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Handles the `list-atoms` subcommand.
-fn handle_list_atoms() -> Result<(), Box<dyn std::error::Error>> {
+fn handle_list_atoms() -> Result<(), SutraError> {
     use crate::runtime::registry::build_default_atom_registry;
 
     let atom_registry = build_default_atom_registry();
@@ -467,7 +471,7 @@ fn handle_list_atoms() -> Result<(), Box<dyn std::error::Error>> {
 // --- Testing Commands: test execution and management ---
 
 /// Handles the `test` subcommand.
-fn handle_test(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
     use termcolor::{ColorChoice, StandardStream};
 
     let scripts = find_test_scripts(path);
@@ -498,7 +502,7 @@ fn handle_test(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>>
     }
 
     if failed {
-        return Err("One or more test scripts failed".into());
+        return Err(io_error("One or more test scripts failed", None));
     }
 
     Ok(())

@@ -46,7 +46,7 @@ fn test_echo_atom(
     };
     let val = match &*first.value {
         Expr::String(s, _) => Value::String(s.clone()),
-        _ => Value::String(format!("{:?}", first.value)),
+        _ => Value::String(format!("{}", first.value)),
     };
     let world = ctx.world.clone();
     ctx.output.emit(&val.to_string(), Some(span));
@@ -86,7 +86,7 @@ fn parse_borrow_stress_args(args: &[AstNode]) -> (i64, String) {
             };
             let m = match &*m.value {
                 Expr::String(s, _) => s.clone(),
-                _ => format!("{:?}", m.value),
+                _ => format!("{}", m.value),
             };
             (d, m)
         }

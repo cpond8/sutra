@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 // =============================================================================
 // SECTION 1: MODULE DOCUMENTATION & IMPORTS
@@ -14,7 +15,8 @@ use crate::ast::{AstNode, Span};
 // =============================================================================
 
 /// Structured representation of an evaluation error.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Error)]
+#[error("Evaluation error: {kind}")]
 pub struct EvalError {
     pub kind: EvalErrorKind,
     // The fully expanded code that was being executed when the error occurred.
@@ -25,44 +27,56 @@ pub struct EvalError {
 }
 
 /// Specific kinds of evaluation errors.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Error)]
 pub enum EvalErrorKind {
+    #[error("Arity error in {func_name}: expected {expected}, got {actual}")]
     Arity {
         func_name: String,
         expected: String,
         actual: usize,
     },
+    #[error("Type error in {func_name}: expected {expected}, found {found}")]
     Type {
         func_name: String,
         expected: String,
         found: Value,
     },
+    #[error("Division by zero error")]
     DivisionByZero,
+    #[error("Evaluation error: {0}")]
     General(String),
 }
 
 /// Specific kinds of validation errors.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Error)]
 pub enum ValidationErrorKind {
+    #[error("Recursion limit exceeded")]
     RecursionLimitExceeded,
-    // Add other specific validation errors here later
+    #[error("{0}")]
     General(String),
 }
 
 /// The kind of error that occurred in Sutra.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Error)]
 pub enum SutraErrorKind {
+    #[error("Parse Error: {0}")]
     Parse(String),
+    #[error("Validation Error: {0}")]
     Validation(ValidationErrorKind),
+    #[error("{0}")]
     Eval(EvalError),
+    #[error("IO Error: {0}")]
     Io(String),
+    #[error("Malformed AST Error: {0}")]
     MalformedAst(String),
+    #[error("Internal Parse Error: {0}")]
     InternalParse(String),
-    // Unified Macro Error
+    #[error("In macro expansion: {0}")]
     MacroExpansion(Box<SutraError>),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Error)]
+#[error("{kind}")]
 pub struct SutraError {
     pub kind: SutraErrorKind,
     pub span: Option<crate::ast::Span>,
@@ -218,7 +232,7 @@ pub fn eval_arity_error(
                 actual: args.len(),
             },
             expanded_code,
-            original_code: None, // Will be filled by with_source if available
+            original_code: None,
         }),
         span,
     }
@@ -265,7 +279,7 @@ pub fn eval_type_error(
                 found: found.clone(),
             },
             expanded_code,
-            original_code: None, // Will be filled by with_source if available
+            original_code: None,
         }),
         span,
     }
@@ -298,7 +312,7 @@ pub fn eval_general_error(span: Option<Span>, arg: &AstNode, msg: impl Into<Stri
         kind: SutraErrorKind::Eval(EvalError {
             kind: EvalErrorKind::General(msg.into()),
             expanded_code,
-            original_code: None, // Will be filled by with_source if available
+            original_code: None,
         }),
         span,
     }
@@ -327,57 +341,41 @@ pub fn recursion_depth_error(span: Option<Span>) -> SutraError {
 // SECTION 4: CONVERSIONS
 // =============================================================================
 
-impl std::fmt::Display for SutraError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.kind {
-            SutraErrorKind::Parse(s) => write!(f, "Parse Error: {}", s),
-            SutraErrorKind::Validation(kind) => write!(f, "Validation Error: {}", kind),
-            SutraErrorKind::Io(s) => write!(f, "IO Error: {}", s),
-            SutraErrorKind::Eval(e) => e.fmt(f),
-            SutraErrorKind::MalformedAst(s) => write!(f, "Malformed AST Error: {}", s),
-            SutraErrorKind::InternalParse(s) => write!(f, "Internal Parse Error: {}", s),
-            SutraErrorKind::MacroExpansion(e) => write!(f, "In macro expansion: {}", e),
+// Utility functions for Span line/column conversion
+impl crate::ast::Span {
+    /// Converts byte offset to (line, column) in the given source string.
+    pub fn byte_to_line_col(&self, source: &str) -> Option<((usize, usize), (usize, usize))> {
+        if self.end > source.len() || self.start > source.len() || self.start > self.end {
+            return None;
         }
+        let start_line_col = Self::offset_to_line_col(source, self.start);
+        let end_line_col = Self::offset_to_line_col(source, self.end);
+        Some((start_line_col, end_line_col))
     }
-}
 
-impl std::fmt::Display for EvalError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Evaluation Error")?;
-        // Potentially add suggestion and code snippets here later
-        Ok(())
-    }
-}
-
-impl std::fmt::Display for ValidationErrorKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ValidationErrorKind::RecursionLimitExceeded => write!(f, "Recursion limit exceeded"),
-            ValidationErrorKind::General(s) => write!(f, "{}", s),
+    fn offset_to_line_col(source: &str, offset: usize) -> (usize, usize) {
+        let mut line = 1;
+        let mut col = 1;
+        for (i, c) in source.char_indices() {
+            if i == offset {
+                break;
+            }
+            if c == '\n' {
+                line += 1;
+                col = 1;
+            } else {
+                col += 1;
+            }
         }
+        (line, col)
     }
 }
-
-impl std::error::Error for SutraError {}
 
 // =============================================================================
 // SECTION 5: INFRASTRUCTURE/TRAITS
 // =============================================================================
 
 impl SutraError {
-    // Helper to enrich the error with the original source code snippet.
-    // This is part of the "two-phase error enrichment" pattern.
-    pub fn with_source(mut self, source: &str) -> Self {
-        if let Some(span) = &self.span {
-            if let Some(original_code) = source.get(span.start..span.end).map(|s| s.to_string()) {
-                if let SutraErrorKind::Eval(eval_error) = &mut self.kind {
-                    eval_error.original_code = Some(original_code);
-                }
-            }
-        }
-        self
-    }
-
     /// Returns a semantic error code for this error, useful for stable test matching
     /// independent of user-facing message changes.
     ///

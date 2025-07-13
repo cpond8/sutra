@@ -15,7 +15,7 @@
 //! - **State Threading**: Proper world state propagation through execution
 
 use crate::ast::value::Value;
-use crate::ast::{Expr, WithSpan};
+use crate::ast::Expr;
 use crate::atoms::helpers::{
     arity_error, build_apply_call_expr, eval_apply_list_arg, eval_apply_normal_args,
     eval_single_arg, sub_eval_context, type_error,
@@ -23,7 +23,6 @@ use crate::atoms::helpers::{
 use crate::atoms::SpecialFormAtomFn;
 use crate::runtime::eval::eval_expr;
 use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
-use std::sync::Arc;
 
 // ============================================================================
 // CONTROL FLOW OPERATIONS
@@ -85,13 +84,11 @@ pub const ATOM_ERROR: SpecialFormAtomFn = |args, context, parent_span| {
     Err(SutraError {
         kind: SutraErrorKind::Eval(EvalError {
             kind: crate::syntax::error::EvalErrorKind::General(msg),
-            expanded_code: format!(
-                "{:?}",
-                WithSpan {
-                    value: Arc::new(Expr::List(args.to_vec(), parent_span.clone())),
-                    span: parent_span.clone(),
-                }
-            ),
+            expanded_code: {
+                // Use pretty-printed expression instead of raw debug dump
+                let expr = Expr::List(args.to_vec(), parent_span.clone());
+                expr.pretty()
+            },
             original_code: None,
         }),
         span: Some(parent_span.clone()),

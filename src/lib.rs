@@ -4,6 +4,7 @@ pub mod cli;
 pub mod macros;
 pub mod runtime;
 pub mod syntax;
+pub mod test_harness;
 
 use crate::ast::{AstNode, Expr, Span, WithSpan};
 use crate::atoms::OutputSink;
@@ -27,7 +28,7 @@ pub fn run_sutra_source_with_output(
     output: &mut dyn OutputSink,
 ) -> Result<(), SutraError> {
     // 1. Parse the source into AST nodes
-    let ast_nodes = syntax::parser::parse(source).map_err(|e| e.with_source(source))?;
+    let ast_nodes = syntax::parser::parse(source)?;
 
     // 2. Partition AST nodes: macro definitions vs user code
     let (macro_defs, user_code): (Vec<_>, Vec<_>) =
@@ -59,7 +60,7 @@ pub fn run_sutra_source_with_output(
 
     // 7. Expand macros
     let expanded = expand_macros(program, &mut env).map_err(|e| {
-        output.emit(&format!("Macro expansion error: {:?}", e), None);
+        output.emit(&format!("Macro expansion error: {}", e), None);
         e
     })?;
 
@@ -78,12 +79,13 @@ pub fn run_sutra_source_with_output(
     // 9. Evaluate the expanded AST
     let mut world = World::default();
     let result = eval(&expanded, &mut world, output, &atom_registry, 1000).map_err(|e| {
-        output.emit(&format!("Evaluation error: {:?}", e), None);
+        output.emit(&format!("Evaluation error: {}", e), None);
         e
     })?;
 
     // 10. Print evaluation result
     if !matches!(result.0, crate::ast::value::Value::Nil) {
+        println!("[DEBUG] Emitting final result: {}", result.0);
         output.emit(&format!("{}", result.0), None);
     }
 
@@ -98,11 +100,15 @@ pub fn run_sutra_source(source: &str, _filename: Option<&str>) -> Result<(), Sut
 
 // Returns true if the given expression is a macro definition of the form (define ...).
 fn is_macro_definition(expr: &AstNode) -> bool {
-    let Expr::List(items, _) = &*expr.value else { return false; }; // FIX: only one deref for Arc<Expr>
+    let Expr::List(items, _) = &*expr.value else {
+        return false;
+    }; // FIX: only one deref for Arc<Expr>
     if items.len() != 3 {
         return false;
     }
-    let Expr::Symbol(def, _) = &*items[0].value else { return false; }; // FIX: only one deref
+    let Expr::Symbol(def, _) = &*items[0].value else {
+        return false;
+    }; // FIX: only one deref
     def == "define"
 }
 
@@ -117,7 +123,9 @@ fn parse_macro_definition(expr: &AstNode) -> Result<(String, MacroTemplate), Sut
     };
     if items.len() != 3 {
         return Err(SutraError {
-            kind: SutraErrorKind::InternalParse("Macro definition must have 3 elements.".to_string()),
+            kind: SutraErrorKind::InternalParse(
+                "Macro definition must have 3 elements.".to_string(),
+            ),
             span: None,
         });
     }

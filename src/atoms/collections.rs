@@ -164,7 +164,7 @@ pub const ATOM_HAS: PureAtomFn = |args| {
 ///   (core/push! items 42)  ; Appends 42 to the list at 'items'
 ///
 /// # Safety
-/// Mutates the world at the given path. Creates empty list if path doesn't exist.
+/// Mutates the world at the given path. **Creates a new empty list if the path doesn't exist.**
 pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
     if args.len() != 2 {
         return Err(SutraError {
@@ -235,7 +235,7 @@ pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
 ///   (core/pull! items)  ; Removes and returns last element from 'items'
 ///
 /// # Safety
-/// Mutates the world at the given path. Creates empty list if path doesn't exist.
+/// Mutates the world at the given path. **Creates a new empty list if the path doesn't exist.**
 pub const ATOM_CORE_PULL: StatefulAtomFn = |args, context| {
     if args.len() != 1 {
         return Err(SutraError {
@@ -275,7 +275,7 @@ pub const ATOM_CORE_PULL: StatefulAtomFn = |args, context| {
         .unwrap_or(Value::List(vec![]));
 
     let pulled_value = match &mut list_val {
-        Value::List(items) => items.pop().unwrap_or_default(),
+        Value::List(items) => items.pop().unwrap_or(Value::Nil),
         val => {
             return Err(SutraError {
                 kind: SutraErrorKind::Eval(EvalError {

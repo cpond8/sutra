@@ -24,12 +24,16 @@ mod arity_tests {
 
         let error = eval_arity_error(Some(span.clone()), &args, "+", "at least 2");
 
-        // Check that the enhanced error message contains expected components
-        let error_msg = format!("{:?}", error);
-        assert!(error_msg.contains("Arity mismatch"));
-        assert!(error_msg.contains("+"));
-        assert!(error_msg.contains("at least 2"));
-        assert!(error_msg.contains("number 1")); // The number should be in the message
+        // Check that the thiserror-derived error message contains expected components
+        let error_msg = format!("{}", error);
+        assert!(error_msg.contains("Arity error in +"));
+        assert!(error_msg.contains("expected at least 2"));
+        assert!(error_msg.contains("got 1"));
+
+        // Check the debug format as well for internal structure
+        let debug_msg = format!("{:?}", error);
+        assert!(debug_msg.contains("(+ 1)")); // The expanded code should show the function call
+        assert!(debug_msg.contains("func_name: \"+\""));
     }
 
     #[test]
@@ -39,13 +43,16 @@ mod arity_tests {
 
         let error = eval_arity_error(Some(span.clone()), &args, "*", "at least 2");
 
-        let error_msg = format!("{:?}", error);
+        // Check the thiserror-derived error message
+        let error_msg = format!("{}", error);
+        assert!(error_msg.contains("Arity error in *"));
+        assert!(error_msg.contains("expected at least 2"));
+        assert!(error_msg.contains("got 0"));
 
-        // Check for enhanced error message components
-        assert!(error_msg.contains("Arity mismatch"));
-        assert!(error_msg.contains("*"));
-        assert!(error_msg.contains("at least 2"));
-        assert!(error_msg.contains("No arguments provided"));
+        // Check the debug format
+        let debug_msg = format!("{:?}", error);
+        assert!(debug_msg.contains("func_name: \"*\""));
+        assert!(debug_msg.contains("actual: 0"));
     }
 
     #[test]
@@ -60,10 +67,15 @@ mod arity_tests {
 
         let error = eval_arity_error(Some(span.clone()), &args, "not", "exactly 1");
 
-        let error_msg = format!("{:?}", error);
-        assert!(error_msg.contains("Arguments provided (5)"));
-        assert!(error_msg.contains("number 1"));
-        assert!(error_msg.contains("number 5"));
+        // Check the thiserror-derived error message
+        let error_msg = format!("{}", error);
+        assert!(error_msg.contains("Arity error in not"));
+        assert!(error_msg.contains("expected exactly 1"));
+        assert!(error_msg.contains("got 5"));
+
+        // Check the debug format contains the expanded code
+        let debug_msg = format!("{:?}", error);
+        assert!(debug_msg.contains("(not 1 2 3 4 5)"));
     }
 }
 
@@ -82,10 +94,16 @@ mod type_error_tests {
 
         let error = eval_type_error(Some(span.clone()), &arg, "+", "a Number", &value);
 
-        let error_msg = format!("{:?}", error);
-        assert!(error_msg.contains("Type mismatch"));
-        assert!(error_msg.contains("Expected argument of type Number"));
-        assert!(error_msg.contains("but received String"));
+        // Check the thiserror-derived error message
+        let error_msg = format!("{}", error);
+        assert!(error_msg.contains("Type error in +"));
+        assert!(error_msg.contains("expected a Number"));
+        assert!(error_msg.contains("found hello")); // The actual value from the string
+
+        // Check the debug format
+        let debug_msg = format!("{:?}", error);
+        assert!(debug_msg.contains("func_name: \"+\""));
+        assert!(debug_msg.contains("expected: \"a Number\""));
     }
 
     #[test]
@@ -170,6 +188,7 @@ mod macro_arity_tests {
     }
 
     #[test]
+
     fn test_macro_arity_error_messages() {
         let span = Span::default();
         let params = ParamList {
@@ -187,6 +206,7 @@ mod macro_arity_tests {
     }
 
     #[test]
+
     fn test_macro_arity_variadic_error_messages() {
         let span = Span::default();
         let params = ParamList {
@@ -209,6 +229,7 @@ mod general_error_tests {
     use super::*;
 
     #[test]
+
     fn test_enhanced_general_error_formatting() {
         let span = Span::default();
         let arg = WithSpan {
@@ -225,6 +246,7 @@ mod general_error_tests {
     }
 
     #[test]
+
     fn test_general_error_with_complex_expression() {
         let span = Span::default();
         let inner_list = vec![
@@ -255,6 +277,7 @@ mod error_integration_tests {
     use super::*;
 
     #[test]
+
     fn test_error_message_consistency() {
         // Test that all error types follow consistent formatting patterns
         let span = Span::default();

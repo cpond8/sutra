@@ -11,7 +11,7 @@
 // The atom registry is a single source of truth and must be passed by reference to all validation and evaluation code. Never construct a local/hidden registry.
 use crate::ast::value::Value;
 use crate::ast::{AstNode, Expr, WithSpan};
-use crate::atoms::{AtomRegistry, Callable, OutputSink};
+use crate::atoms::{AtomRegistry, OutputSink};
 use crate::runtime::context::ExecutionContext;
 use crate::runtime::world::World;
 use crate::syntax::error::{
@@ -53,56 +53,67 @@ impl EvalContext<'_, '_> {
         self.depth + 1
     }
 
-    /// Resolves a symbol name to a callable entity (atom or macro).
-    /// Returns a boxed Callable trait object for polymorphic invocation.
-    pub fn resolve_callable(&self, symbol_name: &str) -> Option<Box<dyn Callable>> {
-        // First, try to resolve as an atom
-        if let Some(atom) = self.atom_registry.get(symbol_name) {
-            return Some(Box::new(atom.clone()));
-        }
-
-        // TODO: Add macro resolution when macro registry is available in EvalContext
-        // For now, only atoms are supported through the Callable interface
-
-        None
-    }
-
-    /// Polymorphic invocation through the Callable trait.
-    /// This method enables uniform calling of atoms, macros, and future callable types.
-    pub fn call_polymorphic(
-        &mut self,
-        callable: Box<dyn Callable>,
-        args: &[Value],
-    ) -> Result<(Value, World), SutraError> {
-        let mut world_context = self.world.clone();
-        let (result, new_world) = {
-            let mut exec_context = ExecutionContext {
-                state: &mut world_context.state,
-                output: self.output,
-                rng: &mut world_context.prng,
-            };
-            callable.call(args, &mut exec_context, self.world)?
-        };
-
-        // Use the returned world state
-        Ok((result, new_world))
-    }
-
     /// Looks up and invokes an atom by name, handling errors for missing atoms.
+    /// Also checks for macros first before checking atoms.
     pub fn call_atom(
         &mut self,
-        atom_name: &str,
+        symbol_name: &str,
         head: &AstNode,
         args: &[AstNode],
         span: &crate::ast::Span,
     ) -> Result<(Value, World), SutraError> {
-        // Use a more specific error message for undefined atoms.
-        let Some(atom) = self.atom_registry.get(atom_name).cloned() else {
+        // First, try to resolve as a macro
+        if let Some((_provenance, macro_def)) = self.world.macros.lookup_macro(symbol_name) {
+            // Handle macro expansion
+            return match macro_def {
+                crate::macros::MacroDef::Template(template) => {
+                    // Create a call node for the template expansion
+                    let call_node = WithSpan {
+                        value: std::sync::Arc::new(Expr::List(
+                            {
+                                let mut items = vec![head.clone()];
+                                items.extend_from_slice(args);
+                                items
+                            },
+                            span.clone(),
+                        )),
+                        span: span.clone(),
+                    };
+
+                    // Expand the template macro
+                    let expanded = crate::macros::expand_template(template, &call_node, 0)?;
+                    // Evaluate the expanded expression
+                    eval_expr(&expanded, self)
+                }
+                crate::macros::MacroDef::Fn(macro_fn) => {
+                    // Create a call node for the function macro
+                    let call_node = WithSpan {
+                        value: std::sync::Arc::new(Expr::List(
+                            {
+                                let mut items = vec![head.clone()];
+                                items.extend_from_slice(args);
+                                items
+                            },
+                            span.clone(),
+                        )),
+                        span: span.clone(),
+                    };
+
+                    // Call the function macro
+                    let expanded = macro_fn(&call_node)?;
+                    // Evaluate the expanded expression
+                    eval_expr(&expanded, self)
+                }
+            };
+        }
+
+        // If not a macro, try to resolve as an atom
+        let Some(atom) = self.atom_registry.get(symbol_name).cloned() else {
             return Err(sutra_error!(
                 general,
                 Some(span.clone()),
                 head,
-                &format!("Undefined atom: '{}'", atom_name)
+                &format!("Undefined symbol: '{}'", symbol_name)
             ));
         };
 
@@ -240,15 +251,16 @@ pub fn eval_expr(expr: &AstNode, context: &mut EvalContext) -> Result<(Value, Wo
             else_branch,
             ..
         } => eval_if(condition, then_branch, else_branch, context),
-        Expr::Define { name, params, body, .. } => {
+        Expr::Define {
+            name, params, body, ..
+        } => {
             // If params are not empty, it's a function/macro definition.
             if !params.required.is_empty() || params.rest.is_some() {
                 let mut new_world = context.world.clone();
                 let template = crate::macros::MacroTemplate::new(params.clone(), body.clone())?;
-                new_world.macros = new_world.macros.with_user_macro(
-                    name.clone(),
-                    crate::macros::MacroDef::Template(template),
-                );
+                new_world.macros = new_world
+                    .macros
+                    .with_user_macro(name.clone(), crate::macros::MacroDef::Template(template));
                 Ok((Value::Nil, new_world))
             } else {
                 // It's a variable definition.
@@ -295,7 +307,6 @@ pub fn eval(
 // --- Core Expression Handlers ---
 
 /// Helper for evaluating Expr::List arms.
-/// Helper for evaluating Expr::List arms using polymorphic dispatch.
 fn eval_list(
     items: &[AstNode],
     span: &crate::ast::Span,
@@ -318,24 +329,9 @@ fn eval_list(
         ));
     };
 
-    // Try polymorphic resolution first
-    if let Some(callable) = context.resolve_callable(symbol_name) {
-        // Pre-evaluate arguments for polymorphic call
-        let flat_tail = flatten_spread_args(tail, context)?;
-        let mut arg_values = Vec::new();
-        for arg in &flat_tail {
-            let (val, _) = eval_expr(arg, context)?;
-            arg_values.push(val);
-        }
-
-        // Use polymorphic invocation
-        context.call_polymorphic(callable, &arg_values)
-    } else {
-        // Fall back to legacy atom resolution for backward compatibility
-        // This path will be removed as more entities implement Callable
-        let flat_tail = flatten_spread_args(tail, context)?;
-        context.call_atom(symbol_name, head, &flat_tail, span)
-    }
+    // Use direct atom resolution
+    let flat_tail = flatten_spread_args(tail, context)?;
+    context.call_atom(symbol_name, head, &flat_tail, span)
 }
 
 /// Helper for evaluating Expr::Quote arms.

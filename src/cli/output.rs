@@ -90,18 +90,6 @@ pub fn print_result<T: std::fmt::Debug>(result: &T) {
     let _ = stdout.reset();
 }
 
-/// Prints a user-facing error message with color and optional span info.
-pub fn print_error(msg: &str, span: Option<&crate::ast::Span>) {
-    let mut stderr = StandardStream::stderr(ColorChoice::Auto);
-    let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true));
-    eprint!("Error");
-    if let Some(span) = span {
-        eprint!(" [at {}-{}]", span.start, span.end);
-    }
-    eprintln!(": {}", msg);
-    let _ = stderr.reset();
-}
-
 // ============================================================================
 // PRIVATE HELPERS
 // ============================================================================

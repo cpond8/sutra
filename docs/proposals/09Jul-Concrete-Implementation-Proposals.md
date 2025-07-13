@@ -1,4 +1,6 @@
-# Error Handling Enhancement: Quick Wins Implementation Plan
+# [OBSOLETE] Error Handling Enhancement: Quick Wins Implementation Plan
+
+**ATTN:** This plan was superceded by 13Jul-Error-Handling-Proposal.md, and so is non-canonical.
 
 Based on the architectural evaluation, this document focuses exclusively on the error handling enhancement (Rating: 7/10) as the only viable recommendation. The memory optimization proposal was rejected due to extreme implementation complexity (8/10 difficulty) and uncertain benefits.
 
