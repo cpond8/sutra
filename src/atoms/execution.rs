@@ -16,10 +16,14 @@
 
 use crate::ast::value::Value;
 use crate::ast::{Expr, WithSpan};
-use crate::atoms::helpers::*;
-use crate::atoms::AtomFn;
+use crate::atoms::helpers::{
+    arity_error, build_apply_call_expr, eval_apply_list_arg, eval_apply_normal_args,
+    eval_single_arg, sub_eval_context, type_error,
+};
+use crate::atoms::SpecialFormAtomFn;
 use crate::runtime::eval::eval_expr;
 use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
+use std::sync::Arc;
 
 // ============================================================================
 // CONTROL FLOW OPERATIONS
@@ -37,13 +41,21 @@ use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
 ///
 /// # Safety
 /// May mutate world if inner expressions do.
-pub const ATOM_DO: AtomFn = |args, context, _| {
-    // The `eval_args` helper function correctly threads the world state
-    // through the evaluation of each argument. We can simply use it
-    // and return the value of the last expression, which is the
-    // standard behavior of a `do` block.
-    let (values, world) = eval_args(args, context)?;
-    let last_value = values.last().cloned().unwrap_or_default();
+pub const ATOM_DO: SpecialFormAtomFn = |args, context, _parent_span| {
+    let mut last_value = Value::default();
+    let mut world = context.world.clone();
+
+    for arg in args {
+        // Create a new evaluation context for the sub-expression, threading the world.
+        let mut sub_context = sub_eval_context!(context, &world);
+        // Evaluate the expression. `eval_expr` will return the result and the *new* world state.
+        let (val, new_world) = eval_expr(arg, &mut sub_context)?;
+        last_value = val;
+        // Update our tracked world state for the next iteration.
+        world = new_world;
+    }
+
+    // The final world state is returned along with the last value.
     Ok((last_value, world))
 };
 
@@ -59,7 +71,7 @@ pub const ATOM_DO: AtomFn = |args, context, _| {
 ///
 /// # Safety
 /// Always errors. Does not mutate state.
-pub const ATOM_ERROR: AtomFn = |args, context, parent_span| {
+pub const ATOM_ERROR: SpecialFormAtomFn = |args, context, parent_span| {
     let (val, _world) = eval_single_arg(args, context, parent_span, "error")?;
     let Value::String(msg) = val else {
         return Err(type_error(
@@ -76,7 +88,7 @@ pub const ATOM_ERROR: AtomFn = |args, context, parent_span| {
             expanded_code: format!(
                 "{:?}",
                 WithSpan {
-                    value: Expr::List(args.to_vec(), parent_span.clone()),
+                    value: Arc::new(Expr::List(args.to_vec(), parent_span.clone())),
                     span: parent_span.clone(),
                 }
             ),
@@ -106,7 +118,7 @@ pub const ATOM_ERROR: AtomFn = |args, context, parent_span| {
 ///
 /// # Safety
 /// Pure, does not mutate state. All state is explicit.
-pub const ATOM_APPLY: AtomFn = |args, context, parent_span| {
+pub const ATOM_APPLY: SpecialFormAtomFn = |args, context, parent_span| {
     if args.len() < 2 {
         return Err(arity_error(
             Some(parent_span.clone()),
@@ -140,9 +152,9 @@ pub const ATOM_APPLY: AtomFn = |args, context, parent_span| {
 /// Registers all execution control atoms with the given registry.
 pub fn register_execution_atoms(registry: &mut crate::atoms::AtomRegistry) {
     // Control flow
-    registry.register("do", crate::atoms::Atom::Legacy(ATOM_DO));
-    registry.register("error", crate::atoms::Atom::Legacy(ATOM_ERROR));
+    registry.register("do", crate::atoms::Atom::SpecialForm(ATOM_DO));
+    registry.register("error", crate::atoms::Atom::SpecialForm(ATOM_ERROR));
 
     // Higher-order functions
-    registry.register("apply", crate::atoms::Atom::Legacy(ATOM_APPLY));
+    registry.register("apply", crate::atoms::Atom::SpecialForm(ATOM_APPLY));
 }

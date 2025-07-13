@@ -15,9 +15,9 @@
 //! - **Mutable Operations**: World-state operations for list manipulation
 
 use crate::ast::value::Value;
-use crate::atoms::helpers::*;
-use crate::atoms::AtomFn;
-use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
+// use crate::atoms::helpers::*;
+use crate::atoms::{PureAtomFn, StatefulAtomFn};
+use crate::syntax::error::SutraError;
 
 // ============================================================================
 // LIST OPERATIONS
@@ -35,10 +35,7 @@ use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_LIST: AtomFn = |args, context, _| {
-    let (items, world) = eval_args(args, context)?;
-    Ok((Value::List(items), world))
-};
+pub const ATOM_LIST: PureAtomFn = |args| Ok(Value::List(args.to_vec()));
 
 /// Returns the length of a list or string.
 ///
@@ -53,22 +50,30 @@ pub const ATOM_LIST: AtomFn = |args, context, _| {
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_LEN: AtomFn = |args, context, parent_span| {
+pub const ATOM_LEN: PureAtomFn = |args| {
     if args.len() != 1 {
-        return Err(arity_error(Some(parent_span.clone()), args, "len", 1));
+        return Err(SutraError {
+            kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
+                message: format!("len: expected 1 argument, got {}", args.len()),
+                expanded_code: String::new(),
+                original_code: None,
+                suggestion: None,
+            }),
+            span: None,
+        });
     }
-    let mut sub_context = sub_eval_context!(context, context.world);
-    let (val, world) = crate::runtime::eval::eval_expr(&args[0], &mut sub_context)?;
-    match val {
-        Value::List(ref items) => Ok((Value::Number(items.len() as f64), world)),
-        Value::String(ref s) => Ok((Value::Number(s.len() as f64), world)),
-        _ => Err(type_error(
-            Some(parent_span.clone()),
-            &args[0],
-            "len",
-            "a List or String",
-            &val,
-        )),
+    match &args[0] {
+        Value::List(items) => Ok(Value::Number(items.len() as f64)),
+        Value::String(s) => Ok(Value::Number(s.len() as f64)),
+        val => Err(SutraError {
+            kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
+                message: format!("len: expected a List or String, got {:?}", val),
+                expanded_code: String::new(),
+                original_code: None,
+                suggestion: None,
+            }),
+            span: None,
+        }),
     }
 };
 
@@ -87,40 +92,51 @@ pub const ATOM_LEN: AtomFn = |args, context, parent_span| {
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_HAS: AtomFn = |args, context, parent_span| {
+pub const ATOM_HAS: PureAtomFn = |args| {
     if args.len() != 2 {
-        return Err(arity_error(Some(parent_span.clone()), args, "has?", 2));
+        return Err(SutraError {
+            kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
+                message: format!("has?: expected 2 arguments, got {}", args.len()),
+                expanded_code: String::new(),
+                original_code: None,
+                suggestion: None,
+            }),
+            span: None,
+        });
     }
-
-    let (collection_val, search_val, world) = eval_binary_args(args, context, parent_span, "has?")?;
-
+    let collection_val = &args[0];
+    let search_val = &args[1];
     let found = match collection_val {
-        Value::List(ref items) => items.contains(&search_val),
-        Value::Map(ref map) => {
-            // For maps, check if the search value exists as a key
+        Value::List(items) => items.contains(search_val),
+        Value::Map(map) => {
             let Value::String(key) = search_val else {
-                return Err(type_error(
-                    Some(parent_span.clone()),
-                    &args[1],
-                    "has?",
-                    "a String (for Map keys)",
-                    &search_val,
-                ));
+                return Err(SutraError {
+                    kind: crate::syntax::error::SutraErrorKind::Eval(
+                        crate::syntax::error::EvalError {
+                            message: "has?: expected a String for Map key".to_string(),
+                            expanded_code: String::new(),
+                            original_code: None,
+                            suggestion: None,
+                        },
+                    ),
+                    span: None,
+                });
             };
-            map.contains_key(&key)
+            map.contains_key(&key[..])
         }
         _ => {
-            return Err(type_error(
-                Some(parent_span.clone()),
-                &args[0],
-                "has?",
-                "a List or Map",
-                &collection_val,
-            ));
+            return Err(SutraError {
+                kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
+                    message: "has?: expected a List or Map as first argument".to_string(),
+                    expanded_code: String::new(),
+                    original_code: None,
+                    suggestion: None,
+                }),
+                span: None,
+            });
         }
     };
-
-    Ok((Value::Bool(found), world))
+    Ok(Value::Bool(found))
 };
 
 /// Appends a value to a list at a path in the world state.
@@ -136,37 +152,57 @@ pub const ATOM_HAS: AtomFn = |args, context, parent_span| {
 ///
 /// # Safety
 /// Mutates the world at the given path. Creates empty list if path doesn't exist.
-pub const ATOM_CORE_PUSH: AtomFn = |args, context, parent_span| {
-    eval_binary_path_op(
-        args,
-        context,
-        parent_span,
-        |path: crate::runtime::path::Path,
-         value: Value,
-         world: crate::runtime::world::World|
-         -> Result<(Value, crate::runtime::world::World), SutraError> {
-            let mut current = world.get(&path).cloned().unwrap_or(Value::List(vec![]));
+pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
+    if args.len() != 2 {
+        return Err(SutraError {
+            kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
+                message: format!("core/push!: expected 2 arguments, got {}", args.len()),
+                expanded_code: String::new(),
+                original_code: None,
+                suggestion: None,
+            }),
+            span: None,
+        });
+    }
+    let path = match &args[0] {
+        Value::Path(p) => p,
+        val => {
+            return Err(SutraError {
+                kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
+                    message: format!(
+                        "core/push!: expected a Path as first argument, got {:?}",
+                        val
+                    ),
+                    expanded_code: String::new(),
+                    original_code: None,
+                    suggestion: None,
+                }),
+                span: None,
+            })
+        }
+    };
+    let mut list_val = context
+        .state
+        .get(path)
+        .cloned()
+        .unwrap_or(Value::List(vec![]));
 
-            let Value::List(ref mut items) = current else {
-                return Err(SutraError {
-                    kind: SutraErrorKind::Eval(EvalError {
-                        message: format!("Cannot push to non-list value at path '{}'", path),
-                        expanded_code: format!("(core/push! {} {:?})", path, value),
-                        original_code: None,
-                        suggestion: Some(
-                            "Ensure the path contains a list before pushing".to_string(),
-                        ),
-                    }),
-                    span: Some(parent_span.clone()),
-                });
-            };
-
-            items.push(value);
-            let new_world = world.set(&path, current);
-            Ok((Value::default(), new_world))
-        },
-        "core/push!",
-    )
+    match &mut list_val {
+        Value::List(items) => items.push(args[1].clone()),
+        val => {
+            return Err(SutraError {
+                kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
+                    message: format!("core/push!: expected a List at path, got {:?}", val),
+                    expanded_code: String::new(),
+                    original_code: None,
+                    suggestion: None,
+                }),
+                span: None,
+            })
+        }
+    }
+    context.state.set(path, list_val);
+    Ok(Value::Nil)
 };
 
 /// Removes and returns the last element from a list at a path in the world state.
@@ -181,36 +217,57 @@ pub const ATOM_CORE_PUSH: AtomFn = |args, context, parent_span| {
 ///
 /// # Safety
 /// Mutates the world at the given path. Creates empty list if path doesn't exist.
-pub const ATOM_CORE_PULL: AtomFn = |args, context, parent_span| {
-    eval_unary_path_op(
-        args,
-        context,
-        parent_span,
-        |path: crate::runtime::path::Path,
-         world: crate::runtime::world::World|
-         -> Result<(Value, crate::runtime::world::World), SutraError> {
-            let mut current = world.get(&path).cloned().unwrap_or(Value::List(vec![]));
+pub const ATOM_CORE_PULL: StatefulAtomFn = |args, context| {
+    if args.len() != 1 {
+        return Err(SutraError {
+            kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
+                message: format!("core/pull!: expected 1 argument, got {}", args.len()),
+                expanded_code: String::new(),
+                original_code: None,
+                suggestion: None,
+            }),
+            span: None,
+        });
+    }
+    let path = match &args[0] {
+        Value::Path(p) => p,
+        val => {
+            return Err(SutraError {
+                kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
+                    message: format!(
+                        "core/pull!: expected a Path as first argument, got {:?}",
+                        val
+                    ),
+                    expanded_code: String::new(),
+                    original_code: None,
+                    suggestion: None,
+                }),
+                span: None,
+            })
+        }
+    };
+    let mut list_val = context
+        .state
+        .get(path)
+        .cloned()
+        .unwrap_or(Value::List(vec![]));
 
-            let Value::List(ref mut items) = current else {
-                return Err(SutraError {
-                    kind: SutraErrorKind::Eval(EvalError {
-                        message: format!("Cannot pull from non-list value at path '{}'", path),
-                        expanded_code: format!("(core/pull! {})", path),
-                        original_code: None,
-                        suggestion: Some(
-                            "Ensure the path contains a list before pulling".to_string(),
-                        ),
-                    }),
-                    span: Some(parent_span.clone()),
-                });
-            };
-
-            let pulled_value = items.pop().unwrap_or_default();
-            let new_world = world.set(&path, current);
-            Ok((pulled_value, new_world))
-        },
-        "core/pull!",
-    )
+    let pulled_value = match &mut list_val {
+        Value::List(items) => items.pop().unwrap_or_default(),
+        val => {
+            return Err(SutraError {
+                kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
+                    message: format!("core/pull!: expected a List at path, got {:?}", val),
+                    expanded_code: String::new(),
+                    original_code: None,
+                    suggestion: None,
+                }),
+                span: None,
+            })
+        }
+    };
+    context.state.set(path, list_val);
+    Ok(pulled_value)
 };
 
 // ============================================================================
@@ -229,31 +286,30 @@ pub const ATOM_CORE_PULL: AtomFn = |args, context, parent_span| {
 ///
 /// # Safety
 /// Pure, does not mutate state. This atom only accepts `Value::String` arguments.
-pub const ATOM_CORE_STR_PLUS: AtomFn = |args, context, parent_span| {
-    // Handle zero arguments: return empty string
+pub const ATOM_CORE_STR_PLUS: PureAtomFn = |args| {
     if args.is_empty() {
-        return Ok((Value::String(String::new()), context.world.clone()));
+        return Ok(Value::String(String::new()));
     }
-
-    // Evaluate all arguments in the current context.
-    let (values, world) = eval_args(args, context)?;
-    // Collect string slices, error if any argument is not a string.
     let mut result = String::new();
-    for (i, val) in values.iter().enumerate() {
+    for val in args.iter() {
         match val {
-            Value::String(s) => result.push_str(s),
+            Value::String(s) => result.push_str(&s[..]),
             _ => {
-                return Err(type_error(
-                    Some(parent_span.clone()),
-                    &args[i],
-                    "core/str+",
-                    "a String",
-                    val,
-                ));
+                return Err(SutraError {
+                    kind: crate::syntax::error::SutraErrorKind::Eval(
+                        crate::syntax::error::EvalError {
+                            message: "core/str+: expected all arguments to be Strings".to_string(),
+                            expanded_code: String::new(),
+                            original_code: None,
+                            suggestion: None,
+                        },
+                    ),
+                    span: None,
+                });
             }
         }
     }
-    Ok((Value::String(result), world))
+    Ok(Value::String(result))
 };
 
 // ============================================================================
@@ -263,12 +319,12 @@ pub const ATOM_CORE_STR_PLUS: AtomFn = |args, context, parent_span| {
 /// Registers all collection atoms with the given registry.
 pub fn register_collection_atoms(registry: &mut crate::atoms::AtomRegistry) {
     // List operations
-    registry.register("list", crate::atoms::Atom::Legacy(ATOM_LIST));
-    registry.register("len", crate::atoms::Atom::Legacy(ATOM_LEN));
-    registry.register("has?", crate::atoms::Atom::Legacy(ATOM_HAS));
-    registry.register("core/push!", crate::atoms::Atom::Legacy(ATOM_CORE_PUSH));
-    registry.register("core/pull!", crate::atoms::Atom::Legacy(ATOM_CORE_PULL));
+    registry.register("list", crate::atoms::Atom::Pure(ATOM_LIST));
+    registry.register("len", crate::atoms::Atom::Pure(ATOM_LEN));
+    registry.register("has?", crate::atoms::Atom::Pure(ATOM_HAS));
+    registry.register("core/push!", crate::atoms::Atom::Stateful(ATOM_CORE_PUSH));
+    registry.register("core/pull!", crate::atoms::Atom::Stateful(ATOM_CORE_PULL));
 
     // String operations
-    registry.register("core/str+", crate::atoms::Atom::Legacy(ATOM_CORE_STR_PLUS));
+    registry.register("core/str+", crate::atoms::Atom::Pure(ATOM_CORE_STR_PLUS));
 }

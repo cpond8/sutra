@@ -72,10 +72,15 @@ fn arity_error(actual: usize, expected: usize, atom_name: &str) -> SutraError {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_EQ: PureAtomFn = |args| {
-    if args.len() != 2 {
-        return Err(arity_error(args.len(), 2, "eq?"));
+    if args.len() < 2 {
+        return Ok(Value::Bool(true));
     }
-    Ok(Value::Bool(args[0] == args[1]))
+    for window in args.windows(2) {
+        if window[0] != window[1] {
+            return Ok(Value::Bool(false));
+        }
+    }
+    Ok(Value::Bool(true))
 };
 
 /// Returns true if a > b.
@@ -91,12 +96,17 @@ pub const ATOM_EQ: PureAtomFn = |args| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_GT: PureAtomFn = |args| {
-    if args.len() != 2 {
-        return Err(arity_error(args.len(), 2, "gt?"));
+    if args.len() < 2 {
+        return Ok(Value::Bool(true));
     }
-    let a = extract_number(&args[0], 0, "gt?")?;
-    let b = extract_number(&args[1], 1, "gt?")?;
-    Ok(Value::Bool(a > b))
+    for i in 0..args.len() - 1 {
+        let a = extract_number(&args[i], i, "gt?")?;
+        let b = extract_number(&args[i + 1], i + 1, "gt?")?;
+        if a <= b {
+            return Ok(Value::Bool(false));
+        }
+    }
+    Ok(Value::Bool(true))
 };
 
 /// Returns true if a < b.
@@ -112,12 +122,17 @@ pub const ATOM_GT: PureAtomFn = |args| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_LT: PureAtomFn = |args| {
-    if args.len() != 2 {
-        return Err(arity_error(args.len(), 2, "lt?"));
+    if args.len() < 2 {
+        return Ok(Value::Bool(true));
     }
-    let a = extract_number(&args[0], 0, "lt?")?;
-    let b = extract_number(&args[1], 1, "lt?")?;
-    Ok(Value::Bool(a < b))
+    for i in 0..args.len() - 1 {
+        let a = extract_number(&args[i], i, "lt?")?;
+        let b = extract_number(&args[i + 1], i + 1, "lt?")?;
+        if a >= b {
+            return Ok(Value::Bool(false));
+        }
+    }
+    Ok(Value::Bool(true))
 };
 
 /// Returns true if a >= b.
@@ -133,12 +148,17 @@ pub const ATOM_LT: PureAtomFn = |args| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_GTE: PureAtomFn = |args| {
-    if args.len() != 2 {
-        return Err(arity_error(args.len(), 2, "gte?"));
+    if args.len() < 2 {
+        return Ok(Value::Bool(true));
     }
-    let a = extract_number(&args[0], 0, "gte?")?;
-    let b = extract_number(&args[1], 1, "gte?")?;
-    Ok(Value::Bool(a >= b))
+    for i in 0..args.len() - 1 {
+        let a = extract_number(&args[i], i, "gte?")?;
+        let b = extract_number(&args[i + 1], i + 1, "gte?")?;
+        if a < b {
+            return Ok(Value::Bool(false));
+        }
+    }
+    Ok(Value::Bool(true))
 };
 
 /// Returns true if a <= b.
@@ -154,12 +174,17 @@ pub const ATOM_GTE: PureAtomFn = |args| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_LTE: PureAtomFn = |args| {
-    if args.len() != 2 {
-        return Err(arity_error(args.len(), 2, "lte?"));
+    if args.len() < 2 {
+        return Ok(Value::Bool(true));
     }
-    let a = extract_number(&args[0], 0, "lte?")?;
-    let b = extract_number(&args[1], 1, "lte?")?;
-    Ok(Value::Bool(a <= b))
+    for i in 0..args.len() - 1 {
+        let a = extract_number(&args[i], i, "lte?")?;
+        let b = extract_number(&args[i + 1], i + 1, "lte?")?;
+        if a > b {
+            return Ok(Value::Bool(false));
+        }
+    }
+    Ok(Value::Bool(true))
 };
 
 // ============================================================================

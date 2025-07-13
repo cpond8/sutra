@@ -12,12 +12,12 @@
 //! - May have non-standard return values for testing edge cases
 
 use crate::ast::value::Value;
-use crate::ast::{Expr, Span, WithSpan};
-use crate::atoms::AtomRegistry;
+use crate::ast::{AstNode, Expr, Span, WithSpan};
+use crate::atoms::{AtomRegistry, SpecialFormAtomFn};
 use crate::runtime::eval::EvalContext;
 use crate::runtime::world::World;
 use crate::syntax::error::SutraError;
-use crate::ast::AstNode;
+use std::sync::Arc;
 
 // Use the public context helper macro
 use crate::sub_eval_context;
@@ -72,8 +72,7 @@ fn test_echo_atom(
 /// # Safety
 /// Emits output, does not mutate world state. May recurse up to max_depth.
 // Type alias for test atom function signatures
-type TestAtomFn =
-    fn(&[AstNode], &mut EvalContext, &Span) -> Result<(Value, World), SutraError>;
+type TestAtomFn = SpecialFormAtomFn;
 
 /// Parse arguments for borrow stress test.
 fn parse_borrow_stress_args(args: &[AstNode]) -> (i64, String) {
@@ -123,11 +122,11 @@ fn handle_borrow_stress_recursion(
     sub_context.depth = ctx.depth + 1; // Manually set incremented depth
     let nested_args = vec![
         WithSpan {
-            value: Expr::Number((depth - 1) as f64, span.clone()).into(), // FIX: wrap Expr in Arc via .into()
+            value: Arc::new(Expr::Number((depth - 1) as f64, span.clone())),
             span: span.clone(),
         },
         WithSpan {
-            value: Expr::String(msg.to_string(), span.clone()).into(), // FIX: wrap Expr in Arc via .into()
+            value: Arc::new(Expr::String(msg.to_string(), span.clone())),
             span: span.clone(),
         },
     ];
@@ -144,7 +143,7 @@ fn handle_borrow_stress_base_case(
     let mut sub_context = sub_eval_context!(ctx, ctx.world);
     sub_context.depth = ctx.depth + 1; // Manually set incremented depth
     let echo_arg = WithSpan {
-        value: Expr::String(msg.to_string(), span.clone()).into(), // FIX: wrap Expr in Arc via .into()
+        value: Arc::new(Expr::String(msg.to_string(), span.clone())),
         span: span.clone(),
     };
     test_echo_atom(&[echo_arg], &mut sub_context, span)
@@ -178,6 +177,12 @@ fn test_borrow_stress_atom(
 /// # Safety
 /// Test atoms may have side effects (output, recursion) intended for testing.
 pub fn register_test_atoms(registry: &mut AtomRegistry) {
-    registry.register("test/echo", crate::atoms::Atom::Legacy(test_echo_atom));
-    registry.register("test/borrow_stress", crate::atoms::Atom::Legacy(test_borrow_stress_atom));
+    registry.register(
+        "test/echo",
+        crate::atoms::Atom::SpecialForm(test_echo_atom),
+    );
+    registry.register(
+        "test/borrow_stress",
+        crate::atoms::Atom::SpecialForm(test_borrow_stress_atom),
+    );
 }

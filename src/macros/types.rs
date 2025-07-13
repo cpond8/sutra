@@ -345,3 +345,25 @@ fn check_no_duplicate_params(
     }
     Ok(())
 }
+
+// ============================================================================
+// CALLABLE TRAIT IMPLEMENTATION
+// ============================================================================
+
+impl crate::atoms::Callable for MacroDef {
+    fn call(&self, _args: &[crate::ast::value::Value], _context: &mut crate::runtime::context::ExecutionContext, _current_world: &crate::runtime::world::World) -> Result<(crate::ast::value::Value, crate::runtime::world::World), crate::syntax::error::SutraError> {
+        // Macros operate on AST nodes, not Values, so they cannot be called through the Callable interface
+        // This is a design limitation - macros need syntax transformation, not evaluation
+        use crate::ast::Expr;
+        use std::sync::Arc;
+        let dummy_node = crate::ast::AstNode {
+            value: Arc::new(Expr::Symbol("macro".to_string(), crate::ast::Span::default())),
+            span: crate::ast::Span::default()
+        };
+        Err(crate::syntax::error::eval_general_error(
+            None,
+            &dummy_node,
+            "Macros cannot be called through Callable interface - they require AST transformation, not evaluation"
+        ))
+    }
+}

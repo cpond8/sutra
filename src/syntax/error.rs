@@ -9,8 +9,8 @@ const SHORT_STRING_LIMIT: usize = 20;
 const LONG_STRING_LIMIT: usize = 30;
 const TRUNCATION_SUFFIX: &str = "...";
 
-use crate::ast::{AstNode, Expr, Span};
 use crate::ast::value::Value;
+use crate::ast::{AstNode, Expr, Span};
 
 // =============================================================================
 // SECTION 2: CORE DATA STRUCTURES
@@ -280,11 +280,7 @@ pub fn eval_type_error(
 /// let arg = WithSpan { value: Arc::new(Expr::Symbol("x".to_string(), span.clone())), span: span.clone() };
 /// let error = eval_general_error(Some(span), &arg, "Division by zero");
 /// ```
-pub fn eval_general_error(
-    span: Option<Span>,
-    arg: &AstNode,
-    msg: impl Into<String>,
-) -> SutraError {
+pub fn eval_general_error(span: Option<Span>, arg: &AstNode, msg: impl Into<String>) -> SutraError {
     let message = msg.into();
 
     let main_message = build_general_main_message(&message);
@@ -371,6 +367,35 @@ impl SutraError {
         }
         self
     }
+
+    /// Returns a semantic error code for this error, useful for stable test matching
+    /// independent of user-facing message changes.
+    ///
+    /// This allows tests to match against stable error categories instead of brittle
+    /// message text that might change during development.
+    pub fn error_code(&self) -> Option<&str> {
+        match &self.kind {
+            SutraErrorKind::Parse(_) => Some("PARSE_ERROR"),
+            SutraErrorKind::Macro(_) => Some("MACRO_ERROR"),
+            SutraErrorKind::Validation(_) => Some("VALIDATION_ERROR"),
+            SutraErrorKind::Io(_) => Some("IO_ERROR"),
+            SutraErrorKind::MalformedAst(_) => Some("MALFORMED_AST_ERROR"),
+            SutraErrorKind::InternalParse(_) => Some("INTERNAL_PARSE_ERROR"),
+            SutraErrorKind::Eval(eval_error) => {
+                // For eval errors, we can categorize further by analyzing the message
+                let msg = &eval_error.message;
+                if msg.contains("Arity error:") {
+                    Some("ARITY_ERROR")
+                } else if msg.contains("Type error:") {
+                    Some("TYPE_ERROR")
+                } else if msg.contains("Division by zero") {
+                    Some("DIVISION_BY_ZERO")
+                } else {
+                    Some("EVAL_ERROR")
+                }
+            }
+        }
+    }
 }
 
 // =============================================================================
@@ -410,7 +435,10 @@ static TYPE_NAME_MAP: &[(&str, &str)] = &[
 /// Converts type names to unified display format.
 fn get_unified_type_name(type_name: &str) -> String {
     // Check the type name map first
-    if let Some((_, unified)) = TYPE_NAME_MAP.iter().find(|(original, _)| *original == type_name) {
+    if let Some((_, unified)) = TYPE_NAME_MAP
+        .iter()
+        .find(|(original, _)| *original == type_name)
+    {
         return unified.to_string();
     }
 
@@ -453,7 +481,11 @@ fn format_any_value_for_error(value: &Value) -> String {
 // --- Error Construction Helpers ---
 
 /// Unified constructor helper to eliminate repetition across simple error types.
-fn build_simple_error<F>(msg: impl Into<String>, span: Option<Span>, kind_constructor: F) -> SutraError
+fn build_simple_error<F>(
+    msg: impl Into<String>,
+    span: Option<Span>,
+    kind_constructor: F,
+) -> SutraError
 where
     F: FnOnce(String) -> SutraErrorKind,
 {
@@ -523,12 +555,14 @@ fn build_arity_expanded_code(func_name: &str, args: &[AstNode]) -> String {
 }
 
 /// Combines message parts into the final arity error message.
-fn combine_arity_message_parts(main_message: &str, context_message: &str, args_summary: &str) -> String {
+fn combine_arity_message_parts(
+    main_message: &str,
+    context_message: &str,
+    args_summary: &str,
+) -> String {
     format!(
         "{}\n\n{}\n\n{}",
-        main_message,
-        context_message,
-        args_summary
+        main_message, context_message, args_summary
     )
 }
 
@@ -545,8 +579,7 @@ fn build_type_context_message(expected: &str, found: &Value) -> String {
     let found_type = get_value_unified_type_name(found);
     format!(
         "Expected argument of type {}, but received {}.",
-        expected_type,
-        found_type
+        expected_type, found_type
     )
 }
 
@@ -560,13 +593,12 @@ fn build_type_value_info(found: &Value, arg: &AstNode) -> String {
 }
 
 /// Combines message parts into the final type error message.
-fn combine_type_message_parts(main_message: &str, context_message: &str, value_info: &str) -> String {
-    format!(
-        "{}\n\n{}\n\n{}",
-        main_message,
-        context_message,
-        value_info
-    )
+fn combine_type_message_parts(
+    main_message: &str,
+    context_message: &str,
+    value_info: &str,
+) -> String {
+    format!("{}\n\n{}\n\n{}", main_message, context_message, value_info)
 }
 
 // --- General Error Helpers ---
@@ -586,11 +618,7 @@ fn build_general_context_message(arg: &AstNode) -> String {
 
 /// Combines message parts into the final general error message.
 fn combine_general_message_parts(main_message: &str, context_message: &str) -> String {
-    format!(
-        "{}\n\n{}",
-        main_message,
-        context_message
-    )
+    format!("{}\n\n{}", main_message, context_message)
 }
 
 // --- Expression Utilities ---
@@ -622,68 +650,238 @@ struct FunctionUsage {
 
 static ARITY_SUGGESTIONS: &[(&str, FunctionUsage)] = &[
     // Core functions
-    ("core/set!", FunctionUsage { pattern: "(core/set! path value)", description: "Set a value at a path" }),
-    ("core/get", FunctionUsage { pattern: "(core/get path)", description: "Get value at a path" }),
-    ("core/del!", FunctionUsage { pattern: "(core/del! path)", description: "Delete value at a path" }),
-
+    (
+        "core/set!",
+        FunctionUsage {
+            pattern: "(core/set! path value)",
+            description: "Set a value at a path",
+        },
+    ),
+    (
+        "core/get",
+        FunctionUsage {
+            pattern: "(core/get path)",
+            description: "Get value at a path",
+        },
+    ),
+    (
+        "core/del!",
+        FunctionUsage {
+            pattern: "(core/del! path)",
+            description: "Delete value at a path",
+        },
+    ),
     // Arithmetic functions
-    ("+", FunctionUsage { pattern: "(+ a b) or (+ a b c ...)", description: "These arithmetic functions require at least 2 arguments" }),
-    ("-", FunctionUsage { pattern: "(- a b) or (- a b c ...)", description: "These arithmetic functions require at least 2 arguments" }),
-    ("*", FunctionUsage { pattern: "(* a b) or (* a b c ...)", description: "These arithmetic functions require at least 2 arguments" }),
-    ("/", FunctionUsage { pattern: "(/ a b) or (/ a b c ...)", description: "These arithmetic functions require at least 2 arguments" }),
-    ("mod", FunctionUsage { pattern: "(mod dividend divisor)", description: "Modulo operation requires exactly 2 arguments" }),
-
+    (
+        "+",
+        FunctionUsage {
+            pattern: "(+ a b) or (+ a b c ...)",
+            description: "These arithmetic functions require at least 2 arguments",
+        },
+    ),
+    (
+        "-",
+        FunctionUsage {
+            pattern: "(- a b) or (- a b c ...)",
+            description: "These arithmetic functions require at least 2 arguments",
+        },
+    ),
+    (
+        "*",
+        FunctionUsage {
+            pattern: "(* a b) or (* a b c ...)",
+            description: "These arithmetic functions require at least 2 arguments",
+        },
+    ),
+    (
+        "/",
+        FunctionUsage {
+            pattern: "(/ a b) or (/ a b c ...)",
+            description: "These arithmetic functions require at least 2 arguments",
+        },
+    ),
+    (
+        "mod",
+        FunctionUsage {
+            pattern: "(mod dividend divisor)",
+            description: "Modulo operation requires exactly 2 arguments",
+        },
+    ),
     // Comparison functions
-    ("eq?", FunctionUsage { pattern: "(eq? a b)", description: "Comparison functions require exactly 2 arguments" }),
-    ("gt?", FunctionUsage { pattern: "(gt? a b)", description: "Comparison functions require exactly 2 arguments" }),
-    ("lt?", FunctionUsage { pattern: "(lt? a b)", description: "Comparison functions require exactly 2 arguments" }),
-    ("gte?", FunctionUsage { pattern: "(gte? a b)", description: "Comparison functions require exactly 2 arguments" }),
-    ("lte?", FunctionUsage { pattern: "(lte? a b)", description: "Comparison functions require exactly 2 arguments" }),
-    ("not", FunctionUsage { pattern: "(not value)", description: "Logical negation requires exactly 1 argument" }),
-
+    (
+        "eq?",
+        FunctionUsage {
+            pattern: "(eq? a b)",
+            description: "Comparison functions require exactly 2 arguments",
+        },
+    ),
+    (
+        "gt?",
+        FunctionUsage {
+            pattern: "(gt? a b)",
+            description: "Comparison functions require exactly 2 arguments",
+        },
+    ),
+    (
+        "lt?",
+        FunctionUsage {
+            pattern: "(lt? a b)",
+            description: "Comparison functions require exactly 2 arguments",
+        },
+    ),
+    (
+        "gte?",
+        FunctionUsage {
+            pattern: "(gte? a b)",
+            description: "Comparison functions require exactly 2 arguments",
+        },
+    ),
+    (
+        "lte?",
+        FunctionUsage {
+            pattern: "(lte? a b)",
+            description: "Comparison functions require exactly 2 arguments",
+        },
+    ),
+    (
+        "not",
+        FunctionUsage {
+            pattern: "(not value)",
+            description: "Logical negation requires exactly 1 argument",
+        },
+    ),
     // List functions
-    ("list", FunctionUsage { pattern: "(list item1 item2 ...)", description: "Create list from arguments" }),
-    ("len", FunctionUsage { pattern: "(len collection)", description: "Get length requires exactly 1 argument" }),
-    ("apply", FunctionUsage { pattern: "(apply function arg1 arg2 ... arg-list)", description: "Apply requires at least 2 arguments" }),
-
+    (
+        "list",
+        FunctionUsage {
+            pattern: "(list item1 item2 ...)",
+            description: "Create list from arguments",
+        },
+    ),
+    (
+        "len",
+        FunctionUsage {
+            pattern: "(len collection)",
+            description: "Get length requires exactly 1 argument",
+        },
+    ),
+    (
+        "apply",
+        FunctionUsage {
+            pattern: "(apply function arg1 arg2 ... arg-list)",
+            description: "Apply requires at least 2 arguments",
+        },
+    ),
     // String functions
-    ("core/str+", FunctionUsage { pattern: "(core/str+ string1 string2 ...)", description: "String concatenation accepts any number of arguments" }),
-
+    (
+        "core/str+",
+        FunctionUsage {
+            pattern: "(core/str+ string1 string2 ...)",
+            description: "String concatenation accepts any number of arguments",
+        },
+    ),
     // Control flow
-    ("do", FunctionUsage { pattern: "(do expr1 expr2 ...)", description: "Sequential evaluation accepts any number of arguments" }),
-    ("error", FunctionUsage { pattern: "(error message)", description: "Error requires exactly 1 string argument" }),
-
+    (
+        "do",
+        FunctionUsage {
+            pattern: "(do expr1 expr2 ...)",
+            description: "Sequential evaluation accepts any number of arguments",
+        },
+    ),
+    (
+        "error",
+        FunctionUsage {
+            pattern: "(error message)",
+            description: "Error requires exactly 1 string argument",
+        },
+    ),
     // I/O functions
-    ("print", FunctionUsage { pattern: "(print value)", description: "Print requires exactly 1 argument" }),
-    ("core/print", FunctionUsage { pattern: "(core/print value)", description: "Print requires exactly 1 argument" }),
+    (
+        "print",
+        FunctionUsage {
+            pattern: "(print value)",
+            description: "Print requires exactly 1 argument",
+        },
+    ),
+    (
+        "core/print",
+        FunctionUsage {
+            pattern: "(core/print value)",
+            description: "Print requires exactly 1 argument",
+        },
+    ),
 ];
 
 static TYPE_SUGGESTIONS: &[(&str, &str, &str)] = &[
     // Core path operations
-    ("core/get", "a Path", "Paths are created with symbols like 'x' or nested like 'player/name'"),
-    ("core/set!", "a Path", "First argument must be a path. Use a symbol or nested path like 'items/0'"),
-    ("core/del!", "a Path", "Provide a path to delete. Use a symbol like 'x' or nested path like 'config/debug'"),
-
+    (
+        "core/get",
+        "a Path",
+        "Paths are created with symbols like 'x' or nested like 'player/name'",
+    ),
+    (
+        "core/set!",
+        "a Path",
+        "First argument must be a path. Use a symbol or nested path like 'items/0'",
+    ),
+    (
+        "core/del!",
+        "a Path",
+        "Provide a path to delete. Use a symbol like 'x' or nested path like 'config/debug'",
+    ),
     // Arithmetic operations
     ("+", "a Number", "This operation requires numeric arguments"),
     ("-", "a Number", "This operation requires numeric arguments"),
     ("*", "a Number", "This operation requires numeric arguments"),
     ("/", "a Number", "This operation requires numeric arguments"),
-    ("mod", "a Number", "This operation requires numeric arguments"),
-
+    (
+        "mod",
+        "a Number",
+        "This operation requires numeric arguments",
+    ),
     // String operations
-    ("core/str+", "a String", "String concatenation requires all arguments to be strings"),
-
+    (
+        "core/str+",
+        "a String",
+        "String concatenation requires all arguments to be strings",
+    ),
     // List operations
-    ("len", "a List", "This function measures the length of lists. Provide a list argument"),
-
+    (
+        "len",
+        "a List",
+        "This function measures the length of lists. Provide a list argument",
+    ),
     // Boolean operations
-    ("not", "a Bool", "Logical negation requires a boolean value (true or false)"),
-    ("eq?", "a Bool", "Comparison functions work with numbers, strings, or booleans"),
-    ("gt?", "a Bool", "Comparison functions work with numbers, strings, or booleans"),
-    ("lt?", "a Bool", "Comparison functions work with numbers, strings, or booleans"),
-    ("gte?", "a Bool", "Comparison functions work with numbers, strings, or booleans"),
-    ("lte?", "a Bool", "Comparison functions work with numbers, strings, or booleans"),
+    (
+        "not",
+        "a Bool",
+        "Logical negation requires a boolean value (true or false)",
+    ),
+    (
+        "eq?",
+        "a Bool",
+        "Comparison functions work with numbers, strings, or booleans",
+    ),
+    (
+        "gt?",
+        "a Bool",
+        "Comparison functions work with numbers, strings, or booleans",
+    ),
+    (
+        "lt?",
+        "a Bool",
+        "Comparison functions work with numbers, strings, or booleans",
+    ),
+    (
+        "gte?",
+        "a Bool",
+        "Comparison functions work with numbers, strings, or booleans",
+    ),
+    (
+        "lte?",
+        "a Bool",
+        "Comparison functions work with numbers, strings, or booleans",
+    ),
 ];
 
 static GENERAL_ERROR_SUGGESTIONS: &[(&str, &str)] = &[
@@ -711,9 +909,23 @@ fn generate_arity_suggestion(func_name: &str, expected: &str, actual_count: usiz
 fn build_arity_advice(expected: &str, actual_count: usize) -> &'static str {
     if expected.contains("at least") && actual_count == 0 {
         " You need to provide at least one argument."
-    } else if expected.contains("exactly") && actual_count > expected.split_whitespace().nth(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0) {
+    } else if expected.contains("exactly")
+        && actual_count
+            > expected
+                .split_whitespace()
+                .nth(1)
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(0)
+    {
         " You provided too many arguments - remove the extra ones."
-    } else if expected.contains("exactly") && actual_count < expected.split_whitespace().nth(1).and_then(|s| s.parse::<usize>().ok()).unwrap_or(0) {
+    } else if expected.contains("exactly")
+        && actual_count
+            < expected
+                .split_whitespace()
+                .nth(1)
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(0)
+    {
         " You need to provide more arguments."
     } else {
         ""
@@ -730,13 +942,20 @@ fn generate_type_suggestion(func_name: &str, expected: &str, found: &Value) -> S
 /// Finds the appropriate type suggestion from structured data.
 fn find_type_suggestion(func_name: &str, expected: &str, found: &Value) -> String {
     // Handle special cases first
-    if matches!(found, Value::String(_)) && matches!(func_name, "+" | "-" | "*" | "/" | "mod") && expected.contains("Number") {
-        return "Arithmetic operations require numbers. Convert strings to numbers if needed".to_string();
+    if matches!(found, Value::String(_))
+        && matches!(func_name, "+" | "-" | "*" | "/" | "mod")
+        && expected.contains("Number")
+    {
+        return "Arithmetic operations require numbers. Convert strings to numbers if needed"
+            .to_string();
     }
 
     if func_name == "core/str+" && expected.contains("String") {
         return if let Value::Number(n) = found {
-            format!("Convert the number {} to a string, or ensure all arguments are strings", n)
+            format!(
+                "Convert the number {} to a string, or ensure all arguments are strings",
+                n
+            )
         } else {
             "String concatenation requires all arguments to be strings".to_string()
         };
@@ -747,19 +966,24 @@ fn find_type_suggestion(func_name: &str, expected: &str, found: &Value) -> Strin
         .iter()
         .find(|(name, exp, _)| *name == func_name && *exp == expected)
         .map(|(_, _, suggestion)| suggestion.to_string())
-        .unwrap_or_else(|| "Check the function documentation for expected argument types".to_string())
+        .unwrap_or_else(|| {
+            "Check the function documentation for expected argument types".to_string()
+        })
 }
 
 /// Builds type conversion hints based on found and expected types.
 fn build_conversion_hint(expected: &str, found: &Value) -> &'static str {
     match found {
-        Value::String(_) if expected.contains("Number") =>
-            " Consider parsing the string to a number if it contains numeric data.",
-        Value::Number(_) if expected.contains("String") =>
-            " Consider converting the number to a string representation.",
-        Value::List(_) if !expected.contains("List") =>
-            " If you meant to access a list element, use indexing or list operations.",
-        _ => ""
+        Value::String(_) if expected.contains("Number") => {
+            " Consider parsing the string to a number if it contains numeric data."
+        }
+        Value::Number(_) if expected.contains("String") => {
+            " Consider converting the number to a string representation."
+        }
+        Value::List(_) if !expected.contains("List") => {
+            " If you meant to access a list element, use indexing or list operations."
+        }
+        _ => "",
     }
 }
 
@@ -783,12 +1007,20 @@ fn find_general_error_suggestion(message: &str) -> &'static str {
 /// Builds expression-specific hints for general errors.
 fn build_expression_hint(expr: &Expr) -> &'static str {
     match expr {
-        Expr::List(items, _) if items.is_empty() => " Empty lists may cause issues in some operations.",
-        Expr::List(items, _) if items.len() > 100 => " Very large lists may cause performance issues.",
+        Expr::List(items, _) if items.is_empty() => {
+            " Empty lists may cause issues in some operations."
+        }
+        Expr::List(items, _) if items.len() > 100 => {
+            " Very large lists may cause performance issues."
+        }
         Expr::Number(n, _) if n.is_infinite() => " Infinite values can cause mathematical errors.",
-        Expr::Number(n, _) if n.is_nan() => " NaN (Not a Number) values can propagate through calculations.",
-        Expr::String(s, _) if s.is_empty() => " Empty strings may not be accepted by some operations.",
-        _ => ""
+        Expr::Number(n, _) if n.is_nan() => {
+            " NaN (Not a Number) values can propagate through calculations."
+        }
+        Expr::String(s, _) if s.is_empty() => {
+            " Empty strings may not be accepted by some operations."
+        }
+        _ => "",
     }
 }
 
@@ -813,11 +1045,3 @@ fn build_expression_hint(expr: &Expr) -> &'static str {
 pub fn from_kind(kind: SutraErrorKind, span: Option<Span>) -> SutraError {
     SutraError { kind, span }
 }
-
-
-
-
-
-
-
-

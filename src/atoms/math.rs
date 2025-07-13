@@ -57,20 +57,12 @@ fn arity_error(actual: usize, expected: usize, atom_name: &str) -> SutraError {
 ///
 /// Example:
 ///   (+ 1 2 3) ; => 6
-///
-/// # Safety
-/// Pure, does not mutate state.
 pub const ATOM_ADD: PureAtomFn = |args| {
-    if args.is_empty() {
-        return Ok(Value::Number(0.0));
-    }
-
-    let mut result = 0.0;
+    let mut sum = 0.0;
     for (i, arg) in args.iter().enumerate() {
-        let n = extract_number(arg, Some(i), "+")?;
-        result += n;
+        sum += extract_number(arg, Some(i), "+")?;
     }
-    Ok(Value::Number(result))
+    Ok(Value::Number(sum))
 };
 
 /// Subtracts two numbers.
@@ -82,16 +74,21 @@ pub const ATOM_ADD: PureAtomFn = |args| {
 ///
 /// Example:
 ///   (- 5 2) ; => 3
-///
-/// # Safety
-/// Pure, does not mutate state.
 pub const ATOM_SUB: PureAtomFn = |args| {
-    if args.len() != 2 {
-        return Err(arity_error(args.len(), 2, "-"));
+    if args.is_empty() {
+        return Err(arity_error(args.len(), 1, "-"));
     }
-    let a = extract_number(&args[0], Some(0), "-")?;
-    let b = extract_number(&args[1], Some(1), "-")?;
-    Ok(Value::Number(a - b))
+
+    let first = extract_number(&args[0], Some(0), "-")?;
+    if args.len() == 1 {
+        return Ok(Value::Number(-first));
+    }
+
+    let mut result = first;
+    for (i, arg) in args.iter().enumerate().skip(1) {
+        result -= extract_number(arg, Some(i), "-")?;
+    }
+    Ok(Value::Number(result))
 };
 
 /// Multiplies numbers.
@@ -103,20 +100,12 @@ pub const ATOM_SUB: PureAtomFn = |args| {
 ///
 /// Example:
 ///   (* 2 3 4) ; => 24
-///
-/// # Safety
-/// Pure, does not mutate state.
 pub const ATOM_MUL: PureAtomFn = |args| {
-    if args.is_empty() {
-        return Ok(Value::Number(1.0));
-    }
-
-    let mut result = 1.0;
+    let mut product = 1.0;
     for (i, arg) in args.iter().enumerate() {
-        let n = extract_number(arg, Some(i), "*")?;
-        result *= n;
+        product *= extract_number(arg, Some(i), "*")?;
     }
-    Ok(Value::Number(result))
+    Ok(Value::Number(product))
 };
 
 /// Divides two numbers.
@@ -128,21 +117,29 @@ pub const ATOM_MUL: PureAtomFn = |args| {
 ///
 /// Example:
 ///   (/ 6 2) ; => 3
-///
-/// # Safety
-/// Pure, does not mutate state. Errors on division by zero.
+/// Note: Errors on division by zero.
 pub const ATOM_DIV: PureAtomFn = |args| {
-    if args.len() != 2 {
-        return Err(arity_error(args.len(), 2, "/"));
-    }
-    let a = extract_number(&args[0], Some(0), "/")?;
-    let b = extract_number(&args[1], Some(1), "/")?;
-
-    if b == 0.0 {
-        return Err(simple_error("/: division by zero"));
+    if args.is_empty() {
+        return Err(arity_error(args.len(), 1, "/"));
     }
 
-    Ok(Value::Number(a / b))
+    let first = extract_number(&args[0], Some(0), "/")?;
+    if args.len() == 1 {
+        if first == 0.0 {
+            return Err(simple_error("/: division by zero"));
+        }
+        return Ok(Value::Number(1.0 / first));
+    }
+
+    let mut result = first;
+    for (i, arg) in args.iter().enumerate().skip(1) {
+        let n = extract_number(arg, Some(i), "/")?;
+        if n == 0.0 {
+            return Err(simple_error("/: division by zero"));
+        }
+        result /= n;
+    }
+    Ok(Value::Number(result))
 };
 
 /// Modulo operation.
@@ -155,8 +152,7 @@ pub const ATOM_DIV: PureAtomFn = |args| {
 /// Example:
 ///   (mod 5 2) ; => 1
 ///
-/// # Safety
-/// Pure, does not mutate state. Errors on division by zero or non-integer input.
+/// Note: Errors on division by zero or non-integer input.
 pub const ATOM_MOD: PureAtomFn = |args| {
     if args.len() != 2 {
         return Err(arity_error(args.len(), 2, "mod"));
@@ -168,11 +164,7 @@ pub const ATOM_MOD: PureAtomFn = |args| {
         return Err(simple_error("mod: modulo by zero"));
     }
 
-    if a.fract() != 0.0 || b.fract() != 0.0 {
-        return Err(simple_error("mod: expects integer arguments"));
-    }
-
-    Ok(Value::Number((a as i64 % b as i64) as f64))
+    Ok(Value::Number(a % b))
 };
 
 // ============================================================================
@@ -189,9 +181,6 @@ pub const ATOM_MOD: PureAtomFn = |args| {
 /// Example:
 ///   (abs -5) ; => 5
 ///   (abs 3.14) ; => 3.14
-///
-/// # Safety
-/// Pure, does not mutate state.
 pub const ATOM_ABS: PureAtomFn = |args| {
     if args.len() != 1 {
         return Err(arity_error(args.len(), 1, "abs"));
@@ -209,9 +198,6 @@ pub const ATOM_ABS: PureAtomFn = |args| {
 ///
 /// Example:
 ///   (min 3 1 4) ; => 1
-///
-/// # Safety
-/// Pure, does not mutate state.
 pub const ATOM_MIN: PureAtomFn = |args| {
     if args.is_empty() {
         return Err(simple_error("min: requires at least 1 argument"));
@@ -234,9 +220,6 @@ pub const ATOM_MIN: PureAtomFn = |args| {
 ///
 /// Example:
 ///   (max 3 1 4) ; => 4
-///
-/// # Safety
-/// Pure, does not mutate state.
 pub const ATOM_MAX: PureAtomFn = |args| {
     if args.is_empty() {
         return Err(simple_error("max: requires at least 1 argument"));

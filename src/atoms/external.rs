@@ -15,9 +15,8 @@
 //! - **Minimal External Dependencies**: Simple implementations
 
 use crate::ast::value::Value;
-use crate::atoms::helpers::*;
-use crate::atoms::AtomFn;
-use crate::runtime::eval::EvalContext;
+use crate::atoms::StatefulAtomFn;
+use crate::syntax::error::SutraError;
 
 // ============================================================================
 // I/O OPERATIONS
@@ -35,21 +34,13 @@ use crate::runtime::eval::EvalContext;
 ///
 /// # Safety
 /// Emits output, does not mutate world state.
-pub const ATOM_PRINT: AtomFn = |args, context, parent_span| {
-    eval_unary_value_op(
-        args,
-        context,
-        parent_span,
-        |val: Value,
-         world: crate::runtime::world::World,
-         parent_span: &crate::ast::Span,
-         context: &mut EvalContext<'_, '_>|
-         -> Result<(Value, crate::runtime::world::World), crate::syntax::error::SutraError> {
-            context.output.emit(&val.to_string(), Some(parent_span));
-            Ok((Value::Nil, world)) // Return Nil so the engine does not print again
-        },
-        "print",
-    )
+pub const ATOM_PRINT: StatefulAtomFn = |args, context| {
+    // Minimal: only print first argument if present
+    if !args.is_empty() {
+        context.output.emit(&args[0].to_string(), None);
+    }
+
+    Ok(Value::Nil)
 };
 
 // ============================================================================
@@ -69,27 +60,22 @@ pub const ATOM_PRINT: AtomFn = |args, context, parent_span| {
 /// # Safety
 /// Pure random generation, does not mutate world state.
 /// Uses a simple pseudo-random generator based on system time.
-pub const ATOM_RAND: AtomFn = |args, context, parent_span| {
+pub const ATOM_RAND: StatefulAtomFn = |args, context| {
     if !args.is_empty() {
-        return Err(arity_error(Some(parent_span.clone()), args, "rand", 0));
+        return Err(SutraError {
+            kind: crate::syntax::error::SutraErrorKind::Eval(crate::syntax::error::EvalError {
+                message: format!("rand: expected 0 arguments, got {}", args.len()),
+                expanded_code: String::new(),
+                original_code: None,
+                suggestion: None,
+            }),
+            span: None,
+        });
     }
 
-    // Generate pseudo-random number using system time as seed
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    let nanos = duration.as_nanos();
-
-    let mut hasher = DefaultHasher::new();
-    nanos.hash(&mut hasher);
-    let hash = hasher.finish();
-
-    // Convert to 0.0..1.0 range
-    let random_value = (hash as f64) / (u64::MAX as f64);
-
-    Ok((Value::Number(random_value), context.world.clone()))
+    let n = context.rng.next_u32();
+    let random_value = (n as f64) / (u32::MAX as f64);
+    Ok(Value::Number(random_value))
 };
 
 // ============================================================================
@@ -99,9 +85,9 @@ pub const ATOM_RAND: AtomFn = |args, context, parent_span| {
 /// Registers all external interface atoms with the given registry.
 pub fn register_external_atoms(registry: &mut crate::atoms::AtomRegistry) {
     // I/O operations
-    registry.register("print", crate::atoms::Atom::Legacy(ATOM_PRINT));
-    registry.register("core/print", crate::atoms::Atom::Legacy(ATOM_PRINT));
+    registry.register("print", crate::atoms::Atom::Stateful(ATOM_PRINT));
+    registry.register("core/print", crate::atoms::Atom::Stateful(ATOM_PRINT));
 
     // Randomness
-    registry.register("rand", crate::atoms::Atom::Legacy(ATOM_RAND));
+    registry.register("rand", crate::atoms::Atom::Stateful(ATOM_RAND));
 }

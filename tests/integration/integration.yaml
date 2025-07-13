@@ -15,7 +15,7 @@
   style: list
   input: |
     (define (test_macro x y) (+ x y))
-    (print (test_macro 5 3))
+    (test_macro 5 3)
   expected: "8"
 
 - name: Integration List Length
@@ -25,22 +25,21 @@
 
 - name: Integration String Concatenation
   style: list
-  input: (print (core/str+ "Hello" " " "World"))
+  input: (core/str+ "Hello" " " "World")
   expected: "Hello World"
 
 - name: Integration Variable Set and Get
   style: list
   input: |
     (set! integration_test_var 42)
-    (print (get integration_test_var))
+    integration_test_var
   expected: "42"
 
 - name: Integration Control Flow Do
   style: list
   input: |
-    (do
-      (print "First action")
-      (print "Final result"))
+    (print "First action")
+    (print "Final result")
   expected: |
     First action
     Final result
@@ -51,32 +50,32 @@
   expected: "()"
 - name: Integration Edge Case Empty String Concatenation
   style: list
-  input: (print (core/str+))
+  input: (core/str+)
   expected: ""
 
 - name: Integration Macro Atom Double
   style: list
   input: |
     (define (double x) (* x 2))
-    (print (double 5))
+    (double 5)
   expected: "10"
 - name: Integration Macro Atom Double Second Call
   style: list
   input: |
     (define (double x) (* x 2))
-    (print (double 10))
+    (double 10)
   expected: "20"
 - name: Integration Macro Atom Is Positive
   style: list
   input: |
     (define (is_positive x) (gt? x 0))
-    (print (is_positive 5))
+    (is_positive 5)
   expected: "true"
 - name: Integration Macro Atom Is Negative
   style: list
   input: |
     (define (is_positive x) (gt? x 0))
-    (print (is_positive -3))
+    (is_positive -3)
   expected: "false"
 - name: Integration Macro Atom Store And Get
   style: list
@@ -84,8 +83,8 @@
     (define (store_and_get key value)
       (do
         (set! key value)
-        (get key)))
-    (print (store_and_get test.item "stored_value"))
+        key))
+    (store_and_get test.item "stored_value")
   expected: "stored_value"
 - name: Integration Macro Atom Calculate And Store
   style: list
@@ -93,6 +92,6 @@
     (define (calculate_and_store x y)
       (do
         (set! result (+ x y))
-        (print (get result))))
+        result))
     (calculate_and_store 10 20)
   expected: "30"

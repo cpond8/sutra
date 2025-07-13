@@ -1,28 +1,30 @@
-//! # Sutra Atom System
-//!
-//! This module provides the atom system for the Sutra language engine.
-//! Atoms are the primitive operations that form the foundation of all computation.
-//!
-//! ## Module Structure
-//!
-//! - **`helpers`**: Shared infrastructure for all atoms
-//! - **`math`**: Mathematical operations (`+`, `-`, `*`, `/`, etc.)
-//! - **`logic`**: Logic and comparison operations (`eq?`, `not`, etc.)
-//! - **`world`**: World state management (`core/set!`, `core/get`, etc.)
-//! - **`collections`**: Collection operations (`list`, `len`, etc.)
-//! - **`execution`**: Execution control (`do`, `error`, `apply`)
-//! - **`external`**: External interface (`print`, `rand`)
-//!
-//! ## Design Principles
-//!
-//! - **Minimal Coupling**: Each domain module depends only on `helpers`
-//! - **Clear Responsibilities**: Each module has a single, well-defined purpose
-//! - **Consistent Interface**: All atoms use the same `AtomFn` signature
+// # Sutra Atom System
+//
+// This module provides the atom system for the Sutra language engine.
+// Atoms are the primitive operations that form the foundation of all computation.
+//
+// ## Module Structure
+//
+// - **`helpers`**: Shared infrastructure for all atoms
+// - **`math`**: Mathematical operations (`+`, `-`, `*`, `/`, etc.)
+// - **`logic`**: Logic and comparison operations (`eq?`, `not`, etc.)
+// - **`world`**: World state management (`core/set!`, `core/get`, etc.)
+// - **`collections`**: Collection operations (`list`, `len`, etc.)
+// - **`execution`**: Execution control (`do`, `error`, `apply`)
+// - **`external`**: External interface (`print`, `rand`)
+//
+// ## Design Principles
+//
+// - **Minimal Coupling**: Each domain module depends only on `helpers`
+// - **Clear Responsibilities**: Each module has a single, well-defined purpose
+
+// - **Consistent Interface**: All atoms use the same `AtomFn` signature
 
 use crate::ast::value::Value;
 use crate::ast::AstNode;
 use crate::ast::Span;
 use crate::runtime::eval::EvalContext;
+use crate::runtime::context::ExecutionContext;
 use crate::runtime::world::World;
 use crate::syntax::error::SutraError;
 use im::HashMap;
@@ -50,10 +52,10 @@ pub type PureAtomFn = fn(args: &[Value]) -> Result<Value, SutraError>;
 
 /// Stateful atoms: need limited state access via Context facade
 pub type StatefulAtomFn =
-    fn(args: &[Value], context: &mut dyn StateContext) -> Result<(Value, World), SutraError>;
+    fn(args: &[Value], context: &mut ExecutionContext) -> Result<Value, SutraError>;
 
-/// Legacy atoms: for incremental migration only (will be removed)
-pub type LegacyAtomFn = fn(
+/// Special Form atoms: for atoms that need to control their own argument evaluation
+pub type SpecialFormAtomFn = fn(
     args: &[AstNode],
     context: &mut EvalContext,
     parent_span: &Span,
@@ -64,15 +66,26 @@ pub type LegacyAtomFn = fn(
 pub enum Atom {
     Pure(PureAtomFn),
     Stateful(StatefulAtomFn),
-    Legacy(LegacyAtomFn), // Remove after migration
+    SpecialForm(SpecialFormAtomFn),
 }
 
 /// Minimal state interface for stateful atoms
 pub trait StateContext {
-    fn get_value(&self, path: &crate::runtime::path::Path) -> Option<Value>;
-    fn set_value(&mut self, path: &crate::runtime::path::Path, value: Value);
-    fn delete_value(&mut self, path: &crate::runtime::path::Path);
+    fn get(&self, path: &crate::runtime::path::Path) -> Option<&Value>;
+    fn set(&mut self, path: &crate::runtime::path::Path, value: Value);
+    fn del(&mut self, path: &crate::runtime::path::Path);
     fn exists(&self, path: &crate::runtime::path::Path) -> bool;
+}
+
+/// Polymorphic invocation interface for all callable entities
+/// This trait enables uniform invocation of atoms, macros, and future callable types
+pub trait Callable {
+    fn call(
+        &self,
+        args: &[Value],
+        context: &mut ExecutionContext,
+        current_world: &World,
+    ) -> Result<(Value, World), SutraError>;
 }
 
 // Output sink for `print`, etc., to make I/O testable and injectable.
@@ -167,4 +180,48 @@ pub fn register_all_atoms(registry: &mut AtomRegistry) {
     collections::register_collection_atoms(registry);
     execution::register_execution_atoms(registry);
     external::register_external_atoms(registry);
+}
+
+// ============================================================================
+// CALLABLE TRAIT IMPLEMENTATIONS
+// ============================================================================
+
+impl Callable for Atom {
+    fn call(
+        &self,
+        args: &[Value],
+        context: &mut ExecutionContext,
+        current_world: &World,
+    ) -> Result<(Value, World), SutraError> {
+        match self {
+            Atom::Pure(pure_fn) => {
+                let result = pure_fn(args)?;
+                // Pure atoms don't modify world state, so return the current world unchanged
+                Ok((result, current_world.clone()))
+            }
+            Atom::Stateful(stateful_fn) => {
+                let result = stateful_fn(args, context)?;
+                // The world is mutated in place via the context, so we just return it.
+                Ok((result, current_world.clone()))
+            }
+            Atom::SpecialForm(_) => {
+                // SpecialForm atoms cannot be called through the Callable interface
+                // They require AstNode arguments and EvalContext
+                use crate::ast::Expr;
+                use std::sync::Arc;
+                let dummy_node = AstNode {
+                    value: Arc::new(Expr::Symbol(
+                        "special_form_atom".to_string(),
+                        crate::ast::Span::default(),
+                    )),
+                    span: crate::ast::Span::default(),
+                };
+                Err(crate::syntax::error::eval_general_error(
+                    None,
+                    &dummy_node,
+                    "Special Form atoms cannot be called through Callable interface - use direct dispatch instead"
+                ))
+            }
+        }
+    }
 }

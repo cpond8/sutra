@@ -11,7 +11,8 @@
 // The atom registry is a single source of truth and must be passed by reference to all validation and evaluation code. Never construct a local/hidden registry.
 use crate::ast::value::Value;
 use crate::ast::{AstNode, Expr, WithSpan};
-use crate::atoms::{AtomRegistry, OutputSink};
+use crate::atoms::{AtomRegistry, Callable, OutputSink};
+use crate::runtime::context::ExecutionContext;
 use crate::runtime::world::World;
 use crate::syntax::error::{
     eval_arity_error, eval_general_error, eval_type_error, recursion_depth_error, SutraError,
@@ -52,10 +53,46 @@ impl EvalContext<'_, '_> {
         self.depth + 1
     }
 
+    /// Resolves a symbol name to a callable entity (atom or macro).
+    /// Returns a boxed Callable trait object for polymorphic invocation.
+    pub fn resolve_callable(&self, symbol_name: &str) -> Option<Box<dyn Callable>> {
+        // First, try to resolve as an atom
+        if let Some(atom) = self.atom_registry.get(symbol_name) {
+            return Some(Box::new(atom.clone()));
+        }
+
+        // TODO: Add macro resolution when macro registry is available in EvalContext
+        // For now, only atoms are supported through the Callable interface
+
+        None
+    }
+
+    /// Polymorphic invocation through the Callable trait.
+    /// This method enables uniform calling of atoms, macros, and future callable types.
+    pub fn call_polymorphic(
+        &mut self,
+        callable: Box<dyn Callable>,
+        args: &[Value],
+    ) -> Result<(Value, World), SutraError> {
+        let mut world_context = self.world.clone();
+        let (result, new_world) = {
+            let mut exec_context = ExecutionContext {
+                state: &mut world_context.state,
+                output: self.output,
+                rng: &mut world_context.prng,
+            };
+            callable.call(args, &mut exec_context, self.world)?
+        };
+
+        // Use the returned world state
+        Ok((result, new_world))
+    }
+
     /// Looks up and invokes an atom by name, handling errors for missing atoms.
     pub fn call_atom(
         &mut self,
         atom_name: &str,
+        head: &AstNode,
         args: &[AstNode],
         span: &crate::ast::Span,
     ) -> Result<(Value, World), SutraError> {
@@ -64,22 +101,35 @@ impl EvalContext<'_, '_> {
             return Err(sutra_error!(
                 general,
                 Some(span.clone()),
-                &args[0],
+                head,
                 &format!("Undefined atom: '{}'", atom_name)
             ));
         };
 
         // Dispatch to the correct atom type.
         match atom {
-            // The legacy path, for atoms not yet migrated.
-            crate::atoms::Atom::Legacy(legacy_fn) => {
-                legacy_fn(args, self, span)
-            }
+            // The special form path, for atoms that control their own evaluation.
+            crate::atoms::Atom::SpecialForm(special_form_fn) => special_form_fn(args, self, span),
 
             // The new path for atoms that need to interact with the world state.
-            crate::atoms::Atom::Stateful(_stateful_fn) => {
-                // TODO: Implement stateful dispatch
-                todo!("Stateful atoms not yet implemented")
+            crate::atoms::Atom::Stateful(stateful_fn) => {
+                // Convert AstNodes to Values for stateful atoms
+                let mut values = Vec::new();
+                for arg in args {
+                    let (val, _) = eval_expr(arg, self)?;
+                    values.push(val);
+                }
+                // Create a mutable reference to world for state modifications
+                let mut world_context = self.world.clone();
+                let result = {
+                    let mut exec_context = ExecutionContext {
+                        state: &mut world_context.state,
+                        output: self.output,
+                        rng: &mut world_context.prng,
+                    };
+                    stateful_fn(&values, &mut exec_context)?
+                };
+                Ok((result, world_context))
             }
 
             // The new path for pure functions that have no side effects.
@@ -175,10 +225,7 @@ fn eval_invalid_expr(expr: &AstNode) -> Result<(Value, World), SutraError> {
 ///
 /// # Note
 /// This is a low-level, internal function. Most users should use the higher-level `eval` API.
-pub fn eval_expr(
-    expr: &AstNode,
-    context: &mut EvalContext,
-) -> Result<(Value, World), SutraError> {
+pub fn eval_expr(expr: &AstNode, context: &mut EvalContext) -> Result<(Value, World), SutraError> {
     if context.depth > context.max_depth {
         return Err(sutra_error!(recursion, Some(expr.span.clone())));
     }
@@ -187,12 +234,30 @@ pub fn eval_expr(
         // Complex expression types with dedicated handlers
         Expr::List(items, span) => eval_list(items, span, context),
         Expr::Quote(inner, _) => eval_quote(inner, context, expr),
-        Expr::If { condition, then_branch, else_branch, .. } => {
-            eval_if(condition, then_branch, else_branch, context)
-        }
-        Expr::Define { .. } => {
-            // TODO: Handle define expressions
-            Err(sutra_error!(general, Some(expr.span.clone()), expr, "Define expressions not yet implemented"))
+        Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => eval_if(condition, then_branch, else_branch, context),
+        Expr::Define { name, params, body, .. } => {
+            // If params are not empty, it's a function/macro definition.
+            if !params.required.is_empty() || params.rest.is_some() {
+                let mut new_world = context.world.clone();
+                let template = crate::macros::MacroTemplate::new(params.clone(), body.clone())?;
+                new_world.macros = new_world.macros.with_user_macro(
+                    name.clone(),
+                    crate::macros::MacroDef::Template(template),
+                );
+                Ok((Value::Nil, new_world))
+            } else {
+                // It's a variable definition.
+                let (value, world) = eval_expr(body, context)?;
+                let new_world = world;
+                let path = crate::runtime::path::Path(vec![name.clone()]);
+                new_world.state.set(&path, value.clone());
+                Ok((value, new_world))
+            }
         }
 
         // Literal value types
@@ -201,9 +266,7 @@ pub fn eval_expr(
         }
 
         // Invalid expression types
-        Expr::ParamList(..) | Expr::Symbol(..) | Expr::Spread(..) => {
-            eval_invalid_expr(expr)
-        }
+        Expr::ParamList(..) | Expr::Symbol(..) | Expr::Spread(..) => eval_invalid_expr(expr),
     }
 }
 
@@ -232,6 +295,7 @@ pub fn eval(
 // --- Core Expression Handlers ---
 
 /// Helper for evaluating Expr::List arms.
+/// Helper for evaluating Expr::List arms using polymorphic dispatch.
 fn eval_list(
     items: &[AstNode],
     span: &crate::ast::Span,
@@ -241,21 +305,37 @@ fn eval_list(
         return wrap_value_with_world(Value::List(vec![]), context.world);
     }
 
-    // Extract atom name using guard clause pattern
+    // Extract symbol name using guard clause pattern
     let head = &items[0];
     let tail = &items[1..];
-    let Expr::Symbol(atom_name, _) = &*head.value else { // FIX: only one deref for Arc<Expr>
+    let Expr::Symbol(symbol_name, _) = &*head.value else {
         return Err(sutra_error!(
             arity,
             Some(head.span.clone()),
             items,
             "eval",
-            "first element must be a symbol naming an atom"
+            "first element must be a symbol naming a callable entity"
         ));
     };
 
-    let flat_tail = flatten_spread_args(tail, context)?;
-    context.call_atom(atom_name, &flat_tail, span)
+    // Try polymorphic resolution first
+    if let Some(callable) = context.resolve_callable(symbol_name) {
+        // Pre-evaluate arguments for polymorphic call
+        let flat_tail = flatten_spread_args(tail, context)?;
+        let mut arg_values = Vec::new();
+        for arg in &flat_tail {
+            let (val, _) = eval_expr(arg, context)?;
+            arg_values.push(val);
+        }
+
+        // Use polymorphic invocation
+        context.call_polymorphic(callable, &arg_values)
+    } else {
+        // Fall back to legacy atom resolution for backward compatibility
+        // This path will be removed as more entities implement Callable
+        let flat_tail = flatten_spread_args(tail, context)?;
+        context.call_atom(symbol_name, head, &flat_tail, span)
+    }
 }
 
 /// Helper for evaluating Expr::Quote arms.
@@ -346,10 +426,7 @@ fn eval_quoted_expr(expr: &AstNode) -> Result<Value, SutraError> {
 
 /// Evaluates a quoted list by converting each element to a value.
 fn eval_quoted_list(exprs: &[AstNode]) -> Result<Value, SutraError> {
-    let vals: Result<Vec<_>, SutraError> = exprs
-        .iter()
-        .map(eval_quoted_expr)
-        .collect();
+    let vals: Result<Vec<_>, SutraError> = exprs.iter().map(eval_quoted_expr).collect();
     Ok(Value::List(vals?))
 }
 
@@ -384,7 +461,8 @@ fn flatten_spread_args(
 
     for arg in tail {
         // Guard clause: handle non-spread expressions immediately
-        let Expr::Spread(expr) = &*arg.value else { // FIX: only one deref for Arc<Expr>
+        let Expr::Spread(expr) = &*arg.value else {
+            // FIX: only one deref for Arc<Expr>
             flat_tail.push(arg.clone());
             continue;
         };
