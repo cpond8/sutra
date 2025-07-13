@@ -31,7 +31,6 @@ pub fn run() {
         Command::Macroexpand { file } => handle_macroexpand(&file),
         Command::Format { file } => handle_format(&file),
         Command::Test { path } => handle_test(&path),
-        Command::GenExpected { path } => handle_gen_expected(&path),
     };
 
     if let Err(e) = result {
@@ -503,56 +502,4 @@ fn handle_test(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>>
     }
 
     Ok(())
-}
-
-// --- Utility Commands: test setup and file generation ---
-
-/// Processes a single file for expected output generation.
-fn process_single_file(
-    path: &std::path::Path,
-    config: &crate::test_utils::TestConfig,
-) -> Result<(), Box<dyn std::error::Error>> {
-    crate::test_utils::generate_expected_output(path, config)?;
-    println!("Generated expected output for {}", path.display());
-    Ok(())
-}
-
-/// Processes a directory for expected output generation.
-fn process_directory(
-    path: &std::path::Path,
-    config: &crate::test_utils::TestConfig,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let test_cases = crate::test_utils::discover_test_cases(path)?;
-    for case in test_cases {
-        if let Err(e) = crate::test_utils::generate_expected_output(&case.sutra_file, config) {
-            eprintln!("Failed for {}: {}", case.sutra_file.display(), e);
-            continue;
-        }
-        println!(
-            "Generated expected output for {}",
-            case.sutra_file.display()
-        );
-    }
-    Ok(())
-}
-
-/// Handles the `gen-expected` subcommand.
-fn handle_gen_expected(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
-    use crate::test_utils::TestConfig;
-
-    let config = TestConfig::default();
-
-    // Guard clause: handle single .sutra file
-    if path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("sutra") {
-        return process_single_file(path, &config);
-    }
-
-    // Guard clause: handle invalid path
-    if !path.is_dir() {
-        eprintln!("Path must be a .sutra file or directory");
-        return Ok(());
-    }
-
-    // Handle directory
-    process_directory(path, &config)
 }

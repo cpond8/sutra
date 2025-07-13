@@ -1,0 +1,42 @@
+# Integration Tests - Error Handling
+# Tests for comprehensive error scenarios and edge cases
+
+- name: "division by zero error"
+  input: "(/ 5 0)"
+  expect_error_code: "EVAL_ERROR"
+
+- name: "undefined symbol error"
+  input: "(undefined-symbol)"
+  expect_error_code: "EVAL_ERROR"
+
+- name: "type error in arithmetic"
+  input: '(+ 5 "string")'
+  expect_error_code: "TYPE_ERROR"
+
+- name: "arity error in function call"
+  input: "(len 1 2 3)"
+  expect_error_code: "ARITY_ERROR"
+
+- name: "nested error propagation"
+  input: "(+ 1 (/ 10 0))"
+  expect_error_code: "EVAL_ERROR"
+
+- name: "malformed parse input"
+  input: "(list 1 2"
+  expect_error_code: "PARSE_ERROR"
+
+- name: "invalid escape sequence"
+  input: '"\\invalid"'
+  expect_error_code: "PARSE_ERROR"
+
+- name: "macro expansion error"
+  input: "(set!)"
+  expect_error_code: "ARITY_ERROR"
+
+- name: "world state type error"
+  input: "(core/get 42)"
+  expect_error_code: "TYPE_ERROR"
+
+- name: "collection operation type error"
+  input: "(len 42)"
+  expect_error_code: "TYPE_ERROR"

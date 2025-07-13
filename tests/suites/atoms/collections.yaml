@@ -1,0 +1,79 @@
+# Collection Atom Tests
+# Tests for collection operations and list manipulation
+
+- name: "create list"
+  input: "(list 1 2 3)"
+  expected: "(1 2 3)"
+
+- name: "create empty list"
+  input: "(list)"
+  expected: "()"
+
+- name: "list with mixed types"
+  input: '(list 1 "hello" true)'
+  expected: '(1 "hello" true)'
+
+- name: "list length"
+  input: "(len (list 1 2 3 4))"
+  expected: "4"
+
+- name: "empty list length"
+  input: "(len ())"
+  expected: "0"
+
+- name: "string length"
+  input: '(len "hello")'
+  expected: "5"
+
+- name: "has element true"
+  input: "(has? (list 1 2 3) 2)"
+  expected: "true"
+
+- name: "has element false"
+  input: "(has? (list 1 2 3) 4)"
+  expected: "false"
+
+- name: "has in string should error"
+  input: '(has? "hello" "ell")'
+  expect_error_code: "TYPE_ERROR"
+
+- name: "string concatenation with str+"
+  input: '(str+ "hello" " " "world")'
+  expected: '"hello world"'
+
+- name: "string concatenation with core/str+"
+  input: '(core/str+ "hello" " " "world")'
+  expected: '"hello world"'
+
+- name: "core push to list"
+  input: "(do (core/set! x (list 1 2)) (core/push! x 3) x)"
+  expected: "(1 2 3)"
+
+- name: "core pull from list"
+  input: "(do (core/set! x (list 1 2 3)) (core/pull! x 2) x)"
+  expected: "(1 3)"
+
+- name: "core pull returns removed element"
+  input: "(do (core/set! x (list 1 2 3)) (core/pull! x 1))"
+  expected: "2"
+
+# Error cases
+- name: "len wrong arity"
+  input: "(len)"
+  expect_error_code: "ARITY_ERROR"
+
+- name: "len type error"
+  input: "(len 42)"
+  expect_error_code: "TYPE_ERROR"
+
+- name: "has wrong arity"
+  input: "(has? (list 1 2))"
+  expect_error_code: "ARITY_ERROR"
+
+- name: "core push to non-list"
+  input: "(core/push! 42 1)"
+  expect_error_code: "TYPE_ERROR"
+
+- name: "core pull from empty list"
+  input: "(core/pull! () 0)"
+  expect_error_code: "EVAL_ERROR"

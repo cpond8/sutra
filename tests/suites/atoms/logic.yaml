@@ -1,0 +1,120 @@
+# Logic Atom Tests
+# Tests for logical operations and comparison atoms
+
+- name: "equality true"
+  input: "(eq? 5 5)"
+  expected: "true"
+
+- name: "equality false"
+  input: "(eq? 5 3)"
+  expected: "false"
+
+- name: "equality strings"
+  input: '(eq? "hello" "hello")'
+  expected: "true"
+
+- name: "equality different types"
+  input: '(eq? 5 "5")'
+  expected: "false"
+
+- name: "greater than true"
+  input: "(gt? 5 3)"
+  expected: "true"
+
+- name: "greater than false"
+  input: "(gt? 3 5)"
+  expected: "false"
+
+- name: "greater than equal"
+  input: "(gt? 5 5)"
+  expected: "false"
+
+- name: "less than true"
+  input: "(lt? 3 5)"
+  expected: "true"
+
+- name: "less than false"
+  input: "(lt? 5 3)"
+  expected: "false"
+
+- name: "greater than or equal true"
+  input: "(gte? 5 5)"
+  expected: "true"
+
+- name: "greater than or equal false"
+  input: "(gte? 3 5)"
+  expected: "false"
+
+- name: "less than or equal true"
+  input: "(lte? 5 5)"
+  expected: "true"
+
+- name: "less than or equal false"
+  input: "(lte? 5 3)"
+  expected: "false"
+
+- name: "logical not true"
+  input: "(not true)"
+  expected: "false"
+
+- name: "logical not false"
+  input: "(not false)"
+  expected: "true"
+
+- name: "logical not truthy value"
+  input: "(not 5)"
+  expected: "false"
+
+- name: "logical not empty list"
+  input: "(not ())"
+  expected: "true"
+
+# Trivial truth cases (per language reference)
+- name: "eq trivial single argument"
+  input: "(eq? 5)"
+  expected: "true"
+
+- name: "eq trivial no arguments"
+  input: "(eq?)"
+  expected: "true"
+
+- name: "gt trivial single argument"
+  input: "(gt? 5)"
+  expected: "true"
+
+- name: "gt trivial no arguments"
+  input: "(gt?)"
+  expected: "true"
+
+- name: "lt trivial single argument"
+  input: "(lt? 5)"
+  expected: "true"
+
+- name: "lt trivial no arguments"
+  input: "(lt?)"
+  expected: "true"
+
+# Multi-argument comparisons
+- name: "eq multiple arguments all equal"
+  input: "(eq? 5 5 5)"
+  expected: "true"
+
+- name: "eq multiple arguments not all equal"
+  input: "(eq? 5 5 3)"
+  expected: "false"
+
+- name: "gt multiple arguments chain true"
+  input: "(gt? 5 3 1)"
+  expected: "true"
+
+- name: "gt multiple arguments chain false"
+  input: "(gt? 5 3 4)"
+  expected: "false"
+
+- name: "comparison type error"
+  input: '(gt? 5 "string")'
+  expect_error_code: "TYPE_ERROR"
+
+- name: "not wrong arity"
+  input: "(not true false)"
+  expect_error_code: "ARITY_ERROR"

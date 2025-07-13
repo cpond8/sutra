@@ -67,10 +67,4 @@ pub enum Command {
         #[arg(required = true)]
         file: PathBuf,
     },
-    /// Generate .expected output for a .sutra file or all in a directory
-    GenExpected {
-        /// The path to a .sutra file or directory containing .sutra files
-        #[arg(required = true)]
-        path: PathBuf,
-    },
 }

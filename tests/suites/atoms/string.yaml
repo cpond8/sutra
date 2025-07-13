@@ -1,0 +1,51 @@
+# String Atom Tests
+# Tests for string manipulation and conversion atoms
+
+- name: "str convert number"
+  input: "(str 42)"
+  expected: '"42"'
+
+- name: "str convert boolean true"
+  input: "(str true)"
+  expected: '"true"'
+
+- name: "str convert boolean false"
+  input: "(str false)"
+  expected: '"false"'
+
+- name: "str convert nil"
+  input: "(str nil)"
+  expected: '"nil"'
+
+- name: "str convert string identity"
+  input: '(str "hello")'
+  expected: '"hello"'
+
+- name: "str convert list"
+  input: "(str (list 1 2 3))"
+  expected: '"(1 2 3)"'
+
+- name: "str+ concatenate two strings"
+  input: '(str+ "hello" " world")'
+  expected: '"hello world"'
+
+- name: "str+ concatenate multiple strings"
+  input: '(str+ "a" "b" "c" "d")'
+  expected: '"abcd"'
+
+- name: "str+ empty string"
+  input: '(str+ "")'
+  expected: '""'
+
+- name: "str+ no arguments"
+  input: "(str+)"
+  expected: '""'
+
+# Error cases
+- name: "str wrong arity"
+  input: "(str)"
+  expect_error_code: "ARITY_ERROR"
+
+- name: "str too many args"
+  input: '(str "a" "b")'
+  expect_error_code: "ARITY_ERROR"

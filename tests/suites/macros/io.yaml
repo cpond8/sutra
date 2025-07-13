@@ -1,0 +1,21 @@
+# Macro Tests - I/O Operations
+# Tests for I/O and display macros
+
+- name: "print string output"
+  input: '(print "hello")'
+  expected: "hello"
+
+- name: "print number output"
+  input: "(print 42)"
+  expected: "42"
+
+- name: "print boolean output"
+  input: "(print true)"
+  expected: "true"
+
+- name: "print list output"
+  input: "(print (list 1 2 3))"
+  expected: "(1 2 3)"
+
+# Note: display macro is implemented in macros.sutra and may not be available
+# depending on the macro loading system

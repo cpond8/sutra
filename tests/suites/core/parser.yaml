@@ -1,0 +1,71 @@
+# Core Engine Tests
+# Tests for fundamental engine operations from the end-user perspective
+
+- name: "evaluate simple number"
+  input: "42"
+  expected: "42"
+
+- name: "evaluate negative number"
+  input: "-17"
+  expected: "-17"
+
+- name: "evaluate floating point"
+  input: "3.14"
+  expected: "3.14"
+
+- name: "evaluate boolean true"
+  input: "true"
+  expected: "true"
+
+- name: "evaluate boolean false"
+  input: "false"
+  expected: "false"
+
+- name: "evaluate string literal"
+  input: '"hello world"'
+  expected: '"hello world"'
+
+- name: "evaluate string with escapes"
+  input: '"hello\nworld\ttab"'
+  expected: '"hello\nworld\ttab"'
+
+- name: "evaluate simple arithmetic"
+  input: "(+ 1 2)"
+  expected: "3"
+
+- name: "evaluate nested arithmetic"
+  input: "(+ (* 2 3) 4)"
+  expected: "10"
+
+- name: "evaluate block syntax"
+  input: "{ + 1 2 }"
+  expected: "3"
+
+- name: "evaluate empty list"
+  input: "()"
+  expected: "()"
+
+- name: "evaluate empty block"
+  input: "{}"
+  expected: "()"
+
+# Error cases - what users actually encounter
+- name: "undefined symbol error"
+  input: "my-symbol"
+  expect_error_code: "EVAL_ERROR"
+
+- name: "syntax error unclosed string"
+  input: '"unclosed string'
+  expect_error_code: "PARSE_ERROR"
+
+- name: "syntax error unclosed list"
+  input: "(+ 1 2"
+  expect_error_code: "PARSE_ERROR"
+
+- name: "syntax error unclosed block"
+  input: "{ + 1 2"
+  expect_error_code: "PARSE_ERROR"
+
+- name: "syntax error invalid escape sequence"
+  input: '"invalid\qescape"'
+  expect_error_code: "PARSE_ERROR"

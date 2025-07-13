@@ -1,5 +1,11 @@
+
+
+# Sutra test workflow: idiomatic Rust approach
+# Run tests with:
+#   cargo comprehensive-test [category] [suite]
+
 [alias]
-test = "test --features test-atom"
+comprehensive-test = "run --bin test_runner"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

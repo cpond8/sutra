@@ -25,8 +25,6 @@ use walkdir::WalkDir;
 #[derive(Debug, Deserialize)]
 pub struct TestCase {
     pub name: String,
-    #[allow(dead_code)]
-    pub style: String,
     pub input: String,
     pub expected: Option<String>,
     pub expect_error: Option<String>,
