@@ -9,6 +9,7 @@ use thiserror::Error;
 
 use crate::ast::value::Value;
 use crate::ast::{AstNode, Span};
+use unicode_segmentation::UnicodeSegmentation;
 
 // =============================================================================
 // SECTION 2: CORE DATA STRUCTURES
@@ -353,16 +354,38 @@ impl crate::ast::Span {
         Some((start_line_col, end_line_col))
     }
 
+    /// Converts a byte offset to a (line, visual_column) tuple.
+    ///
+    /// This function correctly handles Unicode grapheme clusters and expands tabs
+    /// to a fixed width, ensuring that the returned column number reflects the
+    /// visual position on screen, not just the character or byte count.
+    ///
+    /// - **Unicode:** Uses `unicode-segmentation` to iterate over grapheme clusters,
+    ///   so multi-byte characters like "👍" count as a single visual unit.
+    /// - **Tabs:** Expands `\t` characters to `TAB_WIDTH` spaces, adjusting the
+    ///   column count accordingly.
+    ///
+    /// # Arguments
+    /// * `source` - The source string to analyze.
+    /// * `offset` - The byte offset to convert.
+    ///
+    /// # Returns
+    /// A `(line, column)` tuple.
     fn offset_to_line_col(source: &str, offset: usize) -> (usize, usize) {
+        const TAB_WIDTH: usize = 4;
         let mut line = 1;
         let mut col = 1;
-        for (i, c) in source.char_indices() {
-            if i == offset {
+
+        for (i, grapheme) in source.grapheme_indices(true) {
+            if i >= offset {
                 break;
             }
-            if c == '\n' {
+
+            if grapheme == "\n" {
                 line += 1;
                 col = 1;
+            } else if grapheme == "\t" {
+                col += TAB_WIDTH - ((col - 1) % TAB_WIDTH);
             } else {
                 col += 1;
             }

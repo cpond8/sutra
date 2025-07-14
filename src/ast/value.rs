@@ -9,7 +9,7 @@ use std::fmt;
 ///
 /// ```rust
 /// use sutra::ast::value::Value;
-/// let n = Value.Number(3.14);
+/// let n = Value::Number(3.14);
 /// assert_eq!(n.type_name(), "Number");
 /// let s = Value::String("hello".to_string());
 /// assert_eq!(s.type_name(), "String");

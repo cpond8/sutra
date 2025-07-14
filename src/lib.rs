@@ -4,7 +4,6 @@ pub mod cli;
 pub mod macros;
 pub mod runtime;
 pub mod syntax;
-pub mod test_harness;
 
 use crate::ast::{AstNode, Expr, Span, WithSpan};
 use crate::atoms::OutputSink;

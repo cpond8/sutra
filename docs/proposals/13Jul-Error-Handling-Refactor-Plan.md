@@ -37,7 +37,7 @@ This document outlines the approved three-stage plan to refactor the Sutra error
   - [x] This implementation will contain all presentation logic.
   - [x] Print the error's primary message (from its `thiserror`-derived `Display` trait).
   - [x] Print the source location (`[line:col]`) using the error's `span`.
-  - [x] Implement a robust, multi-line code snippet generator that uses the `span` and source code to create a pointer (`^-- Here`).
+  - [x] Implement a robust, multi-line code snippet generator that uses the `span` and source code to create a pointer (`^-- here`).
   - [x] Add colorization using the `termcolor` crate.
 - [x] **Atomically Swap Implementations:**
   - [x] In `src/main.rs`, replace the old error printing logic with `eprintln!("{}", SutraDiagnostic::new(&error, &source_code));`.
