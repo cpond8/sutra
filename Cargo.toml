@@ -21,6 +21,8 @@ once_cell = "1.18"
 serde_yaml = "0.9"
 atty = "0.2.14"
 unicode-segmentation = "1.10.0"
+ariadne = { version = "0.4.0", features = ["auto-color"] }
+chumsky = "1.0.0-alpha.7"
 
 [features]
 default = []
@@ -28,4 +30,4 @@ test-atom = []
 
 [[bin]]
 name = "harness"
-path = "tests/harness.rs"
+path = "tests/harness_bin.rs"

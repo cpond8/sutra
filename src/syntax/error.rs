@@ -15,6 +15,21 @@ use unicode_segmentation::UnicodeSegmentation;
 // SECTION 2: CORE DATA STRUCTURES
 // =============================================================================
 
+/// Canonical error code enum for all error types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ErrorCode {
+    ParseError,
+    RecursionLimitExceeded,
+    ValidationError,
+    IoError,
+    MalformedAstError,
+    InternalParseError,
+    ArityError,
+    TypeError,
+    DivisionByZero,
+    EvalError,
+}
+
 /// Structured representation of an evaluation error.
 #[derive(Debug, Clone, Serialize, Deserialize, Error)]
 #[error("Evaluation error: {kind}")]
@@ -404,21 +419,23 @@ impl SutraError {
     ///
     /// This allows tests to match against stable error categories instead of brittle
     /// message text that might change during development.
-    pub fn error_code(&self) -> Option<&str> {
+    pub fn error_code(&self) -> Option<ErrorCode> {
         match &self.kind {
-            SutraErrorKind::Parse(_) => Some("PARSE_ERROR"),
+            SutraErrorKind::Parse(_) => Some(ErrorCode::ParseError),
             SutraErrorKind::Validation(kind) => match kind {
-                ValidationErrorKind::RecursionLimitExceeded => Some("RECURSION_LIMIT_EXCEEDED"),
-                ValidationErrorKind::General(_) => Some("VALIDATION_ERROR"),
+                ValidationErrorKind::RecursionLimitExceeded => {
+                    Some(ErrorCode::RecursionLimitExceeded)
+                }
+                ValidationErrorKind::General(_) => Some(ErrorCode::ValidationError),
             },
-            SutraErrorKind::Io(_) => Some("IO_ERROR"),
-            SutraErrorKind::MalformedAst(_) => Some("MALFORMED_AST_ERROR"),
-            SutraErrorKind::InternalParse(_) => Some("INTERNAL_PARSE_ERROR"),
+            SutraErrorKind::Io(_) => Some(ErrorCode::IoError),
+            SutraErrorKind::MalformedAst(_) => Some(ErrorCode::MalformedAstError),
+            SutraErrorKind::InternalParse(_) => Some(ErrorCode::InternalParseError),
             SutraErrorKind::Eval(eval_error) => match eval_error.kind {
-                EvalErrorKind::Arity { .. } => Some("ARITY_ERROR"),
-                EvalErrorKind::Type { .. } => Some("TYPE_ERROR"),
-                EvalErrorKind::DivisionByZero => Some("DIVISION_BY_ZERO"),
-                EvalErrorKind::General(_) => Some("EVAL_ERROR"),
+                EvalErrorKind::Arity { .. } => Some(ErrorCode::ArityError),
+                EvalErrorKind::Type { .. } => Some(ErrorCode::TypeError),
+                EvalErrorKind::DivisionByZero => Some(ErrorCode::DivisionByZero),
+                EvalErrorKind::General(_) => Some(ErrorCode::EvalError),
             },
             SutraErrorKind::MacroExpansion(inner) => inner.error_code(),
         }

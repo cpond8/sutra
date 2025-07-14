@@ -39,3 +39,4 @@ coverage/
 .cursor/
 .cursorrules
 repomix-output.xml
+.deprecated/

@@ -9,6 +9,7 @@ summary: Canonical language specification, always in sync with the implementatio
 > **Canonical Reference Notice (2024-07-09):**
 >
 > The Sutra engine language has two canonical syntaxes:
+>
 > - **List style**: The canonical, Scheme/Lisp-inspired s-expression syntax. All engine, macro, and test logic is specified and validated exclusively in this style. This is the ground truth for the language.
 > - **Block style**: The brace-based, authoring-friendly syntax for game authors. This style is compiled to list style and is not canonical for engine or test purposes.
 >
@@ -21,6 +22,7 @@ summary: Canonical language specification, always in sync with the implementatio
 ## **Changelog**
 
 ### **2025-07-09: Canonical Reference Declaration**
+
 - Declared **list style** (Scheme/Lisp s-expression) as the canonical reference for all Sutra language semantics, macro expansion, and test expectations.
 - Clarified that the canonical syntax is the **list style**; the **block style** is for authoring convenience and is not canonical for engine or test purposes.
 
@@ -35,6 +37,7 @@ This update brings the language specification in line with the canonical impleme
 - **Aspirational Tiers (2+):** Added a prominent note clarifying that **Tier 2 and 3 features are design concepts and are NOT YET IMPLEMENTED**.
 
 ### **2025-07-05: Macro System, CLI, and Test Harness Refactor (Changelog)**
+
 - Removed references to legacy macroexpander types and updated macro system documentation.
 - Documented recursion depth enforcement (limit: 128) in macro expansion.
 - Updated CLI and test harness documentation and examples.
@@ -65,32 +68,32 @@ Sutra's design distinguishes between two fundamental concepts: **Core Atoms** an
 
 > **Note:** This table represents the ground truth of the language's core vocabulary. It distinguishes between engine-level `Core Atoms` and author-facing `Macros`.
 
-| Category        | Status        | Core Atoms (Engine Primitives)             | Macros (Author-Facing)                                            |
-| :-------------- | :------------ | :----------------------------------------- | :---------------------------------------------------------------- |
-| **Control**     |               |                                            |                                                                   |
-|                 | `Implemented` | `do`                                       | `if` (core construct)                                             |
-|                 | `Obsolete`    | `cond`                                     |                                                                   |
-|                 | `Planned`     |                                            | `when`, `else`, `let`, `for-each`                                 |
-| **Assignment**  |               |                                            |                                                                   |
-|                 | `Implemented` | `core/set!`, `core/del!`                   | `set!`, `del!`, `add!`, `sub!`, `inc!`, `dec!`                    |
-|                 | `Planned`     | `core/push!`, `core/pull!`                 | `push!`, `pull!`, `mul!`, `div!`                                  |
-| **Data Access** |               |                                            |                                                                   |
-|                 | `Implemented` | `core/get`, `list`, `len`                  | `get`                                                             |
-| **Predicates**  |               |                                            |                                                                   |
+| Category        | Status        | Core Atoms (Engine Primitives)                             | Macros (Author-Facing)                                            |
+| :-------------- | :------------ | :--------------------------------------------------------- | :---------------------------------------------------------------- |
+| **Control**     |               |                                                            |                                                                   |
+|                 | `Implemented` | `do`                                                       | `if` (core construct)                                             |
+|                 | `Obsolete`    | `cond`                                                     |                                                                   |
+|                 | `Planned`     |                                                            | `when`, `else`, `let`, `for-each`                                 |
+| **Assignment**  |               |                                                            |                                                                   |
+|                 | `Implemented` | `core/set!`, `core/del!`                                   | `set!`, `del!`, `add!`, `sub!`, `inc!`, `dec!`                    |
+|                 | `Planned`     | `core/push!`, `core/pull!`                                 | `push!`, `pull!`, `mul!`, `div!`                                  |
+| **Data Access** |               |                                                            |                                                                   |
+|                 | `Implemented` | `core/get`, `list`, `len`                                  | `get`                                                             |
+| **Predicates**  |               |                                                            |                                                                   |
 |                 | `Implemented` | `eq?`, `gt?`, `lt?`, `gte?`, `lte?`, `not`, `core/exists?` | `is?`, `over?`, `under?`                                          |
-|                 | `Planned`     | `has?`                                     | `at-least?`, `at-most?`, `has?`, `exists?`, `and`, `or`, `empty?` |
-| **Math/Value**  |               |                                            |                                                                   |
-|                 | `Implemented` | `+`, `-`, `*`, `/`, `mod`                  |                                                                   |
-|                 | `Planned`     | `min`, `max`, `abs`                        |                                                                   |
-| **Output**      |               |                                            |                                                                   |
-|                 | `Implemented` | `print`                                    | `display`                                                         |
-| **Random**      |               |                                            |                                                                   |
-|                 | `Implemented` | `rand`                                     | `chance?`                                                         |
-| **Utility**     |               |                                            |                                                                   |
-|                 | `Implemented` | (Auto-get is a macro feature)              |                                                                   |
-|                 | `Planned`     |                                            | `path`, `first`, `last`, `nth`                                    |
-| **Debug**       |               |                                            |                                                                   |
-|                 | `Planned`     |                                            | `debug`, `fail`, `error`, `assert`                                |
+|                 | `Planned`     | `has?`                                                     | `at-least?`, `at-most?`, `has?`, `exists?`, `and`, `or`, `empty?` |
+| **Math/Value**  |               |                                                            |                                                                   |
+|                 | `Implemented` | `+`, `-`, `*`, `/`, `mod`                                  |                                                                   |
+|                 | `Planned`     | `min`, `max`, `abs`                                        |                                                                   |
+| **Output**      |               |                                                            |                                                                   |
+|                 | `Implemented` | `print`                                                    | `display`                                                         |
+| **Random**      |               |                                                            |                                                                   |
+|                 | `Implemented` | `rand`                                                     | `chance?`                                                         |
+| **Utility**     |               |                                                            |                                                                   |
+|                 | `Implemented` | (Auto-get is a macro feature)                              |                                                                   |
+|                 | `Planned`     |                                                            | `path`, `first`, `last`, `nth`                                    |
+| **Debug**       |               |                                                            |                                                                   |
+|                 | `Planned`     |                                                            | `debug`, `fail`, `error`, `assert`                                |
 
 ---
 
@@ -178,31 +181,33 @@ All basic math/value operations are atoms and always author-facing; no macro wra
 
 This section highlights specific behaviors and design choices in Sutra that might be non-obvious but are intentional. Understanding these can help in writing more robust and idiomatic Sutra code.
 
-*   **Identity Values for Arithmetic Atoms:** When called with no arguments, `+` returns its identity value `0`, and `*` returns its identity value `1`. This is a common convention in Lisp-family languages.
-    *   `(+)` => `0`
-    *   `(*)` => `1`
+- **Identity Values for Arithmetic Atoms:** When called with no arguments, `+` returns its identity value `0`, and `*` returns its identity value `1`. This is a common convention in Lisp-family languages.
 
-*   **Unary Negation and Reciprocal:** The `-` and `/` atoms can be called with a single argument.
-    *   `(- x)` returns the negation of `x`.
-    *   `(/ x)` returns the reciprocal `1/x`.
+  - `(+)` => `0`
+  - `(*)` => `1`
 
-*   **Trivial Truth for Comparison Atoms:** Comparison atoms (`eq?`, `gt?`, `lt?`, `gte?`, `lte?`) return `true` when given zero or one argument. The logic is that any sequence with one or zero elements is trivially ordered or equal.
-    *   `(gt? 5)` => `true`
-    *   `(lt?)` => `true`
+- **Unary Negation and Reciprocal:** The `-` and `/` atoms can be called with a single argument.
+
+  - `(- x)` returns the negation of `x`.
+  - `(/ x)` returns the reciprocal `1/x`.
+
+- **Trivial Truth for Comparison Atoms:** Comparison atoms (`eq?`, `gt?`, `lt?`, `gte?`, `lte?`) return `true` when given zero or one argument. The logic is that any sequence with one or zero elements is trivially ordered or equal.
+  - `(gt? 5)` => `true`
+  - `(lt?)` => `true`
 
 # Sutra Value Types — Canonical Reference
 
 The Sutra engine supports the following value types at the language level. These types are the only first-class values recognized by the engine and macro system.
 
-| Sutra Type | Example Literal      | Description                                 |
-|------------|---------------------|---------------------------------------------|
-| Nil        | `nil`               | Default/null value; absence of a value      |
-| Number     | `42`, `3.14`        | 64-bit floating point number                |
-| String     | `"hello"`           | UTF-8 string, double-quoted                 |
-| Bool       | `true`, `false`     | Boolean values                              |
-| List       | `(1 2 "a" true)`     | Ordered, heterogeneous list of values       |
-| Map        | `{foo: 1, bar: 2}`  | Key-value map (keys are strings)            |
-| Path       | `(path player hp)`  | Special type for world state access         |
+| Sutra Type | Example Literal    | Description                            |
+| ---------- | ------------------ | -------------------------------------- |
+| Nil        | `nil`              | Default/null value; absence of a value |
+| Number     | `42`, `3.14`       | 64-bit floating point number           |
+| String     | `"hello"`          | UTF-8 string, double-quoted            |
+| Bool       | `true`, `false`    | Boolean values                         |
+| List       | `(1 2 "a" true)`   | Ordered, heterogeneous list of values  |
+| Map        | `{foo: 1, bar: 2}` | Key-value map (keys are strings)       |
+| Path       | `(path player hp)` | Special type for world state access    |
 
 ---
 
@@ -215,11 +220,13 @@ This section documents the canonical string utility macros and atoms available i
 **Purpose:** Converts any value (number, boolean, symbol, etc.) to its string representation.
 
 **Signature:**
+
 ```sutra
 (str x)
 ```
 
 **Behavior:**
+
 - If `x` is already a string, returns it unchanged.
 - If `x` is a number, returns its canonical string form (e.g., `42` → `"42"`).
 - If `x` is a boolean, returns `"true"` or `"false"`.
@@ -235,17 +242,20 @@ This section documents the canonical string utility macros and atoms available i
 **Purpose:** Concatenates any number of string arguments into a single string.
 
 **Signature:**
+
 ```sutra
 (str+ arg1 arg2 ... argN)
 ```
 
 **Behavior:**
+
 - Accepts two or more arguments.
 - Each argument must be a string (no type coercion for now).
 - Returns a new string that is the concatenation of all arguments, in order.
 - If any argument is not a string, raises a type error (future: will use `str` for coercion).
 
 **Examples:**
+
 ```sutra
 (str+ "foo" "bar")         ; => "foobar"
 (str+ "hello, " "world!")  ; => "hello, world!"
@@ -261,17 +271,20 @@ This section documents the canonical string utility macros and atoms available i
 **Purpose:** Concatenates any number of string arguments, inserting a separator string between each.
 
 **Signature:**
+
 ```sutra
 (join-str+ sep arg1 arg2 ... argN)
 ```
 
 **Behavior:**
+
 - `sep` is the separator string.
 - All other arguments must be strings (future: will use `str` for coercion).
 - Returns a new string with `sep` inserted between each argument.
 - If any argument is not a string, raises a type error.
 
 **Examples:**
+
 ```sutra
 (join-str+ ", " "a" "b" "c")   ; => "a, b, c"
 (join-str+ "-" "foo" "bar")    ; => "foo-bar"
@@ -283,11 +296,11 @@ This section documents the canonical string utility macros and atoms available i
 
 ## String Utilities Summary Table
 
-| Macro/Atom   | Signature                  | Purpose                        | Status      |
-|--------------|----------------------------|--------------------------------|-------------|
-| `str`        | `(str x)`                  | Typecast any value to string   | Planned     |
-| `str+`       | `(str+ arg1 ... argN)`     | Concatenate strings            | Implemented |
-| `join-str+`  | `(join-str+ sep a ... n)`  | Join strings with separator    | Planned     |
+| Macro/Atom  | Signature                 | Purpose                      | Status      |
+| ----------- | ------------------------- | ---------------------------- | ----------- |
+| `str`       | `(str x)`                 | Typecast any value to string | Planned     |
+| `str+`      | `(str+ arg1 ... argN)`    | Concatenate strings          | Implemented |
+| `join-str+` | `(join-str+ sep a ... n)` | Join strings with separator  | Planned     |
 
 ---
 
@@ -296,37 +309,45 @@ This section documents the canonical string utility macros and atoms available i
 The Sutra engine enforces a single source of truth for macro environment construction. All macro environments (for CLI, test harness, REPL, etc.) are built using a single, canonical function:
 
 **Function:**
+
 ```rust
 build_canonical_macro_env() -> MacroEnv
 ```
 
 **Location:**
+
 - `src/runtime/registry.rs`
 
 **Purpose:**
+
 - Registers all core/built-in macros.
 - Loads and registers all standard library macros from `src/macros/macros.sutra`.
 - Returns a fully populated `MacroEnv`.
 
 **Usage:**
+
 - All entrypoints (CLI, test harness, etc.) must use this function to construct the macro environment.
 - No ad-hoc macro loading is permitted elsewhere in the codebase.
 
 **Rationale:**
+
 - Guarantees that all user-facing and core macros are always available in every code path.
 - Prevents drift, duplication, and accidental omission of standard macros.
 - Greatly simplifies auditing, testing, and onboarding.
 
 **Example:**
+
 ```rust
 let macro_env = build_canonical_macro_env();
 // Use macro_env for macro expansion, validation, and evaluation
 ```
 
 **Test:**
+
 - The test suite includes a check that all expected macros are present in the canonical macro environment.
 
 **Documentation:**
+
 - This policy is documented here and in `CONTRIBUTING.md`.
 
 ---
@@ -437,7 +458,7 @@ Gates the visibility/availability of a choice or action on a condition (usually 
 
 ```sutra
 choice {
-  requires (player.gold >= 10) {
+  requires (at-least? player.gold 10) {
     "Bribe the guard (10 gold)" {
       sub! player.gold 10
       print "The guard lets you pass."
@@ -458,7 +479,7 @@ _Only shows/enables the "Bribe" choice if player.gold ≥ 10; author handles cos
 Expands to a gating pattern—only renders (or enables) the inner block if the predicate is true:
 
 ```lisp
-(if (gte? player.gold 10)
+(if (at-least? player.gold 10)
   (choice
     ("Bribe the guard (10 gold)"
       (do
@@ -499,7 +520,7 @@ Triggers a narrative or systemic consequence _automatically_ when a stat or reso
 ### **Canonical Syntax**
 
 ```sutra
-threshold (player.suspicion >= 5) {
+threshold (at-least? player.suspicion 5) {
   print "You've been caught snooping! Game over."
   set! player.status "lost"
 }
@@ -513,7 +534,7 @@ Registers a global/system "watcher":
 
 ```lisp
 (if (and (not (get player.status "lost"))
-         (gte? player.suspicion 5))
+         (at-least? player.suspicion 5))
   (do
     (print "You've been caught snooping! Game over.")
     (set! player.status "lost")))
@@ -1250,7 +1271,7 @@ define grammar {
     sleepy       { weight 2 }
     fierce       { when (eq? time "night") }
     sly          { when agent.cunning }
-    old          { when (> agent.age 40) }
+    old          { when (gt? agent.age 40) }
     young
   }
   animal {
@@ -1278,7 +1299,7 @@ print "The [adjective] [animal] appears."
 
 ```sutra
 weight (if agent.hungry 0 5)
-when (if (> agent.rivalry 2) true false)
+when (if (at-least? agent.rivalry 2) true false)
 ```
 
 or, inside code blocks:
@@ -1307,7 +1328,7 @@ tick {
       storylet "duel" {
         tag social
         weight (* agent.rivalry 2)
-        when (> agent.rivalry 2)
+        when (at-least? agent.rivalry 2)
       }
       storylet "chat" {
         tag social
@@ -1383,6 +1404,7 @@ define (macro-name param1 param2 ... [. variadic-param]) {
   ; macro body (prefix expressions, statements, etc.)
 }
 ```
+
 - The macro name and all parameters (including variadic, if any) are grouped in a single parenthesized list immediately after `define`.
 - The body is always a brace block.
 - The dot (`.`) before the last parameter indicates a variadic parameter, as in canonical Lisp/Scheme.
@@ -1390,11 +1412,11 @@ define (macro-name param1 param2 ... [. variadic-param]) {
 
 #### **Examples**
 
-| Macro Type      | Syntax Example                                      | Notes                                 |
-|-----------------|-----------------------------------------------------|---------------------------------------|
-| Fixed arity     | `define (add3 a b c) { + a b c }`                   | No dot, all params required           |
-| Variadic        | `define (my-list first . rest) { list first rest }` | Dot before last param for variadic    |
-| Only variadic   | `define (collect . args) { list args }`             | Dot at start, all args to `args`      |
+| Macro Type    | Syntax Example                                      | Notes                              |
+| ------------- | --------------------------------------------------- | ---------------------------------- |
+| Fixed arity   | `define (add3 a b c) { + a b c }`                   | No dot, all params required        |
+| Variadic      | `define (my-list first . rest) { list first rest }` | Dot before last param for variadic |
+| Only variadic | `define (collect . args) { list args }`             | Dot at start, all args to `args`   |
 
 #### **Macro Call**
 
@@ -1406,6 +1428,7 @@ define (macro-name param1 param2 ... [. variadic-param]) {
 - If a block is required as an argument, braces are used for that argument only.
 
 #### **Rationale**
+
 - **Minimalism:** Only one set of parentheses for the header, one set of braces for the body.
 - **Clarity:** The macro's "signature" is visually distinct and easy to scan.
 - **Unambiguity:** The parser can unambiguously identify the name and all parameters, including variadic, regardless of whitespace or line breaks.
@@ -1418,9 +1441,11 @@ define (macro-name param1 param2 ... [. variadic-param]) {
 ## Variadic Macro Forwarding and Argument Splicing
 
 ### Overview
+
 Sutra's macro system implements canonical Lisp/Scheme-style variadic macro forwarding and argument splicing. This allows macros to accept a variable number of arguments and forward them ergonomically, matching user expectations from other Lisp-family languages.
 
 ### Canonical Behavior
+
 - **Variadic Macro Definition:**
   - A macro can be defined with a variadic parameter using the `...param` syntax, e.g. `(define (str+ ...args) (core/str+ ...args))`.
 - **Call Position Splicing:**
@@ -1435,6 +1460,7 @@ Sutra's macro system implements canonical Lisp/Scheme-style variadic macro forwa
   - The spread operator (`...expr`) is supported in call position. If the spread expression evaluates to a list, its elements are spliced into the parent list.
 
 ### Edge Cases and Details
+
 - **Non-call Position:**
   - If a variadic parameter is used outside of call position (e.g., as a value or in a non-list context), it is substituted as a list, not spliced.
     ```sutra
@@ -1449,10 +1475,12 @@ Sutra's macro system implements canonical Lisp/Scheme-style variadic macro forwa
   - Non-variadic parameters are substituted as single values. If (improperly) bound to a list, they are also spliced in call position (not recommended).
 
 ### User-Facing Summary
+
 - Macros with variadic parameters behave as expected for both authors and users, supporting idiomatic macro patterns.
 - The macro expander ensures that argument lists are flattened as needed, matching the semantics of Scheme and other Lisps.
 
 ### Examples
+
 ```sutra
 ;; Variadic macro forwarding
 (define (join sep ...items) (core/join sep ...items))
@@ -1468,5 +1496,3 @@ Sutra's macro system implements canonical Lisp/Scheme-style variadic macro forwa
 ```
 
 See the macro system implementation and tests for further details and edge cases.
-
-

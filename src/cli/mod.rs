@@ -8,13 +8,15 @@ use crate::cli::args::{Command, SutraArgs};
 use crate::cli::output::StdoutSink;
 use crate::macros::{expand_macros, MacroDef, MacroRegistry};
 use crate::runtime::registry::build_canonical_macro_env;
+use crate::syntax::error::SutraError;
+use ariadne::{Color, Label, Report, ReportKind, Source};
 use clap::Parser;
-use std::io::Write;
+use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::io::{self, Write};
 use std::process;
 use termcolor::WriteColor;
 
 pub mod args;
-pub mod diagnostics;
 pub mod output;
 
 /// The main entry point for the CLI.
@@ -35,7 +37,6 @@ pub fn run() {
     };
 
     if let Err(e) = result {
-        use crate::cli::diagnostics::{SutraDiagnostic, print_diagnostic_to_stderr};
         let file_path = match &args.command {
             Command::Macrotrace { file } => Some(file.as_path()),
             Command::Run { file } => Some(file.as_path()),
@@ -46,15 +47,77 @@ pub fn run() {
             Command::Test { path } => Some(path.as_path()),
             _ => None,
         };
+        let filename = file_path.map_or("<unknown>", |p| p.to_str().unwrap_or("<unknown>"));
         let source = file_path.and_then(|p| read_file_to_string(p).ok());
-        let diagnostic = SutraDiagnostic::new(&e, source.as_deref());
+        let diagnostic = SutraDiagnostic::new(&e, source.as_deref(), filename);
         print_diagnostic_to_stderr(&diagnostic);
         process::exit(1);
     }
 }
 
+// ============================================================================
+// DIAGNOSTICS
+// ============================================================================
+
+/// A diagnostic wrapper that combines a `SutraError` with source code context
+/// to provide rich, formatted error presentation.
+pub struct SutraDiagnostic<'a> {
+    error: &'a SutraError,
+    source: Option<&'a str>,
+    filename: &'a str,
+}
+
+impl<'a> SutraDiagnostic<'a> {
+    /// Creates a new diagnostic from an error and optional source code.
+    pub fn new(error: &'a SutraError, source: Option<&'a str>, filename: &'a str) -> Self {
+        Self {
+            error,
+            source,
+            filename,
+        }
+    }
+}
+
+impl<'a> Display for SutraDiagnostic<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "Error: {}", self.error)
+    }
+}
+
+/// Prints a diagnostic to standard error with colorization if supported.
+pub fn print_diagnostic_to_stderr(diagnostic: &SutraDiagnostic) {
+    if let Err(_) = write_diagnostic_report(&mut io::stderr(), diagnostic) {
+        eprintln!("{}", diagnostic);
+    }
+}
+
+/// Writes a rich, formatted diagnostic report to the given writer.
+fn write_diagnostic_report(
+    writer: &mut impl Write,
+    diagnostic: &SutraDiagnostic,
+) -> io::Result<()> {
+    let mut report = Report::build(ReportKind::Error, diagnostic.filename, 0)
+        .with_message(diagnostic.error.to_string());
+
+    if let (Some(span), Some(source)) = (diagnostic.error.span.as_ref(), diagnostic.source) {
+        report = report.with_label(
+            Label::new((diagnostic.filename, span.start..span.end))
+                .with_message(format!("{}", diagnostic.error.kind))
+                .with_color(Color::Red),
+        );
+        let cache = (diagnostic.filename, Source::from(source));
+        report.finish().write(cache, writer)?;
+    } else {
+        report
+            .finish()
+            .write((diagnostic.filename, Source::from("")), writer)?;
+    }
+
+    Ok(())
+}
+
 use crate::ast::{Expr, Span, WithSpan};
-use crate::syntax::error::{io_error, SutraError};
+use crate::syntax::error::io_error;
 
 // ============================================================================
 // CORE UTILITIES - Fundamental operations used throughout the CLI

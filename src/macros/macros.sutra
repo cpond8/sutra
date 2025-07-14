@@ -11,18 +11,18 @@
       (letrec
         ((validate
           (lambda (i)
-            (if (>= i n)
+            (if (gte? i n)
                 false
                 (let ((clause (get clauses i)))
                   (if (not (list? clause))
                       (str "Each `cond` clause must be a list. Problematic clause: " clause)
-                      (if (not (= (len clause) 2))
+                      (if (not (eq? (len clause) 2))
                           (str "Each `cond` clause must be a list of two elements. Problematic clause: " clause)
                           (let ((test (car clause)))
                             (if (eq? test 'else)
                                 (if found-else
                                     (str "`else` clause must be unique. Clause heads: " (map car clauses))
-                                    (if (not (= i (- n 1)))
+                                    (if (not (eq? i (- n 1)))
                                         (str "`else` clause must be the last clause in `cond`. Clause heads: " (map car clauses))
                                         (begin (set! found-else true) (validate (+ i 1)))))
                                 (validate (+ i 1)))))))))))
@@ -64,9 +64,9 @@
   (car (cdr lst)))
 
 (define (null? lst)
-  (= (len lst) 0))
+  (eq? (len lst) 0))
 
-;; TODO: Add/verify helpers: car, cdr, cadr, null?, error, len, eq?, not, =
+;; TODO: Add/verify helpers: car, cdr, cadr, null?, error, len, eq?, not
 
 ;; String concatenation macro: str+
 ;; Concatenates any number of string arguments into a single string.
@@ -89,3 +89,25 @@
 ;; Usage: (display "hello" 123 true) => prints "hello 123 true"
 (define (display ...args)
   (print (apply join-str+ " " ...args)))
+
+;; Comparison operator aliases (canonical forms)
+;; Each alias expands to the canonical atom or macro form, supporting full variadic arity.
+
+;; eq? aliases
+(define (= ...args) (eq? ...args))
+
+;; gt? aliases
+(define (> ...args) (gt? ...args))
+(define (over? ...args) (gt? ...args))
+
+;; lt? aliases
+(define (< ...args) (lt? ...args))
+(define (under? ...args) (lt? ...args))
+
+;; gte? aliases
+(define (>= ...args) (gte? ...args))
+(define (at-least? ...args) (gte? ...args))
+
+;; lte? aliases
+(define (<= ...args) (lte? ...args))
+(define (at-most? ...args) (lte? ...args))
