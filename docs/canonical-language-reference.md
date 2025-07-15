@@ -72,13 +72,14 @@ Sutra is a minimal, homoiconic, expression-based language designed for composabl
 
 ### 3.3 Control Flow
 
-| Construct  | Arity | Example                | Description              | Impl.      | Status  |
-| :--------- | :---- | :--------------------- | :----------------------- | :--------- | :------ |
-| `if`       | 3     | `(if cond then else)`  | Conditional              | `Expr::If` | impl.   |
-| `do`       | 0..   | `(do expr1 expr2 ...)` | Sequence, returns last   | Atom: `do` | impl.   |
-| `when`     | 2..   | `(when cond ...)`      | Conditional `if` w/ `do` | Macro      | planned |
-| `let`      | 2     | `(let (...) ...)`      | Lexical bindings         | Macro      | planned |
-| `for-each` | 3     | `(for-each ...)`       | Looping construct        | Macro      | planned |
+| Construct  | Arity | Example                     | Description              | Impl.      | Status  |
+| :--------- | :---- | :-------------------------- | :----------------------- | :--------- | :------ |
+| `if`       | 3     | `(if condition then else)`  | Conditional              | `Expr::If` | impl.   |
+| `cond`     | 3..   | `(cond ((cond1) then) ...)` | Branching Conditional    | Macro      | impl.   |
+| `do`       | 0..   | `(do expr1 expr2 ...)`      | Sequence, returns last   | Atom: `do` | impl.   |
+| `when`     | 2..   | `(when condition ...)`      | Conditional `if` w/ `do` | Macro      | planned |
+| `let`      | 2     | `(let (...) ...)`           | Lexical bindings         | Macro      | planned |
+| `for-each` | 3     | `(for-each ...)`            | Looping construct        | Macro      | planned |
 
 ### 3.4 Arity (Function & Macro Arguments)
 
@@ -138,17 +139,17 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 | Macro     | Arity | Expands to     | Purpose                  | Impl. | Status  | Macro Aliases     |
 | :-------- | :---- | :------------- | :----------------------- | :---- | :------ | :---------------- |
-| `eq?`     | 2..   | —              | Equality                 | Atom  | impl.   | `=`, `is?`        |
-| `gt?`     | 2..   | —              | Greater than             | Atom  | impl.   | `>`, `over?`      |
-| `lt?`     | 2..   | —              | Less than                | Atom  | impl.   | `<`, `under?`     |
-| `gte?`    | 2..   | —              | Greater/equal            | Atom  | impl.   | `>=`, `at-least?` |
-| `lte?`    | 2..   | —              | Less/equal               | Atom  | impl.   | `<=`, `at-most?`  |
-| `not`     | 1     | —              | Negation                 | Atom  | impl.   | —                 |
-| `has?`    | 2..   | —              | Membership in collection | Atom  | planned | —                 |
-| `exists?` | 1     | `core/exists?` | Path/value existence     | Macro | planned | —                 |
-| `and`     | 0..   | `(if ...)`     | Logical AND              | Macro | planned | —                 |
-| `or`      | 0..   | `(if ...)`     | Logical OR               | Macro | planned | —                 |
-| `empty?`  | 1     | `eq?` + `len`  | Collection is empty      | Macro | planned | —                 |
+| `eq?`     | 2..   | —             | Equality                 | Atom  | impl.   | `=`, `is?`        |
+| `gt?`     | 2..   | —             | Greater than             | Atom  | impl.   | `>`, `over?`      |
+| `lt?`     | 2..   | —             | Less than                | Atom  | impl.   | `<`, `under?`     |
+| `gte?`    | 2..   | —             | Greater/equal            | Atom  | impl.   | `>=`, `at-least?` |
+| `lte?`    | 2..   | —             | Less/equal               | Atom  | impl.   | `<=`, `at-most?`  |
+| `not`     | 1     | —             | Negation                 | Atom  | impl.   | —                |
+| `has?`    | 2..   | —             | Membership in collection | Atom  | planned | —                |
+| `exists?` | 1     | `core/exists?` | Path/value existence     | Macro | planned | —                |
+| `and`     | 0..   | `(if ...)`     | Logical AND              | Macro | planned | —                |
+| `or`      | 0..   | `(if ...)`     | Logical OR               | Macro | planned | —                |
+| `empty?`  | 1     | `eq?` + `len`  | Collection is empty      | Macro | planned | —                |
 
 ---
 

@@ -6,32 +6,40 @@ A sophisticated, author-focused testing framework designed for narrative game en
 
 The Sutra test harness embodies the engine's core design philosophy:
 
-- **Minimal but Complete**: Essential testing capabilities with zero redundancy
-- **Transparent**: Full visibility into compilation pipeline and diagnostic output
-- **Composable**: Extensible annotation system that mirrors Sutra's "atoms + macros" approach
-- **Author-Ergonomic**: Simple syntax for common cases, powerful features for complex scenarios
+-   **Minimal but Complete**: Essential testing capabilities with zero redundancy.
+-   **Transparent**: Full visibility into the compilation pipeline and diagnostic output.
+-   **Composable**: An extensible, homoiconic system where tests are first-class code.
+-   **Author-Ergonomic**: Simple syntax for common cases, powerful features for complex scenarios.
 
-## Current Architecture (Implemented)
+## Homoiconic Test Architecture
 
-### Source-Embedded Annotations
+Sutra tests are defined directly in `.sutra` source files as first-class code, not as special comments. This homoiconic approach makes tests discoverable, extensible, and easy to manipulate with the same tools used for application code. The system is built on two primary macros and a single underlying atom.
 
-Tests are defined directly in `.sutra` source files using special comment annotations, making them self-documenting and keeping test logic close to the code being tested.
+1.  **`(test ...)` Macro**: The main entry point for defining a test case. It provides a clean, declarative syntax for naming a test, specifying its expectation, and providing the body to execute.
+2.  **`(expect ...)` Macro**: A flexible, variadic macro used within `test` to define the expected outcome. Its first argument is the core expectation (a value, an error type, etc.), and all subsequent arguments are optional annotations that configure the test's behavior (e.g., skipping, tagging, or parameterizing).
+3.  **`(register-test! ...)` Atom**: The low-level primitive that the `test` macro expands into. It registers the fully-formed test case with the test harness's central registry for execution.
+
+This design ensures that all test logic and metadata are valid, parsable Sutra code, aligning the testing framework perfectly with the language's philosophy.
+
+### Defining Tests
+
+Tests are written using a clear, Lisp-style syntax that keeps test logic and expectations tightly coupled.
 
 ```lisp
 ; Basic success test
-//! @test "addition works"
-//! @expect success
-(+ 2 3)
+(test "addition works"
+      (expect 10)
+      (+ 7 3))
 
 ; Error expectation test
-//! @test "division by zero fails"
-//! @expect eval_error messages=["division by zero"]
-(/ 10 0)
+(test "division by zero fails"
+      (expect division-by-zero)
+      (/ 10 0))
 
-; Skip problematic test
-//! @test "complex feature"
-//! @skip "waiting for macro system improvements"
-(complex-operation)
+; A skipped test
+(test "complex feature"
+      (expect success (skip "waiting for macro system improvements"))
+      (complex-operation))
 ```
 
 ### Ariadne-Centered Diagnostics
@@ -42,19 +50,19 @@ All test assertions are based on **unified diagnostic output** rendered through 
 
 Each test executes the complete Sutra compilation pipeline:
 
-1. **Parse** → AST generation with error detection
-2. **Validate** → Semantic analysis and warning generation
-3. **Expand** → Macro expansion with recursion limits
-4. **Evaluate** → Runtime execution with state isolation
+1.  **Parse** → AST generation with error detection
+2.  **Validate** → Semantic analysis and warning generation
+3.  **Expand** → Macro expansion with recursion limits
+4.  **Evaluate** → Runtime execution with state isolation
 
 ### Test Isolation
 
 Every test runs in a completely fresh execution environment:
 
-- Clean world state
-- Fresh macro environment
-- Isolated output buffers
-- Independent diagnostic collection
+-   Clean world state
+-   Fresh macro environment
+-   Isolated output buffers
+-   Independent diagnostic collection
 
 ## Running Tests
 
@@ -81,72 +89,91 @@ cargo run --bin harness
 cargo run --bin harness -- --filter "math" --update-snapshots
 ```
 
-## Annotation Reference
+## Test Syntax Reference
 
-### Core Annotations (Implemented)
+### Core Macros
 
-| Annotation | Syntax                  | Purpose                               | Example                   |
-| ---------- | ----------------------- | ------------------------------------- | ------------------------- |
-| `@test`    | `@test "name"`          | Define a test case with optional name | `//! @test "basic math"`  |
-| `@expect`  | `@expect TYPE [params]` | Set test expectation                  | `//! @expect success`     |
-| `@skip`    | `@skip ["reason"]`      | Skip test execution                   | `//! @skip "known issue"` |
-| `@only`    | `@only`                 | Run only this test (exclusive)        | `//! @only`               |
+| Macro                               | Syntax                                      | Purpose                                                      |
+| ----------------------------------- | ------------------------------------------- | ------------------------------------------------------------ |
+| `(test name expect-form body)`      | `(test "my test" (expect ...) (+ 1 2))`     | Defines a test case with a name, expectation, and body.      |
+| `(expect expectation [ann...])` | `(expect 42 (tags "math"))`                 | Defines the expected outcome and optional configuration annotations. |
 
-### Expectation Types (Implemented)
+### Expectation Types
 
-| Type               | Syntax                     | Purpose                                 | Example                   |
-| ------------------ | -------------------------- | --------------------------------------- | ------------------------- |
-| `success`          | `@expect success`          | Test should complete without errors     | Basic functionality tests |
-| `parse_error`      | `@expect parse_error`      | Should fail during parsing              | Invalid syntax tests      |
-| `validation_error` | `@expect validation_error` | Should fail during validation           | Semantic error tests      |
-| `eval_error`       | `@expect eval_error`       | Should fail during evaluation           | Runtime error tests       |
-| `snapshot`         | `@expect snapshot "path"`  | Compare against saved diagnostic output | Regression tests          |
+The first argument to the `(expect ...)` macro defines what the test's outcome should be.
 
-**Note:** All error expectations support optional `codes=` and `messages=` parameters for precise matching against canonical error codes and message content.
+| Type                  | Syntax                               | Purpose                                                 |
+| --------------------- | ------------------------------------ | ------------------------------------------------------- |
+| **Value Assertion**   | `(expect <value>)`                   | Asserts that the test body evaluates to an exact value. |
+| **Error Assertion**   | `(expect <error-symbol>)`            | Asserts that the test fails with a specific error type. |
+| **Complex Assertion** | `(expect (or <sym1> <sym2>))`        | Asserts a more complex condition using `and`, `or`, `not`. |
+| **Output Assertion**  | `(expect (output "text"))`           | Asserts that the test body prints specific text to stdout. |
+| **Success**           | `(expect success)`                   | Asserts that the test completes without any errors.     |
+| **Snapshot**          | `(expect (snapshot "path.txt"))`     | Compares diagnostic output against a saved snapshot.    |
 
-### Error Matching (Implemented)
+### Annotations
 
-Current string-based error matching (to be improved):
+Optional forms passed to `(expect ...)` after the main expectation to configure test behavior.
+
+| Annotation                | Syntax                               | Purpose                                                      |
+| ------------------------- | ------------------------------------ | ------------------------------------------------------------ |
+| `(skip "reason")`         | `(skip "wip")`                       | Skips the test, providing an optional reason.                |
+| `(only)`                  | `(only)`                             | Exclusively runs tests with this annotation.                 |
+| `(tags "t1" "t2")`        | `(tags "slow" "db")`                 | Assigns tags for filtering.                                  |
+| `(group "path")`          | `(group "math/advanced")`            | Organizes tests into hierarchical groups.                    |
+| `(timeout <ms>)`          | `(timeout 5000)`                     | Sets a custom timeout for the test in milliseconds.          |
+| `(params ((...)))`        | `(params ((1 2 3) (4 5 9)))`         | Runs the test multiple times with different data sets.       |
+| `(fixture "name")`        | `(fixture "player_setup")`           | Initializes the world state from a named fixture.            |
+
+## Assertion Examples
+
+### Direct Value Assertions
+
+Use Sutra's native syntax for clear and ergonomic value checks.
 
 ```lisp
-//! @test "current approach - string-based"
-//! @expect eval_error codes=["ArityError", "TypeError"]
-(+ 1 "not a number")
+(test "string equality"
+      (expect "hello world")
+      (str+ "hello" " " "world"))
+
+(test "list result"
+      (expect (1 2 3))
+      (list 1 2 3))
 ```
 
-**Planned Ergonomic Improvements\***
-
-Replace string-based codes with Sutra's native symbolic syntax:
+For more complex matching, use assertion helpers within the `expect` form:
 
 ```lisp
-//! @test "division by zero"
-//! @expect division-by-zero
-(/ 10 0)
-
-//! @test "type error"
-//! @expect type-error
-(+ 1 "string")
-
-//! @test "arity error"
-//! @expect arity-error
-(/)   ; division requires at least 1 argument, zero args triggers arity error
-
-//! @test "complex error matching"
-//! @expect (or arity-error type-error)
-(risky-operation)
-
-//! @test "error with message check"
-//! @expect (and type-error (message-contains "expected Number"))
-(+ 1 "string")
+(test "range check"
+      (expect (and (gt? 7) (lt? 10)))
+      (+ 1 7))
 ```
 
-Benefits of symbolic error matching:
+### Error Assertions
 
-- **Native Sutra syntax**: Uses symbols instead of error-prone strings
-- **Composable**: Can use `and`, `or`, `not` for complex conditions
-- **IDE-friendly**: Symbol validation and autocomplete support
-- **Consistent**: Aligns with Sutra's homoiconic philosophy
+Use canonical error symbols for stable and readable error tests.
 
+```lisp
+(test "division by zero"
+      (expect division-by-zero)
+      (/ 10 0))
+
+(test "type error"
+      (expect type-error)
+      (+ 1 "string"))
+```
+
+Combine assertions for more complex error matching:
+
+```lisp
+(test "complex error matching"
+      (expect (or arity-error type-error))
+      (risky-operation))
+
+(test "error with message check"
+      (expect (and type-error (message-contains "expected Number")))
+      (+ 1 "string"))
+```
 #### Canonical Error Codes
 
 The test harness uses Sutra's canonical error codes for stable test matching:
@@ -164,158 +191,54 @@ The test harness uses Sutra's canonical error codes for stable test matching:
 | `MalformedAstError`      | Internal AST structure errors                | Parser or AST construction bugs     |
 | `InternalParseError`     | Internal parser state errors                 | Parser implementation bugs          |
 
-#### Error Code Usage Examples
+
+## Parameterized Testing
+
+Run the same test logic with multiple input sets using the `(params ...)` annotation. The special variables `@param` (for single-item lists) or `(nth @params N)` give access to the data.
 
 ```lisp
-//! @test "arity error with specific code"
-//! @expect eval_error codes=["ArityError"]
-(+)  ; Addition requires at least 0 args, but this is malformed
+(test "addition cases"
+      (expect (nth @params 2)
+              (params ((1 2 3) (5 5 10) (-1 1 0))))
+      (+ (nth @params 0) (nth @params 1)))
 
-//! @test "type error with message"
-//! @expect eval_error codes=["TypeError"] messages=["expected Number"]
-(+ 1 "string")
-
-//! @test "multiple error possibilities"
-//! @expect eval_error codes=["ArityError", "TypeError"]
-(complex-operation)
-
-//! @test "parse error with location"
-//! @expect parse_error codes=["ParseError"] messages=["unexpected token"]
-(unclosed (expression
+(test "error cases"
+      (expect type-error
+              (params ("string" true nil)))
+      (+ 1 @param))
 ```
 
-**Note:** Error codes provide stable identifiers for test matching, independent of message text changes during development. Use `codes=` for structural error matching and `messages=` for content-specific validation.
+## Fixtures and Setup
 
-## Planned Extensions (Not Yet Implemented)
-
-### Direct Value Assertions\*
-
-_Direct value assertions using Sutra's native syntax for maximum ergonomics._
+Define reusable world state with fixtures and apply them to tests with the `(fixture ...)` annotation.
 
 ```lisp
-//! @test "simple value check"
-//! @expect 10
-(+ 3 7)
+(fixture "player_setup" {
+  player: {health: 100, mana: 50}
+})
 
-//! @test "boolean result"
-//! @expect true
-(gt? 5 3)
+(test "health check"
+      (expect 100 (fixture "player_setup"))
+      (get player.health))
 
-//! @test "string equality"
-//! @expect "hello world"
-(str+ "hello" " " "world")
-
-//! @test "list result"
-//! @expect (1 2 3)
-(list 1 2 3)
-
-//! @test "nil result"
-//! @expect nil
-(get nonexistent.key)
+(test "damage calculation"
+      (expect 75 (fixture "player_setup"))
+      (do
+        (set! player.health (- (get player.health) 25))
+        (get player.health)))
 ```
 
-**Advanced Value Assertions\***
+## Output Capture
 
-For complex value matching, use Sutra's s-expression syntax:
+Assert on printed output and other side effects using the `(output ...)` expectation.
 
 ```lisp
-//! @test "range check"
-//! @expect (and (gt? 7) (lt? 10))
-(+ 1 7)
+(test "print output"
+      (expect (output "Hello, World!\n"))
+      (print "Hello, World!"))
 
-//! @test "type and value check"
-//! @expect (and (number) (eq? 8))
-(+ 1 7)
-
-//! @test "list structure check"
-//! @expect (and (list) (eq? (len) 3))
-(list 1 2 3)
-```
-
-### Parameterized Testing\*
-
-_Run the same test logic with multiple input sets using Sutra's list syntax._
-
-```lisp
-//! @test "addition cases"
-//! @params ((1 2 3) (5 5 10) (-1 1 0))
-//! @expect (nth @params 2)
-(+ (nth @params 0) (nth @params 1))
-
-//! @test "error cases"
-//! @params ("string" true nil)
-//! @expect type-error
-(+ 1 @param)
-
-//! @test "comparison cases"
-//! @params ((5 3 true) (2 8 false) (10 10 false))
-//! @expect (nth @params 2)
-(gt? (nth @params 0) (nth @params 1))
-```
-
-### Fixtures and Setup\*
-
-_Reusable world state initialization using Sutra's native map syntax._
-
-```lisp
-//! @fixture "player_setup"
-//! @world {player: {health: 100, mana: 50}}
-
-//! @test "health check"
-//! @use_fixture "player_setup"
-//! @expect 100
-(get player.health)
-
-//! @test "damage calculation"
-//! @use_fixture "player_setup"
-//! @expect 75
-(do
-  (set! player.health (- (get player.health) 25))
-  (get player.health))
-```
-
-### Output Capture\*
-
-_Assert on printed output and side effects._
-
-```lisp
-//! @test "print output"
-//! @expect output "Hello, World!\n"
-(print "Hello, World!")
-
-//! @test "multiple prints"
-//! @expect output ["Starting...", "Complete."]
-(do
-  (print "Starting...")
-  (print "Complete."))
-```
-
-### Test Organization\*
-
-_Hierarchical test organization and tagging._
-
-```lisp
-//! @test "complex math operation"
-//! @group "math/advanced"
-//! @tags ["slow", "integration"]
-//! @timeout 5000
-(complex-calculation)
-```
-
-### Property-Based Testing\*
-
-_Randomized testing with property verification._
-
-```lisp
-//! @property "addition is commutative"
-//! @forall x:int y:int
-//! @expect (eq? (+ x y) (+ y x))
-
-//! @property "string length invariant"
-//! @forall s:string
-//! @expect (gte? (len s) 0)
-```
-
+(test "multiple prints"
+      (expect (output ["Starting..." "Complete."]))
 ## File Organization
 
 ### Canonical File Organization
@@ -333,50 +256,9 @@ tests/
 └── syntax/        ← mirrors `src/syntax`
 ```
 
-## Advanced Features
+## Test Runner Configuration
 
-### Snapshot Testing
-
-For complex diagnostic output verification:
-
-```lisp
-//! @test "complex error reporting"
-//! @expect snapshot "expected_output.txt"
-(deeply-nested
-  (problematic
-    (expression "with" multiple issues)))
-```
-
-Snapshots are automatically generated and can be updated with `--update-snapshots`.
-
-### Test Filtering
-
-Multiple filtering approaches:
-
-```bash
-# By test name pattern
-cargo run --bin harness -- --filter "addition"
-
-# By file pattern (planned*)
-cargo run --bin harness -- --files "math*"
-
-# By tags (planned*)
-cargo run --bin harness -- --tags "integration,slow"
-```
-
-### Exclusive Testing
-
-Focus on specific tests during development:
-
-```lisp
-//! @test "debug this specific case"
-//! @only
-(problematic-operation)
-```
-
-When `@only` tests exist, all other tests are ignored.
-
-## Configuration
+The behavior of the test harness can be configured via environment variables and CLI options.
 
 ### Environment Variables
 
@@ -397,70 +279,35 @@ When `@only` tests exist, all other tests are ignored.
 | `--verbose`          | `-v`  | Detailed output\*    | `--verbose`           |
 | `--parallel`         | `-p`  | Parallel execution\* | `--parallel 4`        |
 
-## Best Practices
-
-### Test Organization
-
-1. **Keep tests close to functionality** - Use source-embedded annotations
-2. **Use descriptive names** - Test names should explain the expected behavior
-3. **Group related tests** - Use consistent naming patterns for discoverability
-4. **Minimize test dependencies** - Each test should be independently runnable
-
-### Error Testing
-
-1. **Test specific error conditions** - Use canonical error codes (`codes=`) for structural matching, message patterns (`messages=`) for content validation
-2. **Prefer stable error codes** - Use `codes=["ArityError"]` over `messages=["expected 2 arguments"]` for maintenance-friendly tests
-3. **Document expected failures** - Always include reasons in `@skip` annotations
-4. **Use snapshots for complex errors** - When diagnostic output is the primary concern
-5. **Reference canonical error codes** - See the Error Codes table above for all available codes
-
-### Narrative Testing
-
-1. **Use fixtures for world state** - Avoid repetitive setup in narrative tests\*
-2. **Test state transitions** - Verify that actions produce expected world changes\*
-3. **Mock external systems** - Use stubbing for file I/O, network calls, etc.\*
-
-### Performance Considerations
-
-1. **Mark slow tests** - Use `@tags ["slow"]` for time-intensive tests\*
-2. **Set appropriate timeouts** - Prevent infinite loops from hanging test runs\*
-3. **Use parallel execution judiciously** - Some narrative tests may require serialization\*
-
-## Integration with Development Workflow
-
-### Pre-commit Hooks
-
-```bash
-# Install test hooks
-./scripts/install_hooks.sh
-
-# Tests run automatically on:
-# - Pre-commit (fast subset)
-# - Pre-push (full suite)
+      (do
+        (print "Starting...")
+        (print "Complete.")))
 ```
 
-### Continuous Integration
+## Test Organization
 
-The test harness integrates seamlessly with CI/CD:
+Organize tests with hierarchical groups and tags for better management and filtering.
 
-```yaml
-# Example GitHub Actions integration
-- name: Run Sutra Tests
-  run: |
-    cargo test
-    cargo run --bin harness -- --verbose
+```lisp
+(test "complex math operation"
+      (expect ...
+              (group "math/advanced")
+              (tags "slow" "integration")
+              (timeout 5000))
+      (complex-calculation))
 ```
 
-### IDE Integration
+## Planned Extensions
 
-Test annotations are recognized by language servers for:
+### Property-Based Testing\*
 
-- Syntax highlighting
-- Test discovery in IDE test explorers\*
-- Inline test execution\*
-- Real-time error highlighting\*
+Randomized testing with property verification.
 
----
+```lisp
+(property "addition is commutative"
+          (forall x:int y:int)
+          (expect (eq? (+ x y) (+ y x))))
+```
 
 ## Legend
 

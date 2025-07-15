@@ -1,0 +1,87 @@
+;; Sutra Control Flow Tests
+;;
+;; This suite validates the behavior of control flow constructs like `if` and `do`.
+
+;;;
+;;; 1. If
+;;;
+
+(test "control: if - then branch"
+      (expect "then")
+      (if true "then" "else"))
+
+(test "control: if - else branch"
+      (expect "else")
+      (if false "then" "else"))
+
+(test "control: if - truthy condition"
+      (expect "taken")
+      (if 1 "taken" "not-taken"))
+
+(test "control: if - falsy condition (nil)"
+      (expect "not-taken")
+      (if nil "taken" "not-taken"))
+
+(test "control: if - arity error (too few)"
+      (expect ArityError)
+      (if true "then"))
+
+(test "control: if - arity error (too many)"
+      (expect ArityError)
+      (if true "then" "else" "extra"))
+
+;;;
+;;; 2. Do
+;;;
+
+(test "control: do - sequence"
+      (expect 3)
+      (do
+        (set! x 1)
+        (set! x 2)
+        (set! x 3)))
+
+(test "control: do - returns last expression"
+      (expect "last")
+      (do "first" "second" "last"))
+
+(test "control: do - empty"
+      (expect nil)
+      (do))
+
+;;;
+;;; 3. Cond
+;;;
+
+(test "control: cond - first clause matches"
+      (expect "first")
+      (cond
+        ((gt? 5 3) "first")
+        (else "second")))
+
+(test "control: cond - second clause matches"
+      (expect "second")
+      (cond
+        ((lt? 5 3) "first")
+        ((gt? 5 3) "second")))
+
+(test "control: cond - no match"
+      (expect nil)
+      (cond
+        (false "first")
+        (false "second")))
+
+(test "control: cond - else clause"
+      (expect "else")
+      (cond
+        (false "first")
+        (else "else")))
+
+(test "control: cond - only first match evaluated"
+      (expect "third")
+      (cond
+        (false "first")
+        (false "second")
+        (true "third")
+        (true "fourth")
+        (else "else")))

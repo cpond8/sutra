@@ -1,0 +1,39 @@
+;; Sutra Output Atom & Macro Tests
+;;
+;; This suite validates the behavior of atoms and macros that produce output.
+
+;;;
+;;; 1. Print (Atom)
+;;;
+
+(test "output: print - simple string"
+      (expect (output "hello\n"))
+      (print "hello"))
+
+(test "output: print - with number"
+      (expect (output "123\n"))
+      (print 123))
+
+(test "output: print - arity error (too few)"
+      (expect ArityError)
+      (print))
+
+(test "output: print - arity error (too many)"
+      (expect ArityError)
+      (print "one" "two"))
+
+;;;
+;;; 2. Display (Macro)
+;;;
+
+(test "output: display - multiple args"
+      (expect (output "hello 123 true\n"))
+      (display "hello" 123 true))
+
+(test "output: display - single arg"
+      (expect (output "single\n"))
+      (display "single"))
+
+(test "output: display - no args"
+      (expect (output "\n"))
+      (display))

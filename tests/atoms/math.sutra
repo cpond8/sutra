@@ -1,0 +1,117 @@
+;; Sutra Math Atom Tests
+;;
+;; This suite validates the behavior of all mathematical atoms, including
+;; standard operations, edge cases, and error conditions as specified in
+;; the canonical language reference.
+
+;;;
+;;; 1. Addition (+)
+;;;
+
+(test "math: + success"
+      (expect 10)
+      (+ 1 2 3 4))
+
+(test "math: + identity"
+      (expect 0)
+      (+))
+
+(test "math: + with negatives"
+      (expect -2)
+      (+ 1 -3))
+
+(test "math: + type error"
+      (expect TypeError)
+      (+ 1 "two"))
+
+(test "math: + arity error (zero args is identity)"
+      (expect ArityError)
+      (+ 1))
+
+;;;
+;;; 2. Subtraction (-)
+;;;
+
+(test "math: - success"
+      (expect 1)
+      (- 10 5 4))
+
+(test "math: - unary negation"
+      (expect -5)
+      (- 5))
+
+(test "math: - arity error"
+      (expect ArityError)
+      (-))
+
+(test "math: - type error"
+      (expect TypeError)
+      (- 10 "five"))
+
+;;;
+;;; 3. Multiplication (*)
+;;;
+
+(test "math: * success"
+      (expect 24)
+      (* 2 3 4))
+
+(test "math: * identity"
+      (expect 1)
+      (*))
+
+(test "math: * with zero"
+      (expect 0)
+      (* 10 20 0))
+
+(test "math: * type error"
+      (expect TypeError)
+      (* 2 "three"))
+
+(test "math: * arity error (zero args is identity)"
+      (expect ArityError)
+      (* 5))
+
+;;;
+;;; 4. Division (/)
+;;;
+
+(test "math: / success"
+      (expect 2.5)
+      (/ 10 4))
+
+(test "math: / unary reciprocal"
+      (expect 0.25)
+      (/ 4))
+
+(test "math: / division by zero"
+      (expect DivisionByZero)
+      (/ 10 0))
+
+(test "math: / arity error"
+      (expect ArityError)
+      (/))
+
+(test "math: / type error"
+      (expect TypeError)
+      (/ 10 "two"))
+
+;;;
+;;; 5. Modulo (mod)
+;;;
+
+(test "math: mod success"
+      (expect 1)
+      (mod 10 3))
+
+(test "math: mod arity error - too few"
+      (expect ArityError)
+      (mod 10))
+
+(test "math: mod arity error - too many"
+      (expect ArityError)
+      (mod 10 3 1))
+
+(test "math: mod type error"
+      (expect TypeError)
+      (mod 10 "three"))

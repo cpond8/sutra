@@ -237,20 +237,20 @@ This refactor is being rolled out in four distinct, atomic phases to minimize di
 
 ---
 
-### Phase 3: New Test Suite Development (In Progress)
+### Phase 3: New Test Suite Development (Complete)
 
 - **Objective:** Develop a comprehensive test suite from scratch that strictly adheres to the canonical language specifications.
 - **Rationale:** Due to extensive engine refactoring since the last test updates, outdated tests have been removed. A fresh test suite developed against the authoritative specifications will provide more reliable validation than migrating potentially inconsistent legacy tests.
 - **Key Deliverables:**
-  [ ] Develop comprehensive test cases based on `docs/canonical-language-reference.md` specifications, paying close attention to Section 4 (Design Notes & Edge Cases), as well as the constraint that ONLY public API should be tested, i.e., the behaviour, not the implementations.
-  [ ] Create grammar validation tests following `src/syntax/grammar.pest` rules.
-  [ ] Cover all implemented atoms/macros: math (`+`, `-`, `*`, `/`, `mod`), comparison (`eq?`, `gt?`, `lt?`, `gte?`, `lte?`) as well as their aliases, logic (`not`), assignment (`set!`, `get`, `del!`, `add!`, `sub!`, `inc!`, `dec!`), predicates (`is?`, `over?`, `under?`), control (`if`, `do`), string (`str+`), output (`print`), and random (`rand`).
-  [ ] Test edge cases and error conditions as specified in the canonical reference.
-  [ ] Validate arity rules and type checking for all language constructs.
-  [ ] Create tests for proper parsing of atoms, collections, paths, quotes, and spread arguments.
-  [ ] Test expression evaluation semantics and world state interaction.
-  [ ] Generate diagnostic snapshots for all error scenarios (parse errors, validation errors, runtime errors).
-  [ ] Ensure test coverage for both list-style and block-style syntax forms.
+  [x] Develop comprehensive test cases based on `docs/canonical-language-reference.md` specifications, paying close attention to Section 4 (Design Notes & Edge Cases), as well as the constraint that ONLY public API should be tested, i.e., the behaviour, not the implementations.
+  [x] Create grammar validation tests following `src/syntax/grammar.pest` rules.
+  [x] Cover all implemented atoms/macros: math (`+`, `-`, `*`, `/`, `mod`), comparison (`eq?`, `gt?`, `lt?`, `gte?`, `lte?`) as well as their aliases, logic (`not`), assignment (`set!`, `get`, `del!`, `add!`, `sub!`, `inc!`, `dec!`), predicates (`is?`, `over?`, `under?`), control (`if`, `do`), string (`str+`), output (`print`), and random (`rand`).
+  [x] Test edge cases and error conditions as specified in the canonical reference.
+  [x] Validate arity rules and type checking for all language constructs.
+  [x] Create tests for proper parsing of atoms, collections, paths, quotes, and spread arguments.
+  [x] Test expression evaluation semantics and world state interaction.
+  [x] Generate diagnostic snapshots for all error scenarios (parse errors, validation errors, runtime errors).
+  [x] Ensure test coverage for both list-style and block-style syntax forms.
 - **Authoritative References:**
   - `docs/canonical-language-reference.md` - Complete language specification and behavior
   - `src/syntax/grammar.pest` - Formal grammar rules and syntax validation
@@ -259,7 +259,7 @@ This refactor is being rolled out in four distinct, atomic phases to minimize di
   - ONLY test public API functionality from the perspective of the end-user. You should NEVER use internal atoms prefixed with `core/`.
   - All test expectations must derive directly from the canonical specifications, not from current implementation behavior.
   - Test cases should be designed to validate correct specification compliance once parser issues are resolved.
-- **Status:** In Progress.
+- **Status:** Complete.
 
 ### Phase 4: Integration & Cleanup (Pending)
 
@@ -279,7 +279,7 @@ This refactor is being rolled out in four distinct, atomic phases to minimize di
 | ----- | ----------- | ---------------------------------------------- |
 | 1     | Complete    |                                                |
 | 2     | Complete    | Pipeline stubs replaced, import resolution, real compiler integration done |
-| 3     | In Progress | New test suite development based on canonical specs, parser bugs block execution |
+| 3     | Complete    | New test suite developed and validated against canonical specs. |
 | 4     | Pending     | Awaiting test suite completion and parser stabilization |
 
 ## 4. Additional Implementation Details and Success Criteria
@@ -300,7 +300,7 @@ This refactor is being rolled out in four distinct, atomic phases to minimize di
   - Logic: `not`
   - Assignment: `set!`, `get`, `del!`, `add!`, `sub!`, `inc!`, `dec!`
   - Predicates: `is?`, `over?`, `under?`
-  - Control: `if`, `do`
+  - Control: `if`, `do`, `cond`
   - String: `str+`
   - Output: `print`
   - Random: `rand`

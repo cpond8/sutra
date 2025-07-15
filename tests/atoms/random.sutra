@@ -1,0 +1,17 @@
+;; Sutra Random Atom Tests
+;;
+;; This suite validates the behavior of the `rand` atom.
+
+;;;
+;;; 1. Random (rand)
+;;;
+
+(test "random: rand - success"
+      ;; We can't test for a specific value, but we can assert it's a number
+      ;; within the expected range [0, 1).
+      (expect (and (gte? (rand) 0) (lt? (rand) 1)))
+      (rand))
+
+(test "random: rand - arity error"
+      (expect ArityError)
+      (rand 123))

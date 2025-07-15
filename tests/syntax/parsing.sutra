@@ -1,0 +1,93 @@
+;; Sutra Syntax & Parsing Tests
+;;
+;; This suite validates the core parsing capabilities of the Sutra engine,
+;; ensuring that atoms, collections, and special forms are correctly
+;; recognized according to `src/syntax/grammar.pest`.
+
+;;;
+;;; 1. Atom Parsing
+;;;
+
+(test "parsing: number - integer"
+      (expect 42)
+      42)
+
+(test "parsing: number - negative integer"
+      (expect -100)
+      -100)
+
+(test "parsing: number - float"
+      (expect 3.14)
+      3.14)
+
+(test "parsing: boolean - true"
+      (expect true)
+      true)
+
+(test "parsing: boolean - false"
+      (expect false)
+      false)
+
+(test "parsing: nil"
+      (expect nil)
+      nil)
+
+(test "parsing: string - simple"
+      (expect "hello")
+      "hello")
+
+(test "parsing: string - with escapes"
+      (expect "a\nb\"c\\d")
+      "a\nb\"c\\d")
+
+(test "parsing: string - empty"
+      (expect "")
+      "")
+
+(test "parsing: quote - symbol"
+      (expect 'foo)
+      ''foo)
+
+;;;
+;;; 2. Collection Parsing
+;;;
+
+(test "parsing: list - quoted"
+      (expect '(1 "two" true))
+      ''(1 "two" true))
+
+(test "parsing: list - nested quoted"
+      (expect '(1 (2 (3))))
+      ''(1 (2 (3))))
+
+(test "parsing: block - quoted"
+      (expect '(+ 1 2))
+      ''{ (+ 1 2) })
+
+;;;
+;;; 3. Grammar Error Cases
+;;;
+
+(test "parsing: error - unclosed list"
+      (expect ParseError)
+      "(+ 1 2")
+
+(test "parsing: error - unclosed block"
+      (expect ParseError)
+      "{ (get foo) ")
+
+(test "parsing: error - unclosed string"
+      (expect ParseError)
+      "\"not closed")
+
+(test "parsing: error - invalid escape"
+      (expect ParseError)
+      "\"bad\\escape\"")
+
+(test "parsing: error - extra closing paren"
+      (expect ParseError)
+      "(+ 1 2))")
+
+(test "parsing: error - spread outside list"
+      (expect ParseError)
+      "...oops")

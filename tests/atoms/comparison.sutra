@@ -1,0 +1,172 @@
+;; Sutra Comparison Atom Tests
+;;
+;; This suite validates the behavior of all comparison atoms, including
+;; their aliases, edge cases, and error conditions.
+
+;;;
+;;; 1. Equality (eq?, =, is?)
+;;;
+
+(test "comparison: eq? - success true"
+      (expect true)
+      (eq? 5 5 5))
+
+(test "comparison: eq? - success false"
+      (expect false)
+      (eq? 5 5 6))
+
+(test "comparison: eq? - different types"
+      (expect false)
+      (eq? 1 "1"))
+
+(test "comparison: eq? - trivial truth (1 arg)"
+      (expect true)
+      (eq? 10))
+
+(test "comparison: eq? - trivial truth (0 args)"
+      (expect true)
+      (eq?))
+
+(test "comparison: = alias"
+      (expect true)
+      (= 1 1))
+
+(test "comparison: is? alias"
+      (expect true)
+      (is? "hello" "hello"))
+
+;;;
+;;; 2. Greater Than (gt?, >, over?)
+;;;
+
+(test "comparison: gt? - success true"
+      (expect true)
+      (gt? 10 5 1))
+
+(test "comparison: gt? - success false"
+      (expect false)
+      (gt? 10 5 5))
+
+(test "comparison: gt? - trivial truth (1 arg)"
+      (expect true)
+      (gt? 10))
+
+(test "comparison: gt? - trivial truth (0 args)"
+      (expect true)
+      (gt?))
+
+(test "comparison: gt? - type error"
+      (expect TypeError)
+      (gt? 10 "one"))
+
+(test "comparison: > alias"
+      (expect true)
+      (> 2 1))
+
+(test "comparison: over? alias"
+      (expect true)
+      (over? 10 0))
+
+;;;
+;;; 3. Less Than (lt?, <, under?)
+;;;
+
+(test "comparison: lt? - success true"
+      (expect true)
+      (lt? 1 5 10))
+
+(test "comparison: lt? - success false"
+      (expect false)
+      (lt? 1 5 5))
+
+(test "comparison: lt? - trivial truth (1 arg)"
+      (expect true)
+      (lt? 10))
+
+(test "comparison: lt? - trivial truth (0 args)"
+      (expect true)
+      (lt?))
+
+(test "comparison: lt? - type error"
+      (expect TypeError)
+      (lt? 1 "ten"))
+
+(test "comparison: < alias"
+      (expect true)
+      (< 1 2))
+
+(test "comparison: under? alias"
+      (expect true)
+      (under? 0 10))
+
+;;;
+;;; 4. Greater Than or Equal (gte?, >=, at-least?)
+;;;
+
+(test "comparison: gte? - success true (greater)"
+      (expect true)
+      (gte? 10 5 1))
+
+(test "comparison: gte? - success true (equal)"
+      (expect true)
+      (gte? 10 5 5))
+
+(test "comparison: gte? - success false"
+      (expect false)
+      (gte? 10 5 4))
+
+(test "comparison: gte? - trivial truth (1 arg)"
+      (expect true)
+      (gte? 10))
+
+(test "comparison: gte? - trivial truth (0 args)"
+      (expect true)
+      (gte?))
+
+(test "comparison: gte? - type error"
+      (expect TypeError)
+      (gte? 10 "one"))
+
+(test "comparison: >= alias"
+      (expect true)
+      (>= 2 2))
+
+(test "comparison: at-least? alias"
+      (expect true)
+      (at-least? 10 10))
+
+;;;
+;;; 5. Less Than or Equal (lte?, <=, at-most?)
+;;;
+
+(test "comparison: lte? - success true (less)"
+      (expect true)
+      (lte? 1 5 10))
+
+(test "comparison: lte? - success true (equal)"
+      (expect true)
+      (lte? 1 5 5))
+
+(test "comparison: lte? - success false"
+      (expect false)
+      (lte? 1 6 5))
+
+(test "comparison: lte? - trivial truth (1 arg)"
+      (expect true)
+      (lte? 10))
+
+(test "comparison: lte? - trivial truth (0 args)"
+      (expect true)
+      (lte?))
+
+(test "comparison: lte? - type error"
+      (expect TypeError)
+      (lte? 1 "ten"))
+
+(test "comparison: <= alias"
+      (expect true)
+      (<= 2 2))
+
+(test "comparison: at-most? alias"
+      (expect true)
+      (at-most? 10 10))

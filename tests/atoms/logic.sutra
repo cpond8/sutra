@@ -1,0 +1,35 @@
+;; Sutra Logic Atom Tests
+;;
+;; This suite validates the behavior of logical atoms.
+
+;;;
+;;; 1. Negation (not)
+;;;
+
+(test "logic: not - true"
+      (expect false)
+      (not true))
+
+(test "logic: not - false"
+      (expect true)
+      (not false))
+
+(test "logic: not - truthy value (number)"
+      (expect false)
+      (not 1))
+
+(test "logic: not - truthy value (string)"
+      (expect false)
+      (not "hello"))
+
+(test "logic: not - falsy value (nil)"
+      (expect true)
+      (not nil))
+
+(test "logic: not - arity error (too few)"
+      (expect ArityError)
+      (not))
+
+(test "logic: not - arity error (too many)"
+      (expect ArityError)
+      (not true false))

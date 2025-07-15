@@ -1,0 +1,93 @@
+;; Sutra Assignment & World Macro Tests
+;;
+;; This suite validates the behavior of macros that interact with the
+;; world state, such as setting, getting, and deleting values.
+
+;;;
+;;; 1. Set and Get
+;;;
+
+(test "assignment: set! and get"
+      (expect 100)
+      (do
+        (set! player.health 100)
+        (get player.health)))
+
+(test "assignment: set! nested path"
+      (expect "sword")
+      (do
+        (set! player.inventory.weapon "sword")
+        (get player.inventory.weapon)))
+
+(test "assignment: get non-existent path"
+      (expect nil)
+      (get non.existent.path))
+
+(test "assignment: set! arity error"
+      (expect ArityError)
+      (set! player.score))
+
+(test "assignment: get arity error"
+      (expect ArityError)
+      (get))
+
+;;;
+;;; 2. Delete (del!)
+;;;
+
+(test "assignment: del! success"
+      (expect nil)
+      (do
+        (set! temp.value 42)
+        (del! temp.value)
+        (get temp.value)))
+
+(test "assignment: del! arity error"
+      (expect ArityError)
+      (del!))
+
+;;;
+;;; 3. Add and Subtract (add!, sub!)
+;;;
+
+(test "assignment: add! success"
+      (expect 125)
+      (do
+        (set! player.mana 100)
+        (add! player.mana 25)
+        (get player.mana)))
+
+(test "assignment: sub! success"
+      (expect 75)
+      (do
+        (set! player.mana 100)
+        (sub! player.mana 25)
+        (get player.mana)))
+
+(test "assignment: add! type error"
+      (expect TypeError)
+      (do
+        (set! player.name "Roo")
+        (add! player.name 10)))
+
+;;;
+;;; 4. Increment and Decrement (inc!, dec!)
+;;;
+
+(test "assignment: inc! success"
+      (expect 11)
+      (do
+        (set! counter 10)
+        (inc! counter)
+        (get counter)))
+
+(test "assignment: dec! success"
+      (expect 9)
+      (do
+        (set! counter 10)
+        (dec! counter)
+        (get counter)))
+
+(test "assignment: inc! arity error"
+      (expect ArityError)
+      (inc! counter 2))
