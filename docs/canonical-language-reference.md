@@ -61,8 +61,8 @@ Sutra is a minimal, homoiconic, expression-based language designed for composabl
 
 ### 3.1 Lists & Blocks
 
-- **List:** `(expr1 expr2 ...)` — function calls, data, etc.
-- **Block:** `{expr1 expr2 ...}` — groups expressions, compiles to list.
+- **List:** `(function arg1 arg2 ...)` — function calls, data structures, etc.
+- **Block:** Newline-separated statements, optionally grouped by braces `{ ... }`, compiles to list with implicit `do` when grouped.
 
 ### 3.2 Function & Macro Definition
 
@@ -95,7 +95,132 @@ In function definitions, a variadic parameter is specified using `...` before th
 
 ---
 
-## 4. Design Notes & Edge Cases
+## 3. Block Style Transformation Rules
+
+While List style is the canonical ground truth syntax, Sutra provides Block style as authoring sugar that compiles losslessly to List style. Both syntaxes are unified by the fundamental s-expression grammar that underlies all Verse language constructs.
+
+### 3.1 The Fundamental S-Expression Grammar
+
+At its core, every Verse construct—whether written in List or Block style—is an **s-expression**: a symbolic expression consisting of atoms and nested lists. This is the unifying grammatical foundation:
+
+- **Atoms**: Numbers, strings, symbols, booleans, nil
+- **Lists**: Ordered sequences of atoms and/or nested lists, denoted `(element1 element2 ...)`
+- **Blocks**: Syntactic sugar for lists where newlines serve as expression boundaries
+
+The key insight is that **newlines in Block style serve the same delimiting function as parentheses in List style**. Where List style uses explicit parentheses to group expressions, Block style uses newlines to separate sequential expressions and braces to group them.
+
+### 3.2 Newline-Based Expression Parsing
+
+In Block style, **newlines are the primary expression delimiters**:
+
+```sutra
+storylet "kitchen" {
+  print "You enter the kitchen"
+  set! player.location "kitchen"
+  inc! player.steps
+}
+```
+
+Each newline-terminated line is parsed as a separate s-expression. This transforms to:
+
+```sutra
+(storylet "kitchen" (do
+  (print "You enter the kitchen")
+  (set! player.location "kitchen")
+  (inc! player.steps)))
+```
+
+This is why Block style doesn't require parentheses around each expression—the newlines provide the necessary syntactic boundaries.
+
+### 3.3 Core Transformation Rules
+
+#### Rule 1: Block-to-List Wrapping
+
+Any construct `identifier { statements }` becomes `(identifier (do statements))` where `statements` are newline-separated expressions.
+
+#### Rule 2: Newline Expression Separation
+
+Newlines within blocks create separate s-expressions that are wrapped in an implicit `(do ...)` sequence.
+
+#### Rule 3: Conditional Block Transformation
+
+- `if condition { statements }` → `(if condition (do statements))`
+- `if condition { then-statements } else { else-statements }` → `(if condition (do then-statements) (do else-statements))`
+- `unless condition { statements }` → `(unless condition (do statements))`
+
+#### Rule 4: Nested Block Recursion
+
+Each `{ }` block recursively applies these rules, maintaining the s-expression tree structure.
+
+#### Rule 5: Context-Sensitive Preservation
+
+- Parenthesized pairs `(key value)` within `tags` and `state` contexts represent literal s-expressions and are preserved
+- Exclamation suffixes `!` are part of the symbol atom itself
+- Arrow syntax `->` exists only within `hub` constructs as a special operator
+
+### 3.4 Specific Construct Transformations
+
+The s-expression foundation means all constructs follow the same underlying pattern, regardless of their specific semantics:
+
+#### 3.4.1 Storylet Constructs
+
+```sutra
+storylet "duel" {
+  tag combat
+  weight agent.rivalry
+  print "Swords clash!"
+}
+```
+
+→ `(storylet "duel" (do (tag combat) (weight agent.rivalry) (print "Swords clash!")))`
+
+#### 3.4.2 Thread Constructs
+
+```sutra
+define exploration thread {
+  start entrance
+  state { (visited false) }
+}
+```
+
+→ `(define exploration thread (do (start entrance) (state (do (visited false)))))`
+
+#### 3.4.3 Conditional Constructs
+
+```sutra
+if player.hungry {
+  print "Your stomach growls"
+  dec! player.energy
+}
+```
+
+→ `(if player.hungry (do (print "Your stomach growls") (dec! player.energy)))`
+
+#### 3.4.4 Choice Constructs
+
+```sutra
+choices {
+  "Enter tavern" { set! player.location "tavern" }
+  "Continue walking" { inc! player.steps }
+}
+```
+
+→ `(choices (do ("Enter tavern" (do (set! player.location "tavern"))) ("Continue walking" (do (inc! player.steps)))))`
+
+### 3.5 The Unifying S-Expression Principle
+
+Every Verse construct, whether written in List or Block style, ultimately becomes an s-expression tree. This fundamental unity means:
+
+1. **Semantic Equivalence**: Both styles produce identical s-expression trees and execute identically
+2. **Lossless Transformation**: The newline-to-parentheses mapping preserves all semantic information
+3. **Compositional Grammar**: Complex nested structures follow the same recursive s-expression rules
+4. **Canonical Representation**: The List style s-expression is always the canonical form for evaluation
+
+The power of this design is that authors can write in the more natural Block style while the engine operates on the mathematically precise s-expression representation—unified by the same underlying grammar.
+
+---
+
+## 5. Design Notes & Edge Cases
 
 This section highlights specific behaviors and design choices in Sutra that might be non-obvious but are intentional. Understanding these can help in writing more robust and idiomatic Sutra code.
 
@@ -118,7 +243,7 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 5. Assignment & State
+## 6. Assignment & State
 
 | Macro   | Arity | Expansion Pattern                            | Impl.       | Status  |
 | :------ | :---- | :------------------------------------------- | :---------- | :------ |
@@ -135,25 +260,25 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 6. Predicates & Logic
+## 7. Predicates & Logic
 
 | Macro     | Arity | Expands to     | Purpose                  | Impl. | Status  | Macro Aliases     |
 | :-------- | :---- | :------------- | :----------------------- | :---- | :------ | :---------------- |
-| `eq?`     | 2..   | —             | Equality                 | Atom  | impl.   | `=`, `is?`        |
-| `gt?`     | 2..   | —             | Greater than             | Atom  | impl.   | `>`, `over?`      |
-| `lt?`     | 2..   | —             | Less than                | Atom  | impl.   | `<`, `under?`     |
-| `gte?`    | 2..   | —             | Greater/equal            | Atom  | impl.   | `>=`, `at-least?` |
-| `lte?`    | 2..   | —             | Less/equal               | Atom  | impl.   | `<=`, `at-most?`  |
-| `not`     | 1     | —             | Negation                 | Atom  | impl.   | —                |
-| `has?`    | 2..   | —             | Membership in collection | Atom  | planned | —                |
-| `exists?` | 1     | `core/exists?` | Path/value existence     | Macro | planned | —                |
-| `and`     | 0..   | `(if ...)`     | Logical AND              | Macro | planned | —                |
-| `or`      | 0..   | `(if ...)`     | Logical OR               | Macro | planned | —                |
-| `empty?`  | 1     | `eq?` + `len`  | Collection is empty      | Macro | planned | —                |
+| `eq?`     | 0..   | —              | Equality                 | Atom  | impl.   | `=`, `is?`        |
+| `gt?`     | 0..   | —              | Greater than             | Atom  | impl.   | `>`, `over?`      |
+| `lt?`     | 0..   | —              | Less than                | Atom  | impl.   | `<`, `under?`     |
+| `gte?`    | 0..   | —              | Greater/equal            | Atom  | impl.   | `>=`, `at-least?` |
+| `lte?`    | 0..   | —              | Less/equal               | Atom  | impl.   | `<=`, `at-most?`  |
+| `not`     | 1     | —              | Negation                 | Atom  | impl.   | —                 |
+| `has?`    | 2..   | —              | Membership in collection | Atom  | planned | —                 |
+| `exists?` | 1     | `core/exists?` | Path/value existence     | Macro | planned | —                 |
+| `and`     | 0..   | `(if ...)`     | Logical AND              | Macro | planned | —                 |
+| `or`      | 0..   | `(if ...)`     | Logical OR               | Macro | planned | —                 |
+| `empty?`  | 1     | `eq?` + `len`  | Collection is empty      | Macro | planned | —                 |
 
 ---
 
-## 7. Math & Value Operations
+## 8. Math & Value Operations
 
 | Atom  | Arity | Purpose              | Impl. | Status  |
 | :---- | :---- | :------------------- | :---- | :------ |
@@ -169,18 +294,18 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 8. String Utilities
+## 9. String Utilities
 
-| Macro/Atom  | Arity | Signature                 | Purpose                       | Impl.       | Status  |
-| :---------- | :---- | :------------------------ | :---------------------------- | :---------- | :------ |
-| `display`   | 0..   | `(display a b ...)`       | Print multiple values         | Macro       | impl.   |
-| `str+`      | 0..   | `(str+ a b ...)`          | Concatenate strings           | Macro, Atom | impl.   |
-| `str`       | 1     | `(str x)`                 | Typecast to string            | Atom        | planned |
-| `join-str+` | 2..   | `(join-str+ sep a b ...)` | Join strings with a separator | Macro       | planned |
+| Macro/Atom  | Arity | Signature                 | Purpose                       | Impl. | Status  |
+| :---------- | :---- | :------------------------ | :---------------------------- | :---- | :------ |
+| `display`   | 0..   | `(display a b ...)`       | Print multiple values         | Macro | impl.   |
+| `str`       | 1     | `(str x)`                 | Typecast to string            | Atom  | impl.   |
+| `str+`      | 0..   | `(str+ a b ...)`          | Concatenate strings           | Atom  | impl.   |
+| `join-str+` | 2..   | `(join-str+ sep a b ...)` | Join strings with a separator | Macro | planned |
 
 ---
 
-## 9. World Interaction
+## 10. World Interaction
 
 | Atom           | Arity | Purpose              | Impl. |
 | :------------- | :---- | :------------------- | :---- |
@@ -191,7 +316,7 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 10. I/O & Random
+## 11. I/O & Random
 
 | Atom/Macro | Arity | Purpose                    | Impl. | Status  |
 | :--------- | :---- | :------------------------- | :---- | :------ |
@@ -202,7 +327,7 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 11. Error Handling
+## 12. Error Handling
 
 - **Parse-time:** Invalid tokens, unmatched delimiters, bad escapes.
 - **Validation:** Unknown macros/atoms, arity/type errors, invalid paths.
@@ -210,13 +335,13 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 12. Comments
+## 13. Comments
 
 - Start with `;` and continue to end of line.
 
 ---
 
-## 13. Example Program
+## 14. Example Program
 
 ```sutra
 ; Factorial function
@@ -229,14 +354,14 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 14. Grammar Summary
+## 15. Grammar Summary
 
 - See `src/syntax/grammar.pest` for the full PEG grammar.
 - All syntax is formally specified and enforced by the parser.
 
 ---
 
-## 15. Macro System
+## 16. Macro System
 
 - All author-facing macros are defined in `src/macros/macros.sutra` and registered at startup.
 - Macro expansion is canonical and deterministic.
@@ -244,7 +369,7 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 16. Validation & Evaluation
+## 17. Validation & Evaluation
 
 - All code is parsed, macroexpanded, validated, and then evaluated.
 - Validation checks for unknown macros/atoms, arity, and type errors.
@@ -252,7 +377,7 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 17. Value Types
+## 18. Value Types
 
 | Type   | Example         | Description            |
 | :----- | :-------------- | :--------------------- |
@@ -266,21 +391,21 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 18. CLI & Tooling
+## 19. CLI & Tooling
 
 - CLI supports: run, macroexpand, macrotrace, validate, format, test, list-macros, list-atoms, ast, gen-expected.
 - Output is pretty-printed and colorized.
 
 ---
 
-## 19. Extensibility
+## 20. Extensibility
 
 - New atoms/macros can be added via Rust or Sutra macro files.
 - All macro and atom registration is centralized and canonical.
 
 ---
 
-## 20. Not Yet impl. (Planned)
+## 21. Not Yet impl. (Planned)
 
 - Tier 2+ high-level macros (e.g., `requires`, `threshold`, `hub`, `select`).
 - Map literals and advanced collection utilities.
@@ -288,7 +413,7 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 21. References
+## 22. References
 
 - Canonical spec: `docs/specs/language-spec.md`
 - Macro library: `src/macros/macros.sutra`
@@ -299,4 +424,4 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-This document is fully synchronized with the codebase and spec as of July 2025. For any ambiguity or missing feature, consult the canonical spec and the relevant module in the codebase.
+This document is fully synchronized with the codebase and spec as of 14 July 2025. For any ambiguity or missing feature, consult the canonical spec and the relevant module in the codebase.

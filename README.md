@@ -1,7 +1,6 @@
 # Sutra Engine
 
-Sutra is a compositional, emergent, and narrative-rich game engine implemented in Rust.
-It provides a minimal, extensible core for authoring interactive fiction, simulations, and system-driven narratives.
+Sutra is a compositional, emergent, and narrative-rich game engine implemented in Rust. It provides a minimal, extensible core for authoring interactive fiction, simulations, and system-driven narratives using the Verse language.
 
 ---
 

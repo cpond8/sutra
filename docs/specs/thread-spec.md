@@ -1,14 +1,14 @@
 ---
 status: authoritative
 last-reviewed: 2024-07-03
-summary: Canonical thread system specification for modular narrative/game flows.
+summary: Canonical thread system specification for modular narrative/game flows in Verse.
 ---
 
-# Sutra Thread System — Canonical Specification
+# Verse Thread System — Canonical Specification
 
 ## Overview
 
-**Sutra threads** are modular, encapsulated, compositional narrative/game flows.
+**Verse threads** are modular, encapsulated, compositional narrative/game flows.
 A thread is a centralized, declarative controller that:
 
 - Defines the flow (“steps”) of a linear, branching, or hybrid narrative or gameplay module.
@@ -24,7 +24,7 @@ A thread is a centralized, declarative controller that:
 
 ### **Canonical Syntax**
 
-```sutra
+```verse
 define <name> thread {
   tags {
     (key1 value1)
@@ -80,7 +80,7 @@ define <name> thread {
 
 ### **Canonical Syntax**
 
-```sutra
+```verse
 step <step-name> [!] {
   # Narrative output or logic
   print "Description..."
@@ -116,7 +116,7 @@ step <step-name> [!] {
 
 **1. Unconditional:**
 
-```sutra
+```verse
 choices {
   "To the kitchen" -> kitchen!
 }
@@ -124,7 +124,7 @@ choices {
 
 **2. Inline If:**
 
-```sutra
+```verse
 choices {
   if (<predicate>) { "To the kitchen" -> kitchen! }
 }
@@ -132,7 +132,7 @@ choices {
 
 **3. Cond Block:**
 
-```sutra
+```verse
 choices {
   cond {
     (<predicate1>) { "To the garden" -> garden! }
@@ -178,7 +178,7 @@ choices {
 
 ## Canonical Example
 
-```sutra
+```verse
 define tour thread {
   tags {
     (theme "exploration")

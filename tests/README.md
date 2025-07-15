@@ -1,15 +1,15 @@
 # Sutra Test Harness
 
-A sophisticated, author-focused testing framework designed for narrative game engines, built on Sutra's core principles of minimalism, compositionality, and transparency.
+A sophisticated, author-focused testing framework designed for narrative game engines, built on Sutra's core principles of minimalism, compositionality, and transparency. All tests are written in the Verse language.
 
 ## Philosophy
 
 The Sutra test harness embodies the engine's core design philosophy:
 
--   **Minimal but Complete**: Essential testing capabilities with zero redundancy.
--   **Transparent**: Full visibility into the compilation pipeline and diagnostic output.
--   **Composable**: An extensible, homoiconic system where tests are first-class code.
--   **Author-Ergonomic**: Simple syntax for common cases, powerful features for complex scenarios.
+- **Minimal but Complete**: Essential testing capabilities with zero redundancy.
+- **Transparent**: Full visibility into the compilation pipeline and diagnostic output.
+- **Composable**: An extensible, homoiconic system where tests are first-class code.
+- **Author-Ergonomic**: Simple syntax for common cases, powerful features for complex scenarios.
 
 ## Homoiconic Test Architecture
 
@@ -59,10 +59,10 @@ Each test executes the complete Sutra compilation pipeline:
 
 Every test runs in a completely fresh execution environment:
 
--   Clean world state
--   Fresh macro environment
--   Isolated output buffers
--   Independent diagnostic collection
+- Clean world state
+- Fresh macro environment
+- Isolated output buffers
+- Independent diagnostic collection
 
 ## Running Tests
 
@@ -93,37 +93,37 @@ cargo run --bin harness -- --filter "math" --update-snapshots
 
 ### Core Macros
 
-| Macro                               | Syntax                                      | Purpose                                                      |
-| ----------------------------------- | ------------------------------------------- | ------------------------------------------------------------ |
-| `(test name expect-form body)`      | `(test "my test" (expect ...) (+ 1 2))`     | Defines a test case with a name, expectation, and body.      |
-| `(expect expectation [ann...])` | `(expect 42 (tags "math"))`                 | Defines the expected outcome and optional configuration annotations. |
+| Macro                           | Syntax                                  | Purpose                                                              |
+| ------------------------------- | --------------------------------------- | -------------------------------------------------------------------- |
+| `(test name expect-form body)`  | `(test "my test" (expect ...) (+ 1 2))` | Defines a test case with a name, expectation, and body.              |
+| `(expect expectation [ann...])` | `(expect 42 (tags "math"))`             | Defines the expected outcome and optional configuration annotations. |
 
 ### Expectation Types
 
 The first argument to the `(expect ...)` macro defines what the test's outcome should be.
 
-| Type                  | Syntax                               | Purpose                                                 |
-| --------------------- | ------------------------------------ | ------------------------------------------------------- |
-| **Value Assertion**   | `(expect <value>)`                   | Asserts that the test body evaluates to an exact value. |
-| **Error Assertion**   | `(expect <error-symbol>)`            | Asserts that the test fails with a specific error type. |
-| **Complex Assertion** | `(expect (or <sym1> <sym2>))`        | Asserts a more complex condition using `and`, `or`, `not`. |
-| **Output Assertion**  | `(expect (output "text"))`           | Asserts that the test body prints specific text to stdout. |
-| **Success**           | `(expect success)`                   | Asserts that the test completes without any errors.     |
-| **Snapshot**          | `(expect (snapshot "path.txt"))`     | Compares diagnostic output against a saved snapshot.    |
+| Type                  | Syntax                           | Purpose                                                    |
+| --------------------- | -------------------------------- | ---------------------------------------------------------- |
+| **Value Assertion**   | `(expect <value>)`               | Asserts that the test body evaluates to an exact value.    |
+| **Error Assertion**   | `(expect <error-symbol>)`        | Asserts that the test fails with a specific error type.    |
+| **Complex Assertion** | `(expect (or <sym1> <sym2>))`    | Asserts a more complex condition using `and`, `or`, `not`. |
+| **Output Assertion**  | `(expect (output "text"))`       | Asserts that the test body prints specific text to stdout. |
+| **Success**           | `(expect success)`               | Asserts that the test completes without any errors.        |
+| **Snapshot**          | `(expect (snapshot "path.txt"))` | Compares diagnostic output against a saved snapshot.       |
 
 ### Annotations
 
 Optional forms passed to `(expect ...)` after the main expectation to configure test behavior.
 
-| Annotation                | Syntax                               | Purpose                                                      |
-| ------------------------- | ------------------------------------ | ------------------------------------------------------------ |
-| `(skip "reason")`         | `(skip "wip")`                       | Skips the test, providing an optional reason.                |
-| `(only)`                  | `(only)`                             | Exclusively runs tests with this annotation.                 |
-| `(tags "t1" "t2")`        | `(tags "slow" "db")`                 | Assigns tags for filtering.                                  |
-| `(group "path")`          | `(group "math/advanced")`            | Organizes tests into hierarchical groups.                    |
-| `(timeout <ms>)`          | `(timeout 5000)`                     | Sets a custom timeout for the test in milliseconds.          |
-| `(params ((...)))`        | `(params ((1 2 3) (4 5 9)))`         | Runs the test multiple times with different data sets.       |
-| `(fixture "name")`        | `(fixture "player_setup")`           | Initializes the world state from a named fixture.            |
+| Annotation         | Syntax                       | Purpose                                                |
+| ------------------ | ---------------------------- | ------------------------------------------------------ |
+| `(skip "reason")`  | `(skip "wip")`               | Skips the test, providing an optional reason.          |
+| `(only)`           | `(only)`                     | Exclusively runs tests with this annotation.           |
+| `(tags "t1" "t2")` | `(tags "slow" "db")`         | Assigns tags for filtering.                            |
+| `(group "path")`   | `(group "math/advanced")`    | Organizes tests into hierarchical groups.              |
+| `(timeout <ms>)`   | `(timeout 5000)`             | Sets a custom timeout for the test in milliseconds.    |
+| `(params ((...)))` | `(params ((1 2 3) (4 5 9)))` | Runs the test multiple times with different data sets. |
+| `(fixture "name")` | `(fixture "player_setup")`   | Initializes the world state from a named fixture.      |
 
 ## Assertion Examples
 
@@ -174,6 +174,7 @@ Combine assertions for more complex error matching:
       (expect (and type-error (message-contains "expected Number")))
       (+ 1 "string"))
 ```
+
 #### Canonical Error Codes
 
 The test harness uses Sutra's canonical error codes for stable test matching:
@@ -190,7 +191,6 @@ The test harness uses Sutra's canonical error codes for stable test matching:
 | `IoError`                | File or system I/O failures                  | File read/write errors              |
 | `MalformedAstError`      | Internal AST structure errors                | Parser or AST construction bugs     |
 | `InternalParseError`     | Internal parser state errors                 | Parser implementation bugs          |
-
 
 ## Parameterized Testing
 
@@ -232,7 +232,7 @@ Define reusable world state with fixtures and apply them to tests with the `(fix
 
 Assert on printed output and other side effects using the `(output ...)` expectation.
 
-```lisp
+````lisp
 (test "print output"
       (expect (output "Hello, World!\n"))
       (print "Hello, World!"))
@@ -254,7 +254,7 @@ tests/
 ├── macros/        ← mirrors `src/macros`
 ├── runtime/       ← mirrors `src/runtime`
 └── syntax/        ← mirrors `src/syntax`
-```
+````
 
 ## Test Runner Configuration
 
@@ -282,7 +282,8 @@ The behavior of the test harness can be configured via environment variables and
       (do
         (print "Starting...")
         (print "Complete.")))
-```
+
+````
 
 ## Test Organization
 
@@ -295,7 +296,7 @@ Organize tests with hierarchical groups and tags for better management and filte
               (tags "slow" "integration")
               (timeout 5000))
       (complex-calculation))
-```
+````
 
 ## Planned Extensions
 

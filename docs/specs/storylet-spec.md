@@ -1,10 +1,10 @@
 ---
 status: authoritative
 last-reviewed: 2024-07-03
-summary: Canonical storylet specification for modular, eligibility-driven narrative units.
+summary: Canonical storylet specification for modular, eligibility-driven narrative units in Verse.
 ---
 
-# Sutra Storylets: Formal Specification
+# Verse Storylets: Formal Specification
 
 ---
 
@@ -14,7 +14,7 @@ summary: Canonical storylet specification for modular, eligibility-driven narrat
 
 - They represent _events, encounters, scenes, or micro-narratives_ that are triggered based on world/agent state, pool membership, and eligibility logic.
 
-- **Storylets are the foundational "atom" of emergent, replayable, simulation-driven content in Sutra.**
+- **Storylets are the foundational "atom" of emergent, replayable, simulation-driven content in Verse.**
 
 ---
 
@@ -22,7 +22,7 @@ summary: Canonical storylet specification for modular, eligibility-driven narrat
 
 ### **Canonical Syntax**
 
-```sutra
+```verse
 storylet "id" {
   [display "Optional human-readable name"]
   [tags ...]          ; e.g., tag social, tag danger, etc.
@@ -36,7 +36,7 @@ storylet "id" {
 
 **Examples:**
 
-```sutra
+```verse
 storylet "duel" {
   tag social
   weight (* agent.rivalry 2)
@@ -52,21 +52,15 @@ storylet "duel" {
 ## **III. Eligibility and Selection**
 
 - **Eligibility**:
-
   - Evaluated via the `when` field (if present), using a prefix boolean expression.
-
   - Defaults to "eligible" if no `when` field specified.
-
   - Context: eligibility is always evaluated in the scope of the relevant agent, player, or world (according to pool construction).
 
 - **Weighting**:
-
   - Used when selecting among multiple eligible storylets (via `select`, `random`, `sample` macros, etc.).
-
   - Evaluated as a prefix expression; default is `1` if unspecified.
 
 - **Tags/Metadata**:
-
   - Used for pool construction, filtering, and analytic purposes (e.g., `tag social`, `region north`).
 
 ---
@@ -74,11 +68,8 @@ storylet "duel" {
 ## **IV. History and Seen Tracking**
 
 - **History**:
-
   - If the `history` keyword is present, firing/executing this storylet records it as "seen" for the current agent/player/session (as appropriate).
-
   - The system can use this to filter future pools (`exclude seen`), trigger recaps, or branch based on prior experience.
-
   - **History checks** (e.g., `if (seen "duel") ...`) are prefix atoms/macros and can be used in any logic or text.
 
 ---
@@ -101,7 +92,7 @@ storylet "duel" {
 
   - **Canonical example:**
 
-    ```sutra
+    ```verse
     print "A [adjective] duel breaks out between {agent.name} and {rival.name}!"
     if (gt? agent.rivalry 5) {
       print "{agent.name} fights furiously!"
@@ -123,7 +114,7 @@ storylet "duel" {
 
   - Use block structure for clarity:
 
-    ```sutra
+    ```verse
     choices {
       "Attack" {
         print "You strike!"
@@ -180,7 +171,7 @@ storylet "duel" {
 
 - E.g.:
 
-  ```sutra
+  ```verse
   print "The [adjective] duel begins! {agent.name} faces {rival.name}."
   ```
 
@@ -196,7 +187,7 @@ storylet "duel" {
 
 ## **XI. Example: Storylet with Full Features**
 
-```sutra
+```verse
 storylet "feast" {
   tag social
   region castle

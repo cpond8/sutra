@@ -1,14 +1,13 @@
 ---
-status: authoritative
 last-reviewed: 2024-07-09
-summary: Canonical language specification, always in sync with the implementation.
+summary: Deuterocanonical language specification for Verse, always in sync with the implementation.
 ---
 
-# Sutra Language Specification
+# Verse Language Specification
 
 > **Canonical Reference Notice (2024-07-09):**
 >
-> The Sutra engine language has two canonical syntaxes:
+> The Verse language has two canonical syntaxes:
 >
 > - **List style**: The canonical, Scheme/Lisp-inspired s-expression syntax. All engine, macro, and test logic is specified and validated exclusively in this style. This is the ground truth for the language.
 > - **Block style**: The brace-based, authoring-friendly syntax for game authors. This style is compiled to list style and is not canonical for engine or test purposes.
@@ -23,7 +22,7 @@ summary: Canonical language specification, always in sync with the implementatio
 
 ### **2025-07-09: Canonical Reference Declaration**
 
-- Declared **list style** (Scheme/Lisp s-expression) as the canonical reference for all Sutra language semantics, macro expansion, and test expectations.
+- Declared **list style** (Scheme/Lisp s-expression) as the canonical reference for all Verse language semantics, macro expansion, and test expectations.
 - Clarified that the canonical syntax is the **list style**; the **block style** is for authoring convenience and is not canonical for engine or test purposes.
 
 ### **2025-07-02: Major Synchronization with Codebase**
@@ -45,16 +44,16 @@ This update brings the language specification in line with the canonical impleme
 
 ---
 
-# Sutra Macro Library — Tier 1: Canonical Specification
+# Verse Macro Library — Tier 1: Canonical Specification
 
-This document provides a formal, precise, and minimal-but-pragmatic specification of Sutra's Tier 1 macro and atom set. This is the foundational author-facing and engine-level vocabulary on which all higher patterns (Tier 2+) will be built.
-All design choices are explained in context of Sutra's guiding principles: minimal core, maximal compositionality, author ergonomics, and zero redundancy.
+This document provides a formal, precise, and minimal-but-pragmatic specification of Verse's Tier 1 macro and atom set. This is the foundational author-facing and engine-level vocabulary on which all higher patterns (Tier 2+) will be built.
+All design choices are explained in context of Verse's guiding principles: minimal core, maximal compositionality, author ergonomics, and zero redundancy.
 
 ---
 
 ## **Overview: Core Atoms vs. Macros**
 
-Sutra's design distinguishes between two fundamental concepts: **Core Atoms** and **Macros**.
+Verse's design distinguishes between two fundamental concepts: **Core Atoms** and **Macros**.
 
 - **Core Atoms:** These are the irreducible, primitive operations executed by the engine. They are often namespaced (e.g., `core/set!`) and are not intended for direct use by authors. They operate on a fully expanded, canonical AST and expect their arguments to be in a precise format (e.g., `core/get` requires an `Expr::Path`).
 
@@ -179,7 +178,7 @@ All basic math/value operations are atoms and always author-facing; no macro wra
 
 ## Core Atom Semantics and Edge Cases
 
-This section highlights specific behaviors and design choices in Sutra that might be non-obvious but are intentional. Understanding these can help in writing more robust and idiomatic Sutra code.
+This section highlights specific behaviors and design choices in Verse that might be non-obvious but are intentional. Understanding these can help in writing more robust and idiomatic Verse code.
 
 - **Identity Values for Arithmetic Atoms:** When called with no arguments, `+` returns its identity value `0`, and `*` returns its identity value `1`. This is a common convention in Lisp-family languages.
 
@@ -195,11 +194,11 @@ This section highlights specific behaviors and design choices in Sutra that migh
   - `(gt? 5)` => `true`
   - `(lt?)` => `true`
 
-# Sutra Value Types — Canonical Reference
+# Verse Value Types — Canonical Reference
 
-The Sutra engine supports the following value types at the language level. These types are the only first-class values recognized by the engine and macro system.
+The Verse engine supports the following value types at the language level. These types are the only first-class values recognized by the engine and macro system.
 
-| Sutra Type | Example Literal    | Description                            |
+| Verse Type | Example Literal    | Description                            |
 | ---------- | ------------------ | -------------------------------------- |
 | Nil        | `nil`              | Default/null value; absence of a value |
 | Number     | `42`, `3.14`       | 64-bit floating point number           |
@@ -213,7 +212,7 @@ The Sutra engine supports the following value types at the language level. These
 
 # String Utilities — Canonical Specification
 
-This section documents the canonical string utility macros and atoms available in Sutra. All syntax is prefix, and all macros follow the canonical macro definition form.
+This section documents the canonical string utility macros and atoms available in Verse. All syntax is prefix, and all macros follow the canonical macro definition form.
 
 ## Typecasting to String: `str`
 
@@ -306,7 +305,7 @@ This section documents the canonical string utility macros and atoms available i
 
 # Macro Environment — Canonical Single Source of Truth (SSOT)
 
-The Sutra engine enforces a single source of truth for macro environment construction. All macro environments (for CLI, test harness, REPL, etc.) are built using a single, canonical function:
+The Verse engine enforces a single source of truth for macro environment construction. All macro environments (for CLI, test harness, REPL, etc.) are built using a single, canonical function:
 
 **Function:**
 
@@ -356,7 +355,7 @@ let macro_env = build_canonical_macro_env();
 
 ### **`if` (Core Construct)**
 
-`if` is the canonical conditional construct in Sutra. It is a special form in the AST (`Expr::If`) and is **not** a macro. It requires exactly three arguments: a condition, a "then" branch, and an "else" branch. The `else` is not optional.
+`if` is the canonical conditional construct in Verse. It is a special form in the AST (`Expr::If`) and is **not** a macro. It requires exactly three arguments: a condition, a "then" branch, and an "else" branch. The `else` is not optional.
 
 **Status:** Implemented
 
@@ -436,7 +435,7 @@ The following control macros are planned but not yet implemented: `when`, `let`,
 
 > ## **Note on Tier 2+ Features**
 >
-> The following sections (**Tier 2, Tier 3, etc.**) describe powerful, high-level macros that are part of the **long-term design vision** for Sutra.
+> The following sections (**Tier 2, Tier 3, etc.**) describe powerful, high-level macros that are part of the **long-term design vision** for Verse.
 >
 > **These features are NOT YET IMPLEMENTED.**
 >
@@ -444,7 +443,7 @@ The following control macros are planned but not yet implemented: `when`, `let`,
 
 ---
 
-# **Sutra Tier 2 Macros — Canonical Specification**
+# **Verse Tier 2 Macros — Canonical Specification**
 
 ---
 
@@ -811,7 +810,7 @@ Expands to a `choice` block that records an intent variable and executes side-ef
 
 ---
 
-# Sutra Tier 3: Emergent Gameplay, Pools, History, and Dynamic Text — Canonical Reference
+# Verse Tier 3: Emergent Gameplay, Pools, History, and Dynamic Text — Canonical Reference
 
 ---
 
@@ -1054,7 +1053,7 @@ tick {
 
 - **Parser:**
 
-  - All features extend naturally from Sutra's block/brace + s-expr conventions.
+  - All features extend naturally from Verse's block/brace + s-expr conventions.
 
   - Metadata/weights are handled as in all other blocks.
 
@@ -1092,16 +1091,16 @@ tick {
 
 ---
 
-**This is your canonical Tier 3 reference for dynamic, emergent, and replayable Sutra games.**
+**This is your canonical Tier 3 reference for dynamic, emergent, and replayable Verse games.**
 If you need a PDF, sample projects, or parser/AST specs, just ask!
 
 ---
 
-Here is the **formalized, canonical Tier 3+ Sutra macro and grammar/event/pool system**, now fully **prefix-uniform**, using block structure for readability, and reflecting the explicit `else` in all author-facing conditionals.
+Here is the **formalized, canonical Tier 3+ Verse macro and grammar/event/pool system**, now fully **prefix-uniform**, using block structure for readability, and reflecting the explicit `else` in all author-facing conditionals.
 
 ---
 
-# Sutra Tier 3+: Pools, Weighted Selection, Grammar, Dynamic Text, and Conditionals
+# Verse Tier 3+: Pools, Weighted Selection, Grammar, Dynamic Text, and Conditionals
 
 ---
 
@@ -1442,7 +1441,7 @@ define (macro-name param1 param2 ... [. variadic-param]) {
 
 ### Overview
 
-Sutra's macro system implements canonical Lisp/Scheme-style variadic macro forwarding and argument splicing. This allows macros to accept a variable number of arguments and forward them ergonomically, matching user expectations from other Lisp-family languages.
+Verse's macro system implements canonical Lisp/Scheme-style variadic macro forwarding and argument splicing. This allows macros to accept a variable number of arguments and forward them ergonomically, matching user expectations from other Lisp-family languages.
 
 ### Canonical Behavior
 

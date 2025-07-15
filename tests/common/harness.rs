@@ -26,9 +26,9 @@ use sutra::macros::expand_macros;
 use sutra::runtime::eval::eval;
 use sutra::runtime::registry::{build_canonical_macro_env, build_default_atom_registry};
 use sutra::runtime::world::World;
+use sutra::syntax::error::ErrorCode;
 use sutra::syntax::error::SutraError;
 use sutra::syntax::validator::{SutraDiagnostic as ValidatorDiagnostic, ValidatorRegistry};
-use sutra::syntax::error::ErrorCode;
 use walkdir::WalkDir;
 
 // =============================================================================
@@ -148,8 +148,11 @@ pub struct TestConfig {
 
 impl Default for TestConfig {
     fn default() -> Self {
+        // Set test_root to the parent of the folder containing this file (i.e., .../tests/)
+        // so that recursive search covers all subfolders, not just the current subfolder.
+        let test_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
         Self {
-            test_root: PathBuf::from("tests/"), // TODO: Placeholder; proper folder structure needed
+            test_root,
             test_extension: "sutra".to_string(),
             eval_limit: 1000,
             use_colors: atty::is(atty::Stream::Stdout),
@@ -350,10 +353,18 @@ fn is_symbolic_error_expression(input: &str) -> bool {
     }
 
     // Check if it's a known error code
-    matches!(input,
-        "parse-error" | "recursion-limit-exceeded" | "validation-error" |
-        "io-error" | "malformed-ast-error" | "internal-parse-error" |
-        "arity-error" | "type-error" | "division-by-zero" | "eval-error"
+    matches!(
+        input,
+        "parse-error"
+            | "recursion-limit-exceeded"
+            | "validation-error"
+            | "io-error"
+            | "malformed-ast-error"
+            | "internal-parse-error"
+            | "arity-error"
+            | "type-error"
+            | "division-by-zero"
+            | "eval-error"
     )
 }
 
@@ -380,7 +391,7 @@ fn is_value_expression(input: &str) -> bool {
     if input.starts_with('(') && input.ends_with(')') {
         // This is a heuristic: if it contains only simple tokens (no operators like 'and', 'or', 'not')
         // then it's likely a list rather than a symbolic expression
-        let inner = &input[1..input.len()-1].trim();
+        let inner = &input[1..input.len() - 1].trim();
         if inner.is_empty() {
             return true; // Empty list
         }
@@ -413,7 +424,9 @@ fn parse_string_list(value: Option<&String>) -> Result<Vec<String>, Box<dyn std:
 /// - "(or arity-error type-error)" (logical OR)
 /// - "(and parse-error recursion-limit-exceeded)" (logical AND)
 /// - "(not division-by-zero)" (logical NOT)
-pub fn parse_symbolic_expression(input: &str) -> Result<SymbolicExpression, Box<dyn std::error::Error>> {
+pub fn parse_symbolic_expression(
+    input: &str,
+) -> Result<SymbolicExpression, Box<dyn std::error::Error>> {
     let input = input.trim();
 
     // Handle simple error code (no parentheses)
@@ -426,7 +439,7 @@ pub fn parse_symbolic_expression(input: &str) -> Result<SymbolicExpression, Box<
         return Err("Symbolic expression must be balanced parentheses".into());
     }
 
-    let inner = &input[1..input.len()-1].trim();
+    let inner = &input[1..input.len() - 1].trim();
     let tokens = tokenize_symbolic_expression(inner)?;
 
     if tokens.is_empty() {
@@ -438,24 +451,26 @@ pub fn parse_symbolic_expression(input: &str) -> Result<SymbolicExpression, Box<
 
     match operator.as_str() {
         "and" => {
-            let sub_expressions: Result<Vec<_>, _> = args.iter()
+            let sub_expressions: Result<Vec<_>, _> = args
+                .iter()
                 .map(|arg| parse_symbolic_expression(arg))
                 .collect();
             Ok(SymbolicExpression::And(sub_expressions?))
-        },
+        }
         "or" => {
-            let sub_expressions: Result<Vec<_>, _> = args.iter()
+            let sub_expressions: Result<Vec<_>, _> = args
+                .iter()
                 .map(|arg| parse_symbolic_expression(arg))
                 .collect();
             Ok(SymbolicExpression::Or(sub_expressions?))
-        },
+        }
         "not" => {
             if args.len() != 1 {
                 return Err("'not' operator requires exactly one argument".into());
             }
             let sub_expression = parse_symbolic_expression(&args[0])?;
             Ok(SymbolicExpression::Not(Box::new(sub_expression)))
-        },
+        }
         _ => Err(format!("Unknown operator: {}", operator).into()),
     }
 }
@@ -494,13 +509,13 @@ fn tokenize_symbolic_expression(input: &str) -> Result<Vec<String>, Box<dyn std:
                 } else if paren_depth > 0 {
                     current_token.push(ch);
                 }
-            },
+            }
             '(' => {
                 if paren_depth > 0 {
                     current_token.push(ch);
                 }
                 paren_depth += 1;
-            },
+            }
             ')' => {
                 paren_depth -= 1;
                 if paren_depth > 0 {
@@ -510,7 +525,7 @@ fn tokenize_symbolic_expression(input: &str) -> Result<Vec<String>, Box<dyn std:
                     tokens.push(current_token.trim().to_string());
                     current_token.clear();
                 }
-            },
+            }
             _ => {
                 current_token.push(ch);
             }
@@ -526,7 +541,9 @@ fn tokenize_symbolic_expression(input: &str) -> Result<Vec<String>, Box<dyn std:
 
 /// Parses a value assertion from a string representation.
 /// Supports basic Sutra value syntax: numbers, booleans, strings, lists.
-pub fn parse_expected_value(input: &str) -> Result<sutra::ast::value::Value, Box<dyn std::error::Error>> {
+pub fn parse_expected_value(
+    input: &str,
+) -> Result<sutra::ast::value::Value, Box<dyn std::error::Error>> {
     let input = input.trim();
 
     // Try to parse as number
@@ -546,21 +563,20 @@ pub fn parse_expected_value(input: &str) -> Result<sutra::ast::value::Value, Box
 
     // Try to parse as string (quoted)
     if input.starts_with('"') && input.ends_with('"') && input.len() >= 2 {
-        let string_content = &input[1..input.len()-1];
+        let string_content = &input[1..input.len() - 1];
         return Ok(sutra::ast::value::Value::String(string_content.to_string()));
     }
 
     // Try to parse as list
     if input.starts_with('(') && input.ends_with(')') {
-        let inner = &input[1..input.len()-1].trim();
+        let inner = &input[1..input.len() - 1].trim();
         if inner.is_empty() {
             return Ok(sutra::ast::value::Value::List(Vec::new()));
         }
 
         // Simple space-separated parsing for now
-        let elements: Result<Vec<_>, _> = inner.split_whitespace()
-            .map(parse_expected_value)
-            .collect();
+        let elements: Result<Vec<_>, _> =
+            inner.split_whitespace().map(parse_expected_value).collect();
         return Ok(sutra::ast::value::Value::List(elements?));
     }
 
@@ -569,20 +585,21 @@ pub fn parse_expected_value(input: &str) -> Result<sutra::ast::value::Value, Box
 
 /// Evaluates a symbolic expression against a list of actual error codes.
 /// Returns true if the expression matches the error codes.
-pub fn evaluate_symbolic_expression(expression: &SymbolicExpression, actual_codes: &[ErrorCode]) -> bool {
+pub fn evaluate_symbolic_expression(
+    expression: &SymbolicExpression,
+    actual_codes: &[ErrorCode],
+) -> bool {
     match expression {
-        SymbolicExpression::ErrorCode(expected_code) => {
-            actual_codes.contains(expected_code)
-        },
-        SymbolicExpression::And(sub_expressions) => {
-            sub_expressions.iter().all(|expr| evaluate_symbolic_expression(expr, actual_codes))
-        },
-        SymbolicExpression::Or(sub_expressions) => {
-            sub_expressions.iter().any(|expr| evaluate_symbolic_expression(expr, actual_codes))
-        },
+        SymbolicExpression::ErrorCode(expected_code) => actual_codes.contains(expected_code),
+        SymbolicExpression::And(sub_expressions) => sub_expressions
+            .iter()
+            .all(|expr| evaluate_symbolic_expression(expr, actual_codes)),
+        SymbolicExpression::Or(sub_expressions) => sub_expressions
+            .iter()
+            .any(|expr| evaluate_symbolic_expression(expr, actual_codes)),
         SymbolicExpression::Not(sub_expression) => {
             !evaluate_symbolic_expression(sub_expression, actual_codes)
-        },
+        }
     }
 }
 
@@ -913,18 +930,19 @@ pub fn assert_diagnostic_snapshot(
                 }
             } else {
                 // Extract actual error codes from diagnostics
-                let actual_error_codes: Vec<ErrorCode> = execution_state.diagnostics.iter()
-                    .filter_map(|diag| {
-                        match diag {
-                            CompilerDiagnostic::Parse(error) => error.error_code(),
-                            CompilerDiagnostic::Eval(error) => error.error_code(),
-                            CompilerDiagnostic::Validation(_) => Some(ErrorCode::ValidationError),
-                        }
+                let actual_error_codes: Vec<ErrorCode> = execution_state
+                    .diagnostics
+                    .iter()
+                    .filter_map(|diag| match diag {
+                        CompilerDiagnostic::Parse(error) => error.error_code(),
+                        CompilerDiagnostic::Eval(error) => error.error_code(),
+                        CompilerDiagnostic::Validation(_) => Some(ErrorCode::ValidationError),
                     })
                     .collect();
 
                 // Evaluate symbolic expression against actual error codes
-                let expression_matches = evaluate_symbolic_expression(expression, &actual_error_codes);
+                let expression_matches =
+                    evaluate_symbolic_expression(expression, &actual_error_codes);
 
                 if expression_matches {
                     TestResult::Pass {
@@ -965,22 +983,18 @@ pub fn assert_diagnostic_snapshot(
                                 actual: format!("Value: {:?}", actual_value),
                             }
                         }
-                    },
-                    Some(Err(_)) => {
-                        TestResult::UnexpectedSuccess {
-                            id: test_case.id.clone(),
-                            name: test_case.name.clone(),
-                            expected_error_type: "successful evaluation".to_string(),
-                        }
-                    },
-                    None => {
-                        TestResult::DiagnosticMismatch {
-                            id: test_case.id.clone(),
-                            name: test_case.name.clone(),
-                            expected: format!("Value: {:?}", expected_value),
-                            actual: "No evaluation result".to_string(),
-                        }
                     }
+                    Some(Err(_)) => TestResult::UnexpectedSuccess {
+                        id: test_case.id.clone(),
+                        name: test_case.name.clone(),
+                        expected_error_type: "successful evaluation".to_string(),
+                    },
+                    None => TestResult::DiagnosticMismatch {
+                        id: test_case.id.clone(),
+                        name: test_case.name.clone(),
+                        expected: format!("Value: {:?}", expected_value),
+                        actual: "No evaluation result".to_string(),
+                    },
                 }
             }
         }
