@@ -9,7 +9,7 @@
 
 use crate::ast::value::Value;
 use crate::atoms::PureAtomFn;
-use crate::atoms::helpers::arity_error;
+use crate::sutra_err;
 
 // ============================================================================
 // STRING OPERATIONS
@@ -23,7 +23,7 @@ use crate::atoms::helpers::arity_error;
 /// Returns: A new String value.
 pub const ATOM_STR: PureAtomFn = |args| {
     if args.len() != 1 {
-        return Err(arity_error(None, &[], "str", 1));
+        return Err(sutra_err!(Eval, "str expects 1 argument, got {}", args.len()));
     }
     Ok(Value::String(args[0].to_string()))
 };

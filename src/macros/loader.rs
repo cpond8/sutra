@@ -1,11 +1,21 @@
-//! Macro definition parsing and file loading.
 //!
 //! Parses macro definitions from source code and files, including validation
 //! and duplicate checking for robust macro loading.
+//!
+//! ## Error Handling
+//!
+//! All errors in this module are reported via the unified `SutraError` type and must be constructed using the `sutra_err!` macro. See `src/diagnostics.rs` for macro arms and usage rules.
+//!
+//! Example:
+//! ```rust
+//! return Err(sutra_err!(Validation, "Duplicate macro name '{}'", name));
+//! ```
+//!
+//! All macro loading, parsing, and arity errors use this system.
 
 use crate::ast::{AstNode, Expr, ParamList, Span};
 use crate::macros::types::MacroTemplate;
-use crate::syntax::error::{SutraError, SutraErrorKind};
+use crate::{SutraError, sutra_err};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
@@ -34,46 +44,24 @@ pub fn load_macros_from_file<P: AsRef<Path>>(
     path: P,
 ) -> Result<Vec<(String, MacroTemplate)>, SutraError> {
     let source = fs::read_to_string(path)
-        .map_err(|e| SutraError { kind: SutraErrorKind::Io(e.to_string()), span: None })?;
+        .map_err(|e| sutra_err!(Internal, "Failed to read file: {}", e))?;
     parse_macros_from_source(&source)
 }
 
 /// Checks the arity of macro arguments against the parameter list.
 /// Provides enhanced error reporting for mismatches, including variadic parameters.
-pub fn check_arity(args_len: usize, params: &ParamList, span: &Span) -> Result<(), SutraError> {
+pub fn check_arity(args_len: usize, params: &ParamList, _span: &Span) -> Result<(), SutraError> { // TODO: address the unused span
     let required_len = params.required.len();
     let has_variadic = params.rest.is_some();
 
     // Too few arguments
     if args_len < required_len {
-        return Err(SutraError {
-            kind: SutraErrorKind::Eval(crate::syntax::error::EvalError {
-                kind: crate::syntax::error::EvalErrorKind::Arity {
-                    func_name: "macro".to_string(),
-                    expected: format!("at least {}", required_len),
-                    actual: args_len,
-                },
-                expanded_code: "".to_string(),
-                original_code: None,
-            }),
-            span: Some(span.clone()),
-        });
+        return Err(sutra_err!(Eval, "Macro arity error: expected at least {} arguments, got {}", required_len, args_len));
     }
 
     // Too many arguments for non-variadic macro
     if args_len > required_len && !has_variadic {
-        return Err(SutraError {
-            kind: SutraErrorKind::Eval(crate::syntax::error::EvalError {
-                kind: crate::syntax::error::EvalErrorKind::Arity {
-                    func_name: "macro".to_string(),
-                    expected: format!("exactly {}", required_len),
-                    actual: args_len,
-                },
-                expanded_code: "".to_string(),
-                original_code: None,
-            }),
-            span: Some(span.clone()),
-        });
+        return Err(sutra_err!(Eval, "Macro arity error: expected exactly {} arguments, got {}", required_len, args_len));
     }
 
     // Arity is correct
@@ -94,15 +82,7 @@ fn try_parse_macro_form(
     };
 
     if !names_seen.insert(name.clone()) {
-        return Err(SutraError {
-            kind: SutraErrorKind::Validation(
-                crate::syntax::error::ValidationErrorKind::General(format!(
-                    "Duplicate macro name '{}'.",
-                    name
-                )),
-            ),
-            span: Some(expr.span.clone()),
-        });
+        return Err(sutra_err!(Validation, "Duplicate macro name '{}'", name));
     }
 
     let template = MacroTemplate::new(params.clone(), body.clone())?;

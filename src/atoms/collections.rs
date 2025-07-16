@@ -1,4 +1,3 @@
-//! # Collection Operations
 //!
 //! This module provides all collection manipulation atom operations for the Sutra engine.
 //! These atoms work with lists, strings, and maps.
@@ -17,7 +16,7 @@
 use crate::ast::value::Value;
 // use crate::atoms::helpers::*;
 use crate::atoms::{PureAtomFn, StatefulAtomFn};
-use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
+use crate::sutra_err;
 
 // ============================================================================
 // LIST OPERATIONS
@@ -52,34 +51,12 @@ pub const ATOM_LIST: PureAtomFn = |args| Ok(Value::List(args.to_vec()));
 /// Pure, does not mutate state.
 pub const ATOM_LEN: PureAtomFn = |args| {
     if args.len() != 1 {
-        return Err(SutraError {
-            kind: SutraErrorKind::Eval(EvalError {
-                kind: crate::syntax::error::EvalErrorKind::Arity {
-                    func_name: "len".to_string(),
-                    expected: "1".to_string(),
-                    actual: args.len(),
-                },
-                expanded_code: String::new(),
-                original_code: None,
-            }),
-            span: None,
-        });
+        return Err(sutra_err!(Eval, "len expects 1 argument, got {}", args.len()));
     }
     match &args[0] {
         Value::List(items) => Ok(Value::Number(items.len() as f64)),
         Value::String(s) => Ok(Value::Number(s.len() as f64)),
-        val => Err(SutraError {
-            kind: SutraErrorKind::Eval(EvalError {
-                kind: crate::syntax::error::EvalErrorKind::Type {
-                    func_name: "len".to_string(),
-                    expected: "a List or String".to_string(),
-                    found: val.clone(),
-                },
-                expanded_code: String::new(),
-                original_code: None,
-            }),
-            span: None,
-        }),
+        val => Err(sutra_err!(Eval, "len expects a List or String, found {}", val)),
     }
 };
 
@@ -100,18 +77,7 @@ pub const ATOM_LEN: PureAtomFn = |args| {
 /// Pure, does not mutate state.
 pub const ATOM_HAS: PureAtomFn = |args| {
     if args.len() != 2 {
-        return Err(SutraError {
-            kind: SutraErrorKind::Eval(EvalError {
-                kind: crate::syntax::error::EvalErrorKind::Arity {
-                    func_name: "has?".to_string(),
-                    expected: "2".to_string(),
-                    actual: args.len(),
-                },
-                expanded_code: String::new(),
-                original_code: None,
-            }),
-            span: None,
-        });
+        return Err(sutra_err!(Eval, "has? expects 2 arguments, got {}", args.len()));
     }
     let collection_val = &args[0];
     let search_val = &args[1];
@@ -119,34 +85,12 @@ pub const ATOM_HAS: PureAtomFn = |args| {
         Value::List(items) => items.contains(search_val),
         Value::Map(map) => {
             let Value::String(key) = search_val else {
-                return Err(SutraError {
-                    kind: SutraErrorKind::Eval(EvalError {
-                        kind: crate::syntax::error::EvalErrorKind::Type {
-                            func_name: "has?".to_string(),
-                            expected: "a String for Map key".to_string(),
-                            found: search_val.clone(),
-                        },
-                        expanded_code: String::new(),
-                        original_code: None,
-                    }),
-                    span: None,
-                });
+                return Err(sutra_err!(Eval, "has? expects a String for Map key, found {}", search_val));
             };
             map.contains_key(&key[..])
         }
         _ => {
-            return Err(SutraError {
-                kind: SutraErrorKind::Eval(EvalError {
-                    kind: crate::syntax::error::EvalErrorKind::Type {
-                        func_name: "has?".to_string(),
-                        expected: "a List or Map as first argument".to_string(),
-                        found: collection_val.clone(),
-                    },
-                    expanded_code: String::new(),
-                    original_code: None,
-                }),
-                span: None,
-            });
+            return Err(sutra_err!(Eval, "has? expects a List or Map as first argument, found {}", collection_val));
         }
     };
     Ok(Value::Bool(found))
@@ -167,34 +111,12 @@ pub const ATOM_HAS: PureAtomFn = |args| {
 /// Mutates the world at the given path. **Creates a new empty list if the path doesn't exist.**
 pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
     if args.len() != 2 {
-        return Err(SutraError {
-            kind: SutraErrorKind::Eval(EvalError {
-                kind: crate::syntax::error::EvalErrorKind::Arity {
-                    func_name: "core/push!".to_string(),
-                    expected: "2".to_string(),
-                    actual: args.len(),
-                },
-                expanded_code: String::new(),
-                original_code: None,
-            }),
-            span: None,
-        });
+        return Err(sutra_err!(Eval, "core/push! expects 2 arguments, got {}", args.len()));
     }
     let path = match &args[0] {
         Value::Path(p) => p,
         val => {
-            return Err(SutraError {
-                kind: SutraErrorKind::Eval(EvalError {
-                    kind: crate::syntax::error::EvalErrorKind::Type {
-                        func_name: "core/push!".to_string(),
-                        expected: "a Path as first argument".to_string(),
-                        found: val.clone(),
-                    },
-                    expanded_code: String::new(),
-                    original_code: None,
-                }),
-                span: None,
-            })
+            return Err(sutra_err!(Eval, "core/push! expects a Path as first argument, found {}", val))
         }
     };
     let mut list_val = context
@@ -206,18 +128,7 @@ pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
     match &mut list_val {
         Value::List(items) => items.push(args[1].clone()),
         val => {
-            return Err(SutraError {
-                kind: SutraErrorKind::Eval(EvalError {
-                    kind: crate::syntax::error::EvalErrorKind::Type {
-                        func_name: "core/push!".to_string(),
-                        expected: "a List at path".to_string(),
-                        found: val.clone(),
-                    },
-                    expanded_code: String::new(),
-                    original_code: None,
-                }),
-                span: None,
-            })
+            return Err(sutra_err!(Eval, "core/push! expects a List at path, found {}", val))
         }
     }
     context.state.set(path, list_val);
@@ -238,34 +149,12 @@ pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
 /// Mutates the world at the given path. **Creates a new empty list if the path doesn't exist.**
 pub const ATOM_CORE_PULL: StatefulAtomFn = |args, context| {
     if args.len() != 1 {
-        return Err(SutraError {
-            kind: SutraErrorKind::Eval(EvalError {
-                kind: crate::syntax::error::EvalErrorKind::Arity {
-                    func_name: "core/pull!".to_string(),
-                    expected: "1".to_string(),
-                    actual: args.len(),
-                },
-                expanded_code: String::new(),
-                original_code: None,
-            }),
-            span: None,
-        });
+        return Err(sutra_err!(Eval, "core/pull! expects 1 argument, got {}", args.len()));
     }
     let path = match &args[0] {
         Value::Path(p) => p,
         val => {
-            return Err(SutraError {
-                kind: SutraErrorKind::Eval(EvalError {
-                    kind: crate::syntax::error::EvalErrorKind::Type {
-                        func_name: "core/pull!".to_string(),
-                        expected: "a Path as first argument".to_string(),
-                        found: val.clone(),
-                    },
-                    expanded_code: String::new(),
-                    original_code: None,
-                }),
-                span: None,
-            })
+            return Err(sutra_err!(Eval, "core/pull! expects a Path as first argument, found {}", val))
         }
     };
     let mut list_val = context
@@ -277,18 +166,7 @@ pub const ATOM_CORE_PULL: StatefulAtomFn = |args, context| {
     let pulled_value = match &mut list_val {
         Value::List(items) => items.pop().unwrap_or(Value::Nil),
         val => {
-            return Err(SutraError {
-                kind: SutraErrorKind::Eval(EvalError {
-                    kind: crate::syntax::error::EvalErrorKind::Type {
-                        func_name: "core/pull!".to_string(),
-                        expected: "a List at path".to_string(),
-                        found: val.clone(),
-                    },
-                    expanded_code: String::new(),
-                    original_code: None,
-                }),
-                span: None,
-            })
+            return Err(sutra_err!(Eval, "core/pull! expects a List at path, found {}", val))
         }
     };
     context.state.set(path, list_val);
@@ -320,18 +198,7 @@ pub const ATOM_CORE_STR_PLUS: PureAtomFn = |args| {
         match val {
             Value::String(s) => result.push_str(&s[..]),
             _ => {
-                return Err(SutraError {
-                    kind: SutraErrorKind::Eval(EvalError {
-                        kind: crate::syntax::error::EvalErrorKind::Type {
-                            func_name: "core/str+".to_string(),
-                            expected: "all arguments to be Strings".to_string(),
-                            found: val.clone(),
-                        },
-                        expanded_code: String::new(),
-                        original_code: None,
-                    }),
-                    span: None,
-                });
+                return Err(sutra_err!(Eval, "core/str+ expects all arguments to be Strings, found {}", val));
             }
         }
     }

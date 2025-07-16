@@ -1,4 +1,3 @@
-//! # Sutra Engine: Canonical Registry Builder
 //!
 //! Provides a single, canonical function to construct a fully populated atom and macro registry
 //! for both production and test use. This eliminates duplication and ensures all code paths
@@ -20,11 +19,22 @@
 //! The atom registry is a single source of truth. It must be constructed once at the entrypoint
 //! and passed by reference to all validation and evaluation code. Never construct a local/hidden
 //! registry. See validate.rs and atom.rs for enforcement.
+//!
+//! ## Error Handling
+//!
+//! All errors in this module are reported via the unified `SutraError` type and must be constructed using the `sutra_err!` macro. See `src/diagnostics.rs` for macro arms and usage rules.
+//!
+//! Example:
+//! ```rust
+//! return Err(sutra_err!(Validation, "Duplicate macro name '{}' in standard macro library.", name));
+//! ```
+//!
+//! All registry, macro loading, and duplicate errors use this system.
 
 use crate::atoms::{self, AtomRegistry};
 use crate::macros::{self, MacroRegistry};
 use crate::macros::{load_macros_from_file, MacroDef, MacroEnv};
-use crate::syntax::error::{SutraError, SutraErrorKind};
+use crate::{SutraError, sutra_err};
 use std::collections::HashMap;
 
 // ============================================================================
@@ -155,15 +165,7 @@ fn load_and_process_user_macros(path: &str) -> Result<HashMap<String, MacroDef>,
     let mut user_macros = HashMap::new();
     for (name, template) in macros {
         if user_macros.contains_key(&name) {
-            return Err(SutraError {
-                kind: SutraErrorKind::Validation(
-                    crate::syntax::error::ValidationErrorKind::General(format!(
-                        "Duplicate macro name '{}' in standard macro library.",
-                        name
-                    )),
-                ),
-                span: None,
-            });
+            return Err(sutra_err!(Validation, "Duplicate macro name '{}' in standard macro library.", name));
         }
         user_macros.insert(name, MacroDef::Template(template));
     }

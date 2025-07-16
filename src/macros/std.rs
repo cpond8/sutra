@@ -1,4 +1,3 @@
-//! # Sutra Standard Macro Library
 //!
 //! This module is the sole authority on path canonicalization and provides
 //! the core, author-facing macros that expand into simpler, canonical ASTs.
@@ -12,7 +11,8 @@
 use crate::ast::{AstNode, Expr, WithSpan};
 use crate::macros::MacroRegistry;
 use crate::runtime::path::Path;
-use crate::syntax::error::{validation_error, SutraError};
+use crate::SutraError;
+use crate::sutra_err;
 
 // ===================================================================================================
 // REGISTRY: Standard Macro Registration
@@ -66,18 +66,12 @@ fn expr_to_path(expr: &AstNode) -> Result<Path, SutraError> {
                 .iter()
                 .map(|item| match &*item.value {
                     Expr::Symbol(s, _) | Expr::String(s, _) => Ok(s.clone()),
-                    _ => Err(validation_error(
-                        "Path elements must be symbols or strings",
-                        Some(item.span.clone()),
-                    )),
+                    _ => Err(sutra_err!(Validation, "Path elements must be symbols or strings".to_string())),
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(Path(parts))
         }
-        _ => Err(validation_error(
-            "Expression cannot be converted to a path",
-            Some(expr.span.clone()),
-        )),
+        _ => Err(sutra_err!(Validation, "Expression cannot be converted to a path".to_string())),
     }
 }
 
@@ -107,14 +101,11 @@ fn expect_args<'a>(
 ) -> Result<(&'a [AstNode], &'a crate::ast::Span), SutraError> {
     match &*expr.value {
         Expr::List(items, span) if items.len() == n => Ok((items, span)),
-        Expr::List(items, span) => Err(validation_error(
-            format!("Expected {} arguments, but got {}", n, items.len()),
-            Some(span.clone()),
-        )),
-        _ => Err(validation_error(
-            "Expected a list form for this macro",
-            Some(expr.span.clone()),
-        )),
+        Expr::List(items, _span) => {
+            let msg = format!("Expected {} arguments, but got {}", n, items.len());
+            Err(sutra_err!(Validation, msg.to_string()))
+        },
+        _ => Err(sutra_err!(Validation, "Expected a list form for this macro".to_string())),
     }
 }
 
@@ -302,7 +293,7 @@ pub fn expand_if(expr: &AstNode) -> Result<AstNode, SutraError> {
 /// Expands `(print x)` to `(core/print x)`.
 pub fn expand_print(expr: &AstNode) -> Result<AstNode, SutraError> {
     let (items, span) = expect_args(2, expr)?;
-    let atom_symbol = create_symbol("core/print", span); // FIX: no exclamation mark
+    let atom_symbol = create_symbol("core/print", span);
     Ok(WithSpan {
         value: Expr::List(vec![atom_symbol, items[1].clone()], span.clone()).into(),
         span: span.clone(),

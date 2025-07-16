@@ -1,4 +1,3 @@
-//! # Sutra Test Atom Library
 //!
 //! This module provides test-only atoms for debugging, testing, and development.
 //! These atoms are only available when compiled with debug assertions or the `test-atom` feature.
@@ -16,7 +15,7 @@ use crate::ast::{AstNode, Expr, Span, WithSpan};
 use crate::atoms::{AtomRegistry, SpecialFormAtomFn};
 use crate::runtime::eval::EvalContext;
 use crate::runtime::world::World;
-use crate::syntax::error::SutraError;
+use crate::SutraError;
 use std::sync::Arc;
 
 // Use the public context helper macro

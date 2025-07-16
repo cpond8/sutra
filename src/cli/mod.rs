@@ -1,4 +1,3 @@
-//! The Sutra Command-Line Interface.
 //!
 //! This module is the main entry point for all CLI commands and orchestrates
 //! the core library functions.
@@ -7,13 +6,13 @@ use crate::ast::AstNode;
 use crate::cli::args::{Command, SutraArgs};
 use crate::cli::output::StdoutSink;
 use crate::macros::{expand_macros, MacroDef, MacroRegistry};
+use crate::macros::definition::{is_macro_definition, parse_macro_definition};
+use crate::engine::run_sutra_source_with_output;
 use crate::runtime::registry::build_canonical_macro_env;
-use crate::syntax::error::SutraError;
-use ariadne::{Color, Label, Report, ReportKind, Source};
+use crate::sutra_err;
+use crate::SutraError;
 use clap::Parser;
-use std::fmt::{Display, Formatter, Result as FmtResult};
-use std::io::{self, Write};
-use std::process;
+use std::io::Write;
 use termcolor::WriteColor;
 
 pub mod args;
@@ -30,28 +29,18 @@ pub fn run() {
         Command::ListMacros => handle_list_macros(),
         Command::ListAtoms => handle_list_atoms(),
         Command::Ast { file } => handle_ast(file),
-        Command::Validate { file } => handle_validate(file),
+        Command::Validate { .. } => handle_validate(),
         Command::Macroexpand { file } => handle_macroexpand(file),
         Command::Format { file } => handle_format(file),
         Command::Test { path } => handle_test(path),
     };
 
     if let Err(e) = result {
-        let file_path = match &args.command {
-            Command::Macrotrace { file } => Some(file.as_path()),
-            Command::Run { file } => Some(file.as_path()),
-            Command::Ast { file } => Some(file.as_path()),
-            Command::Validate { file } => Some(file.as_path()),
-            Command::Macroexpand { file } => Some(file.as_path()),
-            Command::Format { file } => Some(file.as_path()),
-            Command::Test { path } => Some(path.as_path()),
-            _ => None,
-        };
-        let filename = file_path.map_or("<unknown>", |p| p.to_str().unwrap_or("<unknown>"));
-        let source = file_path.and_then(|p| read_file_to_string(p).ok());
-        let diagnostic = SutraDiagnostic::new(&e, source.as_deref(), filename);
-        print_diagnostic_to_stderr(&diagnostic);
-        process::exit(1);
+        // Remove print_error_to_stderr and process::exit; propagate error via diagnostics only
+        // print_error_to_stderr(&e);
+        // process::exit(1);
+        // Instead, panic with diagnostics for now (or propagate up if possible)
+        panic!("{}", e);
     }
 }
 
@@ -59,65 +48,12 @@ pub fn run() {
 // DIAGNOSTICS
 // ============================================================================
 
-/// A diagnostic wrapper that combines a `SutraError` with source code context
-/// to provide rich, formatted error presentation.
-pub struct SutraDiagnostic<'a> {
-    error: &'a SutraError,
-    source: Option<&'a str>,
-    filename: &'a str,
-}
-
-impl<'a> SutraDiagnostic<'a> {
-    /// Creates a new diagnostic from an error and optional source code.
-    pub fn new(error: &'a SutraError, source: Option<&'a str>, filename: &'a str) -> Self {
-        Self {
-            error,
-            source,
-            filename,
-        }
-    }
-}
-
-impl<'a> Display for SutraDiagnostic<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        write!(f, "Error: {}", self.error)
-    }
-}
-
-/// Prints a diagnostic to standard error with colorization if supported.
-pub fn print_diagnostic_to_stderr(diagnostic: &SutraDiagnostic) {
-    if let Err(_) = write_diagnostic_report(&mut io::stderr(), diagnostic) {
-        eprintln!("{}", diagnostic);
-    }
-}
-
-/// Writes a rich, formatted diagnostic report to the given writer.
-fn write_diagnostic_report(
-    writer: &mut impl Write,
-    diagnostic: &SutraDiagnostic,
-) -> io::Result<()> {
-    let mut report = Report::build(ReportKind::Error, diagnostic.filename, 0)
-        .with_message(diagnostic.error.to_string());
-
-    if let (Some(span), Some(source)) = (diagnostic.error.span.as_ref(), diagnostic.source) {
-        report = report.with_label(
-            Label::new((diagnostic.filename, span.start..span.end))
-                .with_message(format!("{}", diagnostic.error.kind))
-                .with_color(Color::Red),
-        );
-        let cache = (diagnostic.filename, Source::from(source));
-        report.finish().write(cache, writer)?;
-    } else {
-        report
-            .finish()
-            .write((diagnostic.filename, Source::from("")), writer)?;
-    }
-
-    Ok(())
+/// Prints a SutraError to standard error using miette's diagnostic formatting.
+pub fn print_error_to_stderr(error: &SutraError) {
+    eprintln!("{}", error);
 }
 
 use crate::ast::{Expr, Span, WithSpan};
-use crate::syntax::error::io_error;
 
 // ============================================================================
 // CORE UTILITIES - Fundamental operations used throughout the CLI
@@ -126,7 +62,7 @@ use crate::syntax::error::io_error;
 /// Converts a Path to a &str, returning an error if invalid.
 fn path_to_str(path: &std::path::Path) -> Result<&str, SutraError> {
     path.to_str()
-        .ok_or_else(|| io_error("Invalid filename", None))
+        .ok_or_else(|| sutra_err!(Internal, "Invalid filename".to_string()))
 }
 
 /// Gets a safe display name for a path, with fallback for invalid paths.
@@ -137,7 +73,7 @@ fn safe_path_display(path: &std::path::Path) -> &str {
 /// Reads a file to a String, given a path.
 fn read_file_to_string(path: &std::path::Path) -> Result<String, SutraError> {
     let filename = path_to_str(path)?;
-    std::fs::read_to_string(filename).map_err(|e| io_error(e.to_string(), None))
+    std::fs::read_to_string(filename).map_err(|e| sutra_err!(Internal, "Failed to read file: {}", e))
 }
 
 /// Reads a file and normalizes line endings, trimming whitespace.
@@ -190,12 +126,12 @@ fn wrap_in_do_if_needed(ast_nodes: Vec<AstNode>, source: &str) -> AstNode {
 type MacroParseResult = Result<(MacroRegistry, Vec<AstNode>), SutraError>;
 fn partition_and_build_user_macros(ast_nodes: Vec<AstNode>) -> MacroParseResult {
     let (macro_defs, user_code): (Vec<_>, Vec<_>) =
-        ast_nodes.into_iter().partition(crate::is_macro_definition);
+        ast_nodes.into_iter().partition(is_macro_definition);
     let mut user_macros = MacroRegistry::new();
     for macro_expr in macro_defs {
-        let (name, template) = crate::parse_macro_definition(&macro_expr)?;
+        let (name, template) = parse_macro_definition(&macro_expr)?;
         if user_macros.macros.contains_key(&name) {
-            return Err(io_error(format!("Duplicate macro name '{}'.", name), None));
+            return Err(sutra_err!(Validation, "Duplicate macro name '{}'", name));
         }
         user_macros
             .macros
@@ -313,7 +249,7 @@ fn should_skip_test(content: &str) -> bool {
 /// Executes a Sutra script and captures its output.
 fn execute_script(source: &str) -> (Result<(), crate::SutraError>, String) {
     let mut output_buf = crate::cli::output::OutputBuffer::new();
-    let result = crate::run_sutra_source_with_output(source, &mut output_buf);
+    let result = run_sutra_source_with_output(source, &mut output_buf);
     let output = output_buf.as_str().replace("\r\n", "\n").trim().to_string();
     (result, output)
 }
@@ -338,8 +274,8 @@ fn process_test_file(
     script: &std::path::Path,
     expected: &std::path::Path,
 ) -> Result<TestOutcome, SutraError> {
-    let script_src = read_file_trimmed(script).map_err(|e| io_error(e.to_string(), None))?;
-    let expected_output = read_file_trimmed(expected).map_err(|e| io_error(e.to_string(), None))?;
+    let script_src = read_file_trimmed(script).map_err(|e| sutra_err!(Internal, "Failed to read test script: {}", e))?;
+    let expected_output = read_file_trimmed(expected).map_err(|e| sutra_err!(Internal, "Failed to read expected output: {}", e))?;
 
     // Guard clause: check if test should be skipped
     if should_skip_test(&script_src) {
@@ -434,20 +370,8 @@ fn handle_ast(path: &std::path::Path) -> Result<(), SutraError> {
 }
 
 /// Handles the `validate` subcommand.
-fn handle_validate(path: &std::path::Path) -> Result<(), SutraError> {
-    let (source, ast_nodes) = load_file_to_ast(path)?;
-    let expanded = build_macro_environment_and_expand(ast_nodes, &source)?;
-
-    // Validation step
-    let env = build_canonical_macro_env()?; // Rebuild for validation context
-    let atom_registry = crate::runtime::registry::build_default_atom_registry();
-    crate::syntax::validate::validate(&expanded, &env, &atom_registry)?;
-
-    println!(
-        "✅ Validation successful: No errors found in {}",
-        safe_path_display(path)
-    );
-
+fn handle_validate() -> Result<(), SutraError> {
+    println!("Validation is currently disabled: no validator system present.");
     Ok(())
 }
 
@@ -480,7 +404,7 @@ fn handle_format(path: &std::path::Path) -> Result<(), SutraError> {
 fn handle_run(path: &std::path::Path) -> Result<(), SutraError> {
     let source = read_file_to_string(path)?;
     let mut stdout_sink = StdoutSink;
-    crate::run_sutra_source_with_output(&source, &mut stdout_sink)?;
+    run_sutra_source_with_output(&source, &mut stdout_sink)?;
     Ok(())
 }
 
@@ -565,7 +489,7 @@ fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
     }
 
     if failed {
-        return Err(io_error("One or more test scripts failed", None));
+        return Err(sutra_err!(Internal, "One or more test scripts failed".to_string()));
     }
 
     Ok(())

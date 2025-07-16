@@ -1,4 +1,3 @@
-//! # World State Management
 //!
 //! This module provides all world state manipulation atom operations for the Sutra engine.
 //! These atoms are the primary interface for reading and modifying game state.
@@ -16,46 +15,8 @@
 
 use crate::ast::value::Value;
 use crate::atoms::StatefulAtomFn;
-use crate::runtime::path::Path;
-use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-fn simple_error(message: &str) -> SutraError {
-    SutraError {
-        kind: SutraErrorKind::Eval(EvalError {
-            kind: crate::syntax::error::EvalErrorKind::General(message.to_string()),
-            expanded_code: String::new(),
-            original_code: None,
-        }),
-        span: None,
-    }
-}
-
-fn arity_error(actual: usize, expected: usize, atom_name: &str) -> SutraError {
-    simple_error(&format!(
-        "{}: expected {} arguments, got {}",
-        atom_name, expected, actual
-    ))
-}
-
-fn extract_path<'a>(
-    value: &'a Value,
-    atom_name: &str,
-    arg_position: usize,
-) -> Result<&'a Path, SutraError> {
-    match value {
-        Value::Path(p) => Ok(p),
-        _ => Err(simple_error(&format!(
-            "{}: expected a Path at argument {}, but found type {}",
-            atom_name,
-            arg_position + 1,
-            value.type_name()
-        ))),
-    }
-}
+use crate::atoms::helpers::extract_path;
+use crate::sutra_err;
 
 // ============================================================================
 // WORLD STATE OPERATIONS
@@ -65,9 +26,9 @@ fn extract_path<'a>(
 /// `(core/set! <path> <value>)`
 pub const ATOM_CORE_SET: StatefulAtomFn = |args, context| {
     if args.len() != 2 {
-        return Err(arity_error(args.len(), 2, "core/set!"));
+        return Err(sutra_err!(Eval, "core/set! expects 2 arguments, got {}", args.len()));
     }
-    let path = extract_path(&args[0], "core/set!", 0)?;
+    let path = &extract_path(&args[0])?;
     let value = args[1].clone();
     context.state.set(path, value);
     Ok(Value::Nil)
@@ -77,9 +38,9 @@ pub const ATOM_CORE_SET: StatefulAtomFn = |args, context| {
 /// `(core/get <path>)`
 pub const ATOM_CORE_GET: StatefulAtomFn = |args, context| {
     if args.len() != 1 {
-        return Err(arity_error(args.len(), 1, "core/get"));
+        return Err(sutra_err!(Eval, "core/get expects 1 argument, got {}", args.len()));
     }
-    let path = extract_path(&args[0], "core/get", 0)?;
+    let path = &extract_path(&args[0])?;
     let value = context.state.get(path).cloned().unwrap_or_default();
     Ok(value)
 };
@@ -88,9 +49,9 @@ pub const ATOM_CORE_GET: StatefulAtomFn = |args, context| {
 /// `(core/del! <path>)`
 pub const ATOM_CORE_DEL: StatefulAtomFn = |args, context| {
     if args.len() != 1 {
-        return Err(arity_error(args.len(), 1, "core/del!"));
+        return Err(sutra_err!(Eval, "core/del! expects 1 argument, got {}", args.len()));
     }
-    let path = extract_path(&args[0], "core/del!", 0)?;
+    let path = &extract_path(&args[0])?;
     context.state.del(path);
     Ok(Value::Nil)
 };
@@ -99,9 +60,9 @@ pub const ATOM_CORE_DEL: StatefulAtomFn = |args, context| {
 /// `(core/exists? <path>)`
 pub const ATOM_EXISTS: StatefulAtomFn = |args, context| {
     if args.len() != 1 {
-        return Err(arity_error(args.len(), 1, "core/exists?"));
+        return Err(sutra_err!(Eval, "core/exists? expects 1 argument, got {}", args.len()));
     }
-    let path = extract_path(&args[0], "core/exists?", 0)?;
+    let path = &extract_path(&args[0])?;
     let exists = context.state.get(path).is_some();
     Ok(Value::Bool(exists))
 };

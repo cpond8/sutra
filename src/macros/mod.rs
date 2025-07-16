@@ -8,13 +8,24 @@
 //!
 //! - **Syntactic Only**: Macros operate solely on the AST (`AstNode`). They have no access
 //!   to the `World` state and cannot perform any evaluation or side effects.
-//! - **Pure Transformation**: Macro expansion is a pure function: `(AstNode) -> Result<AstNode, Error>`.
+//! - **Pure Transformation**: Macro expansion is a pure function: `(AstNode) -> Result<AstNode, SutraError>`.
+//! - **Unified Error System**: All errors are reported via the unified `SutraError` type, constructed with the `sutra_err!` macro. See `src/diagnostics.rs` for details and usage patterns.
 //! - **Inspectable**: The expansion process can be traced, allowing authors to see
 //!   how their high-level forms are desugared into core language constructs.
 //! - **Layered**: The macro system is a distinct pipeline stage that runs after parsing
 //!   and before validation and evaluation.
 //!
 //! **INVARIANT:** All macro system logic, macro functions, and recursive expansion must operate on `AstNode`. Never unwrap to a bare `Expr` except for internal logic, and always re-wrap with the correct span. All lists are `Vec<AstNode>`.
+//!
+//! ## Error Handling Example
+//!
+//! All macro-related errors (arity, validation, internal, etc.) must use the canonical error system:
+//!
+//! ```rust
+//! return Err(sutra_err!(Validation, "Invalid macro usage", node.span));
+//! ```
+//!
+//! See `src/diagnostics.rs` for macro arms and usage rules.
 //!
 //! ## Variadic Macro Forwarding (Argument Splicing)
 //!
@@ -35,7 +46,6 @@
 //! The macro system is organized into focused modules:
 //!
 //! - **`types`**: Core data structures and types
-//! - **`error`**: Error handling and conversion utilities
 //! - **`registry`**: Macro storage and lookup operations
 //! - **`loader`**: Macro definition parsing and file loading
 //! - **`expander`**: Core expansion engine and template substitution
@@ -57,6 +67,7 @@ mod registry;
 mod types;
 
 pub mod std;
+pub mod definition;
 
 // ============================================================================
 // PUBLIC API RE-EXPORTS

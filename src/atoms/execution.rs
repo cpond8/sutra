@@ -1,4 +1,3 @@
-//! # Execution Control
 //!
 //! This module provides execution control atom operations for the Sutra engine.
 //! These atoms control program flow and higher-order function application.
@@ -15,14 +14,13 @@
 //! - **State Threading**: Proper world state propagation through execution
 
 use crate::ast::value::Value;
-use crate::ast::Expr;
 use crate::atoms::helpers::{
-    arity_error, build_apply_call_expr, eval_apply_list_arg, eval_apply_normal_args,
-    eval_single_arg, sub_eval_context, type_error,
+    build_apply_call_expr, eval_apply_list_arg, eval_apply_normal_args, eval_single_arg,
+    sub_eval_context,
 };
 use crate::atoms::SpecialFormAtomFn;
 use crate::runtime::eval::eval_expr;
-use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
+use crate::sutra_err;
 
 // ============================================================================
 // CONTROL FLOW OPERATIONS
@@ -70,29 +68,12 @@ pub const ATOM_DO: SpecialFormAtomFn = |args, context, _parent_span| {
 ///
 /// # Safety
 /// Always errors. Does not mutate state.
-pub const ATOM_ERROR: SpecialFormAtomFn = |args, context, parent_span| {
-    let (val, _world) = eval_single_arg(args, context, parent_span, "error")?;
+pub const ATOM_ERROR: SpecialFormAtomFn = |args, context, _parent_span| {
+    let (val, _world) = eval_single_arg(args, context)?;
     let Value::String(msg) = val else {
-        return Err(type_error(
-            Some(parent_span.clone()),
-            &args[0],
-            "error",
-            "a String",
-            &val,
-        ));
+        return Err(sutra_err!(TypeError, "error expects a String argument".to_string()));
     };
-    Err(SutraError {
-        kind: SutraErrorKind::Eval(EvalError {
-            kind: crate::syntax::error::EvalErrorKind::General(msg),
-            expanded_code: {
-                // Use pretty-printed expression instead of raw debug dump
-                let expr = Expr::List(args.to_vec(), parent_span.clone());
-                expr.pretty()
-            },
-            original_code: None,
-        }),
-        span: Some(parent_span.clone()),
-    })
+    Err(sutra_err!(Eval, msg))
 };
 
 // ============================================================================
@@ -116,12 +97,7 @@ pub const ATOM_ERROR: SpecialFormAtomFn = |args, context, parent_span| {
 /// Pure, does not mutate state. All state is explicit.
 pub const ATOM_APPLY: SpecialFormAtomFn = |args, context, parent_span| {
     if args.len() < 2 {
-        return Err(arity_error(
-            Some(parent_span.clone()),
-            args,
-            "apply",
-            "at least 2",
-        ));
+        return Err(sutra_err!(TypeError, "apply expects at least 2 arguments".to_string()));
     }
 
     let func_expr = &args[0];

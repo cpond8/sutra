@@ -1,4 +1,3 @@
-//! # External Interface
 //!
 //! This module provides atoms that interface with external systems.
 //! These atoms break the pure functional model by interacting with I/O or randomness.
@@ -16,7 +15,7 @@
 
 use crate::ast::value::Value;
 use crate::atoms::StatefulAtomFn;
-use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
+use crate::sutra_err;
 
 // ============================================================================
 // I/O OPERATIONS
@@ -36,18 +35,7 @@ use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
 /// Emits output, does not mutate world state.
 pub const ATOM_PRINT: StatefulAtomFn = |args, context| {
     if args.len() != 1 {
-        return Err(SutraError {
-            kind: SutraErrorKind::Eval(EvalError {
-                kind: crate::syntax::error::EvalErrorKind::Arity {
-                    func_name: "print".to_string(),
-                    expected: "1".to_string(),
-                    actual: args.len(),
-                },
-                expanded_code: String::new(),
-                original_code: None,
-            }),
-            span: None,
-        });
+        return Err(sutra_err!(Eval, "print expects 1 argument, got {}", args.len()));
     }
 
     context.output.emit(&args[0].to_string(), None);
@@ -73,18 +61,7 @@ pub const ATOM_PRINT: StatefulAtomFn = |args, context| {
 /// Uses a simple pseudo-random generator based on system time.
 pub const ATOM_RAND: StatefulAtomFn = |args, context| {
     if !args.is_empty() {
-        return Err(SutraError {
-            kind: SutraErrorKind::Eval(EvalError {
-                kind: crate::syntax::error::EvalErrorKind::Arity {
-                    func_name: "rand".to_string(),
-                    expected: "0".to_string(),
-                    actual: args.len(),
-                },
-                expanded_code: String::new(),
-                original_code: None,
-            }),
-            span: None,
-        });
+        return Err(sutra_err!(Eval, "rand expects 0 arguments, got {}", args.len()));
     }
 
     let n = context.rng.next_u32();

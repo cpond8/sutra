@@ -1,5 +1,16 @@
 //! Macro registry for storage and lookup of macro definitions.
 //!
+//! # Error Handling
+//!
+//! All errors in this module are reported via the unified `SutraError` type and must be constructed using the `sutra_err!` macro. See `src/diagnostics.rs` for macro arms and usage rules.
+//!
+//! Example:
+//! ```rust
+//! return Err(sutra_err!(Validation, "Macro already registered".to_string()));
+//! ```
+//!
+//! All macro registration, lookup, and serialization errors use this system.
+//!
 //! # Macro Types
 //! - **Function macros**: Native Rust functions (not serializable).
 //! - **Template macros**: Serializable macro templates.
@@ -42,6 +53,7 @@
 //! - [`MacroTemplate`](crate::macros::types::MacroTemplate)
 
 use crate::macros::types::{MacroDef, MacroFn, MacroTemplate};
+use crate::{SutraError, sutra_err};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 
@@ -111,8 +123,9 @@ impl MacroRegistry {
     /// let old2 = reg.register("foo", my_macro_fn);
     /// assert!(old2.is_some());
     /// ```
-    pub fn register(&mut self, name: &str, func: MacroFn) -> Option<MacroDef> {
-        self.macros.insert(name.to_string(), MacroDef::Fn(func))
+    pub fn register(&mut self, name: &str, func: MacroFn) -> Result<Option<MacroDef>, SutraError> {
+        let old_macro = self.macros.insert(name.to_string(), MacroDef::Fn(func));
+        Ok(old_macro)
     }
 
     /// Registers a new function macro, returning an error if it already exists.
@@ -135,9 +148,9 @@ impl MacroRegistry {
     /// reg.register_or_error("foo", my_macro_fn).unwrap();
     /// assert!(reg.register_or_error("foo", my_macro_fn).is_err());
     /// ```
-    pub fn register_or_error(&mut self, name: &str, func: MacroFn) -> Result<(), String> {
+    pub fn register_or_error(&mut self, name: &str, func: MacroFn) -> Result<(), SutraError> {
         if self.macros.contains_key(name) {
-            return Err(format!("Macro '{}' is already registered", name));
+            return Err(sutra_err!(Validation, "Macro '{}' is already registered", name));
         }
         self.macros.insert(name.to_string(), MacroDef::Fn(func));
         Ok(())
@@ -169,9 +182,10 @@ impl MacroRegistry {
     /// let old2 = reg.register_template("foo", template);
     /// assert!(old2.is_some());
     /// ```
-    pub fn register_template(&mut self, name: &str, template: MacroTemplate) -> Option<MacroDef> {
-        self.macros
-            .insert(name.to_string(), MacroDef::Template(template))
+    pub fn register_template(&mut self, name: &str, template: MacroTemplate) -> Result<Option<MacroDef>, SutraError> {
+        let old_macro = self.macros
+            .insert(name.to_string(), MacroDef::Template(template));
+        Ok(old_macro)
     }
 
     /// Registers a template macro, returning an error if it already exists.
@@ -202,9 +216,9 @@ impl MacroRegistry {
         &mut self,
         name: &str,
         template: MacroTemplate,
-    ) -> Result<(), String> {
+    ) -> Result<(), SutraError> {
         if self.macros.contains_key(name) {
-            return Err(format!("Macro '{}' is already registered", name));
+            return Err(sutra_err!(Validation, "Macro '{}' is already registered", name));
         }
         self.macros
             .insert(name.to_string(), MacroDef::Template(template));

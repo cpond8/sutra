@@ -1,4 +1,3 @@
-//! # Sutra Runtime: Expression Evaluation Engine
 //!
 //! This module provides the core evaluation engine for Sutra expressions, handling
 //! the translation from AST nodes to runtime values within the context of a world state.
@@ -7,6 +6,17 @@
 //!
 //! The evaluation engine transforms parsed AST expressions into runtime values while
 //! maintaining world state consistency and handling recursive evaluation contexts.
+//!
+//! ## Error Handling
+//!
+//! All errors in this module are reported via the unified `SutraError` type and must be constructed using the `sutra_err!` macro. See `src/diagnostics.rs` for macro arms and usage rules.
+//!
+//! Example:
+//! ```rust
+//! return Err(sutra_err!(Eval, "Arity error".to_string()));
+//! ```
+//!
+//! All evaluation, type, and recursion errors use this system.
 
 // The atom registry is a single source of truth and must be passed by reference to all validation and evaluation code. Never construct a local/hidden registry.
 use crate::ast::value::Value;
@@ -14,29 +24,12 @@ use crate::ast::{AstNode, Expr, WithSpan};
 use crate::atoms::{AtomRegistry, OutputSink};
 use crate::runtime::context::ExecutionContext;
 use crate::runtime::world::World;
-use crate::syntax::error::{
-    eval_arity_error, eval_general_error, eval_type_error, recursion_depth_error, SutraError,
-};
+use crate::SutraError;
+use crate::sutra_err;
 
 // ===================================================================================================
 // CORE DATA STRUCTURES: Evaluation Context
 // ===================================================================================================
-
-// Move macro for error construction to the very top of the file
-macro_rules! sutra_error {
-    (arity, $span:expr, $args:expr, $func:expr, $expected:expr) => {
-        eval_arity_error($span, $args, $func, $expected)
-    };
-    (type, $span:expr, $arg:expr, $func:expr, $expected:expr, $found:expr) => {
-        eval_type_error($span, $arg, $func, $expected, $found)
-    };
-    (general, $span:expr, $arg:expr, $msg:expr) => {
-        eval_general_error($span, $arg, $msg)
-    };
-    (recursion, $span:expr) => {
-        recursion_depth_error($span)
-    };
-}
 
 /// The context for a single evaluation, passed to atoms and all evaluation functions.
 pub struct EvalContext<'a, 'o> {
@@ -109,12 +102,7 @@ impl EvalContext<'_, '_> {
 
         // If not a macro, try to resolve as an atom
         let Some(atom) = self.atom_registry.get(symbol_name).cloned() else {
-            return Err(sutra_error!(
-                general,
-                Some(span.clone()),
-                head,
-                &format!("Undefined symbol: '{}'", symbol_name)
-            ));
+            return Err(sutra_err!(Eval, "Undefined symbol: '{}'", symbol_name));
         };
 
         // Dispatch to the correct atom type.
@@ -176,14 +164,7 @@ fn eval_condition_as_bool(
 
     // Guard clause: ensure condition evaluates to boolean
     let Value::Bool(b) = cond_val else {
-        return Err(sutra_error!(
-            type,
-            Some(condition.span.clone()),
-            condition,
-            "if",
-            "Boolean",
-            &cond_val
-        ));
+        return Err(sutra_err!(TypeError, "Type error: if condition must be boolean".to_string()));
     };
 
     Ok((b, next_world))
@@ -196,7 +177,7 @@ fn eval_literal_value(expr: &AstNode, world: &World) -> Result<(Value, World), S
         Expr::String(s, _) => Value::String(s.clone()),
         Expr::Number(n, _) => Value::Number(*n),
         Expr::Bool(b, _) => Value::Bool(*b),
-        _ => unreachable!("eval_literal_value called with non-literal expression"),
+        _ => return Err(sutra_err!(Internal, "eval_literal_value called with non-literal expression".to_string())),
     };
     wrap_value_with_world(value, world)
 }
@@ -204,26 +185,9 @@ fn eval_literal_value(expr: &AstNode, world: &World) -> Result<(Value, World), S
 /// Handles evaluation of invalid expression types that cannot be evaluated at runtime.
 fn eval_invalid_expr(expr: &AstNode) -> Result<(Value, World), SutraError> {
     match &*expr.value {
-        Expr::ParamList(_) => Err(sutra_error!(
-            general,
-            Some(expr.span.clone()),
-            expr,
-            "Cannot evaluate parameter list (ParamList AST node) at runtime"
-        )),
-        Expr::Symbol(s, span) => Err(sutra_error!(
-            type,
-            Some(span.clone()),
-            expr,
-            "eval",
-            "explicit (get ...) call",
-            &Value::String(s.clone())
-        )),
-        Expr::Spread(_) => Err(sutra_error!(
-            general,
-            Some(expr.span.clone()),
-            expr,
-            "Spread argument not allowed outside of call position (list context)"
-        )),
+        Expr::ParamList(_) => Err(sutra_err!(Eval, "Cannot evaluate parameter list (ParamList AST node) at runtime".to_string())),
+        Expr::Symbol(s, _span) => Err(sutra_err!(TypeError, format!("Type error: explicit (get ...) call required for symbol evaluation: {}", s).to_string())),
+        Expr::Spread(_) => Err(sutra_err!(Eval, "Spread argument not allowed outside of call position (list context)".to_string())),
         _ => unreachable!("eval_invalid_expr called with valid expression type"),
     }
 }
@@ -238,13 +202,13 @@ fn eval_invalid_expr(expr: &AstNode) -> Result<(Value, World), SutraError> {
 /// This is a low-level, internal function. Most users should use the higher-level `eval` API.
 pub fn eval_expr(expr: &AstNode, context: &mut EvalContext) -> Result<(Value, World), SutraError> {
     if context.depth > context.max_depth {
-        return Err(sutra_error!(recursion, Some(expr.span.clone())));
+        return Err(sutra_err!(Internal, "Recursion limit exceeded".to_string()));
     }
 
     match &*expr.value {
         // Complex expression types with dedicated handlers
         Expr::List(items, span) => eval_list(items, span, context),
-        Expr::Quote(inner, _) => eval_quote(inner, context, expr),
+        Expr::Quote(inner, _) => eval_quote(inner, context),
         Expr::If {
             condition,
             then_branch,
@@ -320,13 +284,7 @@ fn eval_list(
     let head = &items[0];
     let tail = &items[1..];
     let Expr::Symbol(symbol_name, _) = &*head.value else {
-        return Err(sutra_error!(
-            arity,
-            Some(head.span.clone()),
-            items,
-            "eval",
-            "first element must be a symbol naming a callable entity"
-        ));
+        return Err(sutra_err!(Eval, "Arity error: first element must be a symbol naming a callable entity".to_string()));
     };
 
     // Use direct atom resolution
@@ -338,7 +296,6 @@ fn eval_list(
 fn eval_quote(
     inner: &AstNode,
     context: &mut EvalContext,
-    parent_expr: &AstNode,
 ) -> Result<(Value, World), SutraError> {
     match &*inner.value {
         Expr::Symbol(s, _) => wrap_value_with_world(Value::String(s.clone()), context.world),
@@ -354,24 +311,9 @@ fn eval_quote(
             ..
         } => eval_quoted_if(condition, then_branch, else_branch, context),
         Expr::Quote(_, _) => wrap_value_with_world(Value::Nil, context.world),
-        Expr::Define { .. } => Err(sutra_error!(
-            general,
-            Some(parent_expr.span.clone()),
-            parent_expr,
-            "Cannot quote define expressions"
-        )),
-        Expr::ParamList(_) => Err(sutra_error!(
-            general,
-            Some(parent_expr.span.clone()),
-            parent_expr,
-            "Cannot evaluate parameter list (ParamList AST node) at runtime"
-        )),
-        Expr::Spread(_) => Err(sutra_error!(
-            general,
-            Some(inner.span.clone()),
-            inner,
-            "Spread argument not allowed inside quote"
-        )),
+        Expr::Define { .. } => Err(sutra_err!(Eval, "Cannot quote define expressions".to_string())),
+        Expr::ParamList(_) => Err(sutra_err!(Eval, "Cannot evaluate parameter list (ParamList AST node) at runtime".to_string())),
+        Expr::Spread(_) => Err(sutra_err!(Eval, "Spread argument not allowed inside quote".to_string())),
     }
 }
 
@@ -404,18 +346,8 @@ fn eval_quoted_expr(expr: &AstNode) -> Result<Value, SutraError> {
         Expr::Number(n, _) => Ok(Value::Number(*n)),
         Expr::Bool(b, _) => Ok(Value::Bool(*b)),
         Expr::String(s, _) => Ok(Value::String(s.clone())),
-        Expr::ParamList(_) => Err(sutra_error!(
-            general,
-            Some(expr.span.clone()),
-            expr,
-            "Cannot evaluate parameter list (ParamList AST node) inside quote"
-        )),
-        Expr::Spread(_) => Err(sutra_error!(
-            general,
-            Some(expr.span.clone()),
-            expr,
-            "Spread argument not allowed inside quote"
-        )),
+        Expr::ParamList(_) => Err(sutra_err!(Eval, "Cannot evaluate parameter list (ParamList AST node) inside quote".to_string())),
+        Expr::Spread(_) => Err(sutra_err!(Eval, "Spread argument not allowed inside quote".to_string())),
         _ => Ok(Value::Nil),
     }
 }
@@ -468,14 +400,7 @@ fn flatten_spread_args(
 
         // Guard clause: ensure we have a list for spreading
         let Value::List(items) = val else {
-            return Err(sutra_error!(
-                type,
-                Some(arg.span.clone()),
-                arg,
-                "spread",
-                "List",
-                &val
-            ));
+            return Err(sutra_err!(TypeError, format!("Type error: spread argument must be a list: {}", &val).to_string()));
         };
 
         // Process list items without nesting

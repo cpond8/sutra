@@ -1,4 +1,3 @@
-//! # Logic and Comparison Operations
 //!
 //! This module provides all logic and comparison atom operations for the Sutra engine.
 //! All atoms in this module are pure functions that do not mutate world state.
@@ -16,46 +15,8 @@
 
 use crate::ast::value::Value;
 use crate::atoms::PureAtomFn;
-use crate::syntax::error::{EvalError, SutraError, SutraErrorKind};
-
-// ============================================================================
-// ERROR HELPERS
-// ============================================================================
-
-/// Helper function to extract a number from a Value
-fn extract_number(value: &Value, _index: usize, atom_name: &str) -> Result<f64, SutraError> {
-    match value {
-        Value::Number(n) => Ok(*n),
-        _ => Err(SutraError {
-            kind: SutraErrorKind::Eval(EvalError {
-                kind: crate::syntax::error::EvalErrorKind::Type {
-                    func_name: atom_name.to_string(),
-                    expected: "Number".to_string(),
-                    found: value.clone(),
-                },
-                expanded_code: String::new(),
-                original_code: None,
-            }),
-            span: None,
-        }),
-    }
-}
-
-/// Helper function to create arity error
-fn arity_error(actual: usize, expected: usize, atom_name: &str) -> SutraError {
-    SutraError {
-        kind: SutraErrorKind::Eval(EvalError {
-            kind: crate::syntax::error::EvalErrorKind::Arity {
-                func_name: atom_name.to_string(),
-                expected: expected.to_string(),
-                actual,
-            },
-            expanded_code: String::new(),
-            original_code: None,
-        }),
-        span: None,
-    }
-}
+use crate::atoms::helpers::extract_number;
+use crate::sutra_err;
 
 // ============================================================================
 // COMPARISON OPERATIONS
@@ -103,8 +64,8 @@ pub const ATOM_GT: PureAtomFn = |args| {
         return Ok(Value::Bool(true));
     }
     for i in 0..args.len() - 1 {
-        let a = extract_number(&args[i], i, "gt?")?;
-        let b = extract_number(&args[i + 1], i + 1, "gt?")?;
+        let a = extract_number(&args[i])?;
+        let b = extract_number(&args[i + 1])?;
         if a <= b {
             return Ok(Value::Bool(false));
         }
@@ -129,8 +90,8 @@ pub const ATOM_LT: PureAtomFn = |args| {
         return Ok(Value::Bool(true));
     }
     for i in 0..args.len() - 1 {
-        let a = extract_number(&args[i], i, "lt?")?;
-        let b = extract_number(&args[i + 1], i + 1, "lt?")?;
+        let a = extract_number(&args[i])?;
+        let b = extract_number(&args[i + 1])?;
         if a >= b {
             return Ok(Value::Bool(false));
         }
@@ -155,8 +116,8 @@ pub const ATOM_GTE: PureAtomFn = |args| {
         return Ok(Value::Bool(true));
     }
     for i in 0..args.len() - 1 {
-        let a = extract_number(&args[i], i, "gte?")?;
-        let b = extract_number(&args[i + 1], i + 1, "gte?")?;
+        let a = extract_number(&args[i])?;
+        let b = extract_number(&args[i + 1])?;
         if a < b {
             return Ok(Value::Bool(false));
         }
@@ -181,8 +142,8 @@ pub const ATOM_LTE: PureAtomFn = |args| {
         return Ok(Value::Bool(true));
     }
     for i in 0..args.len() - 1 {
-        let a = extract_number(&args[i], i, "lte?")?;
-        let b = extract_number(&args[i + 1], i + 1, "lte?")?;
+        let a = extract_number(&args[i])?;
+        let b = extract_number(&args[i + 1])?;
         if a > b {
             return Ok(Value::Bool(false));
         }
@@ -208,22 +169,11 @@ pub const ATOM_LTE: PureAtomFn = |args| {
 /// Pure, does not mutate state.
 pub const ATOM_NOT: PureAtomFn = |args| {
     if args.len() != 1 {
-        return Err(arity_error(args.len(), 1, "not"));
+        return Err(sutra_err!(Eval, "not expects 1 argument, got {}", args.len()));
     }
     match &args[0] {
         Value::Bool(b) => Ok(Value::Bool(!b)),
-        val => Err(SutraError {
-            kind: SutraErrorKind::Eval(EvalError {
-                kind: crate::syntax::error::EvalErrorKind::Type {
-                    func_name: "not".to_string(),
-                    expected: "Bool".to_string(),
-                    found: val.clone(),
-                },
-                expanded_code: String::new(),
-                original_code: None,
-            }),
-            span: None,
-        }),
+        val => Err(sutra_err!(Eval, "not expects a Bool, found {}", val)),
     }
 };
 

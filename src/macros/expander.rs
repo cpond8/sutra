@@ -1,13 +1,27 @@
-//! Core macro expansion engine.
 //!
 //! Manages template substitution, variadic forwarding, and recursive expansion,
 //! ensuring proper error handling and recursion depth checking.
+//!
+//! ## Error Handling
+//!
+//! All errors in this module are reported via the unified `SutraError` type and must be constructed using the `sutra_err!` macro. See `src/diagnostics.rs` for macro arms and usage rules.
+//!
+//! Example:
+//! ```rust
+//! return Err(sutra_err!(Validation, "Invalid macro expansion".to_string()));
+//! ```
+//!
+//! All macro expansion errors (arity, recursion, substitution, etc.) use this system.
+//!
+//! ## Recursion and Expansion
+//!
+//! This module provides the core expansion engine, including recursion depth checks and trace recording. All errors related to recursion limits or invalid macro forms are reported using the canonical error system.
 
 use crate::ast::{AstNode, Expr, ParamList, Span, WithSpan};
 use crate::macros::types::{
     MacroDef, MacroEnv, MacroExpansionStep, MacroProvenance, MacroTemplate,
 };
-use crate::syntax::error::{from_kind, SutraError, SutraErrorKind};
+use crate::{SutraError, sutra_err};
 use std::collections::HashMap;
 
 // =============================
@@ -28,21 +42,13 @@ pub fn expand_template(
     depth: usize,
 ) -> Result<AstNode, SutraError> {
     if depth > crate::macros::MAX_MACRO_RECURSION_DEPTH {
-        return Err(from_kind(
-            SutraErrorKind::Validation(
-                crate::syntax::error::ValidationErrorKind::RecursionLimitExceeded,
-            ),
-            Some(call.span.clone()),
-        ));
+        return Err(sutra_err!(Internal, "Recursion limit exceeded".to_string()));
     }
 
     let (args, span) = match &*call.value {
         Expr::List(items, span) if !items.is_empty() => (&items[1..], span),
         _ => {
-            return Err(SutraError {
-                kind: SutraErrorKind::InternalParse("Macro call must be a non-empty list".to_string()),
-                span: Some(call.span.clone()),
-            });
+            return Err(sutra_err!(Internal, "Macro call must be a non-empty list".to_string()));
         }
     };
 
@@ -78,13 +84,13 @@ pub fn bind_macro_params(
     // Insert a special marker for variadic parameters to enable proper splicing
     bindings.insert(
         variadic_name.clone(),
-        with_span(Expr::List(rest_args, expr_span.clone()), expr_span),
+        with_span(Expr::List(rest_args, *expr_span), expr_span),
     );
 
     // Also create a boolean marker for the variadic parameter name
     bindings.insert(
         format!("__variadic__{}", variadic_name),
-        with_span(Expr::Bool(true, expr_span.clone()), expr_span),
+        with_span(Expr::Bool(true, *expr_span), expr_span),
     );
 
     bindings
@@ -165,12 +171,7 @@ fn expand_macro_once(
     };
 
     if depth > crate::macros::MAX_MACRO_RECURSION_DEPTH {
-        return Err(from_kind(
-            SutraErrorKind::Validation(
-                crate::syntax::error::ValidationErrorKind::RecursionLimitExceeded,
-            ),
-            Some(node.span.clone()),
-        ));
+        return Err(sutra_err!(Internal, "Recursion limit exceeded".to_string()));
     }
 
     // Clone MacroDef to avoid holding a borrow of env
@@ -204,9 +205,9 @@ fn expand_macro_def(
 
     let result = match macro_def {
         MacroDef::Fn(func) => func(node)
-            .map_err(|e| from_kind(SutraErrorKind::MacroExpansion(Box::new(e)), Some(original_node.span.clone()))),
+            .map_err(|_| sutra_err!(Internal, "Error".to_string())),
         MacroDef::Template(template) => expand_template(template, node, depth)
-            .map_err(|e| from_kind(SutraErrorKind::MacroExpansion(Box::new(e)), Some(original_node.span.clone()))),
+            .map_err(|_| sutra_err!(Internal, "Error".to_string())),
     };
 
     if let Ok(expanded_node) = &result {
@@ -303,7 +304,7 @@ fn substitute_list(
     }
 
     Ok(with_span(
-        Expr::List(new_items, original_span.clone()),
+        Expr::List(new_items, *original_span),
         original_span,
     ))
 }
@@ -348,10 +349,7 @@ fn substitute_spread_item(
     if let Some(name) = extract_variadic_param_name(inner, bindings) {
         let bound_node = &bindings[name];
         let Expr::List(elements, _) = &*bound_node.value else {
-            return Err(from_kind(
-                SutraErrorKind::InternalParse(format!("Variadic parameter '{}' is not a list", name)),
-                Some(inner.span.clone()),
-            ));
+            return Err(sutra_err!(Internal, "Variadic parameter '{}' is not a list", name));
         };
 
         for element in elements {
@@ -376,10 +374,7 @@ fn handle_non_symbol_spread(
             new_items.push(element.clone());
         }
     } else {
-        return Err(from_kind(
-            SutraErrorKind::InternalParse("Spread argument did not evaluate to a list".to_string()),
-            Some(inner.span.clone()),
-        ));
+        return Err(sutra_err!(Internal, "Spread argument did not evaluate to a list".to_string()));
     }
     Ok(())
 }
@@ -402,7 +397,7 @@ fn substitute_if(
             condition: Box::new(new_condition),
             then_branch: Box::new(new_then),
             else_branch: Box::new(new_else),
-            span: if_span.clone(),
+            span: *if_span,
         },
         original_span,
     ))
@@ -496,7 +491,7 @@ where
         .collect();
 
     Ok(with_span(
-        Expr::List(new_items?, list_span.clone()),
+        Expr::List(new_items?, *list_span),
         original_span,
     ))
 }
@@ -524,7 +519,7 @@ where
             condition: Box::new(cond),
             then_branch: Box::new(then_b),
             else_branch: Box::new(else_b),
-            span: if_span.clone(),
+            span: *if_span,
         },
         original_span,
     ))
@@ -544,7 +539,7 @@ where
 {
     let new_inner = f(inner.clone(), env, depth + 1)?;
     Ok(with_span(
-        Expr::Quote(Box::new(new_inner), quote_span.clone()),
+        Expr::Quote(Box::new(new_inner), *quote_span),
         original_span,
     ))
 }
@@ -572,6 +567,6 @@ where
 fn with_span(value: Expr, original_span: &Span) -> AstNode {
     WithSpan {
         value: value.into(),
-        span: original_span.clone(),
+        span: *original_span,
     }
 }

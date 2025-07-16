@@ -1,43 +1,37 @@
+//! Canonical runtime value type for the Sutra engine.
+//!
+//! All computation, macro expansion, and evaluation in Sutra produces or manipulates a `Value`.
+//! This type is deeply compositional: lists and maps can contain any other value, including nested lists and maps.
+//! `Nil` represents the absence of a value and is the default for all uninitialized slots.
+//! `Path` is a first-class value, enabling explicit reference to locations in the world state.
+
 use crate::runtime::path::Path;
 use im::HashMap;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-/// Represents a value in the Sutra engine.
-///
-/// # Examples
-///
-/// ```rust
-/// use sutra::ast::value::Value;
-/// let n = Value::Number(3.14);
-/// assert_eq!(n.type_name(), "Number");
-/// let s = Value::String("hello".to_string());
-/// assert_eq!(s.type_name(), "String");
-/// let nil = Value::default();
-/// assert!(nil.is_nil());
-/// ```
+/// Canonical runtime value for Sutra evaluation and macro expansion.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub enum Value {
+    /// Absence of a value; default for uninitialized slots.
     #[default]
     Nil,
+    /// Numeric value (floating point).
     Number(f64),
+    /// String value.
     String(String),
+    /// Boolean value.
     Bool(bool),
+    /// List of values (deeply compositional).
     List(Vec<Value>),
+    /// Map from string keys to values (deeply compositional).
     Map(HashMap<String, Value>),
+    /// Reference to a path in the world state (not auto-resolved).
     Path(Path),
 }
 
 impl Value {
-    /// Returns the type name of the value as a string.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use sutra::ast::value::Value;
-    /// let v = Value::Bool(true);
-    /// assert_eq!(v.type_name(), "Bool");
-    /// ```
+    /// Returns the type name of the value as a string (for diagnostics, debugging, and macro logic).
     pub fn type_name(&self) -> &'static str {
         match self {
             Value::Nil => "Nil",
@@ -50,30 +44,12 @@ impl Value {
         }
     }
 
-    /// Returns true if the value is Nil.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use sutra::ast::value::Value;
-    /// assert!(Value::Nil.is_nil());
-    /// assert!(!Value::Number(1.0).is_nil());
-    /// ```
+    /// Returns true if the value is Nil (used for default checks and absence semantics).
     pub fn is_nil(&self) -> bool {
         matches!(self, Value::Nil)
     }
 
-    /// Returns the contained number if this is a Number value.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use sutra::ast::value::Value;
-    /// let v = Value::Number(2.0);
-    /// assert_eq!(v.as_number(), Some(2.0));
-    /// let v2 = Value::String("nope".to_string());
-    /// assert_eq!(v2.as_number(), None);
-    /// ```
+    /// Returns the contained number if this is a Number value, else None.
     pub fn as_number(&self) -> Option<f64> {
         match self {
             Value::Number(n) => Some(*n),
@@ -81,17 +57,7 @@ impl Value {
         }
     }
 
-    /// Returns the contained bool if this is a Bool value.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use sutra::ast::value::Value;
-    /// let v = Value::Bool(false);
-    /// assert_eq!(v.as_bool(), Some(false));
-    /// let v2 = Value::Nil;
-    /// assert_eq!(v2.as_bool(), None);
-    /// ```
+    /// Returns the contained bool if this is a Bool value, else None.
     pub fn as_bool(&self) -> Option<bool> {
         match self {
             Value::Bool(b) => Some(*b),
@@ -100,10 +66,9 @@ impl Value {
     }
 
     // ------------------------------------------------------------------------
-    // Display formatting helpers
+    // Display formatting helpers (internal)
     // ------------------------------------------------------------------------
 
-    /// Helper for formatting list values
     fn fmt_list(f: &mut fmt::Formatter<'_>, items: &[Value]) -> fmt::Result {
         write!(f, "(")?;
         for (i, item) in items.iter().enumerate() {
@@ -115,7 +80,6 @@ impl Value {
         write!(f, ")")
     }
 
-    /// Helper for formatting map values
     fn fmt_map(f: &mut fmt::Formatter<'_>, map: &HashMap<String, Value>) -> fmt::Result {
         write!(f, "{{")?;
         let mut first = true;

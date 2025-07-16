@@ -1,7 +1,17 @@
-//! Core data structures for the macro system.
 //!
 //! This module defines the fundamental types used throughout the macro system.
 //! It has no dependencies on other macro modules, making it the foundation layer.
+//!
+//! ## Error Handling
+//!
+//! All errors in this module are reported via the unified `SutraError` type and must be constructed using the `sutra_err!` macro. See `src/diagnostics.rs` for macro arms and usage rules.
+//!
+//! Example:
+//! ```rust
+//! return Err(sutra_err!(Validation, "Duplicate parameter name".to_string()));
+//! ```
+//!
+//! All macro type, validation, and callable errors use this system.
 //!
 //! ## Ownership and Borrowing
 //!
@@ -17,9 +27,10 @@
 //! - **Cloneable**: All types implement Clone for flexibility
 //! - **Documented**: All public types have comprehensive documentation
 
-use crate::ast::{AstNode, ParamList, Span};
+use crate::ast::{AstNode, ParamList};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use crate::sutra_err;
 
 /// Maximum recursion depth for macro expansion to prevent infinite loops.
 pub const MAX_MACRO_RECURSION_DEPTH: usize = 128;
@@ -43,7 +54,7 @@ pub const MAX_MACRO_RECURSION_DEPTH: usize = 128;
 ///     Ok(WithSpan { value: Arc::clone(&node.value), span: node.span.clone() })
 /// };
 /// ```
-pub type MacroFn = fn(&AstNode) -> Result<AstNode, crate::syntax::error::SutraError>;
+pub type MacroFn = fn(&AstNode) -> Result<AstNode, crate::SutraError>;
 
 /// A declarative macro defined by a template.
 ///
@@ -198,7 +209,7 @@ impl MacroTemplate {
     pub fn new(
         params: ParamList,
         body: Box<AstNode>,
-    ) -> Result<Self, crate::syntax::error::SutraError> {
+    ) -> Result<Self, crate::SutraError> {
         let mut all_names = params.required.clone();
 
         // Add variadic parameter if present
@@ -207,7 +218,7 @@ impl MacroTemplate {
         }
 
         // Validate no duplicate parameters
-        check_no_duplicate_params(&all_names, &params.span)?;
+        check_no_duplicate_params(&all_names)?;
 
         // Construct template
         Ok(MacroTemplate { params, body })
@@ -325,27 +336,17 @@ impl Default for MacroEnv {
 /// # Arguments
 ///
 /// * `all_names` - All parameter names (required + variadic)
-/// * `span` - Span for error reporting
 ///
 /// # Errors
 ///
 /// Returns an error if any parameter name appears more than once.
 fn check_no_duplicate_params(
     all_names: &[String],
-    span: &Span,
-) -> Result<(), crate::syntax::error::SutraError> {
+) -> Result<(), crate::SutraError> {
     let mut seen = std::collections::HashSet::new();
     for name in all_names {
         if !seen.insert(name) {
-            return Err(crate::syntax::error::SutraError {
-                kind: crate::syntax::error::SutraErrorKind::Validation(
-                    crate::syntax::error::ValidationErrorKind::General(format!(
-                        "Duplicate parameter name '{}' in macro definition.",
-                        name
-                    )),
-                ),
-                span: Some(span.clone()),
-            });
+            return Err(sutra_err!(Validation, "Duplicate parameter name".to_string()));
         }
     }
     Ok(())
@@ -356,19 +357,9 @@ fn check_no_duplicate_params(
 // ============================================================================
 
 impl crate::atoms::Callable for MacroDef {
-    fn call(&self, _args: &[crate::ast::value::Value], _context: &mut crate::runtime::context::ExecutionContext, _current_world: &crate::runtime::world::World) -> Result<(crate::ast::value::Value, crate::runtime::world::World), crate::syntax::error::SutraError> {
+    fn call(&self, _args: &[crate::ast::value::Value], _context: &mut crate::runtime::context::ExecutionContext, _current_world: &crate::runtime::world::World) -> Result<(crate::ast::value::Value, crate::runtime::world::World), crate::SutraError> {
         // Macros operate on AST nodes, not Values, so they cannot be called through the Callable interface
         // This is a design limitation - macros need syntax transformation, not evaluation
-        use crate::ast::Expr;
-        use std::sync::Arc;
-        let dummy_node = crate::ast::AstNode {
-            value: Arc::new(Expr::Symbol("macro".to_string(), crate::ast::Span::default())),
-            span: crate::ast::Span::default()
-        };
-        Err(crate::syntax::error::eval_general_error(
-            None,
-            &dummy_node,
-            "Macros cannot be called through Callable interface - they require AST transformation, not evaluation"
-        ))
+        Err(sutra_err!(Validation, "Macros cannot be called through Callable interface - they require AST transformation, not evaluation".to_string()))
     }
 }

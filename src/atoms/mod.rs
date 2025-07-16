@@ -20,13 +20,13 @@
 
 // - **Consistent Interface**: All atoms use the same `AtomFn` signature
 
+use crate::{SutraError, sutra_err};
 use crate::ast::value::Value;
 use crate::ast::AstNode;
 use crate::ast::Span;
 use crate::runtime::eval::EvalContext;
 use crate::runtime::context::ExecutionContext;
 use crate::runtime::world::World;
-use crate::syntax::error::SutraError;
 use im::HashMap;
 
 // ============================================================================
@@ -207,22 +207,8 @@ impl Callable for Atom {
                 Ok((result, current_world.clone()))
             }
             Atom::SpecialForm(_) => {
-                // SpecialForm atoms cannot be called through the Callable interface
-                // They require AstNode arguments and EvalContext
-                use crate::ast::Expr;
-                use std::sync::Arc;
-                let dummy_node = AstNode {
-                    value: Arc::new(Expr::Symbol(
-                        "special_form_atom".to_string(),
-                        crate::ast::Span::default(),
-                    )),
-                    span: crate::ast::Span::default(),
-                };
-                Err(crate::syntax::error::eval_general_error(
-                    None,
-                    &dummy_node,
-                    "Special Form atoms cannot be called through Callable interface - use direct dispatch instead"
-                ))
+                // SpecialForm atoms require AstNode/EvalContext and cannot be called via Callable
+                Err(sutra_err!(Eval, "Special Form atoms cannot be called through Callable interface - use direct dispatch instead".to_string()))
             }
         }
     }
