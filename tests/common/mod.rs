@@ -56,14 +56,14 @@ fn parse_test_case(node: &AstNode) -> Result<TestCase, SutraError> {
     if name != "test" {
         return Err(sutra_err!(Validation, "Form is not a test (missing 'test' symbol).".to_string()));
     }
-    if items.len() != 3 {
-        return Err(sutra_err!(Validation, "Test form must have exactly 3 elements: (test \"name\" body)".to_string()));
+    if items.len() != 4 {
+        return Err(sutra_err!(Validation, "Test form must have exactly 4 elements: (test \"name\" (expect ...) body)".to_string()));
     }
     let Expr::String(test_name, _) = &*items[1].value else {
         return Err(sutra_err!(Validation, "Test name must be a string literal.".to_string()));
     };
-    let body = items[2].clone();
-    let expectation = parse_expectation(&body)?;
+    let expectation = parse_expectation(&items[2])?;
+    let body = items[3].clone();
     Ok(TestCase {
         name: test_name.clone(),
         body,
@@ -72,23 +72,33 @@ fn parse_test_case(node: &AstNode) -> Result<TestCase, SutraError> {
 }
 
 /// Parses the expectation from a test case body.
-fn parse_expectation(body: &AstNode) -> Result<TestExpectation, SutraError> {
-    if let Expr::List(items, _) = &*body.value {
-        if !items.is_empty() {
-            if let Expr::Symbol(name, _) = &*items[0].value {
-                if name == "expect" && items.len() == 2 {
-                    if let Expr::Symbol(error_name, _) = &*items[1].value {
-                        return Ok(TestExpectation::Error(error_name.clone()));
-                    } else {
-                        return Err(sutra_err!(Validation, "Expected error name to be a symbol in (expect ...)".to_string()));
-                    }
+fn parse_expectation(expect_node: &AstNode) -> Result<TestExpectation, SutraError> {
+    let Expr::List(items, _) = &*expect_node.value else {
+        return Err(sutra_err!(Validation, "(expect ...) form must be a list.".to_string()));
+    };
+    if items.len() != 2 {
+        return Err(sutra_err!(Validation, "(expect ...) form must have exactly 2 elements.".to_string()));
+    }
+    match &*items[1].value {
+        Expr::Symbol(error_name, _) => {
+            // Treat as error expectation if it's a symbol and not a boolean or nil
+            if error_name == "true" || error_name == "false" || error_name == "nil" {
+                // These are value expectations, not error names
+                match expr_to_value(&items[1].value) {
+                    Some(val) => Ok(TestExpectation::Success(val)),
+                    None => Err(sutra_err!(Validation, "Test body is not a value-like expression; cannot convert to Value for success expectation.".to_string())),
                 }
+            } else {
+                Ok(TestExpectation::Error(error_name.clone()))
             }
         }
-    }
-    match expr_to_value(&body.value) {
-        Some(val) => Ok(TestExpectation::Success(val)),
-        None => Err(sutra_err!(Validation, "Test body is not a value-like expression; cannot convert to Value for success expectation.".to_string())),
+        _ => {
+            // All other cases are value expectations
+            match expr_to_value(&items[1].value) {
+                Some(val) => Ok(TestExpectation::Success(val)),
+                None => Err(sutra_err!(Validation, "Test body is not a value-like expression; cannot convert to Value for success expectation.".to_string())),
+            }
+        }
     }
 }
 
@@ -98,7 +108,8 @@ fn expr_to_value(expr: &Expr) -> Option<Value> {
         Expr::String(s, _) => Some(Value::String(s.clone())),
         Expr::Bool(b, _) => Some(Value::Bool(*b)),
         Expr::List(items, _) => {
-            let vals = items.iter().filter_map(|n| expr_to_value(&n.value)).collect::<Vec<_>>();
+            // Accept all lists, even if some elements are not primitive values
+            let vals = items.iter().map(|n| expr_to_value(&n.value).unwrap_or(Value::String(format!("{:?}", n.value)))).collect::<Vec<_>>();
             Some(Value::List(vals))
         }
         Expr::Path(p, _) => Some(Value::Path(p.clone())),

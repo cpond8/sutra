@@ -415,7 +415,6 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ## 22. References
 
-- Canonical spec: `docs/specs/language-spec.md`
 - Macro library: `src/macros/macros.sutra`
 - Grammar: `src/syntax/grammar.pest`
 - Atoms: `src/atoms/`

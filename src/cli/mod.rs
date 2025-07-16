@@ -371,7 +371,31 @@ fn handle_ast(path: &std::path::Path) -> Result<(), SutraError> {
 
 /// Handles the `validate` subcommand.
 fn handle_validate() -> Result<(), SutraError> {
-    println!("Validation is currently disabled: no validator system present.");
+    use crate::validation::grammar::validate_grammar;
+    use crate::sutra_err;
+    use std::fs;
+    let grammar_path = "src/syntax/grammar.pest";
+    let validation_result = validate_grammar(grammar_path)
+        .map_err(|e| sutra_err!(Internal, "Failed to validate grammar: {}", e))?;
+
+    if !validation_result.is_valid() {
+        let grammar_source = fs::read_to_string(grammar_path).unwrap_or_default();
+        let error = sutra_err!(Validation, "Grammar validation failed", grammar_source);
+        eprintln!("{}", error);
+        for err in &validation_result.errors {
+            eprintln!("  • {}", err);
+        }
+        std::process::exit(1);
+    }
+
+    for warning in &validation_result.warnings {
+        eprintln!("[Warning] {}", warning);
+    }
+    for suggestion in &validation_result.suggestions {
+        eprintln!("[Suggestion] {}", suggestion);
+    }
+
+    println!("Grammar validation passed");
     Ok(())
 }
 

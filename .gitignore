@@ -38,5 +38,6 @@ coverage/
 .clinerules/
 .cursor/
 .cursorrules
-repomix-output.xml
 .deprecated/
+.github/
+repomix-output.xml

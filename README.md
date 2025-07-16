@@ -60,6 +60,13 @@ To run the test suite:
 cargo test
 ```
 
+To validate the grammar:
+```sh
+cargo run -- validate
+```
+
+This will check the PEG grammar for errors and is enforced as a quality gate.
+
 ---
 
 ## Codebase Overview

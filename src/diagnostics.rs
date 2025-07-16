@@ -224,6 +224,17 @@ macro_rules! sutra_err {
             },
         }
     };
+    // message, src only (no span)
+    ($variant:ident, $msg:expr, $src:expr) => {
+        $crate::SutraError::$variant {
+            message: $msg.to_string(),
+            ctx: $crate::diagnostics::ErrorContext {
+                src: Some($crate::diagnostics::to_error_src($src)),
+                span: None,
+                help: None,
+            },
+        }
+    };
     // message with single format argument
     ($variant:ident, $msg:expr, $arg:expr) => {
         $crate::SutraError::$variant {
