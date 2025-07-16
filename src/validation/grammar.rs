@@ -24,6 +24,12 @@ pub struct ValidationResult {
     pub suggestions: Vec<String>,
 }
 
+impl Default for ValidationResult {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct GrammarConstants {
     pub built_ins: &'static [&'static str],
     pub critical_rules: &'static [&'static str],

@@ -68,9 +68,9 @@ impl EvalContext<'_, '_> {
                                 items.extend_from_slice(args);
                                 items
                             },
-                            span.clone(),
+                            *span,
                         )),
-                        span: span.clone(),
+                        span: *span,
                     };
 
                     // Expand the template macro
@@ -87,9 +87,9 @@ impl EvalContext<'_, '_> {
                                 items.extend_from_slice(args);
                                 items
                             },
-                            span.clone(),
+                            *span,
                         )),
-                        span: span.clone(),
+                        span: *span,
                     };
 
                     // Call the function macro
@@ -407,7 +407,7 @@ fn flatten_spread_args(
         for v in items {
             flat_tail.push(WithSpan {
                 value: Expr::from(v).into(), // FIX: wrap Expr in Arc via .into()
-                span: arg.span.clone(),
+                span: arg.span,
             });
         }
     }

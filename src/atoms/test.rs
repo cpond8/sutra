@@ -121,12 +121,12 @@ fn handle_borrow_stress_recursion(
     sub_context.depth = ctx.depth + 1; // Manually set incremented depth
     let nested_args = vec![
         WithSpan {
-            value: Arc::new(Expr::Number((depth - 1) as f64, span.clone())),
-            span: span.clone(),
+            value: Arc::new(Expr::Number((depth - 1) as f64, *span)),
+            span: *span,
         },
         WithSpan {
-            value: Arc::new(Expr::String(msg.to_string(), span.clone())),
-            span: span.clone(),
+            value: Arc::new(Expr::String(msg.to_string(), *span)),
+            span: *span,
         },
     ];
     test_borrow_stress_atom(&nested_args, &mut sub_context, span)
@@ -142,8 +142,8 @@ fn handle_borrow_stress_base_case(
     let mut sub_context = sub_eval_context!(ctx, ctx.world);
     sub_context.depth = ctx.depth + 1; // Manually set incremented depth
     let echo_arg = WithSpan {
-        value: Arc::new(Expr::String(msg.to_string(), span.clone())),
-        span: span.clone(),
+        value: Arc::new(Expr::String(msg.to_string(), *span)),
+        span: *span,
     };
     test_echo_atom(&[echo_arg], &mut sub_context, span)
 }

@@ -28,7 +28,7 @@ impl WorldState {
         let mut current = &self.data;
         for key in &path.0 {
             let Value::Map(map) = current else { return None };
-            let Some(value) = map.get(key.as_str()) else { return None };
+            let value = map.get(key.as_str())?;
             current = value;
         }
         Some(current)

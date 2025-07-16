@@ -111,7 +111,7 @@ pub fn substitute_template(
     // Quoted expressions: do not descend into them
     if let Expr::Quote(inner, span) = &*expr.value {
         return Ok(with_span(
-            Expr::Quote(inner.clone(), span.clone()),
+            Expr::Quote(inner.clone(), *span),
             &expr.span,
         ));
     }
@@ -244,9 +244,7 @@ fn extract_macro_name_from_call(node: &AstNode) -> Option<&str> {
     let Expr::List(items, _) = &*node.value else {
         return None;
     };
-    let Some(first) = items.get(0) else {
-        return None;
-    };
+    let first = items.first()?;
     let Expr::Symbol(s, _) = &*first.value else {
         return None;
     };
@@ -279,11 +277,11 @@ fn substitute_symbol(
 fn make_list_call(elements: &[AstNode], span: &Span) -> AstNode {
     let mut list_call = Vec::with_capacity(elements.len() + 1);
     list_call.push(with_span(
-        Expr::Symbol("list".to_string(), span.clone()),
+        Expr::Symbol("list".to_string(), *span),
         span,
     ));
     list_call.extend_from_slice(elements);
-    with_span(Expr::List(list_call, span.clone()), span)
+    with_span(Expr::List(list_call, *span), span)
 }
 
 // Substitutes parameters within a list expression, handling spreads.
@@ -463,8 +461,7 @@ where
             f,
             env,
             depth,
-            span,
-            &node.span,
+            (span, &node.span),
         ),
         Expr::Quote(inner, span) => map_quote(inner, f, env, depth, span, &node.span),
         Expr::Spread(inner) => map_spread(inner, f, env, depth, &node.span),
@@ -504,8 +501,7 @@ fn map_if<F>(
     f: &F,
     env: &mut MacroEnv,
     depth: usize,
-    if_span: &Span,
-    original_span: &Span,
+    spans: (&Span, &Span),
 ) -> Result<AstNode, SutraError>
 where
     F: Fn(AstNode, &mut MacroEnv, usize) -> Result<AstNode, SutraError>,
@@ -519,9 +515,9 @@ where
             condition: Box::new(cond),
             then_branch: Box::new(then_b),
             else_branch: Box::new(else_b),
-            span: *if_span,
+            span: *spans.0,
         },
-        original_span,
+        spans.1,
     ))
 }
 

@@ -330,7 +330,7 @@ pub fn eval_apply_normal_args(
         let (val, next_world) = eval_expr(arg, &mut sub_context)?;
         evald_args.push(WithSpan {
             value: Expr::from(val).into(), // FIX: wrap Expr in Arc via .into()
-            span: arg.span.clone(),
+            span: arg.span,
         });
         world = next_world;
     }

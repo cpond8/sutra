@@ -107,14 +107,14 @@ pub fn wrap_in_do(exprs: Vec<AstNode>) -> AstNode {
                 end: exprs.last().map(|n| n.span.end).unwrap_or(0),
             };
             let do_symbol = WithSpan {
-                value: Expr::Symbol("do".to_string(), span.clone()).into(),
-                span: span.clone(),
+                value: Expr::Symbol("do".to_string(), span).into(),
+                span,
             };
             let mut items = Vec::with_capacity(exprs.len() + 1);
             items.push(do_symbol);
             items.extend(exprs);
             WithSpan {
-                value: Expr::List(items, span.clone()).into(),
+                value: Expr::List(items, span).into(),
                 span,
             }
         }
@@ -169,7 +169,7 @@ fn map_children_to_list<'a>(
         .map(|p| build_ast_from_pair(p))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(WithSpan {
-        value: Expr::List(exprs, span.clone()).into(),
+        value: Expr::List(exprs, span).into(),
         span,
     })
 }
@@ -250,7 +250,7 @@ fn build_param_list(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     // The param_list rule contains a single param_items rule
     let param_items_pair = inner
         .next()
-        .ok_or_else(|| param_list_error("param_list: Missing param_items", span.clone()))?;
+        .ok_or_else(|| param_list_error("param_list: Missing param_items", span))?;
 
     let mut required_params = Vec::new();
     let mut rest_param = None;
@@ -290,7 +290,7 @@ fn build_param_list(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
         value: Expr::ParamList(crate::ast::ParamList {
             required: required_params,
             rest: rest_param,
-            span: span.clone(),
+            span,
         })
         .into(),
         span,
@@ -328,7 +328,7 @@ fn build_number(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
         .parse::<f64>()
         .map_err(|e| sutra_err!(Parse, "Parse error: {}", e.to_string()))?;
     Ok(WithSpan {
-        value: Expr::Number(n, span.clone()).into(),
+        value: Expr::Number(n, span).into(),
         span,
     })
 }
@@ -337,11 +337,11 @@ fn build_boolean(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     let span = get_span(&pair);
     match pair.as_str() {
         "true" => Ok(WithSpan {
-            value: Expr::Bool(true, span.clone()).into(),
+            value: Expr::Bool(true, span).into(),
             span,
         }),
         "false" => Ok(WithSpan {
-            value: Expr::Bool(false, span.clone()).into(),
+            value: Expr::Bool(false, span).into(),
             span,
         }),
         _ => Err(sutra_err!(Internal, "Invalid boolean literal: '{}'", pair.as_str())),
@@ -351,7 +351,7 @@ fn build_boolean(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
 fn build_string(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     let span = get_span(&pair);
     Ok(WithSpan {
-        value: Expr::String(unescape_string(pair.clone())?, span.clone()).into(),
+        value: Expr::String(unescape_string(pair.clone())?, span).into(),
         span,
     })
 }
@@ -359,7 +359,7 @@ fn build_string(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
 fn build_symbol(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     let span = get_span(&pair);
     Ok(WithSpan {
-        value: Expr::Symbol(pair.as_str().to_string(), span.clone()).into(),
+        value: Expr::Symbol(pair.as_str().to_string(), span).into(),
         span,
     })
 }
@@ -536,7 +536,7 @@ fn build_quote(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
             .ok_or_else(|| sutra_err!(Internal, "Empty quote".to_string()))?,
     )?;
     Ok(WithSpan {
-        value: Expr::Quote(Box::new(quoted_expr), span.clone()).into(),
+        value: Expr::Quote(Box::new(quoted_expr), span).into(),
         span,
     })
 }
@@ -565,7 +565,7 @@ fn build_define_form(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     let actual_params = crate::ast::ParamList {
         required: full_params.required[1..].to_vec(),
         rest: full_params.rest.clone(),
-        span: full_params.span.clone(),
+        span: full_params.span,
     };
 
     let body_pair = inner.next().ok_or_else(|| {
@@ -578,7 +578,7 @@ fn build_define_form(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
             name,
             params: actual_params,
             body: Box::new(body),
-            span: span.clone(),
+            span,
         }
         .into(),
         span,

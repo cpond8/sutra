@@ -42,7 +42,7 @@ pub fn parse_macro_definition(expr: &AstNode) -> Result<(String, MacroTemplate),
     let params = ParamList {
         required: param_list.required[1..].to_vec(),
         rest: param_list.rest.clone(),
-        span: param_list.span.clone(),
+        span: param_list.span,
     };
     let template = MacroTemplate::new(params, Box::new(items[2].clone()))?;
     Ok((macro_name, template))

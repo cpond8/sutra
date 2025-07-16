@@ -110,14 +110,14 @@ fn wrap_in_do_if_needed(ast_nodes: Vec<AstNode>, source: &str) -> AstNode {
         end: source.len(),
     };
     let do_symbol = WithSpan {
-        value: Expr::Symbol("do".to_string(), span.clone()).into(), // FIX: wrap Expr in Arc via .into()
-        span: span.clone(),
+        value: Expr::Symbol("do".to_string(), span).into(), // FIX: wrap Expr in Arc via .into()
+        span,
     };
     let mut items = Vec::with_capacity(ast_nodes.len() + 1);
     items.push(do_symbol);
     items.extend(ast_nodes);
     WithSpan {
-        value: Expr::List(items, span.clone()).into(),
+        value: Expr::List(items, span).into(),
         span,
     }
 }

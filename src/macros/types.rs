@@ -51,7 +51,7 @@ pub const MAX_MACRO_RECURSION_DEPTH: usize = 128;
 /// use std::sync::Arc;
 /// // A macro that clones its input node
 /// let my_macro: MacroFn = |node| {
-///     Ok(WithSpan { value: Arc::clone(&node.value), span: node.span.clone() })
+///     Ok(WithSpan { value: Arc::clone(&node.value), span: node.span })
 /// };
 /// ```
 pub type MacroFn = fn(&AstNode) -> Result<AstNode, crate::SutraError>;
