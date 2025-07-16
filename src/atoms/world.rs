@@ -16,7 +16,7 @@
 use crate::ast::value::Value;
 use crate::atoms::StatefulAtomFn;
 use crate::atoms::helpers::extract_path;
-use crate::sutra_err;
+use crate::err_ctx;
 
 // ============================================================================
 // WORLD STATE OPERATIONS
@@ -26,7 +26,7 @@ use crate::sutra_err;
 /// `(core/set! <path> <value>)`
 pub const ATOM_CORE_SET: StatefulAtomFn = |args, context| {
     if args.len() != 2 {
-        return Err(sutra_err!(Eval, "core/set! expects 2 arguments, got {}", args.len()));
+        return Err(err_ctx!(Eval, "core/set! expects 2 arguments, got {}", "core/set!", "Arity error"));
     }
     let path = &extract_path(&args[0])?;
     let value = args[1].clone();
@@ -38,7 +38,7 @@ pub const ATOM_CORE_SET: StatefulAtomFn = |args, context| {
 /// `(core/get <path>)`
 pub const ATOM_CORE_GET: StatefulAtomFn = |args, context| {
     if args.len() != 1 {
-        return Err(sutra_err!(Eval, "core/get expects 1 argument, got {}", args.len()));
+        return Err(err_ctx!(Eval, "core/get expects 1 argument, got {}", "core/get", "Arity error"));
     }
     let path = &extract_path(&args[0])?;
     let value = context.state.get(path).cloned().unwrap_or_default();
@@ -49,7 +49,7 @@ pub const ATOM_CORE_GET: StatefulAtomFn = |args, context| {
 /// `(core/del! <path>)`
 pub const ATOM_CORE_DEL: StatefulAtomFn = |args, context| {
     if args.len() != 1 {
-        return Err(sutra_err!(Eval, "core/del! expects 1 argument, got {}", args.len()));
+        return Err(err_ctx!(Eval, "core/del! expects 1 argument, got {}", "core/del!", "Arity error"));
     }
     let path = &extract_path(&args[0])?;
     context.state.del(path);
@@ -60,7 +60,7 @@ pub const ATOM_CORE_DEL: StatefulAtomFn = |args, context| {
 /// `(core/exists? <path>)`
 pub const ATOM_EXISTS: StatefulAtomFn = |args, context| {
     if args.len() != 1 {
-        return Err(sutra_err!(Eval, "core/exists? expects 1 argument, got {}", args.len()));
+        return Err(err_ctx!(Eval, "core/exists? expects 1 argument, got {}", "core/exists?", "Arity error"));
     }
     let path = &extract_path(&args[0])?;
     let exists = context.state.get(path).is_some();

@@ -16,7 +16,8 @@
 use crate::ast::value::Value;
 use crate::atoms::PureAtomFn;
 use crate::atoms::helpers::extract_number;
-use crate::sutra_err;
+use crate::err_ctx;
+use crate::err_msg;
 
 // ============================================================================
 // ARITHMETIC OPERATIONS
@@ -50,7 +51,7 @@ pub const ATOM_ADD: PureAtomFn = |args| {
 ///   (- 5 2) ; => 3
 pub const ATOM_SUB: PureAtomFn = |args| {
     if args.is_empty() {
-        return Err(sutra_err!(Eval, "- expects at least 1 argument, got {}", args.len()));
+        return Err(err_ctx!(Eval, "- expects at least 1 argument, got {}", "-", "Arity error"));
     }
 
     let first = extract_number(&args[0])?;
@@ -94,13 +95,13 @@ pub const ATOM_MUL: PureAtomFn = |args| {
 /// Note: Errors on division by zero.
 pub const ATOM_DIV: PureAtomFn = |args| {
     if args.is_empty() {
-        return Err(sutra_err!(Eval, "/ expects at least 1 argument, got {}", args.len()));
+        return Err(err_ctx!(Eval, "/ expects at least 1 argument, got {}", "/", "Arity error"));
     }
 
     let first = extract_number(&args[0])?;
     if args.len() == 1 {
         if first == 0.0 {
-            return Err(sutra_err!(Eval, "division by zero".to_string()));
+            return Err(err_msg!(Eval, "division by zero"));
         }
         return Ok(Value::Number(1.0 / first));
     }
@@ -109,7 +110,7 @@ pub const ATOM_DIV: PureAtomFn = |args| {
     for arg in args.iter().skip(1) {
         let n = extract_number(arg)?;
         if n == 0.0 {
-            return Err(sutra_err!(Eval, "division by zero".to_string()));
+            return Err(err_msg!(Eval, "division by zero"));
         }
         result /= n;
     }
@@ -129,13 +130,13 @@ pub const ATOM_DIV: PureAtomFn = |args| {
 /// Note: Errors on division by zero or non-integer input.
 pub const ATOM_MOD: PureAtomFn = |args| {
     if args.len() != 2 {
-        return Err(sutra_err!(Eval, "mod expects 2 arguments, got {}", args.len()));
+        return Err(err_ctx!(Eval, "mod expects 2 arguments, got {}", "mod", "Arity error"));
     }
     let a = extract_number(&args[0])?;
     let b = extract_number(&args[1])?;
 
     if b == 0.0 {
-        return Err(sutra_err!(Eval, "modulo by zero".to_string()));
+        return Err(err_msg!(Eval, "modulo by zero"));
     }
 
     Ok(Value::Number(a % b))
@@ -157,7 +158,7 @@ pub const ATOM_MOD: PureAtomFn = |args| {
 ///   (abs 3.14) ; => 3.14
 pub const ATOM_ABS: PureAtomFn = |args| {
     if args.len() != 1 {
-        return Err(sutra_err!(Eval, "abs expects 1 argument, got {}", args.len()));
+        return Err(err_ctx!(Eval, "abs expects 1 argument, got {}", "abs", "Arity error"));
     }
     let n = extract_number(&args[0])?;
     Ok(Value::Number(n.abs()))
@@ -174,7 +175,7 @@ pub const ATOM_ABS: PureAtomFn = |args| {
 ///   (min 3 1 4) ; => 1
 pub const ATOM_MIN: PureAtomFn = |args| {
     if args.is_empty() {
-        return Err(sutra_err!(Eval, "min expects at least 1 argument, got {}", args.len()));
+        return Err(err_ctx!(Eval, "min expects at least 1 argument, got {}", "min", "Arity error"));
     }
 
     let mut result = f64::INFINITY;
@@ -196,7 +197,7 @@ pub const ATOM_MIN: PureAtomFn = |args| {
 ///   (max 3 1 4) ; => 4
 pub const ATOM_MAX: PureAtomFn = |args| {
     if args.is_empty() {
-        return Err(sutra_err!(Eval, "max expects at least 1 argument, got {}", args.len()));
+        return Err(err_ctx!(Eval, "max expects at least 1 argument, got {}", "max", "Arity error"));
     }
 
     let mut result = f64::NEG_INFINITY;

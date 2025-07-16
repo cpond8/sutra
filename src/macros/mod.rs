@@ -9,7 +9,7 @@
 //! - **Syntactic Only**: Macros operate solely on the AST (`AstNode`). They have no access
 //!   to the `World` state and cannot perform any evaluation or side effects.
 //! - **Pure Transformation**: Macro expansion is a pure function: `(AstNode) -> Result<AstNode, SutraError>`.
-//! - **Unified Error System**: All errors are reported via the unified `SutraError` type, constructed with the `sutra_err!` macro. See `src/diagnostics.rs` for details and usage patterns.
+//! - **Unified Error System**: All errors are reported via the unified `SutraError` type, constructed with the `err_msg!` or `err_ctx!` macro. See `src/diagnostics.rs` for details and usage patterns.
 //! - **Inspectable**: The expansion process can be traced, allowing authors to see
 //!   how their high-level forms are desugared into core language constructs.
 //! - **Layered**: The macro system is a distinct pipeline stage that runs after parsing
@@ -22,7 +22,7 @@
 //! All macro-related errors (arity, validation, internal, etc.) must use the canonical error system:
 //!
 //! ```rust
-//! return Err(sutra_err!(Validation, "Invalid macro usage", node.span));
+//! return Err(err_ctx!(Validation, "Invalid macro usage", node.span));
 //! ```
 //!
 //! See `src/diagnostics.rs` for macro arms and usage rules.

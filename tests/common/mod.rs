@@ -6,7 +6,7 @@ use std::path::Path;
 use walkdir::WalkDir;
 use sutra::ast::{AstNode, Expr, value::Value};
 use sutra::SutraError;
-use sutra::sutra_err;
+use sutra::err_msg;
 
 /// A single test case defined in a `.sutra` file.
 #[derive(Debug, Clone)]
@@ -30,9 +30,9 @@ pub fn load_test_cases(dir: &Path) -> Result<Vec<TestCase>, SutraError> {
         if entry.file_type().is_file() && entry.path().extension().map_or(false, |e| e == "sutra") {
             let path = entry.path();
             let source = std::fs::read_to_string(path)
-                .map_err(|e| sutra_err!(Validation, format!("Failed to read test file '{}': {e}", path.display())))?;
+                .map_err(|e| err_msg!(Validation, format!("Failed to read test file '{}': {e}", path.display())))?;
             let ast_nodes = sutra::syntax::parser::parse(&source)
-                .map_err(|e| sutra_err!(Validation, format!("Failed to parse test file '{}': {e}", path.display())))?;
+                .map_err(|e| err_msg!(Validation, format!("Failed to parse test file '{}': {e}", path.display())))?;
             for node in ast_nodes {
                 let test_case = parse_test_case(&node)?;
                 test_cases.push(test_case);
@@ -45,22 +45,22 @@ pub fn load_test_cases(dir: &Path) -> Result<Vec<TestCase>, SutraError> {
 /// Parses a single `(test ...)` form into a `TestCase`. Fails if not valid.
 fn parse_test_case(node: &AstNode) -> Result<TestCase, SutraError> {
     let Expr::List(items, _) = &*node.value else {
-        return Err(sutra_err!(Validation, "Test form must be a list.".to_string()));
+        return Err(err_msg!(Validation, "Test form must be a list."));
     };
     if items.is_empty() {
-        return Err(sutra_err!(Validation, "Test form is empty.".to_string()));
+        return Err(err_msg!(Validation, "Test form is empty."));
     }
     let Expr::Symbol(name, _) = &*items[0].value else {
-        return Err(sutra_err!(Validation, "Test form must start with 'test' symbol.".to_string()));
+        return Err(err_msg!(Validation, "Test form must start with 'test' symbol."));
     };
     if name != "test" {
-        return Err(sutra_err!(Validation, "Form is not a test (missing 'test' symbol).".to_string()));
+        return Err(err_msg!(Validation, "Form is not a test (missing 'test' symbol)."));
     }
     if items.len() != 4 {
-        return Err(sutra_err!(Validation, "Test form must have exactly 4 elements: (test \"name\" (expect ...) body)".to_string()));
+        return Err(err_msg!(Validation, "Test form must have exactly 4 elements: (test \"name\" (expect ...) body)"));
     }
     let Expr::String(test_name, _) = &*items[1].value else {
-        return Err(sutra_err!(Validation, "Test name must be a string literal.".to_string()));
+        return Err(err_msg!(Validation, "Test name must be a string literal."));
     };
     let expectation = parse_expectation(&items[2])?;
     let body = items[3].clone();
@@ -74,10 +74,10 @@ fn parse_test_case(node: &AstNode) -> Result<TestCase, SutraError> {
 /// Parses the expectation from a test case body.
 fn parse_expectation(expect_node: &AstNode) -> Result<TestExpectation, SutraError> {
     let Expr::List(items, _) = &*expect_node.value else {
-        return Err(sutra_err!(Validation, "(expect ...) form must be a list.".to_string()));
+        return Err(err_msg!(Validation, "(expect ...) form must be a list."));
     };
     if items.len() != 2 {
-        return Err(sutra_err!(Validation, "(expect ...) form must have exactly 2 elements.".to_string()));
+        return Err(err_msg!(Validation, "(expect ...) form must have exactly 2 elements."));
     }
     match &*items[1].value {
         Expr::Symbol(error_name, _) => {
@@ -86,7 +86,7 @@ fn parse_expectation(expect_node: &AstNode) -> Result<TestExpectation, SutraErro
                 // These are value expectations, not error names
                 match expr_to_value(&items[1].value) {
                     Some(val) => Ok(TestExpectation::Success(val)),
-                    None => Err(sutra_err!(Validation, "Test body is not a value-like expression; cannot convert to Value for success expectation.".to_string())),
+                    None => Err(err_msg!(Validation, "Test body is not a value-like expression; cannot convert to Value for success expectation.")),
                 }
             } else {
                 Ok(TestExpectation::Error(error_name.clone()))
@@ -96,7 +96,7 @@ fn parse_expectation(expect_node: &AstNode) -> Result<TestExpectation, SutraErro
             // All other cases are value expectations
             match expr_to_value(&items[1].value) {
                 Some(val) => Ok(TestExpectation::Success(val)),
-                None => Err(sutra_err!(Validation, "Test body is not a value-like expression; cannot convert to Value for success expectation.".to_string())),
+                None => Err(err_msg!(Validation, "Test body is not a value-like expression; cannot convert to Value for success expectation.")),
             }
         }
     }

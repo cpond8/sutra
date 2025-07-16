@@ -1,28 +1,45 @@
 //!
 //! ****************************************************************************************
-//! ** CRITICAL: BOILERPLATE ELIMINATION RULES FOR sutra_err! MACRO USAGE                 **
+//! ** BOILERPLATE ELIMINATION RULES FOR Sutra Error Macros (`err_msg!`, `err_ctx!`)      **
 //! ****************************************************************************************
 //!
+//! # Overview
+//!
+//! This module defines the unified, `miette`-based diagnostic system for the Sutra engine. All errors produced by any stage of the compilation or evaluation pipeline are represented by the types in this module. Error construction is streamlined and ergonomic via the `err_msg!` and `err_ctx!` macros, which eliminate nearly all manual boilerplate.
+//!
+//! # Error Construction Macros
+//!
+//! - **Use `err_msg!` for message-only errors (no context):**
+//!   - Example: `return Err(err_msg!(Parse, "Unexpected token"));`
+//!
+//! - **Use `err_ctx!` for errors with context (source, span, help, or pre-built context):**
+//!   - Example: `return Err(err_ctx!(Parse, "Unexpected token", src, span));`
+//!   - Example: `return Err(err_ctx!(Validation, "Invalid input", ctx));` (where `ctx` is an `ErrorContext`)
+//!   - Example: `return Err(err_ctx!(TypeError, "Expected number", src, span, "Numbers only allowed here"));`
+//!   - Example: `return Err(err_ctx!(DivisionByZero, src, span));`
+//!
+//! # Best Practices and Rules
+//!
 //! - **Do not construct `ErrorContext` manually unless absolutely necessary.**
-//!   The macro is designed to eliminate the need for explicit context construction in almost all cases.
+//!   The macros handle context construction for almost all cases.
 //!
 //! - **Pass `src` and `span` directly:**
-//!   Use `sutra_err!(..., ..., src, span)` whenever you have both.
+//!   Use `err_ctx!(..., ..., src, span)` whenever you have both. The macro will handle conversion and wrapping.
 //!
 //! - **Pass a context struct only if it has a `.source` field:**
-//!   Use `sutra_err!(..., ..., ctx)` if you have a context.
+//!   Use `err_ctx!(..., ..., ctx)` if you have a pre-built context.
 //!
-//! - **Never use `.clone()` or `.into()` on `span` or `src` in a `sutra_err!` call.**
-//!   The macro will handle cloning and conversion internally. Just pass the variable.
+//! - **Never use `.clone()` or `.into()` on `span` or `src` in a macro call.**
+//!   The macros handle cloning and conversion internally. Just pass the variable.
 //!
 //! - **Never pass a `usize`, integer, or primitive as a span.**
 //!   Always construct and pass a `Span` struct: `Span { start: pos, end: pos }` or similar.
 //!
 //! - **Never pass an `ErrorContext` unless you are using a context-only macro arm.**
-//!   If you have both `src` and `span`, always use the direct macro arm: `sutra_err!(..., ..., src, span)`.
+//!   If you have both `src` and `span`, always use the direct macro arm: `err_ctx!(..., ..., src, span)`.
 //!
 //! - **If you need to attach a help message, use the macro arm that accepts it.**
-//!   Example: `sutra_err!(..., ..., src, span: *span, help)`
+//!   Example: `err_ctx!(..., ..., src, span, help)`
 //!
 //! - **If you have a context struct with a `.source` field, pass it directly.**
 //!   Do not manually extract or wrap the source from a context struct; the macro will do this for you.
@@ -35,33 +52,27 @@
 //!
 //! ****************************************************************************************
 //!
-//! This module defines the unified, `miette`-based diagnostic system for the Sutra
-//! engine. All errors produced by any stage of the compilation or evaluation
-//! pipeline are represented by the types in this module.
+//! ## Example Usage
 //!
-//! ## Canonical Unified Error System (15 Jul 2025)
+//! ```rust
+//! // Message only (no context)
+//! return Err(err_msg!(Parse, "Unexpected token"));
 //!
-//! - All error construction should use the `sutra_err!` macro for minimalism and compositionality.
-//! - The `ErrorContext` struct encapsulates all diagnostic context (source, span: *span, help).
-//! - The macro automatically handles `Arc`, cloning, and context extraction—users do not need to wrap or clone sources themselves.
-//! - Example usage:
-//!   // Message only (no context)
-//!   return Err(sutra_err!(Parse, "Unexpected token"));
+//! // Message + source + span
+//! return Err(err_ctx!(Parse, "Unexpected token", src, span));
 //!
-//!   // Message + source + span
-//!   return Err(sutra_err!(Parse, "Unexpected token", src, span));
+//! // Message + context (context must have .source field)
+//! return Err(err_ctx!(Validation, "Invalid input", ctx));
 //!
-//!   // Message + context (context must have .source field)
-//!   return Err(sutra_err!(Validation, "Invalid input", ctx));
+//! // Context only (no message)
+//! return Err(err_ctx!(DivisionByZero, src, span));
 //!
-//!   // Context only (no message)
-//!   return Err(sutra_err!(DivisionByZero, src, span));
+//! // Message + help + context
+//! return Err(err_ctx!(TypeError, "Expected number", src, span, "Numbers only allowed here"));
 //!
-//!   // Message + help + context
-//!   return Err(sutra_err!(TypeError, "Expected number", src, span: *span, "Numbers only allowed here"));
-//!
-//!   // Internal error, message only
-//!   return Err(sutra_err!(Internal, "Invariant violated"));
+//! // Internal error, message only
+//! return Err(err_msg!(Internal, "Invariant violated"));
+//! ```
 //!
 //! See the macro and type docs below for details.
 
@@ -104,7 +115,7 @@ impl ErrorContext {
     }
 }
 
-/// Unified error type for all Sutra engine failure modes, supporting rich diagnostics and ergonomic construction via the sutra_err! macro.
+/// Unified error type for all Sutra engine failure modes, supporting rich diagnostics and ergonomic construction via the err_msg! and err_ctx! macros.
 #[derive(Debug, Error, Diagnostic)]
 pub enum SutraError {
     #[error("Parse error: {message}")]
@@ -171,49 +182,80 @@ pub fn to_error_src<S: AsErrorSource>(src: S) -> std::sync::Arc<String> {
     std::sync::Arc::new(src.as_error_source())
 }
 
-/// Macro for ergonomic construction of SutraError variants.
+/// Constructs a SutraError variant with a formatted message and no context.
 ///
-/// # Usage patterns
+/// Use this macro for errors that do not require source, span, or help context. Supports formatting with multiple arguments.
 ///
+/// # Example
 /// ```rust
-/// sutra_err!(Variant, "msg", args...);         // message with format args
-/// sutra_err!(Variant, "msg", src, span: *span, help); // src: any AsErrorSource (string/&str/context)
-/// sutra_err!(Variant, "msg", src, span);       // src: any AsErrorSource (string/&str/context)
-/// sutra_err!(Variant, "msg", ctx);             // ctx: ErrorContext
-/// sutra_err!(Variant, "msg");                  // message only
-/// sutra_err!(Variant, src, span);              // for variants without message field
-/// sutra_err!(Variant);                         // for variants without message field
+/// return Err(err_msg!(Parse, "Unexpected token: {}", token));
 /// ```
-///
-/// The macro automatically handles string formatting and uses trait-based dispatch for source types.
 #[macro_export]
-macro_rules! sutra_err {
-    // message with 3+ format arguments (must come first)
+macro_rules! err_msg {
+    // Message with 3+ format arguments
     ($variant:ident, $msg:expr, $arg1:expr, $arg2:expr, $arg3:expr, $($arg:expr),*) => {
         $crate::SutraError::$variant {
             message: format!($msg, $arg1, $arg2, $arg3, $($arg),*),
             ctx: $crate::diagnostics::ErrorContext::none(),
         }
     };
-    // message with exactly 2 format arguments
+    // Message with exactly 2 format arguments
     ($variant:ident, $msg:expr, $arg1:expr, $arg2:expr) => {
         $crate::SutraError::$variant {
             message: format!($msg, $arg1, $arg2),
             ctx: $crate::diagnostics::ErrorContext::none(),
         }
     };
-    // message, src, span: *span, help - src can be any AsErrorSource
+    // Message with single format argument
+    ($variant:ident, $msg:expr, $arg:expr) => {
+        $crate::SutraError::$variant {
+            message: format!($msg, $arg),
+            ctx: $crate::diagnostics::ErrorContext::none(),
+        }
+    };
+    // Message only
+    ($variant:ident, $msg:expr) => {
+        $crate::SutraError::$variant {
+            message: format!("{}", $msg),
+            ctx: $crate::diagnostics::ErrorContext::none(),
+        }
+    };
+}
+
+/// Constructs a SutraError variant with context (source, span, help, or pre-built context).
+///
+/// Use this macro for errors that require additional diagnostic context, such as source code, span, help messages, or a pre-built ErrorContext. The macro automatically wraps and converts source types as needed.
+///
+/// # Example
+/// ```rust
+/// return Err(err_ctx!(Parse, "Unexpected token", src, span));
+/// return Err(err_ctx!(TypeError, "Expected number", src, span, "Numbers only allowed here"));
+/// ```
+#[macro_export]
+macro_rules! err_ctx {
+    // Message, src, span, help
     ($variant:ident, $msg:expr, $src:expr, $span:expr, $help:expr) => {
         $crate::SutraError::$variant {
             message: $msg.to_string(),
             ctx: $crate::diagnostics::ErrorContext {
                 src: Some($crate::diagnostics::to_error_src($src)),
                 span: Some($span),
-                help: Some($help.to_string()),
+                help: Some(format!("{}", $help)),
             },
         }
     };
-    // message, src, span - src can be any AsErrorSource (strings OR context structs)
+    // Message, src, help (uses Span::default())
+    ($variant:ident, $msg:expr, $src:expr, $help:expr) => {
+        $crate::SutraError::$variant {
+            message: $msg.to_string(),
+            ctx: $crate::diagnostics::ErrorContext {
+                src: Some($crate::diagnostics::to_error_src($src)),
+                span: Some($crate::ast::Span::default()),
+                help: Some(format!("{}", $help)),
+            },
+        }
+    };
+    // Message, src, span
     ($variant:ident, $msg:expr, $src:expr, $span:expr) => {
         $crate::SutraError::$variant {
             message: $msg.to_string(),
@@ -224,7 +266,7 @@ macro_rules! sutra_err {
             },
         }
     };
-    // message, src only (no span)
+    // Message, src
     ($variant:ident, $msg:expr, $src:expr) => {
         $crate::SutraError::$variant {
             message: $msg.to_string(),
@@ -235,21 +277,14 @@ macro_rules! sutra_err {
             },
         }
     };
-    // message with single format argument
-    ($variant:ident, $msg:expr, $arg:expr) => {
+    // Pre-built context
+    ($variant:ident, $ctx:expr) => {
         $crate::SutraError::$variant {
-            message: format!($msg, $arg),
-            ctx: $crate::diagnostics::ErrorContext::none(),
+            message: String::new(),
+            ctx: $ctx,
         }
     };
-    // message only
-    ($variant:ident, $msg:expr) => {
-        $crate::SutraError::$variant {
-            message: $msg, // note that .to_string() is not called here
-            ctx: $crate::diagnostics::ErrorContext::none(),
-        }
-    };
-    // no message, no context - for DivisionByZero only
+    // Unit variant (no message, no context)
     ($variant:ident) => {
         $crate::SutraError::$variant {
             ctx: $crate::diagnostics::ErrorContext::none(),

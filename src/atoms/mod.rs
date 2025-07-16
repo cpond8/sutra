@@ -20,7 +20,6 @@
 
 // - **Consistent Interface**: All atoms use the same `AtomFn` signature
 
-use crate::{SutraError, sutra_err};
 use crate::ast::value::Value;
 use crate::ast::AstNode;
 use crate::ast::Span;
@@ -28,6 +27,8 @@ use crate::runtime::eval::EvalContext;
 use crate::runtime::context::ExecutionContext;
 use crate::runtime::world::World;
 use im::HashMap;
+use crate::SutraError;
+use crate::err_msg;
 
 // ============================================================================
 // CORE TYPES AND TRAITS
@@ -208,7 +209,7 @@ impl Callable for Atom {
             }
             Atom::SpecialForm(_) => {
                 // SpecialForm atoms require AstNode/EvalContext and cannot be called via Callable
-                Err(sutra_err!(Eval, "Special Form atoms cannot be called through Callable interface - use direct dispatch instead".to_string()))
+                Err(err_msg!(Eval, "Special Form atoms cannot be called through Callable interface - use direct dispatch instead"))
             }
         }
     }

@@ -14,13 +14,6 @@
 // 4.  **Error Reporting**: It translates `pest`'s detailed parsing errors into
 //     our project-specific `SutraError` type, preserving location information.
 //
-// ## Error Handling
-// All errors in this module are reported via the unified `SutraError` type and must be constructed using the `sutra_err!` macro. See `src/diagnostics.rs` for macro arms and usage rules.
-//
-// Example:
-// ```rust
-// return Err(sutra_err!(Parse, "Unexpected token in parser".to_string()));
-// ```
 //!
 //! # Sutra Parser: Grammar-to-AST Mapping
 //!
@@ -48,7 +41,9 @@
 //! - If a canonical program node is ever needed, document and update accordingly.
 
 use crate::ast::{AstNode, Expr, Span, WithSpan};
-use crate::{SutraError, sutra_err};
+use crate::SutraError;
+use crate::err_ctx;
+use crate::err_msg;
 use once_cell::sync::Lazy;
 use pest::error::InputLocation;
 use pest::iterators::Pair;
@@ -76,12 +71,12 @@ pub fn parse(source: &str) -> Result<Vec<AstNode>, SutraError> {
     // `SutraParser::parse` attempts to match the `program` rule from the grammar.
     // If it fails, it returns a `pest` error, which we map to our `SutraError`.
     let pairs = SutraParser::parse(Rule::program, source).map_err(|e| {
-        sutra_err!(Parse, e.to_string())
+        err_msg!(Parse, e)
     })?;
 
     // The `program` rule is guaranteed to have one inner pair (itself) if parsing succeeds.
     let root_pair = pairs.peek().ok_or_else(|| {
-        sutra_err!(Parse, "Parser generated an empty tree, this should not happen.".to_string())
+        err_msg!(Parse, "Parser generated an empty tree, this should not happen.")
     })?;
 
     // We build the AST from all expressions found inside the `program` rule.
@@ -155,8 +150,8 @@ pub static AST_BUILDERS: Lazy<HashMap<Rule, AstBuilderFn>> = Lazy::new(|| {
 // Dispatcher: looks up the handler in the map and calls it
 fn build_ast_from_pair(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     AST_BUILDERS.get(&pair.as_rule()).ok_or_else(|| {
-        sutra_err!(Internal, "No AST builder registered for rule: {:?} (input: '{}')",
-                  pair.as_rule(), pair.as_str())
+        err_ctx!(Internal, "No AST builder registered for rule: {:?} (input: '{}')",
+                  format!("{:?}", pair.as_rule()), pair.as_str())
     })?(pair)
 }
 
@@ -194,7 +189,7 @@ fn build_program(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
 fn build_expr(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     let mut inner = pair.clone().into_inner();
     let sub = inner.next().ok_or_else(|| {
-        sutra_err!(Internal, "Empty expr pair (input: '{}')", pair.as_str())
+        err_ctx!(Internal, "Empty expr pair (input: '{}')", pair.as_str())
     })?;
     build_ast_from_pair(sub)
 }
@@ -232,7 +227,7 @@ fn build_list(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
 /// ```
 // Helper: construct param_list errors
 fn param_list_error(msg: impl Into<String>, _span: Span) -> SutraError { // TODO: address the unused span (major refactor)
-    sutra_err!(Internal, msg.into())
+    err_msg!(Internal, msg.into())
 }
 // Helper: handle spread_arg
 fn extract_spread_symbol(item: &Pair<Rule>) -> Result<String, SutraError> {
@@ -299,8 +294,8 @@ fn build_param_list(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
 
 fn as_symbol(pair: &Pair<Rule>) -> Result<String, SutraError> {
     if pair.as_rule() != Rule::symbol {
-        return Err(sutra_err!(Internal, "as_symbol: Expected a symbol, found {:?} for input '{}'",
-                            pair.as_rule(), pair.as_str()));
+        return Err(err_ctx!(Internal, "as_symbol: Expected a symbol, found {:?} for input '{}'",
+                            format!("{:?}", pair.as_rule()), pair.as_str()));
     }
     Ok(pair.as_str().to_string())
 }
@@ -316,7 +311,7 @@ fn build_block(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
 
 fn build_atom(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     let inner = pair.clone().into_inner().next().ok_or_else(|| {
-        sutra_err!(Internal, "Empty atom pair (input: '{}')", pair.as_str())
+        err_ctx!(Internal, "Empty atom pair (input: '{}')", pair.as_str())
     })?;
     build_ast_from_pair(inner)
 }
@@ -326,7 +321,7 @@ fn build_number(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     let n = pair
         .as_str()
         .parse::<f64>()
-        .map_err(|e| sutra_err!(Parse, "Parse error: {}", e.to_string()))?;
+        .map_err(|e| err_ctx!(Parse, "Parse error: {}", e.to_string()))?;
     Ok(WithSpan {
         value: Expr::Number(n, span).into(),
         span,
@@ -344,7 +339,7 @@ fn build_boolean(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
             value: Expr::Bool(false, span).into(),
             span,
         }),
-        _ => Err(sutra_err!(Internal, "Invalid boolean literal: '{}'", pair.as_str())),
+        _ => Err(err_ctx!(Internal, "Invalid boolean literal: '{}'", pair.as_str())),
     }
 }
 
@@ -533,7 +528,7 @@ fn build_quote(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     let quoted_expr = build_expr(
         pair.into_inner()
             .next()
-            .ok_or_else(|| sutra_err!(Internal, "Empty quote".to_string()))?,
+            .ok_or_else(|| err_msg!(Internal, "Empty quote"))?,
     )?;
     Ok(WithSpan {
         value: Expr::Quote(Box::new(quoted_expr), span).into(),
@@ -549,16 +544,16 @@ fn build_define_form(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     // The grammar: define_form = { "(" ~ "define" ~ param_list ~ expr ~ ")" }
     // The CST children are: param_list, expr (body)
     let param_list_pair = inner.next().ok_or_else(|| {
-        sutra_err!(Internal, "Missing parameter list in define form".to_string())
+        err_msg!(Internal, "Missing parameter list in define form")
     })?;
     let param_list_node = build_param_list(param_list_pair)?;
     let Expr::ParamList(full_params) = &*param_list_node.value else {
-        return Err(sutra_err!(Internal, "Expected ParamList AST node for define form parameters".to_string()));
+        return Err(err_msg!(Internal, "Expected ParamList AST node for define form parameters"));
     };
 
     // The first element of the param_list is the macro name
     let name = full_params.required.first().cloned().ok_or_else(|| {
-        sutra_err!(Internal, "Define form must have a name in its parameter list".to_string())
+        err_msg!(Internal, "Define form must have a name in its parameter list")
     })?;
 
     // Create a new ParamList without the macro name (the actual parameters)
@@ -569,7 +564,7 @@ fn build_define_form(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     };
 
     let body_pair = inner.next().ok_or_else(|| {
-        sutra_err!(Internal, "Missing body expression in define form".to_string())
+        err_msg!(Internal, "Missing body expression in define form")
     })?;
     let body = build_expr(body_pair)?;
 
@@ -590,7 +585,7 @@ fn build_spread_arg(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     let symbol_expr = build_symbol(
         pair.into_inner()
             .next()
-            .ok_or_else(|| sutra_err!(Internal, "Empty spread".to_string()))?,
+            .ok_or_else(|| err_msg!(Internal, "Empty spread"))?,
     )?;
     Ok(WithSpan {
         value: Expr::Spread(Box::new(symbol_expr)).into(),

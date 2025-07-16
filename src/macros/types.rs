@@ -4,11 +4,11 @@
 //!
 //! ## Error Handling
 //!
-//! All errors in this module are reported via the unified `SutraError` type and must be constructed using the `sutra_err!` macro. See `src/diagnostics.rs` for macro arms and usage rules.
+//! All errors in this module are reported via the unified `SutraError` type and must be constructed using the `err_msg!` or `err_ctx!` macro. See `src/diagnostics.rs` for macro arms and usage rules.
 //!
 //! Example:
 //! ```rust
-//! return Err(sutra_err!(Validation, "Duplicate parameter name".to_string()));
+//! return Err(err_msg!(Validation, "Duplicate parameter name"));
 //! ```
 //!
 //! All macro type, validation, and callable errors use this system.
@@ -30,7 +30,7 @@
 use crate::ast::{AstNode, ParamList};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::sutra_err;
+use crate::err_msg;
 
 /// Maximum recursion depth for macro expansion to prevent infinite loops.
 pub const MAX_MACRO_RECURSION_DEPTH: usize = 128;
@@ -346,7 +346,7 @@ fn check_no_duplicate_params(
     let mut seen = std::collections::HashSet::new();
     for name in all_names {
         if !seen.insert(name) {
-            return Err(sutra_err!(Validation, "Duplicate parameter name".to_string()));
+            return Err(err_msg!(Validation, "Duplicate parameter name"));
         }
     }
     Ok(())
@@ -360,6 +360,6 @@ impl crate::atoms::Callable for MacroDef {
     fn call(&self, _args: &[crate::ast::value::Value], _context: &mut crate::runtime::context::ExecutionContext, _current_world: &crate::runtime::world::World) -> Result<(crate::ast::value::Value, crate::runtime::world::World), crate::SutraError> {
         // Macros operate on AST nodes, not Values, so they cannot be called through the Callable interface
         // This is a design limitation - macros need syntax transformation, not evaluation
-        Err(sutra_err!(Validation, "Macros cannot be called through Callable interface - they require AST transformation, not evaluation".to_string()))
+        Err(err_msg!(Validation, "Macros cannot be called through Callable interface - they require AST transformation, not evaluation"))
     }
 }

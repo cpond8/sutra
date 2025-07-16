@@ -15,21 +15,21 @@
 //! - Validates critical rule coverage and spread_arg usage
 //! - Reports detailed warnings, errors, and suggestions
 
-use sutra::diagnostics::SutraError;
-use sutra::sutra_err;
+use sutra::SutraError;
+use sutra::err_ctx;
 use sutra::validation::grammar::validate_grammar;
 
 fn main() -> Result<(), SutraError> {
     let grammar_path = "src/syntax/grammar.pest";
     let validation_result = validate_grammar(grammar_path)
-        .map_err(|e| sutra_err!(Internal, "Failed to validate grammar: {}", e))?;
+        .map_err(|e| err_ctx!(Internal, "Failed to validate grammar: {}", e.to_string()))?;
 
     if !validation_result.is_valid() {
         let mut msg = String::from("Grammar validation failed:\n");
         for err in &validation_result.errors {
             msg.push_str(&format!("  • {}\n", err));
         }
-        return Err(sutra_err!(Validation, "{}", msg));
+        return Err(err_ctx!(Validation, "{}", msg));
     }
 
     for warning in &validation_result.warnings {

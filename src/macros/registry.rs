@@ -2,11 +2,11 @@
 //!
 //! # Error Handling
 //!
-//! All errors in this module are reported via the unified `SutraError` type and must be constructed using the `sutra_err!` macro. See `src/diagnostics.rs` for macro arms and usage rules.
+//! All errors in this module are reported via the unified `SutraError` type and must be constructed using the `err_msg!` or `err_ctx!` macro. See `src/diagnostics.rs` for macro arms and usage rules.
 //!
 //! Example:
 //! ```rust
-//! return Err(sutra_err!(Validation, "Macro already registered".to_string()));
+//! return Err(err_msg!(Validation, "Macro already registered"));
 //! ```
 //!
 //! All macro registration, lookup, and serialization errors use this system.
@@ -53,7 +53,8 @@
 //! - [`MacroTemplate`](crate::macros::types::MacroTemplate)
 
 use crate::macros::types::{MacroDef, MacroFn, MacroTemplate};
-use crate::{SutraError, sutra_err};
+use crate::SutraError;
+use crate::err_ctx;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 
@@ -150,7 +151,7 @@ impl MacroRegistry {
     /// ```
     pub fn register_or_error(&mut self, name: &str, func: MacroFn) -> Result<(), SutraError> {
         if self.macros.contains_key(name) {
-            return Err(sutra_err!(Validation, "Macro '{}' is already registered", name));
+            return Err(err_ctx!(Validation, "Macro '{}' is already registered", name));
         }
         self.macros.insert(name.to_string(), MacroDef::Fn(func));
         Ok(())
@@ -218,7 +219,7 @@ impl MacroRegistry {
         template: MacroTemplate,
     ) -> Result<(), SutraError> {
         if self.macros.contains_key(name) {
-            return Err(sutra_err!(Validation, "Macro '{}' is already registered", name));
+            return Err(err_ctx!(Validation, "Macro '{}' is already registered", name));
         }
         self.macros
             .insert(name.to_string(), MacroDef::Template(template));

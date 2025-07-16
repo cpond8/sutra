@@ -14,7 +14,8 @@ use crate::ast::value::Value;
 use crate::ast::AstNode;
 use crate::ast::{Expr, WithSpan};
 use crate::runtime::eval::{eval_expr, EvalContext};
-use crate::{SutraError, sutra_err};
+use crate::SutraError;
+use crate::err_msg;
 
 // ============================================================================
 // TYPE ALIASES AND CORE TYPES
@@ -38,7 +39,7 @@ impl ExtractValue<f64> for Value {
     fn extract(&self) -> Result<f64, SutraError> {
         match self {
             Value::Number(n) => Ok(*n),
-            _ => Err(sutra_err!(TypeError, "Type error".to_string())),
+            _ => Err(err_msg!(TypeError, "Type error")),
         }
     }
 }
@@ -47,7 +48,7 @@ impl ExtractValue<bool> for Value {
     fn extract(&self) -> Result<bool, SutraError> {
         match self {
             Value::Bool(b) => Ok(*b),
-            _ => Err(sutra_err!(TypeError, "Type error".to_string())),
+            _ => Err(err_msg!(TypeError, "Type error")),
         }
     }
 }
@@ -56,15 +57,10 @@ impl ExtractValue<crate::runtime::path::Path> for Value {
     fn extract(&self) -> Result<crate::runtime::path::Path, SutraError> {
         match self {
             Value::Path(path) => Ok(path.clone()),
-            _ => Err(sutra_err!(TypeError, "Type error".to_string())),
+            _ => Err(err_msg!(TypeError, "Type error")),
         }
     }
 }
-
-// ============================================================================
-// ERROR CONSTRUCTION UTILITIES
-// ============================================================================
-// (All legacy error helpers removed; use sutra_err! directly at error sites)
 
 // ============================================================================
 // EVALUATION CONTEXT UTILITIES
@@ -121,7 +117,7 @@ pub fn eval_n_args<const N: usize>(
     context: &mut EvalContext<'_, '_>,
 ) -> Result<([Value; N], crate::runtime::world::World), SutraError> {
     if args.len() != N {
-        return Err(sutra_err!(Eval, "Arity error".to_string()));
+        return Err(err_msg!(Eval, "Arity error"));
     }
 
     let mut values = Vec::with_capacity(N);
@@ -137,7 +133,7 @@ pub fn eval_n_args<const N: usize>(
     // Convert Vec to array - this is safe because we checked length
     let values_array: [Value; N] = values
         .try_into()
-        .map_err(|_| sutra_err!(Eval, "Arity error".to_string()))?;
+        .map_err(|_| err_msg!(Eval, "Arity error"))?;
 
     Ok((values_array, world))
 }
@@ -210,7 +206,7 @@ where
 
     if let Some(validate) = validator {
         validate(n1, n2)
-            .map_err(|msg| sutra_err!(Validation, msg.to_string()))?;
+            .map_err(|msg| err_msg!(Validation, msg))?;
     }
 
     Ok((op(n1, n2), world))
@@ -228,7 +224,7 @@ where
     F: Fn(f64, f64) -> f64,
 {
     if args.len() < 2 {
-        return Err(sutra_err!(Eval, "Arity error".to_string()));
+        return Err(err_msg!(Eval, "Arity error"));
     }
 
     let (values, world) = eval_args(args, context)?;
@@ -236,7 +232,7 @@ where
 
     for v in values.iter() {
         let n = extract_number(v)
-            .map_err(|_| sutra_err!(TypeError, "Type error".to_string()))?;
+            .map_err(|_| err_msg!(TypeError, "Type error"))?;
         acc = fold(acc, n);
     }
 
@@ -347,7 +343,7 @@ pub fn eval_apply_list_arg(
     let mut sub_context = sub_eval_context!(context, context.world);
     let (list_val, world) = eval_expr(arg, &mut sub_context)?;
     let Value::List(items) = list_val else {
-        return Err(sutra_err!(TypeError, "Type error".to_string()));
+        return Err(err_msg!(TypeError, "Type error"));
     };
     let list_items = items
         .into_iter()

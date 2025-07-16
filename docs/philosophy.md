@@ -84,7 +84,7 @@ This philosophy draws inspiration from the lambda calculus, Lisp/Scheme minimali
 - Code is convertible between surface syntaxes for debugging
 
 **Unified Error System:**
-- All errors use the `sutra_err!` macro for consistency
+- All errors use the `err_msg!` or `err_ctx!` macros for consistency
 - Precise, actionable diagnostics with context and spans
 - **Rationale:** Clear feedback accelerates development and debugging
 
@@ -226,7 +226,7 @@ storylet "find-key" {
 ### Error Handling
 
 **Unified Error Construction:**
-- All errors use `sutra_err!` macro
+- All errors use `err_msg!` or `err_ctx!` macros
 - Consistent formatting and context
 - Span information for precise location
 - **Rationale:** Uniform, helpful error experience

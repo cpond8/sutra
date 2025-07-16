@@ -4,11 +4,11 @@
 //!
 //! ## Error Handling
 //!
-//! All errors in this module are reported via the unified `SutraError` type and must be constructed using the `sutra_err!` macro. See `src/diagnostics.rs` for macro arms and usage rules.
+//! All errors in this module are reported via the unified `SutraError` type and must be constructed using the `err_msg!` or `err_ctx!` macro. See `src/diagnostics.rs` for macro arms and usage rules.
 //!
 //! Example:
 //! ```rust
-//! return Err(sutra_err!(Validation, "Invalid macro expansion".to_string()));
+//! return Err(err_msg!(Validation, "Invalid macro expansion"));
 //! ```
 //!
 //! All macro expansion errors (arity, recursion, substitution, etc.) use this system.
@@ -21,8 +21,10 @@ use crate::ast::{AstNode, Expr, ParamList, Span, WithSpan};
 use crate::macros::types::{
     MacroDef, MacroEnv, MacroExpansionStep, MacroProvenance, MacroTemplate,
 };
-use crate::{SutraError, sutra_err};
 use std::collections::HashMap;
+use crate::SutraError;
+use crate::err_msg;
+use crate::err_ctx;
 
 // =============================
 // Public API for macro expansion
@@ -39,20 +41,21 @@ pub fn expand_macros(ast: AstNode, env: &mut MacroEnv) -> Result<AstNode, SutraE
 pub fn expand_template(
     template: &MacroTemplate,
     call: &AstNode,
+    macro_name: &str,
     depth: usize,
 ) -> Result<AstNode, SutraError> {
     if depth > crate::macros::MAX_MACRO_RECURSION_DEPTH {
-        return Err(sutra_err!(Internal, "Recursion limit exceeded".to_string()));
+        return Err(err_msg!(Internal, "Recursion limit exceeded"));
     }
 
     let (args, span) = match &*call.value {
         Expr::List(items, span) if !items.is_empty() => (&items[1..], span),
         _ => {
-            return Err(sutra_err!(Internal, "Macro call must be a non-empty list".to_string()));
+            return Err(err_msg!(Internal, "Macro call must be a non-empty list"));
         }
     };
 
-    crate::macros::loader::check_arity(args.len(), &template.params, span)?;
+    crate::macros::loader::check_arity(args.len(), &template.params, macro_name, span)?;
     let bindings = bind_macro_params(args, &template.params, span);
     substitute_template(&template.body, &bindings)
 }
@@ -171,7 +174,7 @@ fn expand_macro_once(
     };
 
     if depth > crate::macros::MAX_MACRO_RECURSION_DEPTH {
-        return Err(sutra_err!(Internal, "Recursion limit exceeded".to_string()));
+        return Err(err_msg!(Internal, "Recursion limit exceeded"));
     }
 
     // Clone MacroDef to avoid holding a borrow of env
@@ -183,7 +186,7 @@ fn expand_macro_once(
     let expanded = expand_macro_def(
         &macro_def,
         node,
-        macro_name,
+        &macro_name,
         depth,
         &mut env.trace,
         provenance,
@@ -205,9 +208,9 @@ fn expand_macro_def(
 
     let result = match macro_def {
         MacroDef::Fn(func) => func(node)
-            .map_err(|_| sutra_err!(Internal, "Error".to_string())),
-        MacroDef::Template(template) => expand_template(template, node, depth)
-            .map_err(|_| sutra_err!(Internal, "Error".to_string())),
+            .map_err(|e| err_ctx!(Internal, format!("Error in macro '{}': {}", macro_name, e), macro_name.clone(), node.span, "Macro function error")),
+        MacroDef::Template(template) => expand_template(template, node, &macro_name, depth)
+            .map_err(|e| err_ctx!(Internal, format!("Error in macro '{}': {}", macro_name, e), macro_name.clone(), node.span, "Macro template error")),
     };
 
     if let Ok(expanded_node) = &result {
@@ -347,7 +350,7 @@ fn substitute_spread_item(
     if let Some(name) = extract_variadic_param_name(inner, bindings) {
         let bound_node = &bindings[name];
         let Expr::List(elements, _) = &*bound_node.value else {
-            return Err(sutra_err!(Internal, "Variadic parameter '{}' is not a list", name));
+            return Err(err_ctx!(Internal, format!("Variadic parameter '{}' is not a list", name), name, inner.span, "Type error"));
         };
 
         for element in elements {
@@ -372,7 +375,7 @@ fn handle_non_symbol_spread(
             new_items.push(element.clone());
         }
     } else {
-        return Err(sutra_err!(Internal, "Spread argument did not evaluate to a list".to_string()));
+        return Err(err_msg!(Internal, "Spread argument did not evaluate to a list"));
     }
     Ok(())
 }

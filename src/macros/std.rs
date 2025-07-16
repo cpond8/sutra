@@ -12,7 +12,7 @@ use crate::ast::{AstNode, Expr, WithSpan};
 use crate::macros::MacroRegistry;
 use crate::runtime::path::Path;
 use crate::SutraError;
-use crate::sutra_err;
+use crate::err_msg;
 
 // ===================================================================================================
 // REGISTRY: Standard Macro Registration
@@ -66,12 +66,12 @@ fn expr_to_path(expr: &AstNode) -> Result<Path, SutraError> {
                 .iter()
                 .map(|item| match &*item.value {
                     Expr::Symbol(s, _) | Expr::String(s, _) => Ok(s.clone()),
-                    _ => Err(sutra_err!(Validation, "Path elements must be symbols or strings".to_string())),
+                    _ => Err(err_msg!(Validation, "Path elements must be symbols or strings")),
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(Path(parts))
         }
-        _ => Err(sutra_err!(Validation, "Expression cannot be converted to a path".to_string())),
+        _ => Err(err_msg!(Validation, "Expression cannot be converted to a path")),
     }
 }
 
@@ -103,9 +103,9 @@ fn expect_args(
         Expr::List(items, span) if items.len() == n => Ok((items, span)),
         Expr::List(items, _span) => {
             let msg = format!("Expected {} arguments, but got {}", n, items.len());
-            Err(sutra_err!(Validation, msg.to_string()))
+            Err(err_msg!(Validation, msg))
         },
-        _ => Err(sutra_err!(Validation, "Expected a list form for this macro".to_string())),
+        _ => Err(err_msg!(Validation, "Expected a list form for this macro")),
     }
 }
 

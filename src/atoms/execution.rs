@@ -20,7 +20,7 @@ use crate::atoms::helpers::{
 };
 use crate::atoms::SpecialFormAtomFn;
 use crate::runtime::eval::eval_expr;
-use crate::sutra_err;
+use crate::err_msg;
 
 // ============================================================================
 // CONTROL FLOW OPERATIONS
@@ -71,9 +71,9 @@ pub const ATOM_DO: SpecialFormAtomFn = |args, context, _parent_span| {
 pub const ATOM_ERROR: SpecialFormAtomFn = |args, context, _parent_span| {
     let (val, _world) = eval_single_arg(args, context)?;
     let Value::String(msg) = val else {
-        return Err(sutra_err!(TypeError, "error expects a String argument".to_string()));
+        return Err(err_msg!(TypeError, "error expects a String argument"));
     };
-    Err(sutra_err!(Eval, msg))
+    Err(err_msg!(Eval, msg))
 };
 
 // ============================================================================
@@ -97,7 +97,7 @@ pub const ATOM_ERROR: SpecialFormAtomFn = |args, context, _parent_span| {
 /// Pure, does not mutate state. All state is explicit.
 pub const ATOM_APPLY: SpecialFormAtomFn = |args, context, parent_span| {
     if args.len() < 2 {
-        return Err(sutra_err!(TypeError, "apply expects at least 2 arguments".to_string()));
+        return Err(err_msg!(TypeError, "apply expects at least 2 arguments"));
     }
 
     let func_expr = &args[0];

@@ -1,13 +1,13 @@
 use crate::atoms::OutputSink;
 use crate::cli::output::StdoutSink;
+use crate::err_ctx;
+use crate::macros::definition::{is_macro_definition, parse_macro_definition};
 use crate::macros::{expand_macros, MacroDef};
 use crate::runtime::eval::eval;
 use crate::runtime::registry::build_canonical_macro_env;
 use crate::runtime::world::World;
-use crate::SutraError;
-use crate::sutra_err;
 use crate::syntax::parser::wrap_in_do;
-use crate::macros::definition::{parse_macro_definition, is_macro_definition};
+use crate::SutraError;
 
 /// Run Sutra source with injectable output sink (engine orchestration entry point).
 pub fn run_sutra_source_with_output(
@@ -28,7 +28,7 @@ pub fn run_sutra_source_with_output(
     for macro_expr in macro_defs {
         let (name, template) = parse_macro_definition(&macro_expr)?;
         if env.user_macros.contains_key(&name) {
-            return Err(sutra_err!(Validation, "Duplicate macro name '{}'", name));
+            return Err(err_ctx!(Validation, "Duplicate macro name '{}'", name));
         }
         env.user_macros
             .insert(name.clone(), MacroDef::Template(template));

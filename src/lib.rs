@@ -1,4 +1,4 @@
-pub use crate::diagnostics::SutraError;
+pub use crate::diagnostics::{SutraError, ErrorContext, AsErrorSource, to_error_src};
 
 pub mod ast;
 pub mod atoms;

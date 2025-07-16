@@ -2,20 +2,11 @@
 //! Parses macro definitions from source code and files, including validation
 //! and duplicate checking for robust macro loading.
 //!
-//! ## Error Handling
-//!
-//! All errors in this module are reported via the unified `SutraError` type and must be constructed using the `sutra_err!` macro. See `src/diagnostics.rs` for macro arms and usage rules.
-//!
-//! Example:
-//! ```rust
-//! return Err(sutra_err!(Validation, "Duplicate macro name '{}'", name));
-//! ```
-//!
-//! All macro loading, parsing, and arity errors use this system.
 
 use crate::ast::{AstNode, Expr, ParamList, Span};
+use crate::err_ctx;
 use crate::macros::types::MacroTemplate;
-use crate::{SutraError, sutra_err};
+use crate::SutraError;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
@@ -44,24 +35,41 @@ pub fn load_macros_from_file<P: AsRef<Path>>(
     path: P,
 ) -> Result<Vec<(String, MacroTemplate)>, SutraError> {
     let source = fs::read_to_string(path)
-        .map_err(|e| sutra_err!(Internal, "Failed to read file: {}", e))?;
+        .map_err(|e| err_ctx!(Internal, "Failed to read file: {}", e.to_string()))?;
     parse_macros_from_source(&source)
 }
 
 /// Checks the arity of macro arguments against the parameter list.
 /// Provides enhanced error reporting for mismatches, including variadic parameters.
-pub fn check_arity(args_len: usize, params: &ParamList, _span: &Span) -> Result<(), SutraError> { // TODO: address the unused span
+pub fn check_arity(
+    args_len: usize,
+    params: &ParamList,
+    macro_name: &str,
+    span: &Span,
+) -> Result<(), SutraError> {
     let required_len = params.required.len();
     let has_variadic = params.rest.is_some();
 
     // Too few arguments
     if args_len < required_len {
-        return Err(sutra_err!(Eval, "Macro arity error: expected at least {} arguments, got {}", required_len, args_len));
+        return Err(err_ctx!(
+            Eval,
+            "Macro arity error: expected at least {} arguments, got {}",
+            macro_name,
+            *span,
+            "Too few arguments for macro"
+        ));
     }
 
     // Too many arguments for non-variadic macro
     if args_len > required_len && !has_variadic {
-        return Err(sutra_err!(Eval, "Macro arity error: expected exactly {} arguments, got {}", required_len, args_len));
+        return Err(err_ctx!(
+            Eval,
+            "Macro arity error: expected exactly {} arguments, got {}",
+            macro_name,
+            *span,
+            "Too many arguments for macro"
+        ));
     }
 
     // Arity is correct
@@ -77,16 +85,30 @@ fn try_parse_macro_form(
     expr: &AstNode,
     names_seen: &mut HashSet<String>,
 ) -> Result<Option<(String, MacroTemplate)>, SutraError> {
-    let Expr::Define { name, params, body, span: _ } = &*expr.value else {
-        return Ok(None); // Not a define form
+    // Only handle Expr::Define forms
+    let Expr::Define {
+        name,
+        params,
+        body,
+        span,
+    } = &*expr.value
+    else {
+        return Ok(None);
     };
 
+    // Check for duplicate macro names
     if !names_seen.insert(name.clone()) {
-        return Err(sutra_err!(Validation, "Duplicate macro name '{}'", name));
+        return Err(err_ctx!(
+            Validation,
+            format!("Duplicate macro name '{}'", name),
+            name.clone(),
+            *span,
+            "Duplicate macro name"
+        ));
     }
 
+    // Attempt to construct the macro template
     let template = MacroTemplate::new(params.clone(), body.clone())?;
-
     Ok(Some((name.clone(), template)))
 }
 
@@ -158,7 +180,7 @@ mod tests {
         };
         let span = Span::default();
 
-        assert!(check_arity(2, &params, &span).is_ok());
+        assert!(check_arity(2, &params, "test", &span).is_ok());
     }
 
     #[test]
@@ -170,7 +192,7 @@ mod tests {
         };
         let span = Span::default();
 
-        assert!(check_arity(1, &params, &span).is_err());
+        assert!(check_arity(1, &params, "test", &span).is_err());
     }
 
     #[test]
@@ -182,7 +204,7 @@ mod tests {
         };
         let span = Span::default();
 
-        assert!(check_arity(2, &params, &span).is_err());
+        assert!(check_arity(2, &params, "test", &span).is_err());
     }
 
     #[test]
@@ -194,8 +216,8 @@ mod tests {
         };
         let span = Span::default();
 
-        assert!(check_arity(1, &params, &span).is_ok());
-        assert!(check_arity(3, &params, &span).is_ok());
+        assert!(check_arity(1, &params, "test", &span).is_ok());
+        assert!(check_arity(3, &params, "test", &span).is_ok());
     }
 
     #[test]
@@ -207,6 +229,6 @@ mod tests {
         };
         let span = Span::default();
 
-        assert!(check_arity(1, &params, &span).is_err());
+        assert!(check_arity(1, &params, "test", &span).is_err());
     }
 }

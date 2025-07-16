@@ -5,11 +5,12 @@
 use crate::ast::AstNode;
 use crate::cli::args::{Command, SutraArgs};
 use crate::cli::output::StdoutSink;
-use crate::macros::{expand_macros, MacroDef, MacroRegistry};
-use crate::macros::definition::{is_macro_definition, parse_macro_definition};
 use crate::engine::run_sutra_source_with_output;
+use crate::err_ctx;
+use crate::err_msg;
+use crate::macros::definition::{is_macro_definition, parse_macro_definition};
+use crate::macros::{expand_macros, MacroDef, MacroRegistry};
 use crate::runtime::registry::build_canonical_macro_env;
-use crate::sutra_err;
 use crate::SutraError;
 use clap::Parser;
 use std::io::Write;
@@ -62,7 +63,7 @@ use crate::ast::{Expr, Span, WithSpan};
 /// Converts a Path to a &str, returning an error if invalid.
 fn path_to_str(path: &std::path::Path) -> Result<&str, SutraError> {
     path.to_str()
-        .ok_or_else(|| sutra_err!(Internal, "Invalid filename".to_string()))
+        .ok_or_else(|| err_msg!(Internal, "Invalid filename"))
 }
 
 /// Gets a safe display name for a path, with fallback for invalid paths.
@@ -73,7 +74,8 @@ fn safe_path_display(path: &std::path::Path) -> &str {
 /// Reads a file to a String, given a path.
 fn read_file_to_string(path: &std::path::Path) -> Result<String, SutraError> {
     let filename = path_to_str(path)?;
-    std::fs::read_to_string(filename).map_err(|e| sutra_err!(Internal, "Failed to read file: {}", e))
+    std::fs::read_to_string(filename)
+        .map_err(|e| err_ctx!(Internal, "Failed to read file: {}", e.to_string()))
 }
 
 /// Reads a file and normalizes line endings, trimming whitespace.
@@ -131,7 +133,10 @@ fn partition_and_build_user_macros(ast_nodes: Vec<AstNode>) -> MacroParseResult 
     for macro_expr in macro_defs {
         let (name, template) = parse_macro_definition(&macro_expr)?;
         if user_macros.macros.contains_key(&name) {
-            return Err(sutra_err!(Validation, "Duplicate macro name '{}'", name));
+            return Err(err_msg!(
+                Validation,
+                format!("Duplicate macro name '{}'", name)
+            ));
         }
         user_macros
             .macros
@@ -247,7 +252,7 @@ fn should_skip_test(content: &str) -> bool {
 }
 
 /// Executes a Sutra script and captures its output.
-fn execute_script(source: &str) -> (Result<(), crate::SutraError>, String) {
+fn execute_script(source: &str) -> (Result<(), SutraError>, String) {
     let mut output_buf = crate::cli::output::OutputBuffer::new();
     let result = run_sutra_source_with_output(source, &mut output_buf);
     let output = output_buf.as_str().replace("\r\n", "\n").trim().to_string();
@@ -255,11 +260,7 @@ fn execute_script(source: &str) -> (Result<(), crate::SutraError>, String) {
 }
 
 /// Compares test output with expected result.
-fn compare_test_results(
-    result: Result<(), crate::SutraError>,
-    actual: &str,
-    expected: &str,
-) -> bool {
+fn compare_test_results(result: Result<(), SutraError>, actual: &str, expected: &str) -> bool {
     match result {
         Ok(_) => actual == expected,
         Err(e) => {
@@ -274,8 +275,15 @@ fn process_test_file(
     script: &std::path::Path,
     expected: &std::path::Path,
 ) -> Result<TestOutcome, SutraError> {
-    let script_src = read_file_trimmed(script).map_err(|e| sutra_err!(Internal, "Failed to read test script: {}", e))?;
-    let expected_output = read_file_trimmed(expected).map_err(|e| sutra_err!(Internal, "Failed to read expected output: {}", e))?;
+    let script_src = read_file_trimmed(script)
+        .map_err(|e| err_ctx!(Internal, "Failed to read test script: {}", e.to_string()))?;
+    let expected_output = read_file_trimmed(expected).map_err(|e| {
+        err_ctx!(
+            Internal,
+            "Failed to read expected output: {}",
+            e.to_string()
+        )
+    })?;
 
     // Guard clause: check if test should be skipped
     if should_skip_test(&script_src) {
@@ -372,15 +380,14 @@ fn handle_ast(path: &std::path::Path) -> Result<(), SutraError> {
 /// Handles the `validate` subcommand.
 fn handle_validate() -> Result<(), SutraError> {
     use crate::validation::grammar::validate_grammar;
-    use crate::sutra_err;
     use std::fs;
     let grammar_path = "src/syntax/grammar.pest";
     let validation_result = validate_grammar(grammar_path)
-        .map_err(|e| sutra_err!(Internal, "Failed to validate grammar: {}", e))?;
+        .map_err(|e| err_ctx!(Internal, "Failed to validate grammar: {}", e.to_string()))?;
 
     if !validation_result.is_valid() {
         let grammar_source = fs::read_to_string(grammar_path).unwrap_or_default();
-        let error = sutra_err!(Validation, "Grammar validation failed", grammar_source);
+        let error = err_ctx!(Validation, "Grammar validation failed", grammar_source);
         eprintln!("{}", error);
         for err in &validation_result.errors {
             eprintln!("  • {}", err);
@@ -513,7 +520,7 @@ fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
     }
 
     if failed {
-        return Err(sutra_err!(Internal, "One or more test scripts failed".to_string()));
+        return Err(err_msg!(Internal, "One or more test scripts failed"));
     }
 
     Ok(())

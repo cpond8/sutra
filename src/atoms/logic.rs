@@ -16,7 +16,7 @@
 use crate::ast::value::Value;
 use crate::atoms::PureAtomFn;
 use crate::atoms::helpers::extract_number;
-use crate::sutra_err;
+use crate::err_ctx;
 
 // ============================================================================
 // COMPARISON OPERATIONS
@@ -169,11 +169,11 @@ pub const ATOM_LTE: PureAtomFn = |args| {
 /// Pure, does not mutate state.
 pub const ATOM_NOT: PureAtomFn = |args| {
     if args.len() != 1 {
-        return Err(sutra_err!(Eval, "not expects 1 argument, got {}", args.len()));
+        return Err(err_ctx!(Eval, "not expects 1 argument, got {}", "not", "Arity error"));
     }
     match &args[0] {
         Value::Bool(b) => Ok(Value::Bool(!b)),
-        val => Err(sutra_err!(Eval, "not expects a Bool, found {}", val)),
+        _ => Err(err_ctx!(Eval, "not expects a Bool, found {}", "not", "Type error")),
     }
 };
 
