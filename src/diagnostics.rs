@@ -63,6 +63,8 @@ use crate::ast::Span;
 pub struct ErrorContext {
     /// Optional source code for error highlighting.
     pub source: Option<Arc<NamedSource<String>>>,
+    /// Optional raw source text for direct access (for error reporting).
+    pub source_text: Option<Arc<String>>,
     /// Optional span within the source for precise error location.
     pub span: Option<Span>,
     /// Optional help message for user guidance.
@@ -77,22 +79,22 @@ impl ErrorContext {
 
     /// Creates a context with only a source.
     pub fn with_source(source: Arc<NamedSource<String>>) -> Self {
-        Self { source: Some(source), ..Default::default() }
+        Self { source: Some(source), source_text: None, ..Default::default() }
     }
 
     /// Creates a context with only a span.
     pub fn with_span(span: Span) -> Self {
-        Self { span: Some(span), ..Default::default() }
+        Self { span: Some(span), source_text: None, ..Default::default() }
     }
 
     /// Creates a context with both source and span.
     pub fn with_source_and_span(source: Arc<NamedSource<String>>, span: Span) -> Self {
-        Self { source: Some(source), span: Some(span), ..Default::default() }
+        Self { source: Some(source), span: Some(span), source_text: None, ..Default::default() }
     }
 
     /// Creates a context with source, span, and help message.
     pub fn with_all(source: Arc<NamedSource<String>>, span: Span, help: String) -> Self {
-        Self { source: Some(source), span: Some(span), help: Some(help) }
+        Self { source: Some(source), span: Some(span), help: Some(help), source_text: None }
     }
 }
 
@@ -238,6 +240,7 @@ macro_rules! err_ctx {
                 source: Some($crate::diagnostics::to_error_source($src)),
                 span: Some($span),
                 help: Some(format!("{}", $help)),
+                source_text: None,
             },
         }
     };
@@ -249,6 +252,7 @@ macro_rules! err_ctx {
                 source: Some($crate::diagnostics::to_error_source($src)),
                 span: Some($span),
                 help: None,
+                source_text: None,
             },
         }
     };
@@ -260,6 +264,7 @@ macro_rules! err_ctx {
                 source: Some($crate::diagnostics::to_error_source($src)),
                 span: Some($crate::ast::Span::default()),
                 help: Some(format!("{}", $help)),
+                source_text: None,
             },
         }
     };
@@ -271,6 +276,7 @@ macro_rules! err_ctx {
                 source: Some($crate::diagnostics::to_error_source($src)),
                 span: None,
                 help: None,
+                source_text: None,
             },
         }
     };
@@ -287,6 +293,7 @@ macro_rules! err_src {
                 source: Some(std::sync::Arc::clone($source)),
                 span: Some($span),
                 help: None,
+                source_text: None,
             },
         }
     };

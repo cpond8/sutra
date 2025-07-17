@@ -650,7 +650,19 @@ fn handle_list_atoms() -> Result<(), SutraError> {
 
 /// Handles the `test` subcommand using the modern macro-based test harness.
 pub fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
-    use termcolor::{ColorChoice, StandardStream};
+    use std::fs::OpenOptions;
+    use std::io::Write as IoWrite;
+    use std::collections::HashMap;
+    use termcolor::{Color, ColorSpec, WriteColor};
+    use crate::diagnostics::SutraError;
+
+    // Prepare error log file
+    let mut error_log = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open("sutra-test-errors.log")
+        .ok();
 
     // Discover all .sutra files in the directory
     let test_files = TestDiscoverer::discover_test_files(path)?;
@@ -668,13 +680,141 @@ pub fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
     }
 
     // Process each file to register tests via macro expansion
+    let mut registration_errors = Vec::new();
+    let mut tests_per_file = HashMap::new();
     for file_path in &test_files {
-        let (_source, ast_nodes) = load_file_to_ast(file_path)?;
-        let expanded = build_macro_environment_and_expand(ast_nodes, "")?;
+        let file_display = file_path.display().to_string();
+        let registration_result = (|| {
+            let (source, _ast_nodes) = load_file_to_ast(file_path)?;
+            // Extract all test forms from the file
+            let test_forms = match TestDiscoverer::extract_tests_from_file(file_path) {
+                Ok(forms) => forms,
+                Err(e) => {
+                    registration_errors.push((format!("{} (file-level)", file_display), e));
+                    return Ok(0);
+                }
+            };
+            let mut registered = 0;
+            for (test_idx, test_form) in test_forms.iter().enumerate() {
+                // Reconstruct the (test ...) AST node from RawTestDefinition
+                let mut items = vec![
+                    crate::ast::AstNode {
+                        value: std::sync::Arc::new(crate::ast::Expr::Symbol("test".to_string(), test_form.span)),
+                        span: test_form.span,
+                    },
+                    crate::ast::AstNode {
+                        value: std::sync::Arc::new(crate::ast::Expr::String(test_form.name.clone(), test_form.span)),
+                        span: test_form.span,
+                    },
+                ];
+                if let Some(expect) = &test_form.expect_form {
+                    items.push(expect.clone());
+                }
+                items.extend(test_form.body.clone());
+                let test_node = crate::ast::AstNode {
+                    value: std::sync::Arc::new(crate::ast::Expr::List(items, test_form.span)),
+                    span: test_form.span,
+                };
+                let single_form = vec![test_node];
+                let expand_result = build_macro_environment_and_expand(single_form, &source);
+                match expand_result {
+                    Ok(expanded) => {
+                        let before_count = {
+                            let registry = TEST_REGISTRY.lock().unwrap();
+                            registry.len()
+                        };
+                        let output_buf = Rc::new(RefCell::new(crate::cli::output::OutputBuffer::new()));
+                        let _ = run_sutra_source_with_output(&expanded.value.pretty(), SharedOutput(output_buf));
+                        let after_count = {
+                            let registry = TEST_REGISTRY.lock().unwrap();
+                            registry.len()
+                        };
+                        if after_count > before_count {
+                            registered += 1;
+                        }
+                    }
+                    Err(e) => {
+                        // Try to get line/col from span if available
+                        let (span_opt, source_text_opt) = match &e {
+                            SutraError::Parse { ctx, .. } => (ctx.span, ctx.source_text.as_ref()),
+                            SutraError::Validation { ctx, .. } => (ctx.span, ctx.source_text.as_ref()),
+                            SutraError::Eval { ctx, .. } => (ctx.span, ctx.source_text.as_ref()),
+                            SutraError::TypeError { ctx, .. } => (ctx.span, ctx.source_text.as_ref()),
+                            SutraError::DivisionByZero { ctx } => (ctx.span, ctx.source_text.as_ref()),
+                            SutraError::Internal { ctx, .. } => (ctx.span, ctx.source_text.as_ref()),
+                        };
+                        let mut stderr = termcolor::StandardStream::stderr(termcolor::ColorChoice::Auto);
+                        let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true));
+                        let _ = writeln!(stderr, "\n[ERROR] Failed to register test #{} in file: {}\n----------------------------------------", test_idx + 1, file_display);
+                        let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::White)).set_bold(false));
+                        let _ = writeln!(stderr, "{}", e);
+                        if let (Some(span), Some(src_str)) = (span_opt, source_text_opt) {
+                            let src_str = src_str.as_str();
+                            let start = span.start.min(src_str.len());
+                            let _end = span.end.min(src_str.len());
+                            let (line_num, col_num) = {
+                                let mut line = 1;
+                                let mut col = 1;
+                                for (i, c) in src_str.chars().enumerate() {
+                                    if i == start { break; }
+                                    if c == '\n' { line += 1; col = 1; } else { col += 1; }
+                                }
+                                (line, col)
+                            };
+                            let lines: Vec<_> = src_str.lines().collect();
+                            let error_line = lines.get(line_num - 1).unwrap_or(&"");
+                            let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Cyan)).set_bold(true));
+                            let _ = writeln!(stderr, "--> {}:{}:{}", file_display, line_num, col_num);
+                            let _ = writeln!(stderr, "{:>4} | {}", line_num, error_line);
+                            let caret_pos = col_num;
+                            let _ = writeln!(stderr, "     | {0:1$}^", "", caret_pos - 1);
+                        }
+                        let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Yellow)).set_bold(false));
+                        let _ = writeln!(stderr, "Suggestion: Check for macro expansion, syntax, or validation errors in this test form.");
+                        let _ = stderr.reset();
+                        registration_errors.push((format!("{} (test #{})", file_display, test_idx + 1), e));
+                    }
+                }
+            }
+            Ok::<usize, SutraError>(registered)
+        })();
+        match registration_result {
+            Ok(registered) => {
+                tests_per_file.insert(file_display.clone(), registered);
+                let mut stdout = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
+                let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green)).set_bold(true));
+                let _ = writeln!(stdout, "[OK] Registered {} test(s) from file: {}", registered, file_display);
+                let _ = stdout.reset();
+                if let Some(log) = error_log.as_mut() {
+                    let _ = writeln!(log, "[OK] Registered {} test(s) from file: {}", registered, file_display);
+                }
+            }
+            Err(e) => {
+                // This should not happen, but if it does, treat as a file-level error
+                let mut stderr = termcolor::StandardStream::stderr(termcolor::ColorChoice::Auto);
+                let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true));
+                let _ = writeln!(stderr, "\n[ERROR] Failed to process file: {}\n----------------------------------------", file_display);
+                let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::White)).set_bold(false));
+                let _ = writeln!(stderr, "{}", e);
+                let _ = stderr.reset();
+                registration_errors.push((format!("{} (file-level)", file_display), e));
+                continue;
+            }
+        }
+    }
 
-        // Execute the expanded AST to register tests
-        let output_buf = Rc::new(RefCell::new(crate::cli::output::OutputBuffer::new()));
-        let _ = run_sutra_source_with_output(&expanded.value.pretty(), SharedOutput(output_buf));
+    // Group errors by type for summary
+    let mut error_groups: HashMap<String, Vec<String>> = HashMap::new();
+    for (file, err) in &registration_errors {
+        let kind = match err {
+            SutraError::Parse { .. } => "Parse Error",
+            SutraError::Validation { .. } => "Validation Error",
+            SutraError::Eval { .. } => "Eval Error",
+            SutraError::TypeError { .. } => "Type Error",
+            SutraError::DivisionByZero { .. } => "Division By Zero",
+            SutraError::Internal { .. } => "Internal Error",
+        };
+        error_groups.entry(kind.to_string()).or_default().push(file.clone());
     }
 
     // Get all registered tests
@@ -683,15 +823,81 @@ pub fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
         registry.clone()
     };
 
+    // Print summary
+    let mut stdout = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
+    let mut stderr = termcolor::StandardStream::stderr(termcolor::ColorChoice::Auto);
+    if !tests_per_file.is_empty() {
+        let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green)).set_bold(true));
+        let _ = writeln!(stdout, "\n[SUMMARY] Registered tests per file:");
+        let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::White)).set_bold(false));
+        for (file, count) in &tests_per_file {
+            let _ = writeln!(stdout, "  {:40} | {} test(s)", file, count);
+        }
+        let _ = stdout.reset();
+        if let Some(log) = error_log.as_mut() {
+            let _ = writeln!(log, "[SUMMARY] Registered tests per file:");
+            for (file, count) in &tests_per_file {
+                let _ = writeln!(log, "  {:40} | {} test(s)", file, count);
+            }
+        }
+    }
+    if !registration_errors.is_empty() {
+        let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Yellow)).set_bold(true));
+        let _ = writeln!(stderr, "\n[SUMMARY] Files that failed to register tests, grouped by error type:");
+        let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::White)).set_bold(false));
+        for (kind, files) in &error_groups {
+            let _ = writeln!(stderr, "  {}:", kind);
+            for file in files {
+                let _ = writeln!(stderr, "    - {}", file);
+            }
+        }
+        let _ = stderr.reset();
+        if let Some(log) = error_log.as_mut() {
+            let _ = writeln!(log, "[SUMMARY] Files that failed to register tests, grouped by error type:");
+            for (kind, files) in &error_groups {
+                let _ = writeln!(log, "  {}:", kind);
+                for file in files {
+                    let _ = writeln!(log, "    - {}", file);
+                }
+            }
+        }
+    }
+
+    // Print banner
     if tests.is_empty() {
-        println!("No tests found in the discovered files");
-        return Ok(());
+        let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true));
+        let _ = writeln!(stderr, "\nFATAL: No tests could be registered. See errors above.\n");
+        let _ = stderr.reset();
+        if let Some(log) = error_log.as_mut() {
+            let _ = writeln!(log, "FATAL: No tests could be registered. See errors above.\n");
+        }
+        // Print next steps
+        let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Yellow)).set_bold(true));
+        let _ = writeln!(stderr, "Next Steps:");
+        let _ = writeln!(stderr, "  - Review the errors above and fix the indicated files.");
+        let _ = writeln!(stderr, "  - For macro recursion errors, see docs/philosophy.md#macro-expansion-limits.");
+        let _ = writeln!(stderr, "  - Re-run the test harness after making corrections.");
+        let _ = stderr.reset();
+        if let Some(log) = error_log.as_mut() {
+            let _ = writeln!(log, "Next Steps:");
+            let _ = writeln!(log, "  - Review the errors above and fix the indicated files.");
+            let _ = writeln!(log, "  - For macro recursion errors, see docs/philosophy.md#macro-expansion-limits.");
+            let _ = writeln!(log, "  - Re-run the test harness after making corrections.");
+        }
+        return Err(err_msg!(Internal, "No tests could be registered. See errors above."));
+    } else {
+        let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green)).set_bold(true));
+        let _ = writeln!(stdout, "\nSUCCESS: All valid tests registered. Proceeding to execution.\n");
+        let _ = stdout.reset();
+        if let Some(log) = error_log.as_mut() {
+            let _ = writeln!(log, "SUCCESS: All valid tests registered. Proceeding to execution.\n");
+        }
     }
 
     println!("Running {} test(s)...\n", tests.len());
 
     // Execute all registered tests
-    let mut stdout = StandardStream::stdout(ColorChoice::Auto);
+    let mut stdout = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
     let mut passed = 0;
     let mut failed = 0;
     let mut skipped = 0;
