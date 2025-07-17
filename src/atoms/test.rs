@@ -13,7 +13,7 @@
 use crate::ast::value::Value;
 use crate::ast::{AstNode, Expr, Span, WithSpan};
 use crate::atoms::{AtomRegistry, SpecialFormAtomFn};
-use crate::runtime::eval::{eval_expr, EvalContext};
+use crate::runtime::eval::{evaluate_ast_node, EvaluationContext};
 use crate::runtime::world::World;
 use crate::{err_src, SutraError};
 use std::sync::{Arc, Mutex};
@@ -52,7 +52,7 @@ pub static TEST_REGISTRY: Lazy<Mutex<HashMap<String, TestDefinition>>> =
 /// Returns `nil`.
 fn register_test_atom(
     args: &[AstNode],
-    ctx: &mut EvalContext,
+    ctx: &mut EvaluationContext,
     span: &Span,
 ) -> Result<(Value, World), SutraError> {
     if args.len() != 4 {
@@ -89,7 +89,7 @@ fn register_test_atom(
         }
     };
 
-    let (metadata_val, _) = eval_expr(&args[3], ctx)?;
+    let (metadata_val, _) = evaluate_ast_node(&args[3], ctx)?;
     let metadata = match metadata_val.as_map() {
         Some(m) => m,
         _ => {
@@ -132,7 +132,7 @@ fn register_test_atom(
 /// Emits output, does not mutate world state.
 fn test_echo_atom(
     args: &[AstNode],
-    ctx: &mut EvalContext,
+    ctx: &mut EvaluationContext,
     span: &Span,
 ) -> Result<(Value, World), SutraError> {
     let Some(first) = args.first() else {
@@ -193,7 +193,7 @@ fn parse_borrow_stress_args(args: &[AstNode]) -> (i64, String) {
 
 /// Emit formatted output for borrow stress test phases.
 fn emit_borrow_stress_output(
-    ctx: &mut EvalContext,
+    ctx: &mut EvaluationContext,
     depth: i64,
     msg: &str,
     span: &Span,
@@ -205,7 +205,7 @@ fn emit_borrow_stress_output(
 
 /// Handle recursive case of borrow stress test.
 fn handle_borrow_stress_recursion(
-    ctx: &mut EvalContext,
+    ctx: &mut EvaluationContext,
     depth: i64,
     msg: &str,
     span: &Span,
@@ -232,7 +232,7 @@ fn handle_borrow_stress_recursion(
 
 /// Handle base case of borrow stress test (calls echo).
 fn handle_borrow_stress_base_case(
-    ctx: &mut EvalContext,
+    ctx: &mut EvaluationContext,
     msg: &str,
     span: &Span,
     test_echo_atom: TestAtomFn,
@@ -249,7 +249,7 @@ fn handle_borrow_stress_base_case(
 /// Main borrow stress test atom implementation.
 fn test_borrow_stress_atom(
     args: &[AstNode],
-    ctx: &mut EvalContext,
+    ctx: &mut EvaluationContext,
     span: &Span,
 ) -> Result<(Value, World), SutraError> {
     let (depth, msg) = parse_borrow_stress_args(args);
@@ -312,7 +312,7 @@ pub fn register_test_atoms(registry: &mut AtomRegistry) {
 ///   (assert false)       ; => AssertionError
 fn assert_atom(
     args: &[AstNode],
-    ctx: &mut EvalContext,
+    ctx: &mut EvaluationContext,
     span: &Span,
 ) -> Result<(Value, World), SutraError> {
     if args.len() != 1 {
@@ -324,7 +324,7 @@ fn assert_atom(
         ));
     }
 
-    let (value, world) = eval_expr(&args[0], ctx)?;
+    let (value, world) = evaluate_ast_node(&args[0], ctx)?;
     let is_truthy = match value {
         Value::Bool(b) => b,
         Value::Nil => false,
@@ -358,7 +358,7 @@ fn assert_atom(
 ///   (assert-eq 1 2)           ; => AssertionError
 fn assert_eq_atom(
     args: &[AstNode],
-    ctx: &mut EvalContext,
+    ctx: &mut EvaluationContext,
     span: &Span,
 ) -> Result<(Value, World), SutraError> {
     if args.len() != 2 {
@@ -370,9 +370,9 @@ fn assert_eq_atom(
         ));
     }
 
-    let (expected, world1) = eval_expr(&args[0], ctx)?;
+    let (expected, world1) = evaluate_ast_node(&args[0], ctx)?;
     let mut sub_context = sub_eval_context!(ctx, &world1);
-    let (actual, world2) = eval_expr(&args[1], &mut sub_context)?;
+    let (actual, world2) = evaluate_ast_node(&args[1], &mut sub_context)?;
 
     if expected != actual {
         return Err(err_src!(

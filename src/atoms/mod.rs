@@ -39,8 +39,8 @@
 use crate::ast::value::Value;
 use crate::ast::AstNode;
 use crate::ast::Span;
-use crate::runtime::eval::EvalContext;
-use crate::runtime::context::ExecutionContext;
+use crate::runtime::eval::EvaluationContext;
+use crate::runtime::context::AtomExecutionContext;
 use crate::runtime::world::World;
 use im::HashMap;
 use crate::SutraError;
@@ -58,12 +58,12 @@ pub type PureAtomFn = fn(args: &[Value]) -> Result<Value, SutraError>;
 
 /// Stateful atoms: need limited state access via Context facade
 pub type StatefulAtomFn =
-    fn(args: &[Value], context: &mut ExecutionContext) -> Result<Value, SutraError>;
+    fn(args: &[Value], context: &mut AtomExecutionContext) -> Result<Value, SutraError>;
 
 /// Special Form atoms: for atoms that need to control their own argument evaluation
 pub type SpecialFormAtomFn = fn(
     args: &[AstNode],
-    context: &mut EvalContext,
+    context: &mut EvaluationContext,
     parent_span: &Span,
 ) -> Result<(Value, World), SutraError>;
 
@@ -89,7 +89,7 @@ pub trait Callable {
     fn call(
         &self,
         args: &[Value],
-        context: &mut ExecutionContext,
+        context: &mut AtomExecutionContext,
         current_world: &World,
     ) -> Result<(Value, World), SutraError>;
 }
@@ -202,7 +202,7 @@ impl Callable for Atom {
     fn call(
         &self,
         args: &[Value],
-        context: &mut ExecutionContext,
+        context: &mut AtomExecutionContext,
         current_world: &World,
     ) -> Result<(Value, World), SutraError> {
         match self {
@@ -217,7 +217,7 @@ impl Callable for Atom {
                 Ok((result, current_world.clone()))
             }
             Atom::SpecialForm(_) => {
-                // SpecialForm atoms require AstNode/EvalContext and cannot be called via Callable
+                // SpecialForm atoms require AstNode/EvaluationContext and cannot be called via Callable
                 Err(err_msg!(Eval, "Special Form atoms cannot be called through Callable interface - use direct dispatch instead"))
             }
         }

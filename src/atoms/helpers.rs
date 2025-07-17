@@ -13,7 +13,7 @@
 use crate::ast::value::Value;
 use crate::ast::AstNode;
 use crate::ast::{Expr, WithSpan};
-use crate::runtime::eval::{eval_expr, EvalContext};
+use crate::runtime::eval::{evaluate_ast_node, EvaluationContext};
 use crate::SutraError;
 use crate::err_msg;
 
@@ -72,12 +72,12 @@ impl ExtractValue<crate::runtime::path::Path> for Value {
 /// # Usage
 /// ```ignore
 /// let mut sub_context = sub_eval_context!(parent_context, &new_world);
-/// let (result, world) = eval_expr(&args[0], &mut sub_context)?;
+/// let (result, world) = evaluate_ast_node(&args[0], &mut sub_context)?;
 /// ```
 #[macro_export]
 macro_rules! sub_eval_context {
     ($parent:expr, $world:expr) => {
-        $crate::runtime::eval::EvalContext {
+        $crate::runtime::eval::EvaluationContext {
             world: $world,
             output: $parent.output,
             atom_registry: $parent.atom_registry,
@@ -99,13 +99,13 @@ pub use sub_eval_context;
 /// This is the fundamental building block for all multi-argument atom operations.
 pub fn eval_args(
     args: &[AstNode],
-    context: &mut EvalContext<'_, '_>,
+    context: &mut EvaluationContext<'_, '_>,
 ) -> Result<(Vec<Value>, crate::runtime::world::World), SutraError> {
     args.iter().try_fold(
         (Vec::with_capacity(args.len()), context.world.clone()),
         |(mut values, world), arg| {
             let mut sub_context = sub_eval_context!(context, &world);
-            let (val, next_world) = eval_expr(arg, &mut sub_context)?;
+            let (val, next_world) = evaluate_ast_node(arg, &mut sub_context)?;
             values.push(val);
             Ok((values, next_world))
         },
@@ -115,7 +115,7 @@ pub fn eval_args(
 /// Generic argument evaluation with compile-time arity checking
 pub fn eval_n_args<const N: usize>(
     args: &[AstNode],
-    context: &mut EvalContext<'_, '_>,
+    context: &mut EvaluationContext<'_, '_>,
 ) -> Result<([Value; N], crate::runtime::world::World), SutraError> {
     if args.len() != N {
         return Err(err_msg!(Eval, "Arity error"));
@@ -126,7 +126,7 @@ pub fn eval_n_args<const N: usize>(
 
     for arg in args.iter().take(N) {
         let mut sub_context = sub_eval_context!(context, &world);
-        let (val, next_world) = eval_expr(arg, &mut sub_context)?;
+        let (val, next_world) = evaluate_ast_node(arg, &mut sub_context)?;
         values.push(val);
         world = next_world;
     }
@@ -142,7 +142,7 @@ pub fn eval_n_args<const N: usize>(
 /// Evaluates a single argument and returns the value and world
 pub fn eval_single_arg(
     args: &[AstNode],
-    context: &mut EvalContext<'_, '_>,
+    context: &mut EvaluationContext<'_, '_>,
 ) -> Result<(Value, crate::runtime::world::World), SutraError> {
     let ([val], world) = eval_n_args::<1>(args, context)?;
     Ok((val, world))
@@ -151,7 +151,7 @@ pub fn eval_single_arg(
 /// Evaluates two arguments and returns both values and the final world
 pub fn eval_binary_args(
     args: &[AstNode],
-    context: &mut EvalContext<'_, '_>,
+    context: &mut EvaluationContext<'_, '_>,
 ) -> Result<(Value, Value, crate::runtime::world::World), SutraError> {
     let ([val1, val2], world) = eval_n_args::<2>(args, context)?;
     Ok((val1, val2, world))
@@ -194,7 +194,7 @@ pub fn extract_path(val: &Value) -> Result<crate::runtime::path::Path, SutraErro
 /// Handles arity, type checking, and error construction.
 pub fn eval_binary_numeric_op<F, V>(
     args: &[AstNode],
-    context: &mut EvalContext<'_, '_>,
+    context: &mut EvaluationContext<'_, '_>,
     op: F,
     validator: Option<V>,
 ) -> Result<(Value, crate::runtime::world::World), SutraError>
@@ -217,7 +217,7 @@ where
 /// Handles arity, type checking, and error construction.
 pub fn eval_nary_numeric_op<F>(
     args: &[AstNode],
-    context: &mut EvalContext<'_, '_>,
+    context: &mut EvaluationContext<'_, '_>,
     init: f64,
     fold: F,
 ) -> Result<(Value, crate::runtime::world::World), SutraError>
@@ -244,7 +244,7 @@ where
 /// Handles arity, type checking, and error construction.
 pub fn eval_unary_bool_op<F>(
     args: &[AstNode],
-    context: &mut EvalContext<'_, '_>,
+    context: &mut EvaluationContext<'_, '_>,
     op: F,
 ) -> Result<(Value, crate::runtime::world::World), SutraError>
 where
@@ -259,7 +259,7 @@ where
 /// Handles arity, type checking, and error construction.
 pub fn eval_unary_path_op<F>(
     args: &[AstNode],
-    context: &mut EvalContext<'_, '_>,
+    context: &mut EvaluationContext<'_, '_>,
     op: F,
 ) -> Result<(Value, crate::runtime::world::World), SutraError>
 where
@@ -277,7 +277,7 @@ where
 /// Handles arity, type checking, and error construction.
 pub fn eval_binary_path_op<F>(
     args: &[AstNode],
-    context: &mut EvalContext<'_, '_>,
+    context: &mut EvaluationContext<'_, '_>,
     op: F,
 ) -> Result<(Value, crate::runtime::world::World), SutraError>
 where
@@ -296,14 +296,14 @@ where
 /// Handles arity and error construction.
 pub fn eval_unary_value_op<F>(
     args: &[AstNode],
-    context: &mut EvalContext<'_, '_>,
+    context: &mut EvaluationContext<'_, '_>,
     op: F,
 ) -> Result<(Value, crate::runtime::world::World), SutraError>
 where
     F: Fn(
         Value,
         crate::runtime::world::World,
-        &mut EvalContext<'_, '_>,
+        &mut EvaluationContext<'_, '_>,
     ) -> Result<(Value, crate::runtime::world::World), SutraError>,
 {
     let (val, world) = eval_single_arg(args, context)?;
@@ -318,13 +318,13 @@ where
 /// Returns the evaluated arguments as expressions and the final world state.
 pub fn eval_apply_normal_args(
     args: &[AstNode],
-    context: &mut EvalContext<'_, '_>,
+    context: &mut EvaluationContext<'_, '_>,
 ) -> Result<(Vec<AstNode>, crate::runtime::world::World), SutraError> {
     let mut evald_args = Vec::with_capacity(args.len());
     let mut world = context.world.clone();
     for arg in args {
         let mut sub_context = sub_eval_context!(context, &world);
-        let (val, next_world) = eval_expr(arg, &mut sub_context)?;
+        let (val, next_world) = evaluate_ast_node(arg, &mut sub_context)?;
         evald_args.push(WithSpan {
             value: Expr::from(val).into(), // FIX: wrap Expr in Arc via .into()
             span: arg.span,
@@ -338,11 +338,11 @@ pub fn eval_apply_normal_args(
 /// Returns the list items as expressions and the final world state.
 pub fn eval_apply_list_arg(
     arg: &AstNode,
-    context: &mut EvalContext<'_, '_>,
+    context: &mut EvaluationContext<'_, '_>,
     parent_span: &crate::ast::Span,
 ) -> Result<(Vec<AstNode>, crate::runtime::world::World), SutraError> {
     let mut sub_context = sub_eval_context!(context, context.world);
-    let (list_val, world) = eval_expr(arg, &mut sub_context)?;
+    let (list_val, world) = evaluate_ast_node(arg, &mut sub_context)?;
     let Value::List(items) = list_val else {
         return Err(err_msg!(TypeError, "Type error"));
     };

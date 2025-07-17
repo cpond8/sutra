@@ -34,15 +34,15 @@ use std::collections::HashMap;
 
 /// Public entry point for macro expansion.
 /// Expands all macro calls recursively within an AST node, tracing expansions.
-pub fn expand_all_macros(ast: AstNode, env: &mut MacroEnv) -> Result<AstNode, SutraError> {
-    expand_all_macros_with_trace(ast, env, 0)
+pub fn expand_macros_recursively(ast: AstNode, env: &mut MacroEnv) -> Result<AstNode, SutraError> {
+    expand_macros_recursively_with_trace(ast, env, 0)
 }
 
 /// Centralized macro expansion function replicating existing logic from the evaluator.
 ///
 /// This function is designed to replace the inline macro expansion in the evaluator.
 /// It handles both template and function macros with recursion depth checking.
-pub fn expand_macro(
+pub fn expand_macro_call(
     macro_def: &MacroDef,
     call: &AstNode,
     env: &MacroEnv,
@@ -232,16 +232,16 @@ pub fn substitute_template(
 // =============================
 
 // Recursively expands macros and records trace.
-fn expand_all_macros_with_trace(
+fn expand_macros_recursively_with_trace(
     node: AstNode,
     env: &mut MacroEnv,
     depth: usize,
 ) -> Result<AstNode, SutraError> {
     if let Some((_macro_name, _provenance, expanded)) = expand_macro_once(&node, env, depth)? {
         // trace is already handled in expand_macro_def via env.trace
-        return expand_all_macros_with_trace(expanded, env, depth + 1);
+        return expand_macros_recursively_with_trace(expanded, env, depth + 1);
     }
-    map_ast(node, &expand_all_macros_with_trace, env, depth)
+    map_ast(node, &expand_macros_recursively_with_trace, env, depth)
 }
 
 // Expands a macro call once, checking recursion depth.

@@ -35,20 +35,20 @@ use crate::ast::value::Value;
 use crate::ast::{AstNode, Expr, WithSpan};
 use crate::atoms::{AtomRegistry, OutputSink};
 use crate::diagnostics::SutraError;
-use crate::runtime::context::ExecutionContext;
+use crate::runtime::context::AtomExecutionContext;
 use crate::runtime::world::World;
 use crate::err_ctx;
 use crate::err_src;
 use miette::NamedSource;
 use std::sync::Arc;
-use crate::macros::expand_macro;
+use crate::macros::expand_macro_call;
 
 // ===================================================================================================
 // CORE DATA STRUCTURES: Evaluation Context
 // ===================================================================================================
 
 /// The context for a single evaluation, passed to atoms and all evaluation functions.
-pub struct EvalContext<'a, 'o> {
+pub struct EvaluationContext<'a, 'o> {
     pub world: &'a World,
     pub output: &'o mut dyn OutputSink,
     pub atom_registry: &'a AtomRegistry,
@@ -57,7 +57,7 @@ pub struct EvalContext<'a, 'o> {
     pub depth: usize,
 }
 
-impl EvalContext<'_, '_> {
+impl EvaluationContext<'_, '_> {
     /// Helper to increment depth for recursive calls.
     pub fn next_depth(&self) -> usize {
         self.depth + 1
@@ -89,10 +89,10 @@ impl EvalContext<'_, '_> {
             };
 
             // Expand macro using the centralized expand_macro function
-            let expanded = expand_macro(macro_def, &call_node, &self.world.macros, self.depth)?;
+            let expanded = expand_macro_call(macro_def, &call_node, &self.world.macros, self.depth)?;
 
             // Evaluate the expanded expression using the standard evaluation function
-            return eval_expr(&expanded, self);
+            return evaluate_ast_node(&expanded, self);
         }
 
         // If not a macro, try to resolve as an atom
@@ -110,7 +110,7 @@ impl EvalContext<'_, '_> {
         // atoms, which would cause runtime failures.
         #[cfg(debug_assertions)]
         {
-            const SPECIAL_FORMS: &[&str] = &[
+            const SPECIAL_FORM_NAMES: &[&str] = &[
                 "do",
                 "error",
                 "apply",
@@ -122,7 +122,7 @@ impl EvalContext<'_, '_> {
                 "register-test!",
             ];
 
-            if SPECIAL_FORMS.contains(&symbol_name) {
+            if SPECIAL_FORM_NAMES.contains(&symbol_name) {
                 assert!(
                     matches!(atom, crate::atoms::Atom::SpecialForm(_)),
                     "CRITICAL: Atom '{}' is a special form and MUST be registered as Atom::SpecialForm.",
@@ -139,10 +139,10 @@ impl EvalContext<'_, '_> {
 
             // Eagerly evaluated atoms (Pure and Stateful)
             crate::atoms::Atom::Stateful(stateful_fn) => {
-                let (values, world_after_args) = eval_eager_args(args, self)?;
+                let (values, world_after_args) = evaluate_eager_args(args, self)?;
                 let mut world_context = world_after_args;
                 let result = {
-                    let mut exec_context = ExecutionContext {
+                    let mut exec_context = AtomExecutionContext {
                         state: &mut world_context.state,
                         output: self.output,
                         rng: &mut world_context.prng,
@@ -153,7 +153,7 @@ impl EvalContext<'_, '_> {
             }
 
             crate::atoms::Atom::Pure(pure_fn) => {
-                let (values, world_after_args) = eval_eager_args(args, self)?;
+                let (values, world_after_args) = evaluate_eager_args(args, self)?;
                 let result = pure_fn(&values)?;
                 Ok((result, world_after_args))
             }
@@ -166,9 +166,9 @@ impl EvalContext<'_, '_> {
 // ===================================================================================================
 
 /// Evaluates arguments for eager atoms (Pure, Stateful), threading world state.
-fn eval_eager_args(
+fn evaluate_eager_args(
     args: &[AstNode],
-    context: &mut EvalContext,
+    context: &mut EvaluationContext,
 ) -> Result<(Vec<Value>, World), SutraError> {
     let mut values = Vec::with_capacity(args.len());
     let mut current_world = context.world.clone();
@@ -176,7 +176,7 @@ fn eval_eager_args(
     for arg in args {
         let (val, next_world) = {
             let next_depth = context.next_depth();
-            let mut arg_context = EvalContext {
+            let mut arg_context = EvaluationContext {
                 world: &current_world,
                 output: &mut *context.output,
                 atom_registry: context.atom_registry,
@@ -184,7 +184,7 @@ fn eval_eager_args(
                 max_depth: context.max_depth,
                 depth: next_depth,
             };
-            eval_expr(arg, &mut arg_context)?
+            evaluate_ast_node(arg, &mut arg_context)?
         };
         values.push(val);
         current_world = next_world;
@@ -194,16 +194,16 @@ fn eval_eager_args(
 }
 
 /// Wraps a value with the current world state in the standard (Value, World) result format.
-fn wrap_value_with_world(value: Value, world: &World) -> Result<(Value, World), SutraError> {
+fn wrap_value_with_world_state(value: Value, world: &World) -> Result<(Value, World), SutraError> {
     Ok((value, world.clone()))
 }
 
 /// Helper to evaluate a conditional expression and return a boolean result.
-fn eval_condition_as_bool(
+fn evaluate_condition_as_bool(
     condition: &AstNode,
-    context: &mut EvalContext,
+    context: &mut EvaluationContext,
 ) -> Result<(bool, World), SutraError> {
-    let (cond_val, next_world) = eval_expr(condition, context)?;
+    let (cond_val, next_world) = evaluate_ast_node(condition, context)?;
 
     // Guard clause: ensure condition evaluates to boolean
     let Value::Bool(b) = cond_val else {
@@ -219,9 +219,9 @@ fn eval_condition_as_bool(
 }
 
 /// Evaluates literal value expressions (Path, String, Number, Bool).
-fn eval_literal_value(
+fn evaluate_literal_value(
     expr: &AstNode,
-    context: &mut EvalContext,
+    context: &mut EvaluationContext,
 ) -> Result<(Value, World), SutraError> {
     let value = match &*expr.value {
         Expr::Path(p, _) => Value::Path(p.clone()),
@@ -237,13 +237,13 @@ fn eval_literal_value(
             ))
         }
     };
-    wrap_value_with_world(value, context.world)
+    wrap_value_with_world_state(value, context.world)
 }
 
 /// Handles evaluation of invalid expression types that cannot be evaluated at runtime.
-fn eval_invalid_expr(
+fn evaluate_invalid_expr(
     expr: &AstNode,
-    context: &mut EvalContext,
+    context: &mut EvaluationContext,
 ) -> Result<(Value, World), SutraError> {
     let (msg, span) = match &*expr.value {
         Expr::ParamList(_) => (
@@ -255,7 +255,7 @@ fn eval_invalid_expr(
             // This allows for dynamic access to world variables.
             let path = crate::runtime::path::Path(vec![s.clone()]);
             if let Some(value) = context.world.state.get(&path) {
-                return wrap_value_with_world(value.clone(), context.world);
+                return wrap_value_with_world_state(value.clone(), context.world);
             }
 
             // If the symbol is not found in the world state, it's an undefined symbol.
@@ -286,7 +286,7 @@ fn eval_invalid_expr(
 ///
 /// # Note
 /// This is a low-level, internal function. Most users should use the higher-level `eval` API.
-pub fn eval_expr(expr: &AstNode, context: &mut EvalContext) -> Result<(Value, World), SutraError> {
+pub fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext) -> Result<(Value, World), SutraError> {
     if context.depth > context.max_depth {
         return Err(err_src!(
             Internal,
@@ -298,14 +298,14 @@ pub fn eval_expr(expr: &AstNode, context: &mut EvalContext) -> Result<(Value, Wo
 
     match &*expr.value {
         // Complex expression types with dedicated handlers
-        Expr::List(items, span) => eval_list(items, span, context),
-        Expr::Quote(inner, _) => eval_quote(inner, context),
+        Expr::List(items, span) => evaluate_list(items, span, context),
+        Expr::Quote(inner, _) => evaluate_quote(inner, context),
         Expr::If {
             condition,
             then_branch,
             else_branch,
             ..
-        } => eval_if(condition, then_branch, else_branch, context),
+        } => evaluate_if(condition, then_branch, else_branch, context),
         Expr::Define {
             name, params, body, ..
         } => {
@@ -319,7 +319,7 @@ pub fn eval_expr(expr: &AstNode, context: &mut EvalContext) -> Result<(Value, Wo
                 Ok((Value::Nil, new_world))
             } else {
                 // It's a variable definition.
-                let (value, world) = eval_expr(body, context)?;
+                let (value, world) = evaluate_ast_node(body, context)?;
                 let new_world = world;
                 let path = crate::runtime::path::Path(vec![name.clone()]);
                 new_world.state.set(&path, value.clone());
@@ -329,16 +329,16 @@ pub fn eval_expr(expr: &AstNode, context: &mut EvalContext) -> Result<(Value, Wo
 
         // Literal value types
         Expr::Path(..) | Expr::String(..) | Expr::Number(..) | Expr::Bool(..) => {
-            eval_literal_value(expr, context)
+            evaluate_literal_value(expr, context)
         }
 
         // Invalid expression types
-        Expr::ParamList(..) | Expr::Symbol(..) | Expr::Spread(..) => eval_invalid_expr(expr, context),
+        Expr::ParamList(..) | Expr::Symbol(..) | Expr::Spread(..) => evaluate_invalid_expr(expr, context),
     }
 }
 
 /// Public API: evaluates an expression with the given world, output, atom registry, and max depth.
-pub fn eval(
+pub fn evaluate(
     expr: &AstNode,
     world: &World,
     output: &mut dyn OutputSink,
@@ -346,7 +346,7 @@ pub fn eval(
     source: Arc<NamedSource<String>>,
     max_depth: usize,
 ) -> Result<(Value, World), SutraError> {
-    let mut context = EvalContext {
+    let mut context = EvaluationContext {
         world,
         output,
         atom_registry,
@@ -354,7 +354,7 @@ pub fn eval(
         max_depth,
         depth: 0,
     };
-    eval_expr(expr, &mut context)
+    evaluate_ast_node(expr, &mut context)
 }
 
 // ===================================================================================================
@@ -364,13 +364,13 @@ pub fn eval(
 // --- Core Expression Handlers ---
 
 /// Helper for evaluating Expr::List arms.
-fn eval_list(
+fn evaluate_list(
     items: &[AstNode],
     span: &crate::ast::Span,
-    context: &mut EvalContext,
+    context: &mut EvaluationContext,
 ) -> Result<(Value, World), SutraError> {
     if items.is_empty() {
-        return wrap_value_with_world(Value::List(vec![]), context.world);
+        return wrap_value_with_world_state(Value::List(vec![]), context.world);
     }
 
     // Extract symbol name using guard clause pattern
@@ -391,24 +391,24 @@ fn eval_list(
 }
 
 /// Helper for evaluating Expr::Quote arms.
-fn eval_quote(
+fn evaluate_quote(
     inner: &AstNode,
-    context: &mut EvalContext,
+    context: &mut EvaluationContext,
 ) -> Result<(Value, World), SutraError> {
     match &*inner.value {
-        Expr::Symbol(s, _) => wrap_value_with_world(Value::String(s.clone()), context.world),
-        Expr::List(exprs, _) => wrap_value_with_world(eval_quoted_list(exprs, context)?, context.world),
-        Expr::Number(n, _) => wrap_value_with_world(Value::Number(*n), context.world),
-        Expr::Bool(b, _) => wrap_value_with_world(Value::Bool(*b), context.world),
-        Expr::String(s, _) => wrap_value_with_world(Value::String(s.clone()), context.world),
-        Expr::Path(p, _) => wrap_value_with_world(Value::Path(p.clone()), context.world),
+        Expr::Symbol(s, _) => wrap_value_with_world_state(Value::String(s.clone()), context.world),
+        Expr::List(exprs, _) => wrap_value_with_world_state(evaluate_quoted_list(exprs, context)?, context.world),
+        Expr::Number(n, _) => wrap_value_with_world_state(Value::Number(*n), context.world),
+        Expr::Bool(b, _) => wrap_value_with_world_state(Value::Bool(*b), context.world),
+        Expr::String(s, _) => wrap_value_with_world_state(Value::String(s.clone()), context.world),
+        Expr::Path(p, _) => wrap_value_with_world_state(Value::Path(p.clone()), context.world),
         Expr::If {
             condition,
             then_branch,
             else_branch,
             ..
-        } => eval_quoted_if(condition, then_branch, else_branch, context),
-        Expr::Quote(_, _) => wrap_value_with_world(Value::Nil, context.world),
+        } => evaluate_quoted_if(condition, then_branch, else_branch, context),
+        Expr::Quote(_, _) => wrap_value_with_world_state(Value::Nil, context.world),
         Expr::Define { .. } => Err(err_ctx!(
             Eval,
             "Cannot quote define expressions",
@@ -431,14 +431,14 @@ fn eval_quote(
 }
 
 /// Helper for evaluating Expr::If arms.
-fn eval_if(
+fn evaluate_if(
     condition: &AstNode,
     then_branch: &AstNode,
     else_branch: &AstNode,
-    context: &mut EvalContext,
+    context: &mut EvaluationContext,
 ) -> Result<(Value, World), SutraError> {
-    let (is_true, next_world) = eval_condition_as_bool(condition, context)?;
-    let mut sub_context = EvalContext {
+    let (is_true, next_world) = evaluate_condition_as_bool(condition, context)?;
+    let mut sub_context = EvaluationContext {
         world: &next_world,
         output: context.output,
         atom_registry: context.atom_registry,
@@ -448,13 +448,13 @@ fn eval_if(
     };
 
     let branch = if is_true { then_branch } else { else_branch };
-    eval_expr(branch, &mut sub_context)
+    evaluate_ast_node(branch, &mut sub_context)
 }
 
 // --- Quote Expression Helpers ---
 
 /// Evaluates a single expression within a quote context.
-fn eval_quoted_expr(expr: &AstNode, context: &EvalContext) -> Result<Value, SutraError> {
+fn evaluate_quoted_expr(expr: &AstNode, context: &EvaluationContext) -> Result<Value, SutraError> {
     match &*expr.value {
         Expr::Symbol(s, _) => Ok(Value::String(s.clone())),
         Expr::Number(n, _) => Ok(Value::Number(*n)),
@@ -477,21 +477,21 @@ fn eval_quoted_expr(expr: &AstNode, context: &EvalContext) -> Result<Value, Sutr
 }
 
 /// Evaluates a quoted list by converting each element to a value.
-fn eval_quoted_list(exprs: &[AstNode], context: &EvalContext) -> Result<Value, SutraError> {
+fn evaluate_quoted_list(exprs: &[AstNode], context: &EvaluationContext) -> Result<Value, SutraError> {
     let vals: Result<Vec<_>, SutraError> =
-        exprs.iter().map(|e| eval_quoted_expr(e, context)).collect();
+        exprs.iter().map(|e| evaluate_quoted_expr(e, context)).collect();
     Ok(Value::List(vals?))
 }
 
 /// Evaluates a quoted if expression.
-fn eval_quoted_if(
+fn evaluate_quoted_if(
     condition: &AstNode,
     then_branch: &AstNode,
     else_branch: &AstNode,
-    context: &mut EvalContext,
+    context: &mut EvaluationContext,
 ) -> Result<(Value, World), SutraError> {
-    let (is_true, next_world) = eval_condition_as_bool(condition, context)?;
-    let mut sub_context = EvalContext {
+    let (is_true, next_world) = evaluate_condition_as_bool(condition, context)?;
+    let mut sub_context = EvaluationContext {
         world: &next_world,
         output: context.output,
         atom_registry: context.atom_registry,
@@ -501,7 +501,7 @@ fn eval_quoted_if(
     };
 
     let branch = if is_true { then_branch } else { else_branch };
-    eval_expr(branch, &mut sub_context)
+    evaluate_ast_node(branch, &mut sub_context)
 }
 
 // --- Argument Processing Helpers ---
@@ -509,7 +509,7 @@ fn eval_quoted_if(
 /// Flattens spread arguments in function call arguments.
 fn flatten_spread_args(
     tail: &[AstNode],
-    context: &mut EvalContext,
+    context: &mut EvaluationContext,
 ) -> Result<Vec<AstNode>, SutraError> {
     let mut flat_tail = Vec::new();
 
@@ -522,7 +522,7 @@ fn flatten_spread_args(
         };
 
         // Guard clause: evaluate spread expression
-        let (val, _) = eval_expr(expr, context)?;
+        let (val, _) = evaluate_ast_node(expr, context)?;
 
         // Guard clause: ensure we have a list for spreading
         let Value::List(items) = val else {

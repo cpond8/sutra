@@ -2,8 +2,8 @@ use crate::atoms::OutputSink;
 use crate::cli::output::StdoutSink;
 use crate::err_ctx;
 use crate::macros::definition::{is_macro_definition, parse_macro_definition};
-use crate::macros::{expand_all_macros, MacroDef};
-use crate::runtime::eval::eval;
+use crate::macros::{expand_macros_recursively, MacroDef};
+use crate::runtime::eval::evaluate;
 use crate::runtime::registry::build_canonical_macro_env;
 use crate::runtime::world::World;
 use crate::syntax::parser::wrap_in_do;
@@ -40,7 +40,7 @@ pub fn run_sutra_source_with_output(
     let program = wrap_in_do(user_code);
 
     // 7. Expand macros
-    let expanded = expand_all_macros(program, &mut env)?;
+    let expanded = expand_macros_recursively(program, &mut env)?;
 
     // 8. Validation step
     let atom_registry = crate::runtime::registry::build_default_atom_registry();
@@ -71,7 +71,7 @@ pub fn run_sutra_source_with_output(
     let world = World::default();
     let source = Arc::new(NamedSource::new("source", source.to_string()));
     let (result, _updated_world) =
-        eval(&expanded, &world, output, &atom_registry, source.clone(), 100)?;
+        evaluate(&expanded, &world, output, &atom_registry, source.clone(), 100)?;
 
     // 10. If result is nil, suppress output to avoid "null" printing
     if !result.is_nil() {

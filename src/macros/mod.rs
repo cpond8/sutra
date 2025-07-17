@@ -84,7 +84,7 @@ pub use registry::MacroRegistry;
 pub use loader::{check_arity, load_macros_from_file, parse_macros_from_source};
 
 // Expansion operations - re-exported from expander module
-pub use expander::{bind_macro_params, expand_all_macros, expand_macro, expand_template, substitute_template};
+pub use expander::{bind_macro_params, expand_macros_recursively, expand_macro_call, expand_template, substitute_template};
 
 use ::std::sync;
 // ============================================================================

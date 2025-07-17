@@ -19,7 +19,7 @@ use crate::atoms::helpers::{
     sub_eval_context,
 };
 use crate::atoms::SpecialFormAtomFn;
-use crate::runtime::eval::eval_expr;
+use crate::runtime::eval::evaluate_ast_node;
 use crate::err_msg;
 
 // ============================================================================
@@ -45,8 +45,8 @@ pub const ATOM_DO: SpecialFormAtomFn = |args, context, _parent_span| {
     for arg in args {
         // Create a new evaluation context for the sub-expression, threading the world.
         let mut sub_context = sub_eval_context!(context, &world);
-        // Evaluate the expression. `eval_expr` will return the result and the *new* world state.
-        let (val, new_world) = eval_expr(arg, &mut sub_context)?;
+        // Evaluate the expression. `evaluate_ast_node` will return the result and the *new* world state.
+        let (val, new_world) = evaluate_ast_node(arg, &mut sub_context)?;
         last_value = val;
         // Update our tracked world state for the next iteration.
         world = new_world;
@@ -114,7 +114,7 @@ pub const ATOM_APPLY: SpecialFormAtomFn = |args, context, parent_span| {
     // Build and evaluate the call expression
     let call_expr = build_apply_call_expr(func_expr, normal_args, list_args, parent_span);
     let mut sub_context = sub_eval_context!(context, &world);
-    eval_expr(&call_expr, &mut sub_context)
+    evaluate_ast_node(&call_expr, &mut sub_context)
 };
 
 // ============================================================================

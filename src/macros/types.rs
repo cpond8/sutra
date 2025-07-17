@@ -363,7 +363,7 @@ fn check_no_duplicate_params(
 // ============================================================================
 
 impl crate::atoms::Callable for MacroDef {
-    fn call(&self, _args: &[crate::ast::value::Value], _context: &mut crate::runtime::context::ExecutionContext, _current_world: &crate::runtime::world::World) -> Result<(crate::ast::value::Value, crate::runtime::world::World), crate::SutraError> {
+    fn call(&self, _args: &[crate::ast::value::Value], _context: &mut crate::runtime::context::AtomExecutionContext, _current_world: &crate::runtime::world::World) -> Result<(crate::ast::value::Value, crate::runtime::world::World), crate::SutraError> {
         // Macros operate on AST nodes, not Values, so they cannot be called through the Callable interface
         // This is a design limitation - macros need syntax transformation, not evaluation
         Err(err_msg!(Validation, "Macros cannot be called through Callable interface - they require AST transformation, not evaluation"))
