@@ -9,7 +9,7 @@ use crate::engine::run_sutra_source_with_output;
 use crate::err_ctx;
 use crate::err_msg;
 use crate::macros::definition::{is_macro_definition, parse_macro_definition};
-use crate::macros::{expand_macros, MacroDef, MacroRegistry};
+use crate::macros::{expand_all_macros, MacroDef, MacroRegistry};
 use crate::runtime::registry::build_canonical_macro_env;
 use crate::SutraError;
 use clap::Parser;
@@ -154,7 +154,7 @@ fn build_macro_environment_and_expand(
     let program = wrap_in_do_if_needed(user_code, source);
 
     // Expand macros
-    let expanded = expand_macros(program, &mut env)?;
+    let expanded = expand_all_macros(program, &mut env)?;
 
     Ok(expanded)
 }
@@ -595,7 +595,7 @@ fn handle_macrotrace(path: &std::path::Path) -> Result<(), SutraError> {
     let (source, ast_nodes) = load_file_to_ast(path)?;
     let program = wrap_in_do_if_needed(ast_nodes, &source);
     let mut env = build_canonical_macro_env()?;
-    let expanded = expand_macros(program.clone(), &mut env)?;
+    let expanded = expand_all_macros(program.clone(), &mut env)?;
     println!("{}", expanded.value.pretty());
     Ok(())
 }

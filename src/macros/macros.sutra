@@ -1,7 +1,22 @@
 ;; macros.sutra - Standard Macro Library (Self-Hosted)
 ;;
-;; This file contains canonical macro definitions written in the Sutra language.
-;; These macros are loaded at startup and registered into the macro system.
+;; Canonical macro definitions for Sutra, organized and documented per canonical-language-reference.md.
+;; Each section groups related macros, with doc comments describing purpose, arity, usage, and expansion.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; 1. Core Control Flow Macros
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; cond: Multi-branch conditional. Expands to nested ifs. Validates clauses.
+;; Arity: 1.. (at least one clause)
+;; Usage: (cond ((test1 expr1) (test2 expr2) ... (else exprN)))
+(define (cond ...clauses)
+  (if (null? clauses)
+      (error "`cond` macro requires at least one clause.")
+      (let ((err (cond-validate clauses)))
+        (if err
+            (error err)
+            (cond-expand clauses)))))
 
 ;; Helper: cond-validate
 ;; Returns false if valid, else an error message string
@@ -40,88 +55,32 @@
               expr
               (list 'if test expr (cond-expand rest)))))))
 
-;; Canonical cond macro with up-front validation and always expands to nested ifs
-(define (cond ...clauses)
-  (if (null? clauses)
-      (error "`cond` macro requires at least one clause.")
-      (let ((err (cond-validate clauses)))
-        (if err
-            (error err)
-            (cond-expand clauses)))))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; 2. Assignment & State Macros
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; List and utility helpers for macro expansion
-(define (car lst)
-  (if (null? lst)
-      (error "car: empty list")
-      (get lst 0)))
+;; inc!: Increment value at path by 1.
+;; Arity: 1 (path)
+;; Usage: (inc! player.score)
+;; Expands to: (core/set! path (+ (get path) 1))
+(define (inc! path)
+  (list 'core/set! path (list '+ (list 'get path) 1)))
 
-(define (cdr lst)
-  (if (null? lst)
-      (error "cdr: empty list")
-      (slice lst 1)))
+;; dec!: Decrement value at path by 1.
+;; Arity: 1 (path)
+;; Usage: (dec! player.hp)
+;; Expands to: (core/set! path (- (get path) 1))
+(define (dec! path)
+  (list 'core/set! path (list '- (list 'get path) 1)))
 
-(define (cadr lst)
-  (car (cdr lst)))
-
-(define (null? lst)
-  (eq? (len lst) 0))
-
-;; Core Dependencies & Helpers
-;;
-;; The macros in this file depend on several built-in atoms and special forms
-;; that must be provided by the engine's runtime.
-;;
-;; Special Forms (provided by the parser/evaluator):
-;; - let, letrec, lambda
-;;
-;; Built-in Atoms (provided by the atom registry):
-;; - get, slice, len, eq?, not, error, str, apply, core/str+
-;;
-;; The following helpers are defined for use in other macros.
-
-;; Append two lists.
-(define (append l1 l2)
-  (if (null? l1)
-      l2
-      (cons (car l1) (append (cdr l1) l2))))
-
-;; Map a function over a list.
-(define (map f lst)
-  (if (null? lst)
-      '()
-      (cons (f (car lst)) (map f (cdr lst)))))
-
-;; Prepend an element to a list.
-(define (cons el lst)
-  (core/prepend el lst))
-
-;; String concatenation macro: str+
-;; Concatenates any number of string arguments into a single string.
-;; Usage: (str+ "foo" "bar" "baz") => "foobarbaz"
-(define (str+ ...args)
-  (core/str+ ...args))
-;; Join strings with a separator
-;; Usage: (join-str+ " " "a" "b" "c") => "a b c"
-(define (join-str+ sep ...args)
-  (letrec ((interleave
-            (lambda (acc remaining)
-              (if (null? remaining)
-                  acc
-                  (if (null? acc)
-                      (interleave (list (car remaining)) (cdr remaining))
-                      (interleave (append acc (list sep (car remaining))) (cdr remaining)))))))
-    (apply str+ (interleave '() args))))
-
-;; Display multiple values to the output, separated by spaces.
-;; Usage: (display "hello" 123 true) => prints "hello 123 true"
-(define (display ...args)
-  (print (apply join-str+ " " ...args)))
-
-;; Comparison operator aliases (canonical forms)
-;; Each alias expands to the canonical atom or macro form, supporting full variadic arity.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; 3. Predicates & Logic Macros (Aliases)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; eq? aliases
+;; (= ...args): Canonical equality alias.
 (define (= ...args) (eq? ...args))
+;; (is? ...args): Canonical equality alias.
 (define (is? ...args) (eq? ...args))
 
 ;; gt? aliases
@@ -140,28 +99,92 @@
 (define (<= ...args) (lte? ...args))
 (define (at-most? ...args) (lte? ...args))
 
-;;
-;; Test Harness Macros
-;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; 4. Math & Value Operation Macros
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; (No macro definitions here; see atom registry for +, -, *, /, etc.)
 
-;; The `test` macro defines a new test case.
-;;
-;; It takes a name for the test, an `expect` form that specifies
-;; the expected outcome, and a body of code to execute.
-;;
-;; The macro expands into a call to `register-test!`, passing along the
-;; test name, expectation, body, and metadata about the source location.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; 5. String Utility Macros
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; str+: Concatenate any number of string arguments into a single string.
+;; Arity: 0.. (variadic)
+;; Usage: (str+ "foo" "bar" "baz") => "foobarbaz"
+(define (str+ ...args)
+  (core/str+ ...args))
+
+;; join-str+: Join strings with a separator.
+;; Arity: 2.. (separator, then strings)
+;; Usage: (join-str+ " " "a" "b" "c") => "a b c"
+(define (join-str+ sep ...args)
+  (letrec ((interleave
+            (lambda (acc remaining)
+              (if (null? remaining)
+                  acc
+                  (if (null? acc)
+                      (interleave (list (car remaining)) (cdr remaining))
+                      (interleave (append acc (list sep (car remaining))) (cdr remaining)))))))
+    (apply str+ (interleave '() args))))
+
+;; display: Print multiple values to output, separated by spaces.
+;; Arity: 0.. (variadic)
+;; Usage: (display "hello" 123 true) => prints "hello 123 true"
+(define (display ...args)
+  (print (apply join-str+ " " ...args)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; 6. Test Harness Macros
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; test: Define a new test case.
+;; Usage: (test "name" (expect ...) body...)
+;; Expands to: (register-test! name expect-form body metadata)
 (define (test name expect-form ...body)
   (list 'register-test! name expect-form body (list "span" "unknown" "file" "unknown")))
 
-;; The `expect` macro is used within a `test` to declare expectations.
-;; It is a placeholder here and will be parsed by the `register-test!` atom.
+;; expect: Used within test to declare expectations.
+;; Usage: (expect ...conditions)
+;; Expands to: (cons 'expect conditions)
 (define (expect ...conditions)
   (cons 'expect conditions))
 
-;; Increment and decrement macros
-(define (inc! path)
-  (list 'core/set! path (list '+ (list 'get path) 1)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; 7. List & Utility Helpers (for macro expansion)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(define (dec! path)
-  (list 'core/set! path (list '- (list 'get path) 1)))
+;; car: Return first element of list, error if empty.
+(define (car lst)
+  (if (null? lst)
+      (error "car: empty list")
+      (get lst 0)))
+
+;; cdr: Return all but first element of list, error if empty.
+(define (cdr lst)
+  (if (null? lst)
+      (error "cdr: empty list")
+      (slice lst 1)))
+
+;; cadr: Return second element of list.
+(define (cadr lst)
+  (car (cdr lst)))
+
+;; null?: True if list is empty.
+(define (null? lst)
+  (eq? (len lst) 0))
+
+;; append: Append two lists.
+(define (append l1 l2)
+  (if (null? l1)
+      l2
+      (cons (car l1) (append (cdr l1) l2))))
+
+;; map: Map a function over a list.
+(define (map f lst)
+  (if (null? lst)
+      '()
+      (cons (f (car lst)) (map f (cdr lst)))))
+
+;; cons: Prepend element to list.
+(define (cons el lst)
+  (core/prepend el lst))

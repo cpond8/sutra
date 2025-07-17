@@ -2,7 +2,7 @@ use crate::atoms::OutputSink;
 use crate::cli::output::StdoutSink;
 use crate::err_ctx;
 use crate::macros::definition::{is_macro_definition, parse_macro_definition};
-use crate::macros::{expand_macros, MacroDef};
+use crate::macros::{expand_all_macros, MacroDef};
 use crate::runtime::eval::eval;
 use crate::runtime::registry::build_canonical_macro_env;
 use crate::runtime::world::World;
@@ -40,7 +40,7 @@ pub fn run_sutra_source_with_output(
     let program = wrap_in_do(user_code);
 
     // 7. Expand macros
-    let expanded = expand_macros(program, &mut env)?;
+    let expanded = expand_all_macros(program, &mut env)?;
 
     // 8. Validation step
     let atom_registry = crate::runtime::registry::build_default_atom_registry();

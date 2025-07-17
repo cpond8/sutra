@@ -41,6 +41,7 @@ use crate::err_ctx;
 use crate::err_src;
 use miette::NamedSource;
 use std::sync::Arc;
+use crate::macros::expand_macro;
 
 // ===================================================================================================
 // CORE DATA STRUCTURES: Evaluation Context
@@ -72,54 +73,26 @@ impl EvalContext<'_, '_> {
         span: &crate::ast::Span,
     ) -> Result<(Value, World), SutraError> {
         // First, try to resolve as a macro
-        if let Some((_provenance, macro_def)) = self.world.macros.lookup_macro(symbol_name) {
+        if let Some((_, macro_def)) = self.world.macros.lookup_macro(symbol_name) {
             // Handle macro expansion
-            return match macro_def {
-                crate::macros::MacroDef::Template(template) => {
-                    // Create a call node for the template expansion
-                    let call_node = WithSpan {
-                        value: std::sync::Arc::new(Expr::List(
-                            {
-                                let mut items = vec![head.clone()];
-                                items.extend_from_slice(args);
-                                items
-                            },
-                            *span,
-                        )),
-                        span: *span,
-                    };
-
-                    // Expand the template macro
-                    let expanded = crate::macros::expand_template(
-                        template,
-                        &call_node,
-                        symbol_name,
-                        0,
-                        &self.world.macros,
-                    )?;
-                    // Evaluate the expanded expression
-                    eval_expr(&expanded, self)
-                }
-                crate::macros::MacroDef::Fn(macro_fn) => {
-                    // Create a call node for the function macro
-                    let call_node = WithSpan {
-                        value: std::sync::Arc::new(Expr::List(
-                            {
-                                let mut items = vec![head.clone()];
-                                items.extend_from_slice(args);
-                                items
-                            },
-                            *span,
-                        )),
-                        span: *span,
-                    };
-
-                    // Call the function macro
-                    let expanded = macro_fn(&call_node)?;
-                    // Evaluate the expanded expression
-                    eval_expr(&expanded, self)
-                }
+            // Create the full call AST node
+            let call_node = WithSpan {
+                value: std::sync::Arc::new(Expr::List(
+                    {
+                        let mut items = vec![head.clone()];
+                        items.extend_from_slice(args);
+                        items
+                    },
+                    *span,
+                )),
+                span: *span,
             };
+
+            // Expand macro using the centralized expand_macro function
+            let expanded = expand_macro(macro_def, &call_node, &self.world.macros, self.depth)?;
+
+            // Evaluate the expanded expression using the standard evaluation function
+            return eval_expr(&expanded, self);
         }
 
         // If not a macro, try to resolve as an atom

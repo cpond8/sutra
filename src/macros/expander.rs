@@ -20,12 +20,13 @@
 //! This module provides the core expansion engine, including recursion depth checks and trace recording. All errors related to recursion limits or invalid macro forms are reported using the canonical error system.
 
 use crate::ast::{AstNode, Expr, ParamList, Span, WithSpan};
+use crate::err_src;
 use crate::macros::types::{
     MacroDef, MacroEnv, MacroExpansionStep, MacroProvenance, MacroTemplate,
 };
-use std::collections::HashMap;
+use crate::macros::MAX_MACRO_RECURSION_DEPTH;
 use crate::SutraError;
-use crate::err_src;
+use std::collections::HashMap;
 
 // =============================
 // Public API for macro expansion
@@ -33,8 +34,66 @@ use crate::err_src;
 
 /// Public entry point for macro expansion.
 /// Expands all macro calls recursively within an AST node, tracing expansions.
-pub fn expand_macros(ast: AstNode, env: &mut MacroEnv) -> Result<AstNode, SutraError> {
-    expand_macros_with_trace(ast, env, 0)
+pub fn expand_all_macros(ast: AstNode, env: &mut MacroEnv) -> Result<AstNode, SutraError> {
+    expand_all_macros_with_trace(ast, env, 0)
+}
+
+/// Centralized macro expansion function replicating existing logic from the evaluator.
+///
+/// This function is designed to replace the inline macro expansion in the evaluator.
+/// It handles both template and function macros with recursion depth checking.
+pub fn expand_macro(
+    macro_def: &MacroDef,
+    call: &AstNode,
+    env: &MacroEnv,
+    depth: usize,
+) -> Result<AstNode, SutraError> {
+    // Check recursion depth
+    if depth > MAX_MACRO_RECURSION_DEPTH {
+        return Err(err_src!(
+            Internal,
+            "Recursion limit exceeded",
+            &env.source,
+            call.span
+        ));
+    }
+
+    match macro_def {
+        MacroDef::Template(template) => {
+            // Extract macro name from call node
+            let macro_name = if let Expr::List(items, _) = &*call.value {
+                if let Some(first) = items.first() {
+                    if let Expr::Symbol(s, _) = &*first.value {
+                        s
+                    } else {
+                        return Err(err_src!(
+                            Eval,
+                            "Macro call head must be a symbol",
+                            &env.source,
+                            first.span
+                        ));
+                    }
+                } else {
+                    return Err(err_src!(
+                        Eval,
+                        "Macro call cannot be empty",
+                        &env.source,
+                        call.span
+                    ));
+                }
+            } else {
+                return Err(err_src!(
+                    Eval,
+                    "Macro call must be a list",
+                    &env.source,
+                    call.span
+                ));
+            };
+
+            expand_template(template, call, macro_name, depth, env)
+        }
+        MacroDef::Fn(func) => func(call),
+    }
 }
 
 /// Expands a macro template call by substituting arguments into the template body.
@@ -122,7 +181,10 @@ pub fn substitute_template(
     if depth > crate::macros::MAX_MACRO_RECURSION_DEPTH {
         return Err(err_src!(
             Internal,
-            format!("Recursion limit exceeded during substitution in macro '{}'.", macro_name),
+            format!(
+                "Recursion limit exceeded during substitution in macro '{}'.",
+                macro_name
+            ),
             &env.source,
             expr.span
         ));
@@ -135,10 +197,7 @@ pub fn substitute_template(
     }
     // Quoted expressions: do not descend into them
     if let Expr::Quote(inner, span) = &*expr.value {
-        return Ok(with_span(
-            Expr::Quote(inner.clone(), *span),
-            &expr.span,
-        ));
+        return Ok(with_span(Expr::Quote(inner.clone(), *span), &expr.span));
     }
     // List: recurse
     if let Expr::List(items, _) = &*expr.value {
@@ -173,16 +232,16 @@ pub fn substitute_template(
 // =============================
 
 // Recursively expands macros and records trace.
-fn expand_macros_with_trace(
+fn expand_all_macros_with_trace(
     node: AstNode,
     env: &mut MacroEnv,
     depth: usize,
 ) -> Result<AstNode, SutraError> {
     if let Some((_macro_name, _provenance, expanded)) = expand_macro_once(&node, env, depth)? {
         // trace is already handled in expand_macro_def via env.trace
-        return expand_macros_with_trace(expanded, env, depth + 1);
+        return expand_all_macros_with_trace(expanded, env, depth + 1);
     }
-    map_ast(node, &expand_macros_with_trace, env, depth)
+    map_ast(node, &expand_all_macros_with_trace, env, depth)
 }
 
 // Expands a macro call once, checking recursion depth.
@@ -235,14 +294,15 @@ fn expand_macro_def(
                 node.span
             )
         }),
-        MacroDef::Template(template) => expand_template(template, node, &macro_name, depth, env).map_err(|e| {
-            err_src!(
-                Internal,
-                format!("Error in macro '{}': {}", macro_name, e),
-                &env.source,
-                node.span
-            )
-        }),
+        MacroDef::Template(template) => expand_template(template, node, &macro_name, depth, env)
+            .map_err(|e| {
+                err_src!(
+                    Internal,
+                    format!("Error in macro '{}': {}", macro_name, e),
+                    &env.source,
+                    node.span
+                )
+            }),
     };
 
     if let Ok(expanded_node) = &result {
@@ -311,10 +371,7 @@ fn substitute_symbol(
 // Creates a `(list ...)` AST node from a vector of elements.
 fn make_list_call(elements: &[AstNode], span: &Span) -> AstNode {
     let mut list_call = Vec::with_capacity(elements.len() + 1);
-    list_call.push(with_span(
-        Expr::Symbol("list".to_string(), *span),
-        span,
-    ));
+    list_call.push(with_span(Expr::Symbol("list".to_string(), *span), span));
     list_call.extend_from_slice(elements);
     with_span(Expr::List(list_call, *span), span)
 }
@@ -396,7 +453,10 @@ fn substitute_spread_item(
         let Expr::List(elements, _) = &*bound_node.value else {
             return Err(err_src!(
                 Internal,
-                format!("Variadic parameter '{}' is not a list in macro '{}'", name, macro_name),
+                format!(
+                    "Variadic parameter '{}' is not a list in macro '{}'",
+                    name, macro_name
+                ),
                 &env.source,
                 inner.span
             ));
@@ -429,7 +489,10 @@ fn handle_non_symbol_spread(
     } else {
         return Err(err_src!(
             Internal,
-            format!("Spread argument did not evaluate to a list in macro '{}'", macro_name),
+            format!(
+                "Spread argument did not evaluate to a list in macro '{}'",
+                macro_name
+            ),
             &env.source,
             inner.span
         ));
@@ -504,12 +567,7 @@ fn is_variadic_param(name: &str, bindings: &HashMap<String, AstNode>) -> bool {
 // =============================
 
 /// Recursively maps a function over child AST nodes.
-fn map_ast<F>(
-    node: AstNode,
-    f: &F,
-    env: &mut MacroEnv,
-    depth: usize,
-) -> Result<AstNode, SutraError>
+fn map_ast<F>(node: AstNode, f: &F, env: &mut MacroEnv, depth: usize) -> Result<AstNode, SutraError>
 where
     F: Fn(AstNode, &mut MacroEnv, usize) -> Result<AstNode, SutraError>,
 {
@@ -553,10 +611,7 @@ where
         .map(|item| f(item.clone(), env, depth + 1))
         .collect();
 
-    Ok(with_span(
-        Expr::List(new_items?, *list_span),
-        original_span,
-    ))
+    Ok(with_span(Expr::List(new_items?, *list_span), original_span))
 }
 
 /// Recursively maps a function over branches within an If expression.

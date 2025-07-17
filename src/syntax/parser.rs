@@ -373,7 +373,7 @@ fn build_boolean(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> 
     }
 }
 
-fn build_string(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
+fn build_string(pair: Pair<Rule>, _source: &str) -> Result<AstNode, SutraError> {
     let span = get_span(&pair);
     Ok(WithSpan {
         value: Expr::String(unescape_string(pair.clone())?, span).into(),
