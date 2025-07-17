@@ -54,7 +54,10 @@ pub fn check_arity(
     if args_len < required_len {
         return Err(err_ctx!(
             Eval,
-            "Macro arity error: expected at least {} arguments, got {}",
+            format!(
+                "Macro arity error: expected at least {} arguments, got {}",
+                required_len, args_len
+            ),
             macro_name,
             *span,
             "Too few arguments for macro"
@@ -65,7 +68,10 @@ pub fn check_arity(
     if args_len > required_len && !has_variadic {
         return Err(err_ctx!(
             Eval,
-            "Macro arity error: expected exactly {} arguments, got {}",
+            format!(
+                "Macro arity error: expected exactly {} arguments, got {}",
+                required_len, args_len
+            ),
             macro_name,
             *span,
             "Too many arguments for macro"

@@ -70,18 +70,20 @@ pub struct World {
 
 impl World {
     pub fn new() -> Self {
+        let source = std::sync::Arc::new(miette::NamedSource::new("empty", "".to_string()));
         Self {
             state: WorldState::new(),
             prng: SmallRng::from_entropy(),
-            macros: macros::MacroEnv::new(),
+            macros: macros::MacroEnv::new(source),
         }
     }
 
     pub fn from_seed(seed: [u8; 32]) -> Self {
+        let source = std::sync::Arc::new(miette::NamedSource::new("empty", "".to_string()));
         Self {
             state: WorldState::new(),
             prng: SmallRng::from_seed(seed),
-            macros: macros::MacroEnv::new(),
+            macros: macros::MacroEnv::new(source),
         }
     }
 

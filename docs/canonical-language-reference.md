@@ -255,8 +255,8 @@ This section highlights specific behaviors and design choices in Sutra that migh
 | `dec!`  | 1     | `(core/set! (path ...) (- (get ...) 1))`     | Macro, Atom | impl.   |
 | `mul!`  | 2     | `(core/set! (path ...) (* (get ...) value))` | Macro, Atom | planned |
 | `div!`  | 2     | `(core/set! (path ...) (/ (get ...) value))` | Macro, Atom | planned |
-| `push!` | 1..   | `(core/push! (path ...) value ...)`          | Macro, Atom | planned |
-| `pull!` | 1..   | `(core/pull! (path ...) value ...)`          | Macro, Atom | planned |
+| `push!` | 1..   | `(core/push! (path ...) value ...)`          | Macro, Atom | impl. via core/* |
+| `pull!` | 1..   | `(core/pull! (path ...) value ...)`          | Macro, Atom | impl. via core/* |
 
 ---
 
@@ -270,7 +270,7 @@ This section highlights specific behaviors and design choices in Sutra that migh
 | `gte?`    | 0..   | —              | Greater/equal            | Atom  | impl.   | `>=`, `at-least?` |
 | `lte?`    | 0..   | —              | Less/equal               | Atom  | impl.   | `<=`, `at-most?`  |
 | `not`     | 1     | —              | Negation                 | Atom  | impl.   | —                 |
-| `has?`    | 2..   | —              | Membership in collection | Atom  | planned | —                 |
+| `has?`    | 2..   | —              | Membership in collection | Atom  | impl.   | —                 |
 | `exists?` | 1     | `core/exists?` | Path/value existence     | Macro | planned | —                 |
 | `and`     | 0..   | `(if ...)`     | Logical AND              | Macro | planned | —                 |
 | `or`      | 0..   | `(if ...)`     | Logical OR               | Macro | planned | —                 |
@@ -288,9 +288,9 @@ This section highlights specific behaviors and design choices in Sutra that migh
 | `/`   | 1..   | Division             | Atom  | impl.   |
 | `mod` | 2     | Modulo (int)         | Atom  | impl.   |
 | `len` | 1     | Length (list/string) | Atom  | impl.   |
-| `min` | 1..   | Minimum              | Atom  | planned |
-| `max` | 1..   | Maximum              | Atom  | planned |
-| `abs` | 1     | Absolute value       | Atom  | planned |
+| `min` | 1..   | Minimum              | Atom  | impl.   |
+| `max` | 1..   | Maximum              | Atom  | impl.   |
+| `abs` | 1     | Absolute value       | Atom  | impl.   |
 
 ---
 
@@ -346,7 +346,7 @@ This section highlights specific behaviors and design choices in Sutra that migh
 ```sutra
 ; Factorial function
 (define (fact n)
-  (if (<= n 1)
+  (if (lte? n 1)
       1
       (* n (fact (- n 1)))))
 (fact 5) ; => 120

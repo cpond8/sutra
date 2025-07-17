@@ -26,7 +26,7 @@ use crate::macros::types::{
 use std::collections::HashMap;
 use crate::SutraError;
 use crate::err_msg;
-use crate::err_ctx;
+use crate::err_src;
 
 // =============================
 // Public API for macro expansion
@@ -185,14 +185,7 @@ fn expand_macro_once(
         None => return Ok(None),
     };
 
-    let expanded = expand_macro_def(
-        &macro_def,
-        node,
-        &macro_name,
-        depth,
-        &mut env.trace,
-        provenance,
-    )?;
+    let expanded = expand_macro_def(&macro_def, node, &macro_name, depth, env, provenance)?;
     Ok(Some((macro_name.to_string(), provenance, expanded)))
 }
 
@@ -202,22 +195,34 @@ fn expand_macro_def(
     node: &AstNode,
     macro_name: &str,
     depth: usize,
-    trace: &mut Vec<MacroExpansionStep>,
+    env: &mut MacroEnv,
     provenance: MacroProvenance,
 ) -> Result<AstNode, SutraError> {
     let macro_name = macro_name.to_string();
     let original_node = node.clone();
 
     let result = match macro_def {
-        MacroDef::Fn(func) => func(node)
-            .map_err(|e| err_ctx!(Internal, format!("Error in macro '{}': {}", macro_name, e), macro_name.clone(), node.span, "Macro function error")),
-        MacroDef::Template(template) => expand_template(template, node, &macro_name, depth)
-            .map_err(|e| err_ctx!(Internal, format!("Error in macro '{}': {}", macro_name, e), macro_name.clone(), node.span, "Macro template error")),
+        MacroDef::Fn(func) => func(node).map_err(|e| {
+            err_src!(
+                Internal,
+                format!("Error in macro '{}': {}", macro_name, e),
+                env.source.clone(),
+                node.span
+            )
+        }),
+        MacroDef::Template(template) => expand_template(template, node, &macro_name, depth).map_err(|e| {
+            err_src!(
+                Internal,
+                format!("Error in macro '{}': {}", macro_name, e),
+                env.source.clone(),
+                node.span
+            )
+        }),
     };
 
     if let Ok(expanded_node) = &result {
         record_macro_expansion(
-            trace,
+            &mut env.trace,
             macro_name,
             provenance,
             original_node,
@@ -352,7 +357,7 @@ fn substitute_spread_item(
     if let Some(name) = extract_variadic_param_name(inner, bindings) {
         let bound_node = &bindings[name];
         let Expr::List(elements, _) = &*bound_node.value else {
-            return Err(err_ctx!(Internal, format!("Variadic parameter '{}' is not a list", name), name, inner.span, "Type error"));
+            return Err(err_msg!(Internal, format!("Variadic parameter '{}' is not a list", name)));
         };
 
         for element in elements {

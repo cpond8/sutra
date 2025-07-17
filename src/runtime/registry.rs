@@ -100,11 +100,16 @@ pub fn build_default_macro_registry() -> MacroRegistry {
 pub fn build_canonical_macro_env() -> Result<MacroEnv, SutraError> {
     let core_macros = build_core_macro_registry();
     let user_macros = load_and_process_user_macros("src/macros/macros.sutra")?;
+    let source = std::sync::Arc::new(miette::NamedSource::new(
+        "macros.sutra",
+        std::fs::read_to_string("src/macros/macros.sutra").unwrap_or_default(),
+    ));
 
     Ok(MacroEnv {
         user_macros,
         core_macros: core_macros.macros,
         trace: Vec::new(),
+        source,
     })
 }
 

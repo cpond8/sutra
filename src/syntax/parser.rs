@@ -42,7 +42,7 @@
 
 use crate::ast::{AstNode, Expr, Span, WithSpan};
 use crate::SutraError;
-use crate::err_msg;
+use crate::{err_ctx, err_msg};
 use once_cell::sync::Lazy;
 use pest::error::InputLocation;
 use pest::iterators::Pair;
@@ -70,7 +70,11 @@ pub fn parse(source: &str) -> Result<Vec<AstNode>, SutraError> {
     // `SutraParser::parse` attempts to match the `program` rule from the grammar.
     // If it fails, it returns a `pest` error, which we map to our `SutraError`.
     let pairs = SutraParser::parse(Rule::program, source).map_err(|e| {
-        err_msg!(Parse, e)
+        let span = match e.location {
+            pest::error::InputLocation::Pos(pos) => Span { start: pos, end: pos },
+            pest::error::InputLocation::Span((start, end)) => Span { start, end },
+        };
+        err_ctx!(Parse, e.to_string(), source, span)
     })?;
 
     // The `program` rule is guaranteed to have one inner pair (itself) if parsing succeeds.
@@ -350,10 +354,37 @@ fn build_string(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
 
 fn build_symbol(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     let span = get_span(&pair);
-    Ok(WithSpan {
-        value: Expr::Symbol(pair.as_str().to_string(), span).into(),
-        span,
-    })
+    let s = pair.as_str();
+
+    // If a symbol contains a dot, we treat it as a path and parse it.
+    // Otherwise, it's a regular symbol. This is the point where we can
+    // enforce security validation on paths.
+    if s.contains('.') {
+        let components: Vec<_> = s.split('.').map(|s| s.to_string()).collect();
+
+        // SECURITY: Validate against path traversal and empty components.
+        for component in &components {
+            if component == ".." {
+                return Err(err_msg!(Parse, "Path traversal using '..' is forbidden."));
+            }
+            if component.is_empty() {
+                return Err(err_msg!(
+                    Parse,
+                    "Path cannot contain empty components (e.g., 'a..b')."
+                ));
+            }
+        }
+
+        Ok(WithSpan {
+            value: Expr::Path(crate::runtime::path::Path(components), span).into(),
+            span,
+        })
+    } else {
+        Ok(WithSpan {
+            value: Expr::Symbol(s.to_string(), span).into(),
+            span,
+        })
+    }
 }
 
 /// Pure helper function to unescape a string from a `pest` `Pair`.

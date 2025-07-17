@@ -17,8 +17,24 @@
 //
 // - **Minimal Coupling**: Each domain module depends only on `helpers`
 // - **Clear Responsibilities**: Each module has a single, well-defined purpose
-
-// - **Consistent Interface**: All atoms use the same `AtomFn` signature
+//
+// ## CRITICAL: Atom Classification and Calling Conventions
+//
+// The Sutra engine supports two incompatible calling conventions for atoms,
+// determined by the `Atom` enum variant used at registration:
+//
+// 1.  **Eager Evaluation (`Pure`, `Stateful`)**: Arguments are evaluated *before*
+//     the atom is called. The atom receives a `&[Value]`. This is the standard
+//     convention for most atoms.
+//
+// 2.  **Lazy Evaluation (`SpecialForm`)**: Arguments are passed *unevaluated* as
+//     `&[AstNode]`. The atom is responsible for evaluating them as needed. This
+//     is used for control flow operators like `if`, `do`, and `define`.
+//
+// **Misclassifying an atom will cause immediate runtime failures.** For example,
+// registering a `SpecialForm` atom as `Pure` will lead to incorrect evaluation
+// and likely panic. Debug assertions have been added to `eval::call_atom` to
+// catch such misclassifications for known special forms.
 
 use crate::ast::value::Value;
 use crate::ast::AstNode;
@@ -31,22 +47,11 @@ use crate::SutraError;
 use crate::err_msg;
 
 // ============================================================================
-// CORE TYPES AND TRAITS
-// ============================================================================
-
-// Atom function type: takes AST arguments, the current evaluation context,
-// and the span of the parent expression for better error reporting.
-// It returns a tuple containing the resulting Value and the new World state,
-// ensuring that all state changes are explicit and pure.
-pub type AtomFn = fn(
-    args: &[AstNode],
-    context: &mut EvalContext,
-    parent_span: &Span,
-) -> Result<(Value, World), SutraError>;
-
-// ============================================================================
 // NEW ATOM ARCHITECTURE TYPES
 // ============================================================================
+//
+// The `Atom` enum and its associated function types are the foundation of the
+// dual-convention architecture. Correct classification is critical for stability.
 
 /// Pure atoms: operate only on values, no state access
 pub type PureAtomFn = fn(args: &[Value]) -> Result<Value, SutraError>;

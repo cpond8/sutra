@@ -85,3 +85,7 @@
         (true "third")
         (true "fourth")
         (else "else")))
+
+(test "control: if - type error on non-boolean condition"
+      (expect (error TypeError) (tags "control" "type-safety"))
+      (if "not-a-boolean" "then" "else"))

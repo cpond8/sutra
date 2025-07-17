@@ -232,31 +232,133 @@ pub enum TestResult {
 
 /// Parses an expectation form into a TestExpectation.
 fn parse_expectation(expect_node: &crate::ast::AstNode) -> Result<TestExpectation, SutraError> {
-    use crate::ast::{Expr, value::Value};
+    use crate::ast::{value::Value, Expr};
 
-    match &*expect_node.value {
-        Expr::List(items, _) if !items.is_empty() => {
-            let head = &items[0];
-            match &*head.value {
-                Expr::Symbol(s, _) if s == "expect" && items.len() >= 2 => {
-                    let expectation = &items[1];
-                    match &*expectation.value {
-                        // (expect <value>)
+    // The `expect_node` is the full `(expect ...)` form.
+    let Expr::List(items, _) = &*expect_node.value else {
+        return Err(err_msg!(Validation, "Expectation must be a list"));
+    };
+
+    // Basic validation: must start with 'expect' and have at least one argument.
+    if items.len() < 2 {
+        return Err(err_msg!(
+            Validation,
+            "Expectation requires at least one argument"
+        ));
+    }
+    if let Expr::Symbol(s, _) = &*items[0].value {
+        if s != "expect" {
+            return Err(err_msg!(
+                Validation,
+                "Expectation must start with 'expect' symbol"
+            ));
+        }
+    } else {
+        return Err(err_msg!(
+            Validation,
+            "Expectation must start with 'expect' symbol"
+        ));
+    }
+
+    // Check for a `(skip "reason")` tag anywhere in the list.
+    // This allows for forms like `(expect (value 1) (skip "reason"))`.
+    for item in &items[1..] {
+        if let Expr::List(tag_items, _) = &*item.value {
+            if let Some(Expr::Symbol(tag_name, _)) = tag_items.first().map(|h| &*h.value) {
+                if tag_name == "skip" {
+                    let reason = if tag_items.len() > 1 {
+                        if let Expr::String(rs, _) = &*tag_items[1].value {
+                            rs.clone()
+                        } else {
+                            "No reason provided".to_string()
+                        }
+                    } else {
+                        "No reason provided".to_string()
+                    };
+                    return Ok(TestExpectation::Skip(reason));
+                }
+            }
+        }
+    }
+
+    // If not skipped, parse the primary expectation, which must be the first argument.
+    let primary_expectation_node = &items[1];
+    match &*primary_expectation_node.value {
+        Expr::List(primary_items, _) if !primary_items.is_empty() => {
+            let head = &primary_items[0];
+            let head_symbol = if let Expr::Symbol(s, _) = &*head.value {
+                s.as_str()
+            } else {
+                ""
+            };
+
+            match head_symbol {
+                "value" => {
+                    if primary_items.len() != 2 {
+                        return Err(err_msg!(
+                            Validation,
+                            "(value) expectation requires exactly one argument"
+                        ));
+                    }
+                    let value_node = &primary_items[1];
+                    match &*value_node.value {
                         Expr::Number(n, _) => Ok(TestExpectation::Value(Value::Number(*n))),
                         Expr::String(s, _) => Ok(TestExpectation::Value(Value::String(s.clone()))),
                         Expr::Bool(b, _) => Ok(TestExpectation::Value(Value::Bool(*b))),
                         Expr::Symbol(s, _) if s == "nil" => Ok(TestExpectation::Value(Value::Nil)),
-                        Expr::Symbol(s, _) if s == "true" => Ok(TestExpectation::Value(Value::Bool(true))),
-                        Expr::Symbol(s, _) if s == "false" => Ok(TestExpectation::Value(Value::Bool(false))),
-                        // Error expectation types
-                        Expr::Symbol(err_type, _) => Ok(TestExpectation::Error(err_type.clone())),
-                        _ => Err(err_msg!(Validation, "Unsupported expectation type")),
+                        Expr::Symbol(s, _) if s == "true" => {
+                            Ok(TestExpectation::Value(Value::Bool(true)))
+                        }
+                        Expr::Symbol(s, _) if s == "false" => {
+                            Ok(TestExpectation::Value(Value::Bool(false)))
+                        }
+                        _ => Err(err_msg!(
+                            Validation,
+                            "Unsupported value type in (value ...) expectation"
+                        )),
                     }
                 }
-                _ => Err(err_msg!(Validation, "Invalid expectation form")),
+                "error" => {
+                    if primary_items.len() != 2 {
+                        return Err(err_msg!(
+                            Validation,
+                            "(error) expectation requires exactly one argument"
+                        ));
+                    }
+                    let error_node = &primary_items[1];
+                    if let Expr::Symbol(err_type, _) = &*error_node.value {
+                        Ok(TestExpectation::Error(err_type.clone()))
+                    } else {
+                        Err(err_msg!(
+                            Validation,
+                            "Error type in (error ...) expectation must be a symbol"
+                        ))
+                    }
+                }
+                "output" => {
+                    if primary_items.len() != 2 {
+                        return Err(err_msg!(
+                            Validation,
+                            "(output) expectation requires exactly one argument"
+                        ));
+                    }
+                    let output_node = &primary_items[1];
+                    if let Expr::String(s, _) = &*output_node.value {
+                        Ok(TestExpectation::Output(s.clone()))
+                    } else {
+                        Err(err_msg!(
+                            Validation,
+                            "Output in (output ...) expectation must be a string"
+                        ))
+                    }
+                }
+                _ => Err(err_msg!(Validation, "Unsupported primary expectation type")),
             }
         }
-        _ => Err(err_msg!(Validation, "Expectation must be a list")),
+        _ => Err(err_msg!(
+            Validation,
+            "Primary expectation must be a list like (value ...) or (error ...)"
+        )),
     }
 }
 
@@ -587,23 +689,30 @@ pub fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
     let mut errors = 0;
 
     for (test_name, test_def) in tests {
-        let result = match parse_expectation(&test_def.expect) {
+        match parse_expectation(&test_def.expect) {
             Ok(expectation) => {
-                let (exec_result, output) = execute_test_body(&test_def.body);
-                check_test_expectation(exec_result, &output, &expectation)
+                let result = match &expectation {
+                    TestExpectation::Skip(reason) => TestResult::Skip { reason: reason.clone() },
+                    _ => {
+                        let (exec_result, output) = execute_test_body(&test_def.body);
+                        check_test_expectation(exec_result, &output, &expectation)
+                    }
+                };
+                print_test_result(&test_name, &result, &mut stdout);
+                match result {
+                    TestResult::Pass => passed += 1,
+                    TestResult::Fail { .. } => failed += 1,
+                    TestResult::Skip { .. } => skipped += 1,
+                    TestResult::Error { .. } => errors += 1,
+                }
             }
-            Err(e) => TestResult::Error {
-                message: format!("Failed to parse expectation: {}", e),
+            Err(e) => {
+                let result = TestResult::Error {
+                    message: format!("Failed to parse expectation: {}", e),
+                };
+                print_test_result(&test_name, &result, &mut stdout);
+                errors += 1;
             }
-        };
-
-        print_test_result(&test_name, &result, &mut stdout);
-
-        match result {
-            TestResult::Pass => passed += 1,
-            TestResult::Fail { .. } => failed += 1,
-            TestResult::Skip { .. } => skipped += 1,
-            TestResult::Error { .. } => errors += 1,
         }
     }
 

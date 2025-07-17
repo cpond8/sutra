@@ -47,28 +47,28 @@
       (del!))
 
 ;;;
-;;; 3. Add and Subtract (add!, sub!)
+;;; 3. Add and Subtract (add, sub)
 ;;;
 
-(test "assignment: add! success"
+(test "assignment: add success"
       (expect (value 125) (tags "assignment"))
       (do
         (set! player.mana 100)
-        (add! player.mana 25)
+        (add player.mana 25)
         (get player.mana)))
 
-(test "assignment: sub! success"
+(test "assignment: sub success"
       (expect (value 75) (tags "assignment"))
       (do
         (set! player.mana 100)
-        (sub! player.mana 25)
+        (sub player.mana 25)
         (get player.mana)))
 
-(test "assignment: add! type error"
+(test "assignment: add type error"
       (expect (error TypeError) (tags "assignment"))
       (do
         (set! player.name "Roo")
-        (add! player.name 10)))
+        (add player.name 10)))
 
 ;;;
 ;;; 4. Increment and Decrement (inc!, dec!)
@@ -89,5 +89,5 @@
         (get counter)))
 
 (test "assignment: inc! arity error"
-      (expect (error ArityError) (tags "assignment") (skip "Demonstration of skip feature for test harness."))
+      (expect (error ArityError) (tags "assignment") (skip "Skipping invalid inc! test."))
       (inc! counter 2))

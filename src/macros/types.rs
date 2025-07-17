@@ -32,7 +32,9 @@
 use crate::ast::{AstNode, ParamList};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 use crate::err_msg;
+use miette::NamedSource;
 
 /// Maximum recursion depth for macro expansion to prevent infinite loops.
 pub const MAX_MACRO_RECURSION_DEPTH: usize = 128;
@@ -161,7 +163,8 @@ pub struct MacroExpansionStep {
 ///
 /// ```rust
 /// use sutra::macros::MacroEnv;
-/// let env = MacroEnv::new();
+/// let source = std::sync::Arc::new(miette::NamedSource::new("test", ""));
+/// let env = MacroEnv::new(source);
 /// assert!(env.user_macros.is_empty());
 /// assert!(env.core_macros.is_empty());
 /// assert!(env.trace.is_empty());
@@ -174,6 +177,8 @@ pub struct MacroEnv {
     pub core_macros: HashMap<String, MacroDef>,
     /// Trace of macro expansion steps
     pub trace: Vec<MacroExpansionStep>,
+    /// The source code being processed, for error reporting.
+    pub source: Arc<NamedSource<String>>,
 }
 
 // ============================================================================
@@ -238,16 +243,18 @@ impl MacroEnv {
     /// ```rust
     /// use sutra::macros::MacroEnv;
     ///
-    /// let env = MacroEnv::new();
+    /// let source = std::sync::Arc::new(miette::NamedSource::new("test", ""));
+    /// let env = MacroEnv::new(source);
     /// assert!(env.user_macros.is_empty());
     /// assert!(env.core_macros.is_empty());
     /// assert!(env.trace.is_empty());
     /// ```
-    pub fn new() -> Self {
+    pub fn new(source: Arc<NamedSource<String>>) -> Self {
         Self {
             user_macros: HashMap::new(),
             core_macros: HashMap::new(),
             trace: Vec::new(),
+            source,
         }
     }
 
@@ -272,7 +279,8 @@ impl MacroEnv {
     /// ```rust
     /// use sutra::macros::{MacroEnv, MacroProvenance};
     ///
-    /// let env = MacroEnv::new();
+    /// let source = std::sync::Arc::new(miette::NamedSource::new("test", ""));
+    /// let env = MacroEnv::new(source);
     /// match env.lookup_macro("my-macro") {
     ///     Some((MacroProvenance::User, _def)) => println!("Found user macro"),
     ///     Some((MacroProvenance::Core, _def)) => println!("Found core macro"),
@@ -301,7 +309,8 @@ impl MacroEnv {
     /// ```rust
     /// use sutra::macros::MacroEnv;
     ///
-    /// let env = MacroEnv::new();
+    /// let source = std::sync::Arc::new(miette::NamedSource::new("test", ""));
+    /// let env = MacroEnv::new(source);
     /// let trace = env.trace();
     /// for step in trace {
     ///     println!("Expanded macro: {}", step.macro_name);
@@ -320,11 +329,6 @@ impl MacroEnv {
     }
 }
 
-impl Default for MacroEnv {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 // ============================================================================
 // HELPER FUNCTIONS

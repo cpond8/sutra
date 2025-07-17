@@ -59,8 +59,8 @@
 
 mod expander;
 mod loader;
-mod registry;
-mod types;
+pub mod registry;
+pub mod types;
 
 pub mod std;
 pub mod definition;
@@ -86,6 +86,7 @@ pub use loader::{check_arity, load_macros_from_file, parse_macros_from_source};
 // Expansion operations - re-exported from expander module
 pub use expander::{bind_macro_params, expand_macros, expand_template, substitute_template};
 
+use ::std::sync;
 // ============================================================================
 // CONVENIENCE FUNCTIONS
 // ============================================================================
@@ -99,13 +100,16 @@ pub use expander::{bind_macro_params, expand_macros, expand_template, substitute
 ///
 /// ```rust
 /// use sutra::macros::create_macro_env;
+/// use std::sync::Arc;
+/// use miette::NamedSource;
 ///
-/// let env = create_macro_env();
+/// let source = Arc::new(NamedSource::new("test", "".to_string()));
+/// let env = create_macro_env(source);
 /// assert!(env.user_macros.is_empty());
 /// assert!(env.core_macros.is_empty());
 /// ```
-pub fn create_macro_env() -> MacroEnv {
-    MacroEnv::new()
+pub fn create_macro_env(source: sync::Arc<miette::NamedSource<String>>) -> MacroEnv {
+    MacroEnv::new(source)
 }
 
 /// Creates a new macro registry.

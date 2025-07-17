@@ -66,7 +66,34 @@
 (define (null? lst)
   (eq? (len lst) 0))
 
-;; TODO: Add/verify helpers: car, cdr, cadr, null?, error, len, eq?, not
+;; Core Dependencies & Helpers
+;;
+;; The macros in this file depend on several built-in atoms and special forms
+;; that must be provided by the engine's runtime.
+;;
+;; Special Forms (provided by the parser/evaluator):
+;; - let, letrec, lambda
+;;
+;; Built-in Atoms (provided by the atom registry):
+;; - get, slice, len, eq?, not, error, str, apply, core/str+
+;;
+;; The following helpers are defined for use in other macros.
+
+;; Append two lists.
+(define (append l1 l2)
+  (if (null? l1)
+      l2
+      (cons (car l1) (append (cdr l1) l2))))
+
+;; Map a function over a list.
+(define (map f lst)
+  (if (null? lst)
+      '()
+      (cons (f (car lst)) (map f (cdr lst)))))
+
+;; Prepend an element to a list.
+(define (cons el lst)
+  (core/prepend el lst))
 
 ;; String concatenation macro: str+
 ;; Concatenates any number of string arguments into a single string.
@@ -131,3 +158,10 @@
 ;; It is a placeholder here and will be parsed by the `register-test!` atom.
 (define (expect ...conditions)
   (cons 'expect conditions))
+
+;; Increment and decrement macros
+(define (inc! path)
+  (list 'core/set! path (list '+ (list 'get path) 1)))
+
+(define (dec! path)
+  (list 'core/set! path (list '- (list 'get path) 1)))

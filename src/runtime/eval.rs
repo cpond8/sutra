@@ -7,6 +7,17 @@
 //! The evaluation engine transforms parsed AST expressions into runtime values while
 //! maintaining world state consistency and handling recursive evaluation contexts.
 //!
+//! ## CRITICAL: Atom Calling Conventions
+//!
+//! This module correctly dispatches to atoms based on their registered `Atom`
+//! variant (`Pure`, `Stateful`, or `SpecialForm`). `Pure` and `Stateful` atoms
+//! have their arguments eagerly evaluated, while `SpecialForm` atoms receive
+//! unevaluated `AstNode`s to manage their own evaluation.
+//!
+//! **It is a critical safety violation to misclassify an atom.** See the
+//! documentation in `src/atoms/mod.rs` for a detailed explanation of the
+//! dual-convention architecture.
+//!
 //! ## Error Handling
 //!
 //! All errors in this module are reported via the unified `SutraError` type and must be constructed using the `err_msg!` or `err_ctx!` macro. See `src/diagnostics.rs` for macro arms and usage rules.
@@ -27,7 +38,7 @@ use crate::atoms::{AtomRegistry, OutputSink};
 use crate::diagnostics::SutraError;
 use crate::runtime::context::ExecutionContext;
 use crate::runtime::world::World;
-use crate::{err_ctx, err_msg};
+use crate::err_src;
 use miette::NamedSource;
 use std::sync::Arc;
 
@@ -107,24 +118,50 @@ impl EvalContext<'_, '_> {
 
         // If not a macro, try to resolve as an atom
         let Some(atom) = self.atom_registry.get(symbol_name).cloned() else {
-            return Err(err_ctx!(Eval, "Undefined symbol: '{}'", symbol_name));
+            return Err(err_src!(
+                Eval,
+                format!("Undefined symbol: '{}'", symbol_name),
+                self.source.clone(),
+                head.span
+            ));
         };
+        // --- SAFETY VALIDATION (DEBUG ONLY) ---
+        // This assertion prevents special form atoms, which have a unique calling
+        // convention (lazy evaluation), from being misclassified as Pure or Stateful
+        // atoms, which would cause runtime failures.
+        #[cfg(debug_assertions)]
+        {
+            const SPECIAL_FORMS: &[&str] = &[
+                "do",
+                "error",
+                "apply",
+                "assert",
+                "assert-eq",
+                // Test-only special forms
+                "test/echo",
+                "test/borrow_stress",
+                "register-test!",
+            ];
+
+            if SPECIAL_FORMS.contains(&symbol_name) {
+                assert!(
+                    matches!(atom, crate::atoms::Atom::SpecialForm(_)),
+                    "CRITICAL: Atom '{}' is a special form and MUST be registered as Atom::SpecialForm.",
+                    symbol_name
+                );
+            }
+        }
+
 
         // Dispatch to the correct atom type.
         match atom {
             // The special form path, for atoms that control their own evaluation.
             crate::atoms::Atom::SpecialForm(special_form_fn) => special_form_fn(args, self, span),
 
-            // The new path for atoms that need to interact with the world state.
+            // Eagerly evaluated atoms (Pure and Stateful)
             crate::atoms::Atom::Stateful(stateful_fn) => {
-                // Convert AstNodes to Values for stateful atoms
-                let mut values = Vec::new();
-                for arg in args {
-                    let (val, _) = eval_expr(arg, self)?;
-                    values.push(val);
-                }
-                // Create a mutable reference to world for state modifications
-                let mut world_context = self.world.clone();
+                let (values, world_after_args) = eval_eager_args(args, self)?;
+                let mut world_context = world_after_args;
                 let result = {
                     let mut exec_context = ExecutionContext {
                         state: &mut world_context.state,
@@ -136,16 +173,10 @@ impl EvalContext<'_, '_> {
                 Ok((result, world_context))
             }
 
-            // The new path for pure functions that have no side effects.
             crate::atoms::Atom::Pure(pure_fn) => {
-                // Convert AstNodes to Values for pure atoms
-                let mut values = Vec::new();
-                for arg in args {
-                    let (val, _) = eval_expr(arg, self)?;
-                    values.push(val);
-                }
+                let (values, world_after_args) = eval_eager_args(args, self)?;
                 let result = pure_fn(&values)?;
-                Ok((result, self.world.clone()))
+                Ok((result, world_after_args))
             }
         }
     }
@@ -154,6 +185,34 @@ impl EvalContext<'_, '_> {
 // ===================================================================================================
 // DRY UTILITIES: Common Evaluation Patterns
 // ===================================================================================================
+
+/// Evaluates arguments for eager atoms (Pure, Stateful), threading world state.
+fn eval_eager_args(
+    args: &[AstNode],
+    context: &mut EvalContext,
+) -> Result<(Vec<Value>, World), SutraError> {
+    let mut values = Vec::with_capacity(args.len());
+    let mut current_world = context.world.clone();
+
+    for arg in args {
+        let (val, next_world) = {
+            let next_depth = context.next_depth();
+            let mut arg_context = EvalContext {
+                world: &current_world,
+                output: &mut *context.output,
+                atom_registry: context.atom_registry,
+                source: context.source.clone(),
+                max_depth: context.max_depth,
+                depth: next_depth,
+            };
+            eval_expr(arg, &mut arg_context)?
+        };
+        values.push(val);
+        current_world = next_world;
+    }
+
+    Ok((values, current_world))
+}
 
 /// Wraps a value with the current world state in the standard (Value, World) result format.
 fn wrap_value_with_world(value: Value, world: &World) -> Result<(Value, World), SutraError> {
@@ -169,32 +228,70 @@ fn eval_condition_as_bool(
 
     // Guard clause: ensure condition evaluates to boolean
     let Value::Bool(b) = cond_val else {
-        return Err(err_msg!(TypeError, "Type error: if condition must be boolean"));
+        return Err(err_src!(
+            TypeError,
+            "if condition must be boolean",
+            context.source.clone(),
+            condition.span
+        ));
     };
 
     Ok((b, next_world))
 }
 
 /// Evaluates literal value expressions (Path, String, Number, Bool).
-fn eval_literal_value(expr: &AstNode, world: &World) -> Result<(Value, World), SutraError> {
+fn eval_literal_value(
+    expr: &AstNode,
+    context: &mut EvalContext,
+) -> Result<(Value, World), SutraError> {
     let value = match &*expr.value {
         Expr::Path(p, _) => Value::Path(p.clone()),
         Expr::String(s, _) => Value::String(s.clone()),
         Expr::Number(n, _) => Value::Number(*n),
         Expr::Bool(b, _) => Value::Bool(*b),
-        _ => return Err(err_msg!(Internal, "eval_literal_value called with non-literal expression")),
+        _ => {
+            return Err(err_src!(
+                Internal,
+                "eval_literal_value called with non-literal expression",
+                context.source.clone(),
+                expr.span
+            ))
+        }
     };
-    wrap_value_with_world(value, world)
+    wrap_value_with_world(value, context.world)
 }
 
 /// Handles evaluation of invalid expression types that cannot be evaluated at runtime.
-fn eval_invalid_expr(expr: &AstNode) -> Result<(Value, World), SutraError> {
-    match &*expr.value {
-        Expr::ParamList(_) => Err(err_msg!(Eval, "Cannot evaluate parameter list (ParamList AST node) at runtime")),
-        Expr::Symbol(s, _span) => Err(err_msg!(TypeError, format!("Type error: explicit (get ...) call required for symbol evaluation: {}", s))),
-        Expr::Spread(_) => Err(err_msg!(Eval, "Spread argument not allowed outside of call position (list context)")),
+fn eval_invalid_expr(
+    expr: &AstNode,
+    context: &mut EvalContext,
+) -> Result<(Value, World), SutraError> {
+    let (msg, span) = match &*expr.value {
+        Expr::ParamList(_) => (
+            "Cannot evaluate parameter list (ParamList AST node) at runtime",
+            expr.span,
+        ),
+        Expr::Symbol(s, span) => {
+            // Attempt to resolve the symbol as a path in the world state.
+            // This allows for dynamic access to world variables.
+            let path = crate::runtime::path::Path(vec![s.clone()]);
+            if let Some(value) = context.world.state.get(&path) {
+                return wrap_value_with_world(value.clone(), context.world);
+            }
+
+            // If the symbol is not found in the world state, it's an undefined symbol.
+            (
+                "explicit (get ...) call required for symbol evaluation",
+                *span,
+            )
+        }
+        Expr::Spread(_) => (
+            "Spread argument not allowed outside of call position (list context)",
+            expr.span,
+        ),
         _ => unreachable!("eval_invalid_expr called with valid expression type"),
-    }
+    };
+    Err(err_src!(Eval, msg, context.source.clone(), span))
 }
 
 // ===================================================================================================
@@ -207,7 +304,12 @@ fn eval_invalid_expr(expr: &AstNode) -> Result<(Value, World), SutraError> {
 /// This is a low-level, internal function. Most users should use the higher-level `eval` API.
 pub fn eval_expr(expr: &AstNode, context: &mut EvalContext) -> Result<(Value, World), SutraError> {
     if context.depth > context.max_depth {
-        return Err(err_msg!(Internal, "Recursion limit exceeded"));
+        return Err(err_src!(
+            Internal,
+            "Recursion limit exceeded",
+            context.source.clone(),
+            expr.span
+        ));
     }
 
     match &*expr.value {
@@ -243,11 +345,11 @@ pub fn eval_expr(expr: &AstNode, context: &mut EvalContext) -> Result<(Value, Wo
 
         // Literal value types
         Expr::Path(..) | Expr::String(..) | Expr::Number(..) | Expr::Bool(..) => {
-            eval_literal_value(expr, context.world)
+            eval_literal_value(expr, context)
         }
 
         // Invalid expression types
-        Expr::ParamList(..) | Expr::Symbol(..) | Expr::Spread(..) => eval_invalid_expr(expr),
+        Expr::ParamList(..) | Expr::Symbol(..) | Expr::Spread(..) => eval_invalid_expr(expr, context),
     }
 }
 
@@ -291,7 +393,12 @@ fn eval_list(
     let head = &items[0];
     let tail = &items[1..];
     let Expr::Symbol(symbol_name, _) = &*head.value else {
-        return Err(err_msg!(Eval, "Arity error: first element must be a symbol naming a callable entity"));
+        return Err(err_src!(
+            Eval,
+            "first element must be a symbol naming a callable entity",
+            context.source.clone(),
+            head.span
+        ));
     };
 
     // Use direct atom resolution
@@ -306,7 +413,7 @@ fn eval_quote(
 ) -> Result<(Value, World), SutraError> {
     match &*inner.value {
         Expr::Symbol(s, _) => wrap_value_with_world(Value::String(s.clone()), context.world),
-        Expr::List(exprs, _) => wrap_value_with_world(eval_quoted_list(exprs)?, context.world),
+        Expr::List(exprs, _) => wrap_value_with_world(eval_quoted_list(exprs, context)?, context.world),
         Expr::Number(n, _) => wrap_value_with_world(Value::Number(*n), context.world),
         Expr::Bool(b, _) => wrap_value_with_world(Value::Bool(*b), context.world),
         Expr::String(s, _) => wrap_value_with_world(Value::String(s.clone()), context.world),
@@ -318,9 +425,24 @@ fn eval_quote(
             ..
         } => eval_quoted_if(condition, then_branch, else_branch, context),
         Expr::Quote(_, _) => wrap_value_with_world(Value::Nil, context.world),
-        Expr::Define { .. } => Err(err_msg!(Eval, "Cannot quote define expressions")),
-        Expr::ParamList(_) => Err(err_msg!(Eval, "Cannot evaluate parameter list (ParamList AST node) at runtime")),
-        Expr::Spread(_) => Err(err_msg!(Eval, "Spread argument not allowed inside quote")),
+        Expr::Define { .. } => Err(err_src!(
+            Eval,
+            "Cannot quote define expressions",
+            context.source.clone(),
+            inner.span
+        )),
+        Expr::ParamList(_) => Err(err_src!(
+            Eval,
+            "Cannot evaluate parameter list (ParamList AST node) at runtime",
+            context.source.clone(),
+            inner.span
+        )),
+        Expr::Spread(_) => Err(err_src!(
+            Eval,
+            "Spread argument not allowed inside quote",
+            context.source.clone(),
+            inner.span
+        )),
     }
 }
 
@@ -348,21 +470,32 @@ fn eval_if(
 // --- Quote Expression Helpers ---
 
 /// Evaluates a single expression within a quote context.
-fn eval_quoted_expr(expr: &AstNode) -> Result<Value, SutraError> {
+fn eval_quoted_expr(expr: &AstNode, context: &EvalContext) -> Result<Value, SutraError> {
     match &*expr.value {
         Expr::Symbol(s, _) => Ok(Value::String(s.clone())),
         Expr::Number(n, _) => Ok(Value::Number(*n)),
         Expr::Bool(b, _) => Ok(Value::Bool(*b)),
         Expr::String(s, _) => Ok(Value::String(s.clone())),
-        Expr::ParamList(_) => Err(err_msg!(Eval, "Cannot evaluate parameter list (ParamList AST node) inside quote")),
-        Expr::Spread(_) => Err(err_msg!(Eval, "Spread argument not allowed inside quote")),
+        Expr::ParamList(_) => Err(err_src!(
+            Eval,
+            "Cannot evaluate parameter list (ParamList AST node) inside quote",
+            context.source.clone(),
+            expr.span
+        )),
+        Expr::Spread(_) => Err(err_src!(
+            Eval,
+            "Spread argument not allowed inside quote",
+            context.source.clone(),
+            expr.span
+        )),
         _ => Ok(Value::Nil),
     }
 }
 
 /// Evaluates a quoted list by converting each element to a value.
-fn eval_quoted_list(exprs: &[AstNode]) -> Result<Value, SutraError> {
-    let vals: Result<Vec<_>, SutraError> = exprs.iter().map(eval_quoted_expr).collect();
+fn eval_quoted_list(exprs: &[AstNode], context: &EvalContext) -> Result<Value, SutraError> {
+    let vals: Result<Vec<_>, SutraError> =
+        exprs.iter().map(|e| eval_quoted_expr(e, context)).collect();
     Ok(Value::List(vals?))
 }
 
@@ -409,7 +542,12 @@ fn flatten_spread_args(
 
         // Guard clause: ensure we have a list for spreading
         let Value::List(items) = val else {
-            return Err(err_msg!(TypeError, format!("Type error: spread argument must be a list: {}", &val)));
+            return Err(err_src!(
+                TypeError,
+                format!("spread argument must be a list: {}", &val),
+                context.source.clone(),
+                expr.span
+            ));
         };
 
         // Process list items without nesting

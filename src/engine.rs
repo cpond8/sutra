@@ -42,11 +42,33 @@ pub fn run_sutra_source_with_output(
     // 7. Expand macros
     let expanded = expand_macros(program, &mut env)?;
 
-    // 8. Validation step (currently disabled)
+    // 8. Validation step
+    let atom_registry = crate::runtime::registry::build_default_atom_registry();
+    let mut combined_macros = env.core_macros.clone();
+    combined_macros.extend(env.user_macros.clone());
+    let macro_registry_for_validation = crate::macros::MacroRegistry {
+        macros: combined_macros,
+    };
+    let validation_result = crate::validation::semantic::validate_expanded_ast(
+        &expanded,
+        &macro_registry_for_validation,
+        &atom_registry,
+    );
+
+    if !validation_result.is_valid() {
+        // For now, just print errors to stderr. A more robust error handling
+        // mechanism will be added later.
+        let error_message = validation_result.errors.join("\n");
+        return Err(err_ctx!(
+            Validation,
+            format!("Semantic validation failed:\n{}", error_message),
+            source,
+            expanded.span
+        ));
+    }
 
     // 9. Evaluate the expanded AST
     let world = World::default();
-    let atom_registry = crate::runtime::registry::build_default_atom_registry();
     let source = Arc::new(NamedSource::new("source", source.to_string()));
     let (result, _updated_world) =
         eval(&expanded, &world, output, &atom_registry, source.clone(), 100)?;
