@@ -25,7 +25,6 @@ use crate::macros::types::{
 };
 use std::collections::HashMap;
 use crate::SutraError;
-use crate::err_msg;
 use crate::err_src;
 
 // =============================
@@ -45,21 +44,32 @@ pub fn expand_template(
     call: &AstNode,
     macro_name: &str,
     depth: usize,
+    env: &MacroEnv,
 ) -> Result<AstNode, SutraError> {
     if depth > crate::macros::MAX_MACRO_RECURSION_DEPTH {
-        return Err(err_msg!(Internal, "Recursion limit exceeded"));
+        return Err(err_src!(
+            Internal,
+            format!("Recursion limit exceeded in macro '{}'.", macro_name),
+            &env.source,
+            call.span
+        ));
     }
 
     let (args, span) = match &*call.value {
         Expr::List(items, span) if !items.is_empty() => (&items[1..], span),
         _ => {
-            return Err(err_msg!(Internal, "Macro call must be a non-empty list"));
+            return Err(err_src!(
+                Internal,
+                format!("Macro call to '{}' must be a non-empty list", macro_name),
+                &env.source,
+                call.span
+            ));
         }
     };
 
     crate::macros::loader::check_arity(args.len(), &template.params, macro_name, span)?;
     let bindings = bind_macro_params(args, &template.params, span);
-    substitute_template(&template.body, &bindings)
+    substitute_template(&template.body, &bindings, env, depth + 1, macro_name)
 }
 
 /// Binds macro parameters to arguments, returning a map for template substitution.
@@ -105,14 +115,24 @@ pub fn bind_macro_params(
 pub fn substitute_template(
     expr: &AstNode,
     bindings: &HashMap<String, AstNode>,
+    env: &MacroEnv,
+    depth: usize,
+    macro_name: &str,
 ) -> Result<AstNode, SutraError> {
+    if depth > crate::macros::MAX_MACRO_RECURSION_DEPTH {
+        return Err(err_src!(
+            Internal,
+            format!("Recursion limit exceeded during substitution in macro '{}'.", macro_name),
+            &env.source,
+            expr.span
+        ));
+    }
     // Symbol substitution (including variadic)
     if let Expr::Symbol(name, _) = &*expr.value {
         if let Some(result) = substitute_symbol(name, expr, bindings) {
             return result;
         }
     }
-
     // Quoted expressions: do not descend into them
     if let Expr::Quote(inner, span) = &*expr.value {
         return Ok(with_span(
@@ -120,12 +140,10 @@ pub fn substitute_template(
             &expr.span,
         ));
     }
-
     // List: recurse
     if let Expr::List(items, _) = &*expr.value {
-        return substitute_list(items, bindings, &expr.span);
+        return substitute_list(items, bindings, &expr.span, env, depth + 1, macro_name);
     }
-
     // If: recurse
     if let Expr::If {
         condition,
@@ -141,9 +159,11 @@ pub fn substitute_template(
             bindings,
             span,
             &expr.span,
+            env,
+            depth + 1,
+            macro_name,
         );
     }
-
     // Default: return as is (atomic types)
     Ok(expr.clone())
 }
@@ -176,7 +196,12 @@ fn expand_macro_once(
     };
 
     if depth > crate::macros::MAX_MACRO_RECURSION_DEPTH {
-        return Err(err_msg!(Internal, "Recursion limit exceeded"));
+        return Err(err_src!(
+            Internal,
+            "Recursion limit exceeded",
+            &env.source,
+            node.span
+        ));
     }
 
     // Clone MacroDef to avoid holding a borrow of env
@@ -206,15 +231,15 @@ fn expand_macro_def(
             err_src!(
                 Internal,
                 format!("Error in macro '{}': {}", macro_name, e),
-                env.source.clone(),
+                &env.source,
                 node.span
             )
         }),
-        MacroDef::Template(template) => expand_template(template, node, &macro_name, depth).map_err(|e| {
+        MacroDef::Template(template) => expand_template(template, node, &macro_name, depth, env).map_err(|e| {
             err_src!(
                 Internal,
                 format!("Error in macro '{}': {}", macro_name, e),
-                env.source.clone(),
+                &env.source,
                 node.span
             )
         }),
@@ -299,16 +324,19 @@ fn substitute_list(
     items: &[AstNode],
     bindings: &HashMap<String, AstNode>,
     original_span: &Span,
+    env: &MacroEnv,
+    depth: usize,
+    macro_name: &str,
 ) -> Result<AstNode, SutraError> {
     let mut new_items = Vec::new();
 
     for item in items {
         // Handle explicit spread (e.g., ...args)
-        if try_handle_spread_item(item, bindings, &mut new_items)? {
+        if try_handle_spread_item(item, bindings, &mut new_items, env, depth, macro_name)? {
             continue;
         }
         // Handle regular substitution (no implicit splicing)
-        handle_regular_item(item, bindings, &mut new_items)?;
+        handle_regular_item(item, bindings, &mut new_items, env, depth, macro_name)?;
     }
 
     Ok(with_span(
@@ -322,9 +350,12 @@ fn try_handle_spread_item(
     item: &AstNode,
     bindings: &HashMap<String, AstNode>,
     new_items: &mut Vec<AstNode>,
+    env: &MacroEnv,
+    depth: usize,
+    macro_name: &str,
 ) -> Result<bool, SutraError> {
     if let Expr::Spread(inner) = &*item.value {
-        substitute_spread_item(inner, bindings, new_items)?;
+        substitute_spread_item(inner, bindings, new_items, env, depth, macro_name)?;
         return Ok(true);
     }
     Ok(false)
@@ -335,6 +366,9 @@ fn handle_regular_item(
     item: &AstNode,
     bindings: &HashMap<String, AstNode>,
     new_items: &mut Vec<AstNode>,
+    env: &MacroEnv,
+    depth: usize,
+    macro_name: &str,
 ) -> Result<(), SutraError> {
     // Check if this is a variadic parameter symbol that should be inserted as a list
     if let Some(name) = extract_variadic_param_name(item, bindings) {
@@ -344,7 +378,7 @@ fn handle_regular_item(
     }
 
     // Otherwise, substitute normally and push the result
-    substitute_and_push(item, bindings, new_items)
+    substitute_and_push(item, bindings, new_items, env, depth, macro_name)
 }
 
 // Handles substitution for spread arguments (`...param` or `...list-expr`).
@@ -352,12 +386,20 @@ fn substitute_spread_item(
     inner: &AstNode,
     bindings: &HashMap<String, AstNode>,
     new_items: &mut Vec<AstNode>,
+    env: &MacroEnv,
+    depth: usize,
+    macro_name: &str,
 ) -> Result<(), SutraError> {
     // If it's a variadic parameter symbol, splice its elements directly
     if let Some(name) = extract_variadic_param_name(inner, bindings) {
         let bound_node = &bindings[name];
         let Expr::List(elements, _) = &*bound_node.value else {
-            return Err(err_msg!(Internal, format!("Variadic parameter '{}' is not a list", name)));
+            return Err(err_src!(
+                Internal,
+                format!("Variadic parameter '{}' is not a list in macro '{}'", name, macro_name),
+                &env.source,
+                inner.span
+            ));
         };
 
         for element in elements {
@@ -367,7 +409,7 @@ fn substitute_spread_item(
     }
 
     // Otherwise, substitute the inner expression and require it to be a list for splicing
-    handle_non_symbol_spread(inner, bindings, new_items)
+    handle_non_symbol_spread(inner, bindings, new_items, env, depth, macro_name)
 }
 
 // Handles spreading a non-symbol expression (requires it to evaluate to a list).
@@ -375,14 +417,22 @@ fn handle_non_symbol_spread(
     inner: &AstNode,
     bindings: &HashMap<String, AstNode>,
     new_items: &mut Vec<AstNode>,
+    env: &MacroEnv,
+    depth: usize,
+    macro_name: &str,
 ) -> Result<(), SutraError> {
-    let substituted = substitute_template(inner, bindings)?;
+    let substituted = substitute_template(inner, bindings, env, depth + 1, macro_name)?;
     if let Expr::List(elements, _) = &*substituted.value {
         for element in elements {
             new_items.push(element.clone());
         }
     } else {
-        return Err(err_msg!(Internal, "Spread argument did not evaluate to a list"));
+        return Err(err_src!(
+            Internal,
+            format!("Spread argument did not evaluate to a list in macro '{}'", macro_name),
+            &env.source,
+            inner.span
+        ));
     }
     Ok(())
 }
@@ -395,10 +445,13 @@ fn substitute_if(
     bindings: &HashMap<String, AstNode>,
     if_span: &Span,
     original_span: &Span,
+    env: &MacroEnv,
+    depth: usize,
+    macro_name: &str,
 ) -> Result<AstNode, SutraError> {
-    let new_condition = substitute_template(condition, bindings)?;
-    let new_then = substitute_template(then_branch, bindings)?;
-    let new_else = substitute_template(else_branch, bindings)?;
+    let new_condition = substitute_template(condition, bindings, env, depth + 1, macro_name)?;
+    let new_then = substitute_template(then_branch, bindings, env, depth + 1, macro_name)?;
+    let new_else = substitute_template(else_branch, bindings, env, depth + 1, macro_name)?;
 
     Ok(with_span(
         Expr::If {
@@ -416,8 +469,11 @@ fn substitute_and_push(
     item: &AstNode,
     bindings: &HashMap<String, AstNode>,
     new_items: &mut Vec<AstNode>,
+    env: &MacroEnv,
+    depth: usize,
+    macro_name: &str,
 ) -> Result<(), SutraError> {
-    let substituted_item = substitute_template(item, bindings)?;
+    let substituted_item = substitute_template(item, bindings, env, depth + 1, macro_name)?;
     new_items.push(substituted_item);
     Ok(())
 }

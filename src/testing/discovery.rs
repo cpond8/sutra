@@ -93,7 +93,7 @@ impl TestDiscoverer {
             return Err(err_src!(
                 Validation,
                 "Invalid test form: expected at least a name",
-                source_file.clone(),
+                &source_file,
                 span
             ));
         }
@@ -104,7 +104,7 @@ impl TestDiscoverer {
                 return Err(err_src!(
                     Validation,
                     "Invalid test form: test name must be a string",
-                    source_file.clone(),
+                    &source_file,
                     items[1].span
                 ))
             }

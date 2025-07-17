@@ -284,7 +284,7 @@ macro_rules! err_src {
         $crate::SutraError::$variant {
             message: $msg.to_string(),
             ctx: $crate::diagnostics::ErrorContext {
-                source: Some($source.clone()),
+                source: Some(std::sync::Arc::clone($source)),
                 span: Some($span),
                 help: None,
             },

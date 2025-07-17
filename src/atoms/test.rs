@@ -59,7 +59,7 @@ fn register_test_atom(
         return Err(err_src!(
             Validation,
             "Expected 4 arguments",
-            ctx.source.clone(),
+            &ctx.source,
             *span
         ));
     }
@@ -70,7 +70,7 @@ fn register_test_atom(
             return Err(err_src!(
                 Validation,
                 "Test name must be a string",
-                ctx.source.clone(),
+                &ctx.source,
                 args[0].span
             ));
         }
@@ -83,7 +83,7 @@ fn register_test_atom(
             return Err(err_src!(
                 Validation,
                 "Test body must be a list of expressions",
-                ctx.source.clone(),
+                &ctx.source,
                 args[2].span
             ));
         }
@@ -96,7 +96,7 @@ fn register_test_atom(
             return Err(err_src!(
                 Validation,
                 "Test metadata must be a map",
-                ctx.source.clone(),
+                &ctx.source,
                 args[3].span
             ));
         }
@@ -319,7 +319,7 @@ fn assert_atom(
         return Err(err_src!(
             Validation,
             "Expected exactly 1 argument",
-            ctx.source.clone(),
+            &ctx.source,
             *span
         ));
     }
@@ -335,7 +335,7 @@ fn assert_atom(
         return Err(err_src!(
             Eval,
             format!("Assertion failed: expected truthy value, got {:?}", value),
-            ctx.source.clone(),
+            &ctx.source,
             args[0].span
         ));
     }
@@ -365,7 +365,7 @@ fn assert_eq_atom(
         return Err(err_src!(
             Validation,
             "Expected exactly 2 arguments",
-            ctx.source.clone(),
+            &ctx.source,
             *span
         ));
     }
@@ -378,7 +378,7 @@ fn assert_eq_atom(
         return Err(err_src!(
             Eval,
             format!("Assertion failed: expected {:?}, got {:?}", expected, actual),
-            ctx.source.clone(),
+            &ctx.source,
             *span
         ));
     }

@@ -1,4 +1,3 @@
-//!
 //! This module provides the core evaluation engine for Sutra expressions, handling
 //! the translation from AST nodes to runtime values within the context of a world state.
 //!
@@ -38,6 +37,7 @@ use crate::atoms::{AtomRegistry, OutputSink};
 use crate::diagnostics::SutraError;
 use crate::runtime::context::ExecutionContext;
 use crate::runtime::world::World;
+use crate::err_ctx;
 use crate::err_src;
 use miette::NamedSource;
 use std::sync::Arc;
@@ -90,7 +90,13 @@ impl EvalContext<'_, '_> {
                     };
 
                     // Expand the template macro
-                    let expanded = crate::macros::expand_template(template, &call_node, symbol_name, 0)?;
+                    let expanded = crate::macros::expand_template(
+                        template,
+                        &call_node,
+                        symbol_name,
+                        0,
+                        &self.world.macros,
+                    )?;
                     // Evaluate the expanded expression
                     eval_expr(&expanded, self)
                 }
@@ -118,10 +124,10 @@ impl EvalContext<'_, '_> {
 
         // If not a macro, try to resolve as an atom
         let Some(atom) = self.atom_registry.get(symbol_name).cloned() else {
-            return Err(err_src!(
+            return Err(crate::err_src!(
                 Eval,
                 format!("Undefined symbol: '{}'", symbol_name),
-                self.source.clone(),
+                &self.source,
                 head.span
             ));
         };
@@ -231,7 +237,7 @@ fn eval_condition_as_bool(
         return Err(err_src!(
             TypeError,
             "if condition must be boolean",
-            context.source.clone(),
+            &context.source,
             condition.span
         ));
     };
@@ -253,7 +259,7 @@ fn eval_literal_value(
             return Err(err_src!(
                 Internal,
                 "eval_literal_value called with non-literal expression",
-                context.source.clone(),
+                &context.source,
                 expr.span
             ))
         }
@@ -291,7 +297,12 @@ fn eval_invalid_expr(
         ),
         _ => unreachable!("eval_invalid_expr called with valid expression type"),
     };
-    Err(err_src!(Eval, msg, context.source.clone(), span))
+    Err(err_src!(
+        Eval,
+        msg,
+        &context.source,
+        span
+    ))
 }
 
 // ===================================================================================================
@@ -307,7 +318,7 @@ pub fn eval_expr(expr: &AstNode, context: &mut EvalContext) -> Result<(Value, Wo
         return Err(err_src!(
             Internal,
             "Recursion limit exceeded",
-            context.source.clone(),
+            &context.source,
             expr.span
         ));
     }
@@ -396,7 +407,7 @@ fn eval_list(
         return Err(err_src!(
             Eval,
             "first element must be a symbol naming a callable entity",
-            context.source.clone(),
+            &context.source,
             head.span
         ));
     };
@@ -425,22 +436,22 @@ fn eval_quote(
             ..
         } => eval_quoted_if(condition, then_branch, else_branch, context),
         Expr::Quote(_, _) => wrap_value_with_world(Value::Nil, context.world),
-        Expr::Define { .. } => Err(err_src!(
+        Expr::Define { .. } => Err(err_ctx!(
             Eval,
             "Cannot quote define expressions",
-            context.source.clone(),
+            context.source.as_ref().name(),
             inner.span
         )),
         Expr::ParamList(_) => Err(err_src!(
             Eval,
             "Cannot evaluate parameter list (ParamList AST node) at runtime",
-            context.source.clone(),
+            &context.source,
             inner.span
         )),
         Expr::Spread(_) => Err(err_src!(
             Eval,
             "Spread argument not allowed inside quote",
-            context.source.clone(),
+            &context.source,
             inner.span
         )),
     }
@@ -479,13 +490,13 @@ fn eval_quoted_expr(expr: &AstNode, context: &EvalContext) -> Result<Value, Sutr
         Expr::ParamList(_) => Err(err_src!(
             Eval,
             "Cannot evaluate parameter list (ParamList AST node) inside quote",
-            context.source.clone(),
+            &context.source,
             expr.span
         )),
         Expr::Spread(_) => Err(err_src!(
             Eval,
             "Spread argument not allowed inside quote",
-            context.source.clone(),
+            &context.source,
             expr.span
         )),
         _ => Ok(Value::Nil),
@@ -545,7 +556,7 @@ fn flatten_spread_args(
             return Err(err_src!(
                 TypeError,
                 format!("spread argument must be a list: {}", &val),
-                context.source.clone(),
+                &context.source,
                 expr.span
             ));
         };
