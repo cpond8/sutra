@@ -1,4 +1,4 @@
-pub use crate::diagnostics::{SutraError, ErrorContext, AsErrorSource, to_error_src};
+pub use crate::diagnostics::{SutraError, ErrorContext};
 
 pub mod ast;
 pub mod atoms;
@@ -9,3 +9,4 @@ pub mod runtime;
 pub mod syntax;
 pub mod engine;
 pub mod validation;
+pub mod testing;

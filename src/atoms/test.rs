@@ -13,13 +13,111 @@
 use crate::ast::value::Value;
 use crate::ast::{AstNode, Expr, Span, WithSpan};
 use crate::atoms::{AtomRegistry, SpecialFormAtomFn};
-use crate::runtime::eval::EvalContext;
+use crate::runtime::eval::{eval_expr, EvalContext};
 use crate::runtime::world::World;
-use crate::SutraError;
-use std::sync::Arc;
+use crate::{err_src, SutraError};
+use std::sync::{Arc, Mutex};
+use once_cell::sync::Lazy;
+use std::collections::HashMap;
 
 // Use the public context helper macro
 use crate::sub_eval_context;
+
+/// Represents a single test case definition.
+#[derive(Debug, Clone)]
+pub struct TestDefinition {
+    pub name: String,
+    pub expect: AstNode,
+    pub body: Vec<AstNode>,
+    pub span: Span,
+    pub file: Option<String>,
+}
+
+/// A global registry for storing test definitions.
+pub static TEST_REGISTRY: Lazy<Mutex<HashMap<String, TestDefinition>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+
+/// `register-test!` special form.
+///
+/// Usage: (register-test! <name> <expect-form> <body> <metadata>)
+/// - <name>: A string representing the name of the test.
+/// - <expect-form>: An s-expression detailing the test's expectations.
+/// - <body>: A list of expressions to execute as the test body.
+/// - <metadata>: A map containing metadata like :span and :file.
+///
+/// This atom is intended to be used by the `(test ...)` macro, not directly.
+/// It registers a test definition into a global registry for later execution.
+///
+/// Returns `nil`.
+fn register_test_atom(
+    args: &[AstNode],
+    ctx: &mut EvalContext,
+    span: &Span,
+) -> Result<(Value, World), SutraError> {
+    if args.len() != 4 {
+        return Err(err_src!(
+            Validation,
+            "Expected 4 arguments",
+            ctx.source.clone(),
+            *span
+        ));
+    }
+
+    let name = match &*args[0].value {
+        Expr::String(s, _) => s.clone(),
+        _ => {
+            return Err(err_src!(
+                Validation,
+                "Test name must be a string",
+                ctx.source.clone(),
+                args[0].span
+            ));
+        }
+    };
+
+    let expect = args[1].clone();
+    let body = match &*args[2].value {
+        Expr::List(l, _) => l.clone(),
+        _ => {
+            return Err(err_src!(
+                Validation,
+                "Test body must be a list of expressions",
+                ctx.source.clone(),
+                args[2].span
+            ));
+        }
+    };
+
+    let (metadata_val, _) = eval_expr(&args[3], ctx)?;
+    let metadata = match metadata_val.as_map() {
+        Some(m) => m,
+        _ => {
+            return Err(err_src!(
+                Validation,
+                "Test metadata must be a map",
+                ctx.source.clone(),
+                args[3].span
+            ));
+        }
+    };
+
+    let file = metadata.get(":file").and_then(|v| v.as_string());
+
+    let test_def = TestDefinition {
+        name: name.clone(),
+        expect,
+        body,
+        span: *span,
+        file,
+    };
+
+    let mut registry = TEST_REGISTRY.lock().unwrap();
+    registry.insert(name, test_def);
+
+    Ok((Value::Nil, ctx.world.clone()))
+}
+
 
 /// Simple echo atom that outputs its first argument.
 ///
@@ -184,4 +282,106 @@ pub fn register_test_atoms(registry: &mut AtomRegistry) {
         "test/borrow_stress",
         crate::atoms::Atom::SpecialForm(test_borrow_stress_atom),
     );
+    registry.register(
+        "register-test!",
+        crate::atoms::Atom::SpecialForm(register_test_atom),
+    );
+
+    // Register assertion atoms for testing
+    registry.register(
+        "assert",
+        crate::atoms::Atom::SpecialForm(assert_atom),
+    );
+    registry.register(
+        "assert-eq",
+        crate::atoms::Atom::SpecialForm(assert_eq_atom),
+    );
+}
+
+/// `assert` atom - basic assertion that fails if argument is false.
+///
+/// Usage: (assert <expression>)
+/// - <expression>: Any expression that evaluates to a boolean-like value
+///
+/// Returns `nil` if the assertion passes.
+/// Throws an assertion error if the expression is falsy.
+///
+/// Example:
+///   (assert true)        ; => nil (success)
+///   (assert (eq? 1 1))   ; => nil (success)
+///   (assert false)       ; => AssertionError
+fn assert_atom(
+    args: &[AstNode],
+    ctx: &mut EvalContext,
+    span: &Span,
+) -> Result<(Value, World), SutraError> {
+    if args.len() != 1 {
+        return Err(err_src!(
+            Validation,
+            "Expected exactly 1 argument",
+            ctx.source.clone(),
+            *span
+        ));
+    }
+
+    let (value, world) = eval_expr(&args[0], ctx)?;
+    let is_truthy = match value {
+        Value::Bool(b) => b,
+        Value::Nil => false,
+        _ => true, // All other values are truthy
+    };
+
+    if !is_truthy {
+        return Err(err_src!(
+            Eval,
+            format!("Assertion failed: expected truthy value, got {:?}", value),
+            ctx.source.clone(),
+            args[0].span
+        ));
+    }
+
+    Ok((Value::Nil, world))
+}
+
+/// `assert-eq` atom - equality assertion that compares two values.
+///
+/// Usage: (assert-eq <expected> <actual>)
+/// - <expected>: The expected value
+/// - <actual>: The actual value to compare
+///
+/// Returns `nil` if the values are equal.
+/// Throws an assertion error if the values are not equal.
+///
+/// Example:
+///   (assert-eq 1 1)           ; => nil (success)
+///   (assert-eq "a" "a")       ; => nil (success)
+///   (assert-eq 1 2)           ; => AssertionError
+fn assert_eq_atom(
+    args: &[AstNode],
+    ctx: &mut EvalContext,
+    span: &Span,
+) -> Result<(Value, World), SutraError> {
+    if args.len() != 2 {
+        return Err(err_src!(
+            Validation,
+            "Expected exactly 2 arguments",
+            ctx.source.clone(),
+            *span
+        ));
+    }
+
+    let (expected, world1) = eval_expr(&args[0], ctx)?;
+    let mut sub_context = sub_eval_context!(ctx, &world1);
+    let (actual, world2) = eval_expr(&args[1], &mut sub_context)?;
+
+    if expected != actual {
+        return Err(err_src!(
+            Eval,
+            format!("Assertion failed: expected {:?}, got {:?}", expected, actual),
+            ctx.source.clone(),
+            *span
+        ));
+    }
+
+    Ok((Value::Nil, world2))
 }

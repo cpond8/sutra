@@ -65,6 +65,22 @@ impl Value {
         }
     }
 
+    /// Returns the contained string if this is a String value, else None.
+    pub fn as_string(&self) -> Option<String> {
+        match self {
+            Value::String(s) => Some(s.clone()),
+            _ => None,
+        }
+    }
+
+    /// Returns a reference to the contained map if this is a Map value, else None.
+    pub fn as_map(&self) -> Option<&HashMap<String, Value>> {
+        match self {
+            Value::Map(m) => Some(m),
+            _ => None,
+        }
+    }
+
     // ------------------------------------------------------------------------
     // Display formatting helpers (internal)
     // ------------------------------------------------------------------------

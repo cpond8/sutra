@@ -28,3 +28,6 @@ regex = "1.11.1"
 [features]
 default = []
 test-atom = []
+
+[dev-dependencies]
+miette = "7.2.0"

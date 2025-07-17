@@ -9,14 +9,14 @@
 //!
 //! # Error Construction Macros
 //!
-//! - **Use `err_msg!` for message-only errors (no context):**
-//!   - Example: `return Err(err_msg!(Parse, "Unexpected token"));`
+//! - **Use `err_msg!` for simple, message-only errors.**
+//!   - `err_msg!(Parse, "Unexpected token")`
 //!
-//! - **Use `err_ctx!` for errors with context (source, span, help, or pre-built context):**
-//!   - Example: `return Err(err_ctx!(Parse, "Unexpected token", src, span));`
-//!   - Example: `return Err(err_ctx!(Validation, "Invalid input", ctx));` (where `ctx` is an `ErrorContext`)
-//!   - Example: `return Err(err_ctx!(TypeError, "Expected number", src, span, "Numbers only allowed here"));`
-//!   - Example: `return Err(err_ctx!(DivisionByZero, src, span));`
+//! - **Use `err_ctx!` for errors with a string-based source and span.**
+//!   - `err_ctx!(Validation, "Invalid input", src, span)`
+//!
+//! - **Use `err_src!` for errors with a pre-built `NamedSource`.**
+//!   - `err_src!(TypeError, "Mismatched types", named_source, span)`
 //!
 //! # Best Practices and Rules
 //!
@@ -52,40 +52,17 @@
 //!
 //! ****************************************************************************************
 //!
-//! ## Example Usage
-//!
-//! ```rust
-//! // Message only (no context)
-//! return Err(err_msg!(Parse, "Unexpected token"));
-//!
-//! // Message + source + span
-//! return Err(err_ctx!(Parse, "Unexpected token", src, span));
-//!
-//! // Message + context (context must have .source field)
-//! return Err(err_ctx!(Validation, "Invalid input", ctx));
-//!
-//! // Context only (no message)
-//! return Err(err_ctx!(DivisionByZero, src, span));
-//!
-//! // Message + help + context
-//! return Err(err_ctx!(TypeError, "Expected number", src, span, "Numbers only allowed here"));
-//!
-//! // Internal error, message only
-//! return Err(err_msg!(Internal, "Invariant violated"));
-//! ```
-//!
-//! See the macro and type docs below for details.
 
 use std::sync::Arc;
-use miette::Diagnostic;
+use miette::{Diagnostic, NamedSource};
 use thiserror::Error;
 use crate::ast::Span;
 
-/// Encapsulates all diagnostic context for a Sutra error, including optional source, span: *span, and help message.
-#[derive(Debug, Clone)]
+/// Encapsulates all diagnostic context for a Sutra error, including optional source, span, and help message.
+#[derive(Debug, Clone, Default)]
 pub struct ErrorContext {
     /// Optional source code for error highlighting.
-    pub src: Option<Arc<String>>,
+    pub source: Option<Arc<NamedSource<String>>>,
     /// Optional span within the source for precise error location.
     pub span: Option<Span>,
     /// Optional help message for user guidance.
@@ -93,103 +70,128 @@ pub struct ErrorContext {
 }
 
 impl ErrorContext {
-    /// Returns an empty error context (no source, span: *span, or help).
+    /// Returns an empty error context (no source, span, or help).
     pub fn none() -> Self {
-        Self { src: None, span: None, help: None }
+        Self::default()
     }
+
     /// Creates a context with only a source.
-    pub fn with_src(src: Arc<String>) -> Self {
-        Self { src: Some(src), span: None, help: None }
+    pub fn with_source(source: Arc<NamedSource<String>>) -> Self {
+        Self { source: Some(source), ..Default::default() }
     }
+
     /// Creates a context with only a span.
     pub fn with_span(span: Span) -> Self {
-        Self { src: None, span: Some(span), help: None }
+        Self { span: Some(span), ..Default::default() }
     }
+
     /// Creates a context with both source and span.
-    pub fn with_src_and_span(src: Arc<String>, span: Span) -> Self {
-        Self { src: Some(src), span: Some(span), help: None }
+    pub fn with_source_and_span(source: Arc<NamedSource<String>>, span: Span) -> Self {
+        Self { source: Some(source), span: Some(span), ..Default::default() }
     }
-    /// Creates a context with source, span: *span, and help message.
-    pub fn with_all(src: Arc<String>, span: Span, help: String) -> Self {
-        Self { src: Some(src), span: Some(span), help: Some(help) }
+
+    /// Creates a context with source, span, and help message.
+    pub fn with_all(source: Arc<NamedSource<String>>, span: Span, help: String) -> Self {
+        Self { source: Some(source), span: Some(span), help: Some(help) }
     }
 }
 
-/// Unified error type for all Sutra engine failure modes, supporting rich diagnostics and ergonomic construction via the err_msg! and err_ctx! macros.
-#[derive(Debug, Error, Diagnostic)]
+/// Unified error type for all Sutra engine failure modes.
+#[derive(Debug, Error)]
 pub enum SutraError {
     #[error("Parse error: {message}")]
-    #[diagnostic(code(sutra::parse))]
     Parse {
         message: String,
         ctx: ErrorContext,
     },
     #[error("Validation error: {message}")]
-    #[diagnostic(code(sutra::validation))]
     Validation {
         message: String,
         ctx: ErrorContext,
     },
     #[error("Evaluation error: {message}")]
-    #[diagnostic(code(sutra::eval))]
     Eval {
         message: String,
         ctx: ErrorContext,
     },
     #[error("Type error: {message}")]
-    #[diagnostic(code(sutra::type_error))]
     TypeError {
         message: String,
         ctx: ErrorContext,
     },
     #[error("Division by zero")]
-    #[diagnostic(code(sutra::division_by_zero))]
     DivisionByZero {
         ctx: ErrorContext,
     },
     #[error("Internal error: {message}")]
-    #[diagnostic(code(sutra::internal))]
     Internal {
         message: String,
         ctx: ErrorContext,
     },
-    // Add more variants as needed
 }
 
-/// Trait for extracting a string source from various types for error context.
-pub trait AsErrorSource {
-    fn as_error_source(&self) -> String;
-}
-
-impl AsErrorSource for String {
-    fn as_error_source(&self) -> String { self.clone() }
-}
-impl AsErrorSource for &str {
-    fn as_error_source(&self) -> String { self.to_string() }
-}
-impl AsErrorSource for std::sync::Arc<String> {
-    fn as_error_source(&self) -> String { self.as_ref().clone() }
-}
-
-impl<T: AsErrorSource + ?Sized> AsErrorSource for &mut T {
-    fn as_error_source(&self) -> String {
-        (**self).as_error_source()
+impl SutraError {
+    fn get_ctx(&self) -> &ErrorContext {
+        match self {
+            SutraError::Parse { ctx, .. } => ctx,
+            SutraError::Validation { ctx, .. } => ctx,
+            SutraError::Eval { ctx, .. } => ctx,
+            SutraError::TypeError { ctx, .. } => ctx,
+            SutraError::DivisionByZero { ctx } => ctx,
+            SutraError::Internal { ctx, .. } => ctx,
+        }
     }
 }
 
-/// Converts any AsErrorSource to Arc<String> for use in error context.
-pub fn to_error_src<S: AsErrorSource>(src: S) -> std::sync::Arc<String> {
-    std::sync::Arc::new(src.as_error_source())
+impl Diagnostic for SutraError {
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        let code: &str = match self {
+            SutraError::Parse { .. } => "sutra::parse",
+            SutraError::Validation { .. } => "sutra::validation",
+            SutraError::Eval { .. } => "sutra::eval",
+            SutraError::TypeError { .. } => "sutra::type_error",
+            SutraError::DivisionByZero { .. } => "sutra::division_by_zero",
+            SutraError::Internal { .. } => "sutra::internal",
+        };
+        Some(Box::new(code))
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.get_ctx().help.as_ref().map(|h| Box::new(h) as Box<dyn std::fmt::Display + 'a>)
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        self.get_ctx().source.as_ref().map(|s| s.as_ref() as &dyn miette::SourceCode)
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        let ctx = self.get_ctx();
+        if let Some(span) = ctx.span {
+            let text = match self {
+                SutraError::Parse { message, .. } => Some(message.clone()),
+                SutraError::Validation { message, .. } => Some(message.clone()),
+                SutraError::Eval { message, .. } => Some(message.clone()),
+                SutraError::TypeError { message, .. } => Some(message.clone()),
+                SutraError::DivisionByZero { .. } => Some("division by zero".to_string()),
+                SutraError::Internal { message, .. } => Some(message.clone()),
+            };
+            let len = if span.end > span.start { span.end - span.start } else { 1 };
+            let labels = vec![miette::LabeledSpan::new(text, span.start, len)];
+            return Some(Box::new(labels.into_iter()));
+        }
+        None
+    }
+}
+
+/// Converts a source string into an `Arc<NamedSource<String>>` for use in error contexts.
+pub fn to_error_source<S: AsRef<str>>(source: S) -> Arc<NamedSource<String>> {
+    Arc::new(NamedSource::new("source", source.as_ref().to_string()))
 }
 
 /// Constructs a SutraError variant with a formatted message and no context.
 ///
 /// Use this macro for errors that do not require source, span, or help context. Supports formatting with multiple arguments.
 ///
-/// # Example
-/// ```rust
-/// return Err(err_msg!(Parse, "Unexpected token: {}", token));
-/// ```
 #[macro_export]
 macro_rules! err_msg {
     // Message with 3+ format arguments
@@ -222,15 +224,10 @@ macro_rules! err_msg {
     };
 }
 
-/// Constructs a SutraError variant with context (source, span, help, or pre-built context).
+/// Constructs a SutraError variant with a formatted message and context (source, span, help, or context struct).
 ///
-/// Use this macro for errors that require additional diagnostic context, such as source code, span, help messages, or a pre-built ErrorContext. The macro automatically wraps and converts source types as needed.
+/// Use this macro for errors that require string-based source, span, and optional help context.
 ///
-/// # Example
-/// ```rust
-/// return Err(err_ctx!(Parse, "Unexpected token", src, span));
-/// return Err(err_ctx!(TypeError, "Expected number", src, span, "Numbers only allowed here"));
-/// ```
 #[macro_export]
 macro_rules! err_ctx {
     // Message, src, span, help
@@ -238,19 +235,8 @@ macro_rules! err_ctx {
         $crate::SutraError::$variant {
             message: $msg.to_string(),
             ctx: $crate::diagnostics::ErrorContext {
-                src: Some($crate::diagnostics::to_error_src($src)),
+                source: Some($crate::diagnostics::to_error_source($src)),
                 span: Some($span),
-                help: Some(format!("{}", $help)),
-            },
-        }
-    };
-    // Message, src, help (uses Span::default())
-    ($variant:ident, $msg:expr, $src:expr, $help:expr) => {
-        $crate::SutraError::$variant {
-            message: $msg.to_string(),
-            ctx: $crate::diagnostics::ErrorContext {
-                src: Some($crate::diagnostics::to_error_src($src)),
-                span: Some($crate::ast::Span::default()),
                 help: Some(format!("{}", $help)),
             },
         }
@@ -260,9 +246,20 @@ macro_rules! err_ctx {
         $crate::SutraError::$variant {
             message: $msg.to_string(),
             ctx: $crate::diagnostics::ErrorContext {
-                src: Some($crate::diagnostics::to_error_src($src)),
+                source: Some($crate::diagnostics::to_error_source($src)),
                 span: Some($span),
                 help: None,
+            },
+        }
+    };
+    // Message, src, help (uses Span::default())
+    ($variant:ident, $msg:expr, $src:expr, $help:expr) => {
+        $crate::SutraError::$variant {
+            message: $msg.to_string(),
+            ctx: $crate::diagnostics::ErrorContext {
+                source: Some($crate::diagnostics::to_error_source($src)),
+                span: Some($crate::ast::Span::default()),
+                help: Some(format!("{}", $help)),
             },
         }
     };
@@ -271,23 +268,26 @@ macro_rules! err_ctx {
         $crate::SutraError::$variant {
             message: $msg.to_string(),
             ctx: $crate::diagnostics::ErrorContext {
-                src: Some($crate::diagnostics::to_error_src($src)),
+                source: Some($crate::diagnostics::to_error_source($src)),
                 span: None,
                 help: None,
             },
         }
     };
-    // Pre-built context
-    ($variant:ident, $ctx:expr) => {
+}
+
+/// Constructs a SutraError variant with a pre-built `NamedSource`.
+#[macro_export]
+macro_rules! err_src {
+    // Message, pre-built source, span
+    ($variant:ident, $msg:expr, $source:expr, $span:expr) => {
         $crate::SutraError::$variant {
-            message: String::new(),
-            ctx: $ctx,
-        }
-    };
-    // Unit variant (no message, no context)
-    ($variant:ident) => {
-        $crate::SutraError::$variant {
-            ctx: $crate::diagnostics::ErrorContext::none(),
+            message: $msg.to_string(),
+            ctx: $crate::diagnostics::ErrorContext {
+                source: Some($source.clone()),
+                span: Some($span),
+                help: None,
+            },
         }
     };
 }

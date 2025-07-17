@@ -8,6 +8,8 @@ use crate::runtime::registry::build_canonical_macro_env;
 use crate::runtime::world::World;
 use crate::syntax::parser::wrap_in_do;
 use crate::SutraError;
+use miette::NamedSource;
+use std::sync::Arc;
 
 /// Run Sutra source with injectable output sink (engine orchestration entry point).
 pub fn run_sutra_source_with_output(
@@ -45,7 +47,9 @@ pub fn run_sutra_source_with_output(
     // 9. Evaluate the expanded AST
     let world = World::default();
     let atom_registry = crate::runtime::registry::build_default_atom_registry();
-    let (result, _updated_world) = eval(&expanded, &world, output, &atom_registry, 100)?;
+    let source = Arc::new(NamedSource::new("source", source.to_string()));
+    let (result, _updated_world) =
+        eval(&expanded, &world, output, &atom_registry, source.clone(), 100)?;
 
     // 10. If result is nil, suppress output to avoid "null" printing
     if !result.is_nil() {

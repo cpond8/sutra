@@ -81,6 +81,7 @@ macro_rules! sub_eval_context {
             world: $world,
             output: $parent.output,
             atom_registry: $parent.atom_registry,
+            source: $parent.source.clone(),
             max_depth: $parent.max_depth,
             depth: $parent.depth,
         }

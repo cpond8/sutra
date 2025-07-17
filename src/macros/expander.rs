@@ -8,7 +8,9 @@
 //!
 //! Example:
 //! ```rust
-//! return Err(err_msg!(Validation, "Invalid macro expansion"));
+//! use sutra::err_msg;
+//! let err = err_msg!(Validation, "Invalid macro expansion");
+//! assert!(matches!(err, sutra::SutraError::Validation { .. }));
 //! ```
 //!
 //! All macro expansion errors (arity, recursion, substitution, etc.) use this system.

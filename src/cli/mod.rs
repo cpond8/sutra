@@ -78,13 +78,6 @@ fn read_file_to_string(path: &std::path::Path) -> Result<String, SutraError> {
         .map_err(|e| err_ctx!(Internal, "Failed to read file: {}", e.to_string()))
 }
 
-/// Reads a file and normalizes line endings, trimming whitespace.
-fn read_file_trimmed(path: &std::path::Path) -> std::io::Result<String> {
-    Ok(std::fs::read_to_string(path)?
-        .replace("\r\n", "\n")
-        .trim()
-        .to_string())
-}
 
 // ============================================================================
 // AST PROCESSING UTILITIES - Parsing and transformation operations
@@ -215,138 +208,194 @@ fn reset_output_color(stdout: &mut termcolor::StandardStream) {
 }
 
 // ============================================================================
-// TEST INFRASTRUCTURE - Testing system components
+// MODERN TEST HARNESS - Macro-based test system
 // ============================================================================
 
-#[derive(Clone)]
-enum TestOutcome {
+use crate::testing::discovery::TestDiscoverer;
+use crate::atoms::test::TEST_REGISTRY;
+
+#[derive(Debug, Clone)]
+pub enum TestExpectation {
+    Value(crate::ast::value::Value),
+    Error(String),
+    Output(String),
+    Skip(String),
+}
+
+#[derive(Debug, Clone)]
+pub enum TestResult {
     Pass,
     Fail { expected: String, actual: String },
-    Skip,
+    Skip { reason: String },
+    Error { message: String },
 }
 
-/// Discovers test scripts and their expected output files in a directory.
-fn find_test_scripts(dir: &std::path::Path) -> Vec<(std::path::PathBuf, std::path::PathBuf)> {
-    let mut tests = Vec::new();
-    for entry in walkdir::WalkDir::new(dir) {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        let path = entry.path();
-        // Guard clause: skip if not a file with a .sutra extension
-        if !(path.is_file() && path.extension().map(|e| e == "sutra").unwrap_or(false)) {
-            continue;
+/// Parses an expectation form into a TestExpectation.
+fn parse_expectation(expect_node: &crate::ast::AstNode) -> Result<TestExpectation, SutraError> {
+    use crate::ast::{Expr, value::Value};
+
+    match &*expect_node.value {
+        Expr::List(items, _) if !items.is_empty() => {
+            let head = &items[0];
+            match &*head.value {
+                Expr::Symbol(s, _) if s == "expect" && items.len() >= 2 => {
+                    let expectation = &items[1];
+                    match &*expectation.value {
+                        // (expect <value>)
+                        Expr::Number(n, _) => Ok(TestExpectation::Value(Value::Number(*n))),
+                        Expr::String(s, _) => Ok(TestExpectation::Value(Value::String(s.clone()))),
+                        Expr::Bool(b, _) => Ok(TestExpectation::Value(Value::Bool(*b))),
+                        Expr::Symbol(s, _) if s == "nil" => Ok(TestExpectation::Value(Value::Nil)),
+                        Expr::Symbol(s, _) if s == "true" => Ok(TestExpectation::Value(Value::Bool(true))),
+                        Expr::Symbol(s, _) if s == "false" => Ok(TestExpectation::Value(Value::Bool(false))),
+                        // Error expectation types
+                        Expr::Symbol(err_type, _) => Ok(TestExpectation::Error(err_type.clone())),
+                        _ => Err(err_msg!(Validation, "Unsupported expectation type")),
+                    }
+                }
+                _ => Err(err_msg!(Validation, "Invalid expectation form")),
+            }
         }
-        let expected = path.with_extension("expected");
-        if expected.exists() {
-            tests.push((path.to_path_buf(), expected));
-        }
+        _ => Err(err_msg!(Validation, "Expectation must be a list")),
     }
-    tests
 }
 
-/// Determines if a test should be skipped based on content.
-fn should_skip_test(content: &str) -> bool {
-    content.contains("test/")
-}
+/// Executes a test body and returns the result.
+fn execute_test_body(body: &[crate::ast::AstNode]) -> (Result<crate::ast::value::Value, SutraError>, String) {
+    use crate::cli::output::OutputBuffer;
+    use crate::runtime::eval::eval;
+    use crate::runtime::world::World;
+    use crate::runtime::registry::build_default_atom_registry;
+    use crate::ast::{Expr, WithSpan, Span};
+    use std::sync::Arc;
+    use miette::NamedSource;
 
-/// Executes a Sutra script and captures its output.
-fn execute_script(source: &str) -> (Result<(), SutraError>, String) {
-    let mut output_buf = crate::cli::output::OutputBuffer::new();
-    let result = run_sutra_source_with_output(source, &mut output_buf);
+    let mut output_buf = OutputBuffer::new();
+
+    let result = if body.is_empty() {
+        Ok(crate::ast::value::Value::Nil)
+    } else {
+        let atom_registry = build_default_atom_registry();
+        let world = World::new();
+        let source = Arc::new(NamedSource::new("test".to_string(), "<test body>".to_string()));
+
+        // Wrap the body in a (do ...) expression to execute all statements
+        let do_expr = if body.len() == 1 {
+            body[0].clone()
+        } else {
+            let span = Span { start: 0, end: 0 };
+            let do_symbol = WithSpan {
+                value: Arc::new(Expr::Symbol("do".to_string(), span)),
+                span,
+            };
+            let mut items = vec![do_symbol];
+            items.extend_from_slice(body);
+            WithSpan {
+                value: Arc::new(Expr::List(items, span)),
+                span,
+            }
+        };
+
+        // Execute the expression
+        match eval(&do_expr, &world, &mut output_buf, &atom_registry, source, 100) {
+            Ok((value, _)) => Ok(value),
+            Err(e) => Err(e),
+        }
+    };
+
     let output = output_buf.as_str().replace("\r\n", "\n").trim().to_string();
     (result, output)
 }
 
-/// Compares test output with expected result.
-fn compare_test_results(result: Result<(), SutraError>, actual: &str, expected: &str) -> bool {
-    match result {
-        Ok(_) => actual == expected,
-        Err(e) => {
-            let err_str = format!("{e}").replace("\r\n", "\n").trim().to_string();
-            err_str == expected
+/// Compares test result against expectation.
+fn check_test_expectation(
+    result: Result<crate::ast::value::Value, SutraError>,
+    output: &str,
+    expectation: &TestExpectation
+) -> TestResult {
+
+    match expectation {
+        TestExpectation::Value(expected_val) => {
+            match result {
+                Ok(actual_val) => {
+                    if actual_val == *expected_val {
+                        TestResult::Pass
+                    } else {
+                        TestResult::Fail {
+                            expected: format!("{:?}", expected_val),
+                            actual: format!("{:?}", actual_val),
+                        }
+                    }
+                }
+                Err(e) => TestResult::Fail {
+                    expected: format!("{:?}", expected_val),
+                    actual: format!("Error: {}", e),
+                },
+            }
         }
+        TestExpectation::Error(expected_err) => {
+            match result {
+                Err(e) => {
+                    let error_str = format!("{}", e);
+                    if error_str.contains(expected_err) {
+                        TestResult::Pass
+                    } else {
+                        TestResult::Fail {
+                            expected: expected_err.clone(),
+                            actual: error_str,
+                        }
+                    }
+                }
+                Ok(val) => TestResult::Fail {
+                    expected: expected_err.clone(),
+                    actual: format!("Success: {:?}", val),
+                },
+            }
+        }
+        TestExpectation::Output(expected_output) => {
+            if output == expected_output {
+                TestResult::Pass
+            } else {
+                TestResult::Fail {
+                    expected: expected_output.clone(),
+                    actual: output.to_string(),
+                }
+            }
+        }
+        TestExpectation::Skip(reason) => TestResult::Skip {
+            reason: reason.clone(),
+        },
     }
-}
-
-/// Processes a single test file and determines the outcome.
-fn process_test_file(
-    script: &std::path::Path,
-    expected: &std::path::Path,
-) -> Result<TestOutcome, SutraError> {
-    let script_src = read_file_trimmed(script)
-        .map_err(|e| err_ctx!(Internal, "Failed to read test script: {}", e.to_string()))?;
-    let expected_output = read_file_trimmed(expected).map_err(|e| {
-        err_ctx!(
-            Internal,
-            "Failed to read expected output: {}",
-            e.to_string()
-        )
-    })?;
-
-    // Guard clause: check if test should be skipped
-    if should_skip_test(&script_src) {
-        return Ok(TestOutcome::Skip);
-    }
-
-    let (result, actual_output) = execute_script(&script_src);
-
-    if compare_test_results(result, &actual_output, &expected_output) {
-        return Ok(TestOutcome::Pass);
-    }
-
-    Ok(TestOutcome::Fail {
-        expected: expected_output,
-        actual: actual_output,
-    })
 }
 
 /// Prints a test result with appropriate formatting.
 fn print_test_result(
-    script_name: &str,
-    outcome: TestOutcome,
+    test_name: &str,
+    result: &TestResult,
     stdout: &mut termcolor::StandardStream,
 ) {
-    match outcome {
-        TestOutcome::Pass => {
+    match result {
+        TestResult::Pass => {
             set_output_color(stdout, termcolor::Color::Green, true);
-            let _ = writeln!(stdout, "PASS: {script_name}");
+            let _ = writeln!(stdout, "PASS: {}", test_name);
         }
-        TestOutcome::Fail {
-            ref expected,
-            ref actual,
-        } => {
+        TestResult::Fail { expected, actual } => {
             set_output_color(stdout, termcolor::Color::Red, true);
-            let _ = writeln!(stdout, "FAIL: {script_name}");
+            let _ = writeln!(stdout, "FAIL: {}", test_name);
             set_output_color(stdout, termcolor::Color::Yellow, false);
-            let _ = writeln!(stdout, "  Expected: {expected:?}");
-            let _ = writeln!(stdout, "  Actual:   {actual:?}");
+            let _ = writeln!(stdout, "  Expected: {}", expected);
+            let _ = writeln!(stdout, "  Actual:   {}", actual);
         }
-        TestOutcome::Skip => {
+        TestResult::Skip { reason } => {
             set_output_color(stdout, termcolor::Color::Yellow, true);
-            let _ = writeln!(stdout, "SKIP: {script_name} (requires test atoms)");
+            let _ = writeln!(stdout, "SKIP: {} ({})", test_name, reason);
+        }
+        TestResult::Error { message } => {
+            set_output_color(stdout, termcolor::Color::Red, true);
+            let _ = writeln!(stdout, "ERROR: {} - {}", test_name, message);
         }
     }
     reset_output_color(stdout);
-}
-
-/// Runs a single test and prints the result.
-fn run_single_test(
-    script: &std::path::Path,
-    expected: &std::path::Path,
-    stdout: &mut termcolor::StandardStream,
-) -> Result<TestOutcome, SutraError> {
-    let script_name = script.file_name().unwrap().to_string_lossy();
-    let outcome = process_test_file(script, expected)?;
-    print_test_result(&script_name, outcome.clone(), stdout);
-
-    // TODO: Consider using a more functional approach that avoids cloning
-    match outcome {
-        TestOutcome::Pass => Ok(TestOutcome::Pass),
-        TestOutcome::Fail { expected, actual } => Ok(TestOutcome::Fail { expected, actual }),
-        TestOutcome::Skip => Ok(TestOutcome::Skip),
-    }
 }
 
 // ============================================================================
@@ -488,39 +537,99 @@ fn handle_list_atoms() -> Result<(), SutraError> {
 
 // --- Testing Commands: test execution and management ---
 
-/// Handles the `test` subcommand.
+/// Handles the `test` subcommand using the modern macro-based test harness.
 fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
     use termcolor::{ColorChoice, StandardStream};
 
-    let scripts = find_test_scripts(path);
-    if scripts.is_empty() {
-        println!("No .sutra test scripts found in {}", path.display());
+    // Discover all .sutra files in the directory
+    let test_files = TestDiscoverer::discover_test_files(path)?;
+    if test_files.is_empty() {
+        println!("No .sutra test files found in {}", path.display());
         return Ok(());
     }
 
-    let mut failed = false;
-    let mut skipped = 0;
-    let mut stdout = StandardStream::stdout(ColorChoice::Auto);
+    println!("Discovered {} test file(s)", test_files.len());
 
-    for (script, expected) in scripts {
-        match run_single_test(&script, &expected, &mut stdout)? {
-            TestOutcome::Pass => {}
-            TestOutcome::Fail { .. } => failed = true,
-            TestOutcome::Skip => skipped += 1,
+    // Clear the test registry to start fresh
+    {
+        let mut registry = TEST_REGISTRY.lock().unwrap();
+        registry.clear();
+    }
+
+    // Process each file to register tests via macro expansion
+    for file_path in &test_files {
+        let (_source, ast_nodes) = load_file_to_ast(file_path)?;
+        let expanded = build_macro_environment_and_expand(ast_nodes, "")?;
+
+        // Execute the expanded AST to register tests
+        let mut output_buf = crate::cli::output::OutputBuffer::new();
+        let _ = run_sutra_source_with_output(&expanded.value.pretty(), &mut output_buf);
+    }
+
+    // Get all registered tests
+    let tests = {
+        let registry = TEST_REGISTRY.lock().unwrap();
+        registry.clone()
+    };
+
+    if tests.is_empty() {
+        println!("No tests found in the discovered files");
+        return Ok(());
+    }
+
+    println!("Running {} test(s)...\n", tests.len());
+
+    // Execute all registered tests
+    let mut stdout = StandardStream::stdout(ColorChoice::Auto);
+    let mut passed = 0;
+    let mut failed = 0;
+    let mut skipped = 0;
+    let mut errors = 0;
+
+    for (test_name, test_def) in tests {
+        let result = match parse_expectation(&test_def.expect) {
+            Ok(expectation) => {
+                let (exec_result, output) = execute_test_body(&test_def.body);
+                check_test_expectation(exec_result, &output, &expectation)
+            }
+            Err(e) => TestResult::Error {
+                message: format!("Failed to parse expectation: {}", e),
+            }
+        };
+
+        print_test_result(&test_name, &result, &mut stdout);
+
+        match result {
+            TestResult::Pass => passed += 1,
+            TestResult::Fail { .. } => failed += 1,
+            TestResult::Skip { .. } => skipped += 1,
+            TestResult::Error { .. } => errors += 1,
         }
     }
 
+    reset_output_color(&mut stdout);
+
+    // Print summary
+    println!("\nTest Results:");
+    println!("  Passed: {}", passed);
+    if failed > 0 {
+        set_output_color(&mut stdout, termcolor::Color::Red, false);
+        println!("  Failed: {}", failed);
+        reset_output_color(&mut stdout);
+    }
     if skipped > 0 {
-        set_output_color(&mut stdout, termcolor::Color::Cyan, false);
-        let _ = writeln!(
-            stdout,
-            "\nNote: {skipped} test(s) skipped (use 'cargo test' to run all tests)"
-        );
+        set_output_color(&mut stdout, termcolor::Color::Yellow, false);
+        println!("  Skipped: {}", skipped);
+        reset_output_color(&mut stdout);
+    }
+    if errors > 0 {
+        set_output_color(&mut stdout, termcolor::Color::Red, false);
+        println!("  Errors: {}", errors);
         reset_output_color(&mut stdout);
     }
 
-    if failed {
-        return Err(err_msg!(Internal, "One or more test scripts failed"));
+    if failed > 0 || errors > 0 {
+        return Err(err_msg!(Internal, "One or more tests failed"));
     }
 
     Ok(())

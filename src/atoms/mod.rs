@@ -183,6 +183,10 @@ pub fn register_all_atoms(registry: &mut AtomRegistry) {
     execution::register_execution_atoms(registry);
     external::register_external_atoms(registry);
     string::register_string_atoms(registry);
+
+    // Register test atoms only in debug or test builds
+    #[cfg(any(test, feature = "test-atom", debug_assertions))]
+    test::register_test_atoms(registry);
 }
 
 // ============================================================================

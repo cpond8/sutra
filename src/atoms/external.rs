@@ -15,7 +15,7 @@
 
 use crate::ast::value::Value;
 use crate::atoms::StatefulAtomFn;
-use crate::err_ctx;
+use crate::err_msg;
 
 // ============================================================================
 // I/O OPERATIONS
@@ -35,7 +35,11 @@ use crate::err_ctx;
 /// Emits output, does not mutate world state.
 pub const ATOM_PRINT: StatefulAtomFn = |args, context| {
     if args.len() != 1 {
-        return Err(err_ctx!(Eval, "print expects 1 argument, got {}", "print", "Arity error"));
+        return Err(err_msg!(
+            Eval,
+            "print expects 1 argument, got {}",
+            args.len()
+        ));
     }
 
     context.output.emit(&args[0].to_string(), None);
@@ -61,7 +65,11 @@ pub const ATOM_PRINT: StatefulAtomFn = |args, context| {
 /// Uses a simple pseudo-random generator based on system time.
 pub const ATOM_RAND: StatefulAtomFn = |args, context| {
     if !args.is_empty() {
-        return Err(err_ctx!(Eval, "rand expects 0 arguments, got {}", "rand", "Arity error"));
+        return Err(err_msg!(
+            Eval,
+            "rand expects 0 arguments, got {}",
+            args.len()
+        ));
     }
 
     let n = context.rng.next_u32();

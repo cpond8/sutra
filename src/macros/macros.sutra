@@ -111,3 +111,22 @@
 ;; lte? aliases
 (define (<= ...args) (lte? ...args))
 (define (at-most? ...args) (lte? ...args))
+
+;;
+;; Test Harness Macros
+;;
+
+;; The `test` macro defines a new test case.
+;;
+;; It takes a name for the test, an `expect` form that specifies
+;; the expected outcome, and a body of code to execute.
+;;
+;; The macro expands into a call to `register-test!`, passing along the
+;; test name, expectation, body, and metadata about the source location.
+(define (test name expect-form ...body)
+  (list 'register-test! name expect-form body (list "span" "unknown" "file" "unknown")))
+
+;; The `expect` macro is used within a `test` to declare expectations.
+;; It is a placeholder here and will be parsed by the `register-test!` atom.
+(define (expect ...conditions)
+  (cons 'expect conditions))

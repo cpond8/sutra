@@ -13,7 +13,9 @@
 //!
 //! Example:
 //! ```rust
-//! return Err(err_msg!(Eval, "Arity error"));
+//! use sutra::err_msg;
+//! let err = err_msg!(Eval, "Arity error");
+//! assert!(matches!(err, sutra::SutraError::Eval { .. }));
 //! ```
 //!
 //! All evaluation, type, and recursion errors use this system.
@@ -22,11 +24,12 @@
 use crate::ast::value::Value;
 use crate::ast::{AstNode, Expr, WithSpan};
 use crate::atoms::{AtomRegistry, OutputSink};
+use crate::diagnostics::SutraError;
 use crate::runtime::context::ExecutionContext;
 use crate::runtime::world::World;
-use crate::SutraError;
-use crate::err_ctx;
-use crate::err_msg;
+use crate::{err_ctx, err_msg};
+use miette::NamedSource;
+use std::sync::Arc;
 
 // ===================================================================================================
 // CORE DATA STRUCTURES: Evaluation Context
@@ -37,6 +40,7 @@ pub struct EvalContext<'a, 'o> {
     pub world: &'a World,
     pub output: &'o mut dyn OutputSink,
     pub atom_registry: &'a AtomRegistry,
+    pub source: Arc<NamedSource<String>>,
     pub max_depth: usize,
     pub depth: usize,
 }
@@ -253,12 +257,14 @@ pub fn eval(
     world: &World,
     output: &mut dyn OutputSink,
     atom_registry: &AtomRegistry,
+    source: Arc<NamedSource<String>>,
     max_depth: usize,
 ) -> Result<(Value, World), SutraError> {
     let mut context = EvalContext {
         world,
         output,
         atom_registry,
+        source,
         max_depth,
         depth: 0,
     };
@@ -330,6 +336,7 @@ fn eval_if(
         world: &next_world,
         output: context.output,
         atom_registry: context.atom_registry,
+        source: context.source.clone(),
         max_depth: context.max_depth,
         depth: context.depth + 1,
     };
@@ -371,6 +378,7 @@ fn eval_quoted_if(
         world: &next_world,
         output: context.output,
         atom_registry: context.atom_registry,
+        source: context.source.clone(),
         max_depth: context.max_depth,
         depth: context.depth + 1,
     };

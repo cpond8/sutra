@@ -8,7 +8,9 @@
 //!
 //! Example:
 //! ```rust
-//! return Err(err_msg!(Validation, "Duplicate parameter name"));
+//! use sutra::err_msg;
+//! let err = err_msg!(Validation, "Duplicate parameter name");
+//! assert!(matches!(err, sutra::SutraError::Validation { .. }));
 //! ```
 //!
 //! All macro type, validation, and callable errors use this system.

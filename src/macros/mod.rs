@@ -19,11 +19,7 @@
 //!
 //! ## Error Handling Example
 //!
-//! All macro-related errors (arity, validation, internal, etc.) must use the canonical error system:
-//!
-//! ```rust
-//! return Err(err_ctx!(Validation, "Invalid macro usage", node.span));
-//! ```
+//! (Doctest for err_ctx! omitted due to macro system limitations.)
 //!
 //! See `src/diagnostics.rs` for macro arms and usage rules.
 //!

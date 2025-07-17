@@ -6,7 +6,9 @@
 //!
 //! Example:
 //! ```rust
-//! return Err(err_msg!(Validation, "Macro already registered"));
+//! use sutra::err_msg;
+//! let err = err_msg!(Validation, "Macro already registered");
+//! assert!(matches!(err, sutra::SutraError::Validation { .. }));
 //! ```
 //!
 //! All macro registration, lookup, and serialization errors use this system.
@@ -119,9 +121,9 @@ impl MacroRegistry {
     /// use sutra::macros::{MacroRegistry, MacroFn};
     /// let mut reg = MacroRegistry::new();
     /// let my_macro_fn: MacroFn = |node| Ok(node.clone());
-    /// let old = reg.register("foo", my_macro_fn);
+    /// let old = reg.register("foo", my_macro_fn).unwrap();
     /// assert!(old.is_none());
-    /// let old2 = reg.register("foo", my_macro_fn);
+    /// let old2 = reg.register("foo", my_macro_fn).unwrap();
     /// assert!(old2.is_some());
     /// ```
     pub fn register(&mut self, name: &str, func: MacroFn) -> Result<Option<MacroDef>, SutraError> {
@@ -178,9 +180,9 @@ impl MacroRegistry {
     /// let params = sutra::ast::ParamList { required: vec![], rest: None, span: Span::default() };
     /// let body = Box::new(WithSpan { value: Arc::new(Expr::Number(0.0, Span::default())), span: Span::default() });
     /// let template = MacroTemplate::new(params, body).unwrap();
-    /// let old = reg.register_template("foo", template.clone());
+    /// let old = reg.register_template("foo", template.clone()).unwrap();
     /// assert!(old.is_none());
-    /// let old2 = reg.register_template("foo", template);
+    /// let old2 = reg.register_template("foo", template).unwrap();
     /// assert!(old2.is_some());
     /// ```
     pub fn register_template(&mut self, name: &str, template: MacroTemplate) -> Result<Option<MacroDef>, SutraError> {

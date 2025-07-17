@@ -15,7 +15,7 @@
 
 use crate::ast::value::Value;
 use crate::atoms::{PureAtomFn, StatefulAtomFn};
-use crate::err_ctx;
+use crate::err_msg;
 
 // ============================================================================
 // LIST OPERATIONS
@@ -50,21 +50,15 @@ pub const ATOM_LIST: PureAtomFn = |args| Ok(Value::List(args.to_vec()));
 /// Pure, does not mutate state.
 pub const ATOM_LEN: PureAtomFn = |args| {
     if args.len() != 1 {
-        return Err(err_ctx!(
-            Eval,
-            "len expects 1 argument, got {}",
-            "len",
-            "Arity error"
-        ));
+        return Err(err_msg!(Eval, "len expects 1 argument, got {}", args.len()));
     }
     match &args[0] {
         Value::List(items) => Ok(Value::Number(items.len() as f64)),
         Value::String(s) => Ok(Value::Number(s.len() as f64)),
-        _ => Err(err_ctx!(
+        _ => Err(err_msg!(
             Eval,
             "len expects a List or String, found {}",
-            "len",
-            "Type error"
+            args[0].to_string()
         )),
     }
 };
@@ -86,11 +80,10 @@ pub const ATOM_LEN: PureAtomFn = |args| {
 /// Pure, does not mutate state.
 pub const ATOM_HAS: PureAtomFn = |args| {
     if args.len() != 2 {
-        return Err(err_ctx!(
+        return Err(err_msg!(
             Eval,
             "has? expects 2 arguments, got {}",
-            "has?",
-            "Arity error"
+            args.len()
         ));
     }
     let collection_val = &args[0];
@@ -99,21 +92,19 @@ pub const ATOM_HAS: PureAtomFn = |args| {
         Value::List(items) => items.contains(search_val),
         Value::Map(map) => {
             let Value::String(key) = search_val else {
-                return Err(err_ctx!(
+                return Err(err_msg!(
                     Eval,
                     "has? expects a String for Map key, found {}",
-                    "has?",
-                    "Type error"
+                    search_val.to_string()
                 ));
             };
             map.contains_key(&key[..])
         }
         _ => {
-            return Err(err_ctx!(
+            return Err(err_msg!(
                 Eval,
                 "has? expects a List or Map as first argument, found {}",
-                "has?",
-                "Type error"
+                collection_val.to_string()
             ));
         }
     };
@@ -135,21 +126,19 @@ pub const ATOM_HAS: PureAtomFn = |args| {
 /// Mutates the world at the given path. **Creates a new empty list if the path doesn't exist.**
 pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
     if args.len() != 2 {
-        return Err(err_ctx!(
+        return Err(err_msg!(
             Eval,
             "core/push! expects 2 arguments, got {}",
-            "core/push!",
-            "Arity error"
+            args.len()
         ));
     }
     let path = match &args[0] {
         Value::Path(p) => p,
         _ => {
-            return Err(err_ctx!(
+            return Err(err_msg!(
                 Eval,
                 "core/push! expects a Path as first argument, found {}",
-                "core/push!",
-                "Type error"
+                args[0].to_string()
             ))
         }
     };
@@ -162,11 +151,10 @@ pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
     match &mut list_val {
         Value::List(items) => items.push(args[1].clone()),
         _ => {
-            return Err(err_ctx!(
+            return Err(err_msg!(
                 Eval,
                 "core/push! expects a List at path, found {}",
-                "core/push!",
-                "Type error"
+                list_val.to_string()
             ))
         }
     }
@@ -188,21 +176,19 @@ pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
 /// Mutates the world at the given path. **Creates a new empty list if the path doesn't exist.**
 pub const ATOM_CORE_PULL: StatefulAtomFn = |args, context| {
     if args.len() != 1 {
-        return Err(err_ctx!(
+        return Err(err_msg!(
             Eval,
             "core/pull! expects 1 argument, got {}",
-            "core/pull!",
-            "Arity error"
+            args.len()
         ));
     }
     let path = match &args[0] {
         Value::Path(p) => p,
         _ => {
-            return Err(err_ctx!(
+            return Err(err_msg!(
                 Eval,
                 "core/pull! expects a Path as first argument, found {}",
-                "core/pull!",
-                "Type error"
+                args[0].to_string()
             ))
         }
     };
@@ -215,11 +201,10 @@ pub const ATOM_CORE_PULL: StatefulAtomFn = |args, context| {
     let pulled_value = match &mut list_val {
         Value::List(items) => items.pop().unwrap_or(Value::Nil),
         _ => {
-            return Err(err_ctx!(
+            return Err(err_msg!(
                 Eval,
                 "core/pull! expects a List at path, found {}",
-                "core/pull!",
-                "Type error"
+                list_val.to_string()
             ))
         }
     };
@@ -252,11 +237,10 @@ pub const ATOM_CORE_STR_PLUS: PureAtomFn = |args| {
         match val {
             Value::String(s) => result.push_str(&s[..]),
             _ => {
-                return Err(err_ctx!(
+                return Err(err_msg!(
                     Eval,
                     "core/str+ expects all arguments to be Strings, found {}",
-                    "core/str+",
-                    "Type error"
+                    val.to_string()
                 ));
             }
         }

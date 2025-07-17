@@ -42,7 +42,6 @@
 
 use crate::ast::{AstNode, Expr, Span, WithSpan};
 use crate::SutraError;
-use crate::err_ctx;
 use crate::err_msg;
 use once_cell::sync::Lazy;
 use pest::error::InputLocation;
@@ -150,8 +149,7 @@ pub static AST_BUILDERS: Lazy<HashMap<Rule, AstBuilderFn>> = Lazy::new(|| {
 // Dispatcher: looks up the handler in the map and calls it
 fn build_ast_from_pair(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     AST_BUILDERS.get(&pair.as_rule()).ok_or_else(|| {
-        err_ctx!(Internal, "No AST builder registered for rule: {:?} (input: '{}')",
-                  format!("{:?}", pair.as_rule()), pair.as_str())
+        err_msg!(Internal, "No AST builder for rule: {:?}", pair.as_rule())
     })?(pair)
 }
 
@@ -189,7 +187,7 @@ fn build_program(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
 fn build_expr(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     let mut inner = pair.clone().into_inner();
     let sub = inner.next().ok_or_else(|| {
-        err_ctx!(Internal, "Empty expr pair (input: '{}')", pair.as_str())
+        err_msg!(Internal, "Empty expr pair: {}", pair.as_str())
     })?;
     build_ast_from_pair(sub)
 }
@@ -294,8 +292,7 @@ fn build_param_list(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
 
 fn as_symbol(pair: &Pair<Rule>) -> Result<String, SutraError> {
     if pair.as_rule() != Rule::symbol {
-        return Err(err_ctx!(Internal, "as_symbol: Expected a symbol, found {:?} for input '{}'",
-                            format!("{:?}", pair.as_rule()), pair.as_str()));
+        return Err(err_msg!(Internal, "Expected symbol, found {:?}", pair.as_rule()));
     }
     Ok(pair.as_str().to_string())
 }
@@ -311,7 +308,7 @@ fn build_block(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
 
 fn build_atom(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     let inner = pair.clone().into_inner().next().ok_or_else(|| {
-        err_ctx!(Internal, "Empty atom pair (input: '{}')", pair.as_str())
+        err_msg!(Internal, "Empty atom pair: {}", pair.as_str())
     })?;
     build_ast_from_pair(inner)
 }
@@ -321,7 +318,7 @@ fn build_number(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
     let n = pair
         .as_str()
         .parse::<f64>()
-        .map_err(|e| err_ctx!(Parse, "Parse error: {}", e.to_string()))?;
+        .map_err(|e| err_msg!(Parse, "Number parse error: {}", e))?;
     Ok(WithSpan {
         value: Expr::Number(n, span).into(),
         span,
@@ -339,7 +336,7 @@ fn build_boolean(pair: Pair<Rule>) -> Result<AstNode, SutraError> {
             value: Expr::Bool(false, span).into(),
             span,
         }),
-        _ => Err(err_ctx!(Internal, "Invalid boolean literal: '{}'", pair.as_str())),
+        _ => Err(err_msg!(Internal, "Invalid boolean literal: {}", pair.as_str())),
     }
 }
 
