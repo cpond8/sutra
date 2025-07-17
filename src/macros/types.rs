@@ -163,7 +163,8 @@ pub struct MacroExpansionStep {
 ///
 /// ```rust
 /// use sutra::macros::MacroExpansionContext;
-/// let source = std::sync::Arc::new(miette::NamedSource::new("test", ""));
+/// use std::sync::Arc;
+/// let source = Arc::new(miette::NamedSource::new("test", String::new()));
 /// let env = MacroExpansionContext::new(source);
 /// assert!(env.user_macros.is_empty());
 /// assert!(env.core_macros.is_empty());
@@ -242,8 +243,8 @@ impl MacroExpansionContext {
     ///
     /// ```rust
     /// use sutra::macros::MacroExpansionContext;
-    ///
-    /// let source = std::sync::Arc::new(miette::NamedSource::new("test", ""));
+    /// use std::sync::Arc;
+    /// let source = Arc::new(miette::NamedSource::new("test", String::new()));
     /// let env = MacroExpansionContext::new(source);
     /// assert!(env.user_macros.is_empty());
     /// assert!(env.core_macros.is_empty());
@@ -278,8 +279,8 @@ impl MacroExpansionContext {
     ///
     /// ```rust
     /// use sutra::macros::{MacroExpansionContext, MacroOrigin};
-    ///
-    /// let source = std::sync::Arc::new(miette::NamedSource::new("test", ""));
+    /// use std::sync::Arc;
+    /// let source = Arc::new(miette::NamedSource::new("test", String::new()));
     /// let env = MacroExpansionContext::new(source);
     /// match env.lookup_macro("my-macro") {
     ///     Some((MacroOrigin::User, _def)) => println!("Found user macro"),
@@ -308,8 +309,8 @@ impl MacroExpansionContext {
     ///
     /// ```rust
     /// use sutra::macros::MacroExpansionContext;
-    ///
-    /// let source = std::sync::Arc::new(miette::NamedSource::new("test", ""));
+    /// use std::sync::Arc;
+    /// let source = Arc::new(miette::NamedSource::new("test", String::new()));
     /// let env = MacroExpansionContext::new(source);
     /// let trace = env.trace();
     /// for step in trace {

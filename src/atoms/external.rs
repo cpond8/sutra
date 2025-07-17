@@ -42,7 +42,7 @@ pub const ATOM_PRINT: StatefulAtomFn = |args, context| {
         ));
     }
 
-    context.output.emit(&args[0].to_string(), None);
+    context.output.borrow_mut().emit(&args[0].to_string(), None);
     Ok(Value::Nil)
 };
 

@@ -45,6 +45,8 @@ use crate::runtime::world::World;
 use im::HashMap;
 use crate::SutraError;
 use crate::err_msg;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 // ============================================================================
 // NEW ATOM ARCHITECTURE TYPES
@@ -103,6 +105,25 @@ pub trait OutputSink {
 pub struct NullSink;
 impl OutputSink for NullSink {
     fn emit(&mut self, _text: &str, _span: Option<&Span>) {}
+}
+
+/// Ergonomic, extensible wrapper for shared, mutable output sinks.
+#[derive(Clone)]
+pub struct SharedOutput(pub Rc<RefCell<dyn OutputSink>>);
+
+impl SharedOutput {
+    /// Create a new SharedOutput from any OutputSink.
+    pub fn new<T: OutputSink + 'static>(sink: T) -> Self {
+        SharedOutput(Rc::new(RefCell::new(sink)))
+    }
+    /// Emit output via the sink.
+    pub fn emit(&self, text: &str, span: Option<&crate::ast::Span>) {
+        self.0.borrow_mut().emit(text, span);
+    }
+    /// Borrow the sink mutably (for advanced use).
+    pub fn borrow_mut(&self) -> std::cell::RefMut<'_, dyn OutputSink> {
+        self.0.borrow_mut()
+    }
 }
 
 // Registry for all atoms, inspectable at runtime.
@@ -168,6 +189,7 @@ pub mod logic;
 pub mod math;
 pub mod string;
 pub mod world;
+pub mod special_forms;
 
 // Test atoms module - only available in debug/test builds
 #[cfg(any(test, feature = "test-atom", debug_assertions))]
@@ -188,10 +210,34 @@ pub fn register_all_atoms(registry: &mut AtomRegistry) {
     execution::register_execution_atoms(registry);
     external::register_external_atoms(registry);
     string::register_string_atoms(registry);
+    register_special_forms(registry);
 
     // Register test atoms only in debug or test builds
     #[cfg(any(test, feature = "test-atom", debug_assertions))]
     test::register_test_atoms(registry);
+}
+
+/// Registers all collection atoms with the given registry.
+///
+/// List operations: list, len, has?, car, cdr, cons, core/push!, core/pull!
+/// String operations: core/str+
+pub fn register_collection_atoms(registry: &mut AtomRegistry) {
+    // List operations
+    registry.register("list", Atom::Pure(collections::ATOM_LIST));
+    registry.register("len", Atom::Pure(collections::ATOM_LEN));
+    registry.register("has?", Atom::Pure(collections::ATOM_HAS));
+    registry.register("car", Atom::Pure(collections::ATOM_CAR));
+    registry.register("cdr", Atom::Pure(collections::ATOM_CDR));
+    registry.register("cons", Atom::Pure(collections::ATOM_CONS));
+
+    // String operations
+    registry.register("core/str+", Atom::Pure(collections::ATOM_CORE_STR_PLUS));
+}
+
+/// Registers all special form atoms (lambda, let, etc.) with the given registry.
+pub fn register_special_forms(registry: &mut AtomRegistry) {
+    registry.register("lambda", Atom::SpecialForm(special_forms::ATOM_LAMBDA));
+    registry.register("let", Atom::SpecialForm(special_forms::ATOM_LET));
 }
 
 // ============================================================================

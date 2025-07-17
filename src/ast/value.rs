@@ -9,6 +9,7 @@ use crate::runtime::path::Path;
 use im::HashMap;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::rc::Rc;
 
 /// Canonical runtime value for Sutra evaluation and macro expansion.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -28,6 +29,16 @@ pub enum Value {
     Map(HashMap<String, Value>),
     /// Reference to a path in the world state (not auto-resolved).
     Path(Path),
+    /// User-defined lambda function (captures parameter list and body).
+    Lambda(Rc<Lambda>),
+}
+
+/// Represents a user-defined lambda function (for closures and function values).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Lambda {
+    pub params: crate::ast::ParamList,      // Parameter names, variadic info
+    pub body: Box<crate::ast::AstNode>,     // The function body (AST)
+    // Optionally: captured_env: LexicalEnv, // For closures (future)
 }
 
 impl Value {
@@ -41,6 +52,7 @@ impl Value {
             Value::List(_) => "List",
             Value::Map(_) => "Map",
             Value::Path(_) => "Path",
+            Value::Lambda(_) => "Lambda",
         }
     }
 
@@ -126,6 +138,7 @@ impl fmt::Display for Value {
             Value::List(items) => Value::fmt_list(f, items),
             Value::Map(map) => Value::fmt_map(f, map),
             Value::Path(p) => write!(f, "{}", p),
+            Value::Lambda(_) => write!(f, "<lambda>"),
         }
     }
 }

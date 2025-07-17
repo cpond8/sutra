@@ -161,6 +161,7 @@ impl From<crate::ast::value::Value> for Expr {
             },
             Value::Map(_) => Expr::List(vec![], Span::default()),
             Value::Path(p) => Expr::Path(p, Span::default()),
+            Value::Lambda(_) => Expr::Symbol("<lambda>".to_string(), Span::default()),
         }
     }
 }

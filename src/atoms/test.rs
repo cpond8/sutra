@@ -138,7 +138,7 @@ fn test_echo_atom(
     let Some(first) = args.first() else {
         let val = Value::String("".to_string());
         let world = ctx.world.clone();
-        ctx.output.emit(&val.to_string(), Some(span));
+        ctx.output.borrow_mut().emit(&val.to_string(), Some(span));
         return Ok((val, world));
     };
     let val = match &*first.value {
@@ -146,7 +146,7 @@ fn test_echo_atom(
         _ => Value::String(format!("{}", first.value)),
     };
     let world = ctx.world.clone();
-    ctx.output.emit(&val.to_string(), Some(span));
+    ctx.output.borrow_mut().emit(&val.to_string(), Some(span));
     Ok((val, world))
 }
 
@@ -200,6 +200,7 @@ fn emit_borrow_stress_output(
     phase: &str,
 ) {
     ctx.output
+        .borrow_mut()
         .emit(&format!("[{}:{}:{}]", phase, depth, msg), Some(span));
 }
 

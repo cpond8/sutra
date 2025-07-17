@@ -15,6 +15,10 @@ use crate::SutraError;
 use clap::Parser;
 use std::io::Write;
 use termcolor::WriteColor;
+use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::rc::Rc;
+use std::cell::RefCell;
+use crate::atoms::SharedOutput;
 
 pub mod args;
 pub mod output;
@@ -372,8 +376,7 @@ fn execute_test_body(body: &[crate::ast::AstNode]) -> (Result<crate::ast::value:
     use std::sync::Arc;
     use miette::NamedSource;
 
-    let mut output_buf = OutputBuffer::new();
-
+    let output_buf = Rc::new(RefCell::new(OutputBuffer::new()));
     let result = if body.is_empty() {
         Ok(crate::ast::value::Value::Nil)
     } else {
@@ -399,14 +402,14 @@ fn execute_test_body(body: &[crate::ast::AstNode]) -> (Result<crate::ast::value:
         };
 
         // Execute the expression
-        match evaluate(&do_expr, &world, &mut output_buf, &atom_registry, source, 100) {
+        match evaluate(&do_expr, &world, SharedOutput(output_buf.clone()), &atom_registry, source, 100) {
             Ok((value, _)) => Ok(value),
             Err(e) => Err(e),
         }
     };
 
-    let output = output_buf.as_str().replace("\r\n", "\n").trim().to_string();
-    (result, output)
+    let output_string = output_buf.borrow().as_str().replace("\r\n", "\n").trim().to_string();
+    (result, output_string)
 }
 
 /// Compares test result against expectation.
@@ -475,26 +478,33 @@ fn print_test_result(
     test_name: &str,
     result: &TestResult,
     stdout: &mut termcolor::StandardStream,
+    test_file: Option<&str>,
+    test_line: Option<usize>,
 ) {
+    let location = match (test_file, test_line) {
+        (Some(file), Some(line)) => format!(" ({}:{})", file, line),
+        (Some(file), None) => format!(" ({})", file),
+        _ => String::new(),
+    };
     match result {
         TestResult::Pass => {
             set_output_color(stdout, termcolor::Color::Green, true);
-            let _ = writeln!(stdout, "PASS: {}", test_name);
+            let _ = writeln!(stdout, "PASS: {}{}", test_name, location);
         }
         TestResult::Fail { expected, actual } => {
             set_output_color(stdout, termcolor::Color::Red, true);
-            let _ = writeln!(stdout, "FAIL: {}", test_name);
+            let _ = writeln!(stdout, "FAIL: {}{}", test_name, location);
             set_output_color(stdout, termcolor::Color::Yellow, false);
             let _ = writeln!(stdout, "  Expected: {}", expected);
             let _ = writeln!(stdout, "  Actual:   {}", actual);
         }
         TestResult::Skip { reason } => {
             set_output_color(stdout, termcolor::Color::Yellow, true);
-            let _ = writeln!(stdout, "SKIP: {} ({})", test_name, reason);
+            let _ = writeln!(stdout, "SKIP: {}{} ({})", test_name, location, reason);
         }
         TestResult::Error { message } => {
             set_output_color(stdout, termcolor::Color::Red, true);
-            let _ = writeln!(stdout, "ERROR: {} - {}", test_name, message);
+            let _ = writeln!(stdout, "ERROR: {}{} - {}", test_name, location, message);
         }
     }
     reset_output_color(stdout);
@@ -585,8 +595,7 @@ fn handle_format(path: &std::path::Path) -> Result<(), SutraError> {
 /// Handles the `run` subcommand.
 fn handle_run(path: &std::path::Path) -> Result<(), SutraError> {
     let source = read_file_to_string(path)?;
-    let mut stdout_sink = StdoutSink;
-    run_sutra_source_with_output(&source, &mut stdout_sink)?;
+    run_sutra_source_with_output(&source, SharedOutput::new(StdoutSink))?;
     Ok(())
 }
 
@@ -664,8 +673,8 @@ pub fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
         let expanded = build_macro_environment_and_expand(ast_nodes, "")?;
 
         // Execute the expanded AST to register tests
-        let mut output_buf = crate::cli::output::OutputBuffer::new();
-        let _ = run_sutra_source_with_output(&expanded.value.pretty(), &mut output_buf);
+        let output_buf = Rc::new(RefCell::new(crate::cli::output::OutputBuffer::new()));
+        let _ = run_sutra_source_with_output(&expanded.value.pretty(), SharedOutput(output_buf));
     }
 
     // Get all registered tests
@@ -689,30 +698,50 @@ pub fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
     let mut errors = 0;
 
     for (test_name, test_def) in tests {
-        match parse_expectation(&test_def.expect) {
-            Ok(expectation) => {
-                let result = match &expectation {
-                    TestExpectation::Skip(reason) => TestResult::Skip { reason: reason.clone() },
-                    _ => {
-                        let (exec_result, output) = execute_test_body(&test_def.body);
-                        check_test_expectation(exec_result, &output, &expectation)
-                    }
+        let file = test_def.file.as_deref();
+        let line = Some(test_def.span.start); // Use span.start as line number proxy
+
+        // Wrap the entire test execution in catch_unwind to prevent panics from aborting the harness
+        let test_result = catch_unwind(AssertUnwindSafe(|| {
+            match parse_expectation(&test_def.expect) {
+                Ok(expectation) => {
+                    let result = match &expectation {
+                        TestExpectation::Skip(reason) => TestResult::Skip { reason: reason.clone() },
+                        _ => {
+                            let (exec_result, output) = execute_test_body(&test_def.body);
+                            check_test_expectation(exec_result, &output, &expectation)
+                        }
+                    };
+                    result
+                }
+                Err(e) => TestResult::Error {
+                    message: format!("Failed to parse expectation: {}", e),
+                },
+            }
+        }));
+
+        let result = match test_result {
+            Ok(r) => r,
+            Err(panic) => {
+                let panic_msg = if let Some(s) = panic.downcast_ref::<&str>() {
+                    s.to_string()
+                } else if let Some(s) = panic.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "Unknown panic".to_string()
                 };
-                print_test_result(&test_name, &result, &mut stdout);
-                match result {
-                    TestResult::Pass => passed += 1,
-                    TestResult::Fail { .. } => failed += 1,
-                    TestResult::Skip { .. } => skipped += 1,
-                    TestResult::Error { .. } => errors += 1,
+                TestResult::Error {
+                    message: format!("Test panicked: {}", panic_msg),
                 }
             }
-            Err(e) => {
-                let result = TestResult::Error {
-                    message: format!("Failed to parse expectation: {}", e),
-                };
-                print_test_result(&test_name, &result, &mut stdout);
-                errors += 1;
-            }
+        };
+
+        print_test_result(&test_name, &result, &mut stdout, file, line);
+        match result {
+            TestResult::Pass => passed += 1,
+            TestResult::Fail { .. } => failed += 1,
+            TestResult::Skip { .. } => skipped += 1,
+            TestResult::Error { .. } => errors += 1,
         }
     }
 

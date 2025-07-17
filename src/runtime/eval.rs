@@ -33,7 +33,7 @@
 // The atom registry is a single source of truth and must be passed by reference to all validation and evaluation code. Never construct a local/hidden registry.
 use crate::ast::value::Value;
 use crate::ast::{AstNode, Expr, Spanned};
-use crate::atoms::{AtomRegistry, OutputSink};
+use crate::atoms::AtomRegistry;
 use crate::diagnostics::SutraError;
 use crate::runtime::context::AtomExecutionContext;
 use crate::runtime::world::World;
@@ -42,27 +42,65 @@ use crate::err_src;
 use miette::NamedSource;
 use std::sync::Arc;
 use crate::macros::expand_macro_call;
+use std::collections::HashMap;
+use crate::atoms::SharedOutput;
 
 // ===================================================================================================
 // CORE DATA STRUCTURES: Evaluation Context
 // ===================================================================================================
 
 /// The context for a single evaluation, passed to atoms and all evaluation functions.
-pub struct EvaluationContext<'a, 'o> {
+pub struct EvaluationContext<'a> {
     pub world: &'a World,
-    pub output: &'o mut dyn OutputSink,
+    pub output: SharedOutput,
     pub atom_registry: &'a AtomRegistry,
     pub source: Arc<NamedSource<String>>,
     pub max_depth: usize,
     pub depth: usize,
+    /// Stack of lexical environments (for let/lambda scoping)
+    pub lexical_env: Vec<HashMap<String, crate::ast::value::Value>>,
 }
 
-impl EvaluationContext<'_, '_> {
+impl<'a> EvaluationContext<'a> {
     /// Helper to increment depth for recursive calls.
     pub fn next_depth(&self) -> usize {
         self.depth + 1
     }
 
+    /// Clone the context with a new lexical frame (for let/lambda)
+    pub fn clone_with_new_lexical_frame(&self) -> Self {
+        let mut new = EvaluationContext {
+            world: self.world,
+            output: self.output.clone(),
+            atom_registry: self.atom_registry,
+            source: self.source.clone(),
+            max_depth: self.max_depth,
+            depth: self.depth,
+            lexical_env: self.lexical_env.clone(),
+        };
+        new.lexical_env.push(HashMap::new());
+        new
+    }
+
+    /// Set a variable in the current lexical frame
+    pub fn set_lexical_var(&mut self, name: &str, value: crate::ast::value::Value) {
+        if let Some(frame) = self.lexical_env.last_mut() {
+            frame.insert(name.to_string(), value);
+        }
+    }
+
+    /// Get a variable from the lexical environment stack (innermost to outermost)
+    pub fn get_lexical_var(&self, name: &str) -> Option<&crate::ast::value::Value> {
+        for frame in self.lexical_env.iter().rev() {
+            if let Some(val) = frame.get(name) {
+                return Some(val);
+            }
+        }
+        None
+    }
+}
+
+impl<'a> EvaluationContext<'a> {
     /// Looks up and invokes an atom by name, handling errors for missing atoms.
     /// Also checks for macros first before checking atoms.
     pub fn call_atom(
@@ -144,7 +182,7 @@ impl EvaluationContext<'_, '_> {
                 let result = {
                     let mut exec_context = AtomExecutionContext {
                         state: &mut world_context.state,
-                        output: self.output,
+                        output: self.output.clone(),
                         rng: &mut world_context.prng,
                     };
                     stateful_fn(&values, &mut exec_context)?
@@ -178,11 +216,12 @@ fn evaluate_eager_args(
             let next_depth = context.next_depth();
             let mut arg_context = EvaluationContext {
                 world: &current_world,
-                output: &mut *context.output,
+                output: context.output.clone(),
                 atom_registry: context.atom_registry,
                 source: context.source.clone(),
                 max_depth: context.max_depth,
                 depth: next_depth,
+                lexical_env: context.lexical_env.clone(),
             };
             evaluate_ast_node(arg, &mut arg_context)?
         };
@@ -251,13 +290,15 @@ fn evaluate_invalid_expr(
             expr.span,
         ),
         Expr::Symbol(s, span) => {
+            // Look up in lexical environment first
+            if let Some(val) = context.get_lexical_var(s) {
+                return wrap_value_with_world_state(val.clone(), context.world);
+            }
             // Attempt to resolve the symbol as a path in the world state.
-            // This allows for dynamic access to world variables.
             let path = crate::runtime::path::Path(vec![s.clone()]);
             if let Some(value) = context.world.state.get(&path) {
                 return wrap_value_with_world_state(value.clone(), context.world);
             }
-
             // If the symbol is not found in the world state, it's an undefined symbol.
             (
                 "explicit (get ...) call required for symbol evaluation",
@@ -341,7 +382,7 @@ pub fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext) -> Res
 pub fn evaluate(
     expr: &AstNode,
     world: &World,
-    output: &mut dyn OutputSink,
+    output: SharedOutput,
     atom_registry: &AtomRegistry,
     source: Arc<NamedSource<String>>,
     max_depth: usize,
@@ -353,6 +394,7 @@ pub fn evaluate(
         source,
         max_depth,
         depth: 0,
+        lexical_env: vec![HashMap::new()],
     };
     evaluate_ast_node(expr, &mut context)
 }
@@ -387,6 +429,24 @@ fn evaluate_list(
 
     // Use direct atom resolution
     let flat_tail = flatten_spread_args(tail, context)?;
+    // If the symbol is not an atom, check if it's a lambda in the lexical environment
+    if let Some(val) = context.get_lexical_var(symbol_name) {
+        if let Value::Lambda(lambda_rc) = val {
+            let lambda = lambda_rc.clone();
+            // Evaluate arguments eagerly
+            let (arg_values, world_after_args) = evaluate_eager_args(&flat_tail, context)?;
+            let mut lambda_context = EvaluationContext {
+                world: &world_after_args,
+                output: context.output.clone(),
+                atom_registry: context.atom_registry,
+                source: context.source.clone(),
+                max_depth: context.max_depth,
+                depth: context.depth + 1,
+                lexical_env: context.lexical_env.clone(),
+            };
+            return crate::atoms::special_forms::call_lambda(&lambda, &arg_values, &mut lambda_context);
+        }
+    }
     context.call_atom(symbol_name, head, &flat_tail, span)
 }
 
@@ -440,11 +500,12 @@ fn evaluate_if(
     let (is_true, next_world) = evaluate_condition_as_bool(condition, context)?;
     let mut sub_context = EvaluationContext {
         world: &next_world,
-        output: context.output,
+        output: context.output.clone(),
         atom_registry: context.atom_registry,
         source: context.source.clone(),
         max_depth: context.max_depth,
         depth: context.depth + 1,
+        lexical_env: context.lexical_env.clone(),
     };
 
     let branch = if is_true { then_branch } else { else_branch };
@@ -493,11 +554,12 @@ fn evaluate_quoted_if(
     let (is_true, next_world) = evaluate_condition_as_bool(condition, context)?;
     let mut sub_context = EvaluationContext {
         world: &next_world,
-        output: context.output,
+        output: context.output.clone(),
         atom_registry: context.atom_registry,
         source: context.source.clone(),
         max_depth: context.max_depth,
         depth: context.depth + 1,
+        lexical_env: context.lexical_env.clone(),
     };
 
     let branch = if is_true { then_branch } else { else_branch };

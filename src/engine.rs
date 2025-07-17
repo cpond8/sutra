@@ -1,4 +1,3 @@
-use crate::atoms::OutputSink;
 use crate::cli::output::StdoutSink;
 use crate::err_ctx;
 use crate::macros::definition::{is_macro_definition, parse_macro_definition};
@@ -10,11 +9,12 @@ use crate::syntax::parser::wrap_in_do;
 use crate::SutraError;
 use miette::NamedSource;
 use std::sync::Arc;
+use crate::atoms::SharedOutput;
 
 /// Run Sutra source with injectable output sink (engine orchestration entry point).
 pub fn run_sutra_source_with_output(
     source: &str,
-    output: &mut dyn OutputSink,
+    output: SharedOutput,
 ) -> Result<(), SutraError> {
     // 1. Parse the source into AST nodes
     let ast_nodes = crate::syntax::parser::parse(source)?;
@@ -71,7 +71,7 @@ pub fn run_sutra_source_with_output(
     let world = World::default();
     let source = Arc::new(NamedSource::new("source", source.to_string()));
     let (result, _updated_world) =
-        evaluate(&expanded, &world, output, &atom_registry, source.clone(), 100)?;
+        evaluate(&expanded, &world, output.clone(), &atom_registry, source.clone(), 100)?;
 
     // 10. If result is nil, suppress output to avoid "null" printing
     if !result.is_nil() {
@@ -83,6 +83,6 @@ pub fn run_sutra_source_with_output(
 
 /// Run Sutra source and print output to stdout (legacy entry point).
 pub fn run_sutra_source(source: &str, _filename: Option<&str>) -> Result<(), SutraError> {
-    let mut stdout_sink = StdoutSink;
-    run_sutra_source_with_output(source, &mut stdout_sink)
+    let output = SharedOutput::new(StdoutSink);
+    run_sutra_source_with_output(source, output)
 }

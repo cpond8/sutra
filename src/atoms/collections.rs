@@ -248,6 +248,90 @@ pub const ATOM_CORE_STR_PLUS: PureAtomFn = |args| {
     Ok(Value::String(result))
 };
 
+/// Returns the first element of a list.
+///
+/// Usage: (car <list>)
+///   - <list>: List to extract the first element from
+///
+///   Returns: The first element of the list
+///
+/// Example:
+///   (car (list 1 2 3)) ; => 1
+///
+/// # Errors
+/// Returns an error if the argument is not a list or if the list is empty.
+pub const ATOM_CAR: PureAtomFn = |args| {
+    if args.len() != 1 {
+        return Err(err_msg!(Eval, "car expects 1 argument, got {}", args.len()));
+    }
+    match &args[0] {
+        Value::List(items) => {
+            if let Some(first) = items.first() {
+                Ok(first.clone())
+            } else {
+                Err(err_msg!(Eval, "car: empty list"))
+            }
+        }
+        _ => Err(err_msg!(Eval, "car expects a List, found {}", args[0].to_string())),
+    }
+};
+
+/// Returns the tail (all but the first element) of a list.
+///
+/// Usage: (cdr <list>)
+///   - <list>: List to extract the tail from
+///
+///   Returns: List containing all elements except the first
+///
+/// Example:
+///   (cdr (list 1 2 3)) ; => (2 3)
+///
+/// # Errors
+/// Returns an error if the argument is not a list or if the list is empty.
+pub const ATOM_CDR: PureAtomFn = |args| {
+    if args.len() != 1 {
+        return Err(err_msg!(Eval, "cdr expects 1 argument, got {}", args.len()));
+    }
+    match &args[0] {
+        Value::List(items) => {
+            if items.is_empty() {
+                Err(err_msg!(Eval, "cdr: empty list"))
+            } else {
+                Ok(Value::List(items[1..].to_vec()))
+            }
+        }
+        _ => Err(err_msg!(Eval, "cdr expects a List, found {}", args[0].to_string())),
+    }
+};
+
+/// Prepends an element to a list.
+///
+/// Usage: (cons <element> <list>)
+///   - <element>: Value to prepend
+///   - <list>: List to prepend to
+///
+///   Returns: New list with the element prepended
+///
+/// Example:
+///   (cons 1 (list 2 3)) ; => (1 2 3)
+///
+/// # Errors
+/// Returns an error if the second argument is not a list.
+pub const ATOM_CONS: PureAtomFn = |args| {
+    if args.len() != 2 {
+        return Err(err_msg!(Eval, "cons expects 2 arguments, got {}", args.len()));
+    }
+    match &args[1] {
+        Value::List(items) => {
+            let mut new_list = Vec::with_capacity(items.len() + 1);
+            new_list.push(args[0].clone());
+            new_list.extend_from_slice(items);
+            Ok(Value::List(new_list))
+        }
+        _ => Err(err_msg!(Eval, "cons expects second argument to be a List, found {}", args[1].to_string())),
+    }
+};
+
 // ============================================================================
 // REGISTRATION FUNCTION
 // ============================================================================
@@ -263,4 +347,7 @@ pub fn register_collection_atoms(registry: &mut crate::atoms::AtomRegistry) {
 
     // String operations
     registry.register("core/str+", crate::atoms::Atom::Pure(ATOM_CORE_STR_PLUS));
+    registry.register("car", crate::atoms::Atom::Pure(ATOM_CAR));
+    registry.register("cdr", crate::atoms::Atom::Pure(ATOM_CDR));
+    registry.register("cons", crate::atoms::Atom::Pure(ATOM_CONS));
 }

@@ -188,3 +188,88 @@
 ;; cons: Prepend element to list.
 (define (cons el lst)
   (core/prepend el lst))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; 8. Stage 1 Macros (Priorities 1-3)
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Assignment Macros (Priority 1)
+
+;; mul!: Multiply value at path
+;; Expands to: (core/set! path (* (core/get path) value))
+(define (mul! path value)
+  (core/set! path (* (core/get path) value)))
+
+;; div!: Divide value at path
+;; Expands to: (core/set! path (/ (core/get path) value))
+(define (div! path value)
+  (core/set! path (/ (core/get path) value)))
+
+;; push!: Push values to collection at path
+;; Expands to: (core/push! path ...values)
+(define (push! path ...values)
+  (core/push! path ...values))
+
+;; pull!: Pull values from collection at path
+;; Expands to: (core/pull! path ...values)
+(define (pull! path ...values)
+  (core/pull! path ...values))
+
+;; Predicate/Logic Macros (Priority 2)
+
+;; exists?: Check if path exists
+(define (exists? path)
+  (core/exists? path))
+
+;; and: Short-circuiting logical AND
+(define (and ...args)
+  (if (null? args)
+      true
+      (if (car args)
+          (apply and (cdr args))
+          false)))
+
+;; or: Short-circuiting logical OR
+(define (or ...args)
+  (if (null? args)
+      false
+      (if (car args)
+          (car args)
+          (apply or (cdr args)))))
+
+;; empty?: Check if collection is empty
+(define (empty? collection)
+  (eq? (len collection) 0))
+
+;; has?: Check if value exists in collection
+(define (has? collection value)
+  (core/has? collection value))
+
+;; Control Flow Macros (Priority 3)
+
+;; when: Execute body when condition is true
+(define (when cond ...body)
+  (if cond (do ...body)))
+
+;; let: Lexical bindings
+(define (let bindings ...body)
+  (letrec
+    ((process-bindings
+      (lambda (binds)
+        (if (null? binds)
+            (do ...body)
+            (let ((binding (car binds)))
+              (let ((var (car binding))
+                    (val (cadr binding)))
+                (set! var val)
+                (process-bindings (cdr binds)))))))
+    (process-bindings bindings))))
+
+;; for-each: Loop over collection
+(define (for-each var collection ...body)
+  (let ((index 0)
+        (len (len collection)))
+    (while (< index len)
+      (let ((var (get collection index)))
+        (do ...body)
+        (set! index (+ index 1))))))

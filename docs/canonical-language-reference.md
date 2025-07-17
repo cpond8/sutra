@@ -72,14 +72,15 @@ Sutra is a minimal, homoiconic, expression-based language designed for composabl
 
 ### 3.3 Control Flow
 
-| Construct  | Arity | Example                     | Description              | Impl.      | Status  |
-| :--------- | :---- | :-------------------------- | :----------------------- | :--------- | :------ |
-| `if`       | 3     | `(if condition then else)`  | Conditional              | `Expr::If` | impl.   |
-| `cond`     | 3..   | `(cond ((cond1) then) ...)` | Branching Conditional    | Macro      | impl.   |
-| `do`       | 0..   | `(do expr1 expr2 ...)`      | Sequence, returns last   | Atom: `do` | impl.   |
-| `when`     | 2..   | `(when condition ...)`      | Conditional `if` w/ `do` | Macro      | planned |
-| `let`      | 2     | `(let (...) ...)`           | Lexical bindings         | Macro      | planned |
-| `for-each` | 3     | `(for-each ...)`            | Looping construct        | Macro      | planned |
+| Construct  | Arity | Example                          | Description              | Impl.       | Status  |
+| :--------- | :---- | :------------------------------- | :----------------------- | :---------- | :------ |
+| `if`       | 3     | `(if condition then else)`       | Conditional              | `Expr::If`  | impl.   |
+| `cond`     | 3..   | `(cond ((cond1) then) ...)`      | Branching Conditional    | Macro       | impl.   |
+| `do`       | 0..   | `(do expr1 expr2 ...)`           | Sequence, returns last   | Atom: `do`  | impl.   |
+| `when`     | 2..   | `(when condition ...)`           | Conditional `if` w/ `do` | Macro       | planned |
+| `let`      | 2     | `(let ((var val) ...) body ...)` | Lexical bindings         | SpecialForm | impl.   |
+| `lambda`   | 2..   | `(lambda (params) body ...)`     | Anonymous function       | SpecialForm | impl.   |
+| `for-each` | 3     | `(for-each ...)`                 | Looping construct        | Macro       | planned |
 
 ### 3.4 Arity (Function & Macro Arguments)
 
@@ -92,6 +93,69 @@ Arity refers to the number of arguments a function or macro accepts. Sutra suppo
 - **Optional Arguments:** While not a formal feature, optionality can be implemented within a macro or function's logic.
 
 In function definitions, a variadic parameter is specified using `...` before the parameter name (e.g., `(define (my-func ...args) ...)`) which collects all subsequent arguments into a single list named `args`.
+
+---
+
+## 4. First-Class Functions: `lambda`
+
+Sutra supports first-class, lexically scoped anonymous functions via the `lambda` special form.
+
+### Syntax
+
+```sutra
+(lambda (param1 param2 ...) body1 body2 ...)
+```
+
+- Parameters are listed in a vector (e.g., `(x y)`), supporting both fixed and variadic arity (with `...rest`).
+- The body may contain one or more expressions; the value of the last is returned.
+
+### Semantics
+
+- `lambda` returns a function value that can be called like any other function.
+- Lambdas capture their lexical environment (closures).
+- Arity is checked at call time; errors are raised for mismatches.
+
+### Example
+
+```sutra
+(define add (lambda (x y) (+ x y)))
+(add 2 3) ; => 5
+
+(define make-adder (lambda (n) (lambda (x) (+ x n))))
+(define add5 (make-adder 5))
+(add5 10) ; => 15
+```
+
+---
+
+## 5. Lexical Bindings: `let`
+
+The `let` special form introduces new lexical bindings for the duration of its body.
+
+### Syntax
+
+```sutra
+(let ((var1 val1) (var2 val2) ...) body1 body2 ...)
+```
+
+- Each binding is a pair `(var val)`.
+- The body may contain one or more expressions; the value of the last is returned.
+
+### Semantics
+
+- Bindings are evaluated sequentially and are visible in the body and subsequent bindings.
+- `let` creates a new lexical scope; variables shadow outer bindings.
+
+### Example
+
+```sutra
+(let ((x 2) (y 3))
+  (* x y)) ; => 6
+
+(let ((x 1))
+  (let ((x 2) (y x))
+    (+ x y))) ; => 3
+```
 
 ---
 
@@ -245,18 +309,18 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ## 6. Assignment & State
 
-| Macro   | Arity | Expansion Pattern                            | Impl.       | Status  |
-| :------ | :---- | :------------------------------------------- | :---------- | :------ |
-| `set!`  | 2     | `(core/set! (path ...) value)`               | Macro, Atom | impl.   |
-| `del!`  | 1     | `(core/del! (path ...))`                     | Macro, Atom | impl.   |
-| `add!`  | 2     | `(core/set! (path ...) (+ (get ...) value))` | Macro, Atom | impl.   |
-| `sub!`  | 2     | `(core/set! (path ...) (- (get ...) value))` | Macro, Atom | impl.   |
-| `inc!`  | 1     | `(core/set! (path ...) (+ (get ...) 1))`     | Macro, Atom | impl.   |
-| `dec!`  | 1     | `(core/set! (path ...) (- (get ...) 1))`     | Macro, Atom | impl.   |
-| `mul!`  | 2     | `(core/set! (path ...) (* (get ...) value))` | Macro, Atom | planned |
-| `div!`  | 2     | `(core/set! (path ...) (/ (get ...) value))` | Macro, Atom | planned |
-| `push!` | 1..   | `(core/push! (path ...) value ...)`          | Macro, Atom | impl. via core/* |
-| `pull!` | 1..   | `(core/pull! (path ...) value ...)`          | Macro, Atom | impl. via core/* |
+| Macro   | Arity | Expansion Pattern                            | Impl.       | Status            |
+| :------ | :---- | :------------------------------------------- | :---------- | :---------------- |
+| `set!`  | 2     | `(core/set! (path ...) value)`               | Macro, Atom | impl.             |
+| `del!`  | 1     | `(core/del! (path ...))`                     | Macro, Atom | impl.             |
+| `add!`  | 2     | `(core/set! (path ...) (+ (get ...) value))` | Macro, Atom | impl.             |
+| `sub!`  | 2     | `(core/set! (path ...) (- (get ...) value))` | Macro, Atom | impl.             |
+| `inc!`  | 1     | `(core/set! (path ...) (+ (get ...) 1))`     | Macro, Atom | impl.             |
+| `dec!`  | 1     | `(core/set! (path ...) (- (get ...) 1))`     | Macro, Atom | impl.             |
+| `mul!`  | 2     | `(core/set! (path ...) (* (get ...) value))` | Macro, Atom | planned           |
+| `div!`  | 2     | `(core/set! (path ...) (/ (get ...) value))` | Macro, Atom | planned           |
+| `push!` | 1..   | `(core/push! (path ...) value ...)`          | Macro, Atom | impl. via core/\* |
+| `pull!` | 1..   | `(core/pull! (path ...) value ...)`          | Macro, Atom | impl. via core/\* |
 
 ---
 
@@ -280,17 +344,57 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ## 8. Math & Value Operations
 
-| Atom  | Arity | Purpose              | Impl. | Status  |
-| :---- | :---- | :------------------- | :---- | :------ |
-| `+`   | 0..   | Addition             | Atom  | impl.   |
-| `-`   | 1..   | Subtraction/Negation | Atom  | impl.   |
-| `*`   | 0..   | Multiplication       | Atom  | impl.   |
-| `/`   | 1..   | Division             | Atom  | impl.   |
-| `mod` | 2     | Modulo (int)         | Atom  | impl.   |
-| `len` | 1     | Length (list/string) | Atom  | impl.   |
-| `min` | 1..   | Minimum              | Atom  | impl.   |
-| `max` | 1..   | Maximum              | Atom  | impl.   |
-| `abs` | 1     | Absolute value       | Atom  | impl.   |
+| Atom   | Arity | Purpose                      | Impl. | Status |
+| :----- | :---- | :--------------------------- | :---- | :----- |
+| `+`    | 0..   | Addition                     | Atom  | impl.  |
+| `-`    | 1..   | Subtraction/Negation         | Atom  | impl.  |
+| `*`    | 0..   | Multiplication               | Atom  | impl.  |
+| `/`    | 1..   | Division                     | Atom  | impl.  |
+| `mod`  | 2     | Modulo (int)                 | Atom  | impl.  |
+| `len`  | 1     | Length (list/string)         | Atom  | impl.  |
+| `car`  | 1     | First element of list        | Atom  | impl.  |
+| `cdr`  | 1     | Tail of list (all but first) | Atom  | impl.  |
+| `cons` | 2     | Prepend element to list      | Atom  | impl.  |
+| `min`  | 1..   | Minimum                      | Atom  | impl.  |
+| `max`  | 1..   | Maximum                      | Atom  | impl.  |
+| `abs`  | 1     | Absolute value               | Atom  | impl.  |
+
+### List Operations: `car`, `cdr`, `cons`
+
+- **`car`**
+
+  - **Signature:** `(car <list>)`
+  - **Purpose:** Returns the first element of a list.
+  - **Arity:** 1
+  - **Example:**
+    ```sutra
+    (car (list 1 2 3)) ; => 1
+    (car (list "a" "b")) ; => "a"
+    (car (list)) ; => error: car: empty list
+    ```
+
+- **`cdr`**
+
+  - **Signature:** `(cdr <list>)`
+  - **Purpose:** Returns the tail of a list (all but the first element).
+  - **Arity:** 1
+  - **Example:**
+    ```sutra
+    (cdr (list 1 2 3)) ; => (2 3)
+    (cdr (list "a" "b")) ; => ("b")
+    (cdr (list)) ; => error: cdr: empty list
+    ```
+
+- **`cons`**
+  - **Signature:** `(cons <element> <list>)`
+  - **Purpose:** Prepends an element to a list, returning a new list.
+  - **Arity:** 2
+  - **Example:**
+    ```sutra
+    (cons 1 (list 2 3)) ; => (1 2 3)
+    (cons "a" (list "b" "c")) ; => ("a" "b" "c")
+    (cons 1 2) ; => error: cons expects second argument to be a List
+    ```
 
 ---
 
