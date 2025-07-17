@@ -8,7 +8,7 @@
 //! (e.g., `player.score` or `(player score)`) into a canonical `Expr::Path`
 //! node. This is the only place in the entire engine where path syntax is parsed.
 
-use crate::ast::{AstNode, Expr, WithSpan};
+use crate::ast::{AstNode, Expr, Spanned};
 use crate::macros::MacroRegistry;
 use crate::runtime::path::Path;
 use crate::SutraError;
@@ -74,7 +74,7 @@ fn expr_to_path(expr: &AstNode) -> Result<Path, SutraError> {
 fn wrap_in_get(expr: &AstNode) -> AstNode {
     let get_symbol = create_symbol("get", &expr.span);
     let path_expr = expr.clone();
-    WithSpan {
+    Spanned {
         value: Expr::List(vec![get_symbol, path_expr], expr.span).into(),
         span: expr.span,
     }
@@ -110,7 +110,7 @@ fn expect_args(
 
 /// Creates a `AstNode` containing a symbol with the given name and span.
 fn create_symbol(name: &str, span: &crate::ast::Span) -> AstNode {
-    WithSpan {
+    Spanned {
         value: Expr::Symbol(name.to_string(), *span).into(),
         span: *span,
     }
@@ -118,7 +118,7 @@ fn create_symbol(name: &str, span: &crate::ast::Span) -> AstNode {
 
 /// Creates a `AstNode` containing a number literal with the given value and span.
 fn create_number(value: f64, span: &crate::ast::Span) -> AstNode {
-    WithSpan {
+    Spanned {
         value: Expr::Number(value, *span).into(),
         span: *span,
     }
@@ -126,7 +126,7 @@ fn create_number(value: f64, span: &crate::ast::Span) -> AstNode {
 
 /// Converts a path argument to a canonical `Expr::Path` node.
 fn create_canonical_path(path_arg: &AstNode) -> Result<AstNode, SutraError> {
-    Ok(WithSpan {
+    Ok(Spanned {
         value: Expr::Path(expr_to_path(path_arg)?, path_arg.span).into(),
         span: path_arg.span,
     })
@@ -155,7 +155,7 @@ fn create_flexible_path_op(expr: &AstNode, op_name: &str, min_args: usize) -> Re
                 }
             }
 
-            Ok(WithSpan {
+            Ok(Spanned {
                 value: Expr::List(new_items, *span).into(),
                 span: *span,
             })
@@ -187,7 +187,7 @@ fn create_assignment_macro(expr: &AstNode, op_symbol: &str) -> Result<AstNode, S
             let canonical_path = create_canonical_path(&items[1])?;
             let value_arg = items[2].clone();
             let atom_symbol = create_symbol(op_symbol, &items[0].span);
-            let inner_expr = WithSpan {
+            let inner_expr = Spanned {
                 value: Expr::List(
                     vec![atom_symbol, wrap_in_get(&items[1]), value_arg],
                     *span,
@@ -195,7 +195,7 @@ fn create_assignment_macro(expr: &AstNode, op_symbol: &str) -> Result<AstNode, S
                 .into(),
                 span: *span,
             };
-            Ok(WithSpan {
+            Ok(Spanned {
                 value: Expr::List(vec![set_symbol, canonical_path, inner_expr], *span).into(),
                 span: *span,
             })
@@ -217,7 +217,7 @@ fn create_unary_assignment_macro(expr: &AstNode, op_symbol: &str) -> Result<AstN
             let canonical_path = create_canonical_path(&items[1])?;
             let op_symbol_expr = create_symbol(op_symbol, &items[0].span);
             let one = create_number(1.0, &items[0].span);
-            let inner_expr = WithSpan {
+            let inner_expr = Spanned {
                 value: Expr::List(
                     vec![op_symbol_expr, wrap_in_get(&items[1]), one],
                     *span,
@@ -225,7 +225,7 @@ fn create_unary_assignment_macro(expr: &AstNode, op_symbol: &str) -> Result<AstN
                 .into(),
                 span: *span,
             };
-            Ok(WithSpan {
+            Ok(Spanned {
                 value: Expr::List(vec![set_symbol, canonical_path, inner_expr], *span).into(),
                 span: *span,
             })
@@ -296,7 +296,7 @@ pub fn expand_dec(expr: &AstNode) -> Result<AstNode, SutraError> {
 /// (if (eq? x 1) (print "yes") (print "no"))
 pub fn expand_if(expr: &AstNode) -> Result<AstNode, SutraError> {
     let (items, span) = expect_args(4, expr)?;
-    Ok(WithSpan {
+    Ok(Spanned {
         value: Expr::If {
             condition: Box::new(items[1].clone()),
             then_branch: Box::new(items[2].clone()),
@@ -320,7 +320,7 @@ pub fn expand_print(expr: &AstNode) -> Result<AstNode, SutraError> {
             let mut new_items = vec![atom_symbol];
             // Add all arguments after the macro name
             new_items.extend_from_slice(&items[1..]);
-            Ok(WithSpan {
+            Ok(Spanned {
                 value: Expr::List(new_items, *span).into(),
                 span: *span,
             })

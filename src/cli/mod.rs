@@ -9,7 +9,7 @@ use crate::engine::run_sutra_source_with_output;
 use crate::err_ctx;
 use crate::err_msg;
 use crate::macros::definition::{is_macro_definition, parse_macro_definition};
-use crate::macros::{expand_macros_recursively, MacroDef, MacroRegistry};
+use crate::macros::{expand_macros_recursively, MacroDefinition, MacroRegistry};
 use crate::runtime::registry::build_canonical_macro_env;
 use crate::SutraError;
 use clap::Parser;
@@ -54,7 +54,7 @@ pub fn print_error_to_stderr(error: &SutraError) {
     eprintln!("{}", error);
 }
 
-use crate::ast::{Expr, Span, WithSpan};
+use crate::ast::{Expr, Span, Spanned};
 
 // ============================================================================
 // CORE UTILITIES - Fundamental operations used throughout the CLI
@@ -104,14 +104,14 @@ fn wrap_in_do_if_needed(ast_nodes: Vec<AstNode>, source: &str) -> AstNode {
         start: 0,
         end: source.len(),
     };
-    let do_symbol = WithSpan {
+    let do_symbol = Spanned {
         value: Expr::Symbol("do".to_string(), span).into(), // FIX: wrap Expr in Arc via .into()
         span,
     };
     let mut items = Vec::with_capacity(ast_nodes.len() + 1);
     items.push(do_symbol);
     items.extend(ast_nodes);
-    WithSpan {
+    Spanned {
         value: Expr::List(items, span).into(),
         span,
     }
@@ -133,7 +133,7 @@ fn partition_and_build_user_macros(ast_nodes: Vec<AstNode>) -> MacroParseResult 
         }
         user_macros
             .macros
-            .insert(name, MacroDef::Template(template));
+            .insert(name, MacroDefinition::Template(template));
     }
     Ok((user_macros, user_code))
 }
@@ -368,7 +368,7 @@ fn execute_test_body(body: &[crate::ast::AstNode]) -> (Result<crate::ast::value:
     use crate::runtime::eval::evaluate;
     use crate::runtime::world::World;
     use crate::runtime::registry::build_default_atom_registry;
-    use crate::ast::{Expr, WithSpan, Span};
+    use crate::ast::{Expr, Spanned, Span};
     use std::sync::Arc;
     use miette::NamedSource;
 
@@ -386,13 +386,13 @@ fn execute_test_body(body: &[crate::ast::AstNode]) -> (Result<crate::ast::value:
             body[0].clone()
         } else {
             let span = Span { start: 0, end: 0 };
-            let do_symbol = WithSpan {
+            let do_symbol = Spanned {
                 value: Arc::new(Expr::Symbol("do".to_string(), span)),
                 span,
             };
             let mut items = vec![do_symbol];
             items.extend_from_slice(body);
-            WithSpan {
+            Spanned {
                 value: Arc::new(Expr::List(items, span)),
                 span,
             }

@@ -11,7 +11,7 @@
 //! - May have non-standard return values for testing edge cases
 
 use crate::ast::value::Value;
-use crate::ast::{AstNode, Expr, Span, WithSpan};
+use crate::ast::{AstNode, Expr, Span, Spanned};
 use crate::atoms::{AtomRegistry, SpecialFormAtomFn};
 use crate::runtime::eval::{evaluate_ast_node, EvaluationContext};
 use crate::runtime::world::World;
@@ -218,11 +218,11 @@ fn handle_borrow_stress_recursion(
     let mut sub_context = sub_eval_context!(ctx, ctx.world);
     sub_context.depth = ctx.depth + 1; // Manually set incremented depth
     let nested_args = vec![
-        WithSpan {
+        Spanned {
             value: Arc::new(Expr::Number((depth - 1) as f64, *span)),
             span: *span,
         },
-        WithSpan {
+        Spanned {
             value: Arc::new(Expr::String(msg.to_string(), *span)),
             span: *span,
         },
@@ -239,7 +239,7 @@ fn handle_borrow_stress_base_case(
 ) -> Result<(Value, World), SutraError> {
     let mut sub_context = sub_eval_context!(ctx, ctx.world);
     sub_context.depth = ctx.depth + 1; // Manually set incremented depth
-    let echo_arg = WithSpan {
+    let echo_arg = Spanned {
         value: Arc::new(Expr::String(msg.to_string(), *span)),
         span: *span,
     };

@@ -18,9 +18,9 @@
 //! ## Ownership and Borrowing
 //!
 //! - All types are owned structures that can be freely moved and cloned
-//! - `MacroFn` is a function pointer, cheaply copyable
+//! - `MacroFunction` is a function pointer, cheaply copyable
 //! - `MacroTemplate` owns its parameters and body
-//! - `MacroEnv` owns all macro registries and trace data
+//! - `MacroExpansionContext` owns all macro registries and trace data
 //!
 //! ## Design Principles
 //!
@@ -50,15 +50,15 @@ pub const MAX_MACRO_RECURSION_DEPTH: usize = 128;
 /// # Examples
 ///
 /// ```rust
-/// use sutra::macros::MacroFn;
-/// use sutra::ast::{AstNode, WithSpan};
+/// use sutra::macros::MacroFunction;
+/// use sutra::ast::{AstNode, Spanned};
 /// use std::sync::Arc;
 /// // A macro that clones its input node
-/// let my_macro: MacroFn = |node| {
-///     Ok(WithSpan { value: Arc::clone(&node.value), span: node.span })
+/// let my_macro: MacroFunction = |node| {
+///     Ok(Spanned { value: Arc::clone(&node.value), span: node.span })
 /// };
 /// ```
-pub type MacroFn = fn(&AstNode) -> Result<AstNode, crate::SutraError>;
+pub type MacroFunction = fn(&AstNode) -> Result<AstNode, crate::SutraError>;
 
 /// A declarative macro defined by a template.
 ///
@@ -76,7 +76,7 @@ pub type MacroFn = fn(&AstNode) -> Result<AstNode, crate::SutraError>;
 ///
 /// ```rust
 /// use sutra::macros::MacroTemplate;
-/// use sutra::ast::{ParamList, WithSpan};
+/// use sutra::ast::{ParamList, Spanned};
 /// use std::sync::Arc;
 /// // A simple macro template: (define (double x) (* x 2))
 /// let params = ParamList {
@@ -84,7 +84,7 @@ pub type MacroFn = fn(&AstNode) -> Result<AstNode, crate::SutraError>;
 ///     rest: None,
 ///     span: Default::default(),
 /// };
-/// let body = Box::new(WithSpan { value: Arc::new(sutra::ast::Expr::Number(0.0, sutra::ast::Span::default())), span: sutra::ast::Span::default() });
+/// let body = Box::new(Spanned { value: Arc::new(sutra::ast::Expr::Number(0.0, sutra::ast::Span::default())), span: sutra::ast::Span::default() });
 /// let template = MacroTemplate::new(params, body).unwrap();
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,21 +97,21 @@ pub struct MacroTemplate {
 
 /// A macro definition, either a native function or a template.
 ///
-/// `MacroDef` represents the two kinds of macros supported:
+/// `MacroDefinition` represents the two kinds of macros supported:
 /// - `Fn`: Native Rust functions that transform AST nodes
 /// - `Template`: Declarative macros defined by templates
 ///
 /// Note: Only `Template` variants are serializable, as function pointers
 /// cannot be serialized. The registry handles this transparently.
 #[derive(Debug, Clone)]
-pub enum MacroDef {
+pub enum MacroDefinition {
     /// A native Rust function macro
-    Fn(MacroFn),
+    Fn(MacroFunction),
     /// A declarative template macro
     Template(MacroTemplate),
 }
 
-/// Provenance of a macro expansion step: user or core registry.
+/// Origin of a macro expansion step: user or core registry.
 ///
 /// This tracks whether a macro came from:
 /// - `User`: User-defined macros loaded from files
@@ -119,7 +119,7 @@ pub enum MacroDef {
 ///
 /// This information is used for debugging and tracing macro expansions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum MacroProvenance {
+pub enum MacroOrigin {
     /// User-defined macro
     User,
     /// Built-in system macro
@@ -140,7 +140,7 @@ pub struct MacroExpansionStep {
     /// The macro name invoked
     pub macro_name: String,
     /// Which registry the macro was found in
-    pub provenance: MacroProvenance,
+    pub provenance: MacroOrigin,
     /// The AST before expansion
     pub input: AstNode,
     /// The AST after expansion
@@ -149,7 +149,7 @@ pub struct MacroExpansionStep {
 
 /// Macro expansion environment: holds user/core registries and the trace.
 ///
-/// `MacroEnv` manages the complete macro expansion context:
+/// `MacroExpansionContext` manages the complete macro expansion context:
 /// - User-defined macros (loaded from files)
 /// - Core built-in macros (provided by the system)
 /// - Expansion trace for debugging
@@ -162,19 +162,19 @@ pub struct MacroExpansionStep {
 /// # Examples
 ///
 /// ```rust
-/// use sutra::macros::MacroEnv;
+/// use sutra::macros::MacroExpansionContext;
 /// let source = std::sync::Arc::new(miette::NamedSource::new("test", ""));
-/// let env = MacroEnv::new(source);
+/// let env = MacroExpansionContext::new(source);
 /// assert!(env.user_macros.is_empty());
 /// assert!(env.core_macros.is_empty());
 /// assert!(env.trace.is_empty());
 /// ```
 #[derive(Debug, Clone)]
-pub struct MacroEnv {
+pub struct MacroExpansionContext {
     /// User-defined macros loaded from files
-    pub user_macros: HashMap<String, MacroDef>,
+    pub user_macros: HashMap<String, MacroDefinition>,
     /// Built-in system macros
-    pub core_macros: HashMap<String, MacroDef>,
+    pub core_macros: HashMap<String, MacroDefinition>,
     /// Trace of macro expansion steps
     pub trace: Vec<MacroExpansionStep>,
     /// The source code being processed, for error reporting.
@@ -203,14 +203,14 @@ impl MacroTemplate {
     ///
     /// ```rust
     /// use sutra::macros::MacroTemplate;
-    /// use sutra::ast::{ParamList, WithSpan};
+    /// use sutra::ast::{ParamList, Spanned};
     /// use std::sync::Arc;
     /// let params = ParamList {
     ///     required: vec!["x".to_string(), "y".to_string()],
     ///     rest: Some("rest".to_string()),
     ///     span: Default::default(),
     /// };
-    /// let body = Box::new(WithSpan { value: Arc::new(sutra::ast::Expr::Number(0.0, sutra::ast::Span::default())), span: sutra::ast::Span::default() });
+    /// let body = Box::new(Spanned { value: Arc::new(sutra::ast::Expr::Number(0.0, sutra::ast::Span::default())), span: sutra::ast::Span::default() });
     /// let template = MacroTemplate::new(params, body).unwrap();
     /// ```
     pub fn new(
@@ -232,7 +232,7 @@ impl MacroTemplate {
     }
 }
 
-impl MacroEnv {
+impl MacroExpansionContext {
     /// Creates a new, empty macro environment.
     ///
     /// The environment starts with empty registries and no trace.
@@ -241,10 +241,10 @@ impl MacroEnv {
     /// # Examples
     ///
     /// ```rust
-    /// use sutra::macros::MacroEnv;
+    /// use sutra::macros::MacroExpansionContext;
     ///
     /// let source = std::sync::Arc::new(miette::NamedSource::new("test", ""));
-    /// let env = MacroEnv::new(source);
+    /// let env = MacroExpansionContext::new(source);
     /// assert!(env.user_macros.is_empty());
     /// assert!(env.core_macros.is_empty());
     /// assert!(env.trace.is_empty());
@@ -259,7 +259,7 @@ impl MacroEnv {
     }
 
     /// Adds a user-defined macro to the environment.
-    pub fn with_user_macro(mut self, name: String, def: MacroDef) -> Self {
+    pub fn with_user_macro(mut self, name: String, def: MacroDefinition) -> Self {
         self.user_macros.insert(name, def);
         self
     }
@@ -277,25 +277,25 @@ impl MacroEnv {
     /// # Examples
     ///
     /// ```rust
-    /// use sutra::macros::{MacroEnv, MacroProvenance};
+    /// use sutra::macros::{MacroExpansionContext, MacroOrigin};
     ///
     /// let source = std::sync::Arc::new(miette::NamedSource::new("test", ""));
-    /// let env = MacroEnv::new(source);
+    /// let env = MacroExpansionContext::new(source);
     /// match env.lookup_macro("my-macro") {
-    ///     Some((MacroProvenance::User, _def)) => println!("Found user macro"),
-    ///     Some((MacroProvenance::Core, _def)) => println!("Found core macro"),
+    ///     Some((MacroOrigin::User, _def)) => println!("Found user macro"),
+    ///     Some((MacroOrigin::Core, _def)) => println!("Found core macro"),
     ///     None => println!("Macro not found"),
     /// }
     /// ```
     #[inline]
-    pub fn lookup_macro(&self, name: &str) -> Option<(MacroProvenance, &MacroDef)> {
+    pub fn lookup_macro(&self, name: &str) -> Option<(MacroOrigin, &MacroDefinition)> {
         self.user_macros
             .get(name)
-            .map(|def| (MacroProvenance::User, def))
+            .map(|def| (MacroOrigin::User, def))
             .or_else(|| {
                 self.core_macros
                     .get(name)
-                    .map(|def| (MacroProvenance::Core, def))
+                    .map(|def| (MacroOrigin::Core, def))
             })
     }
 
@@ -307,10 +307,10 @@ impl MacroEnv {
     /// # Examples
     ///
     /// ```rust
-    /// use sutra::macros::MacroEnv;
+    /// use sutra::macros::MacroExpansionContext;
     ///
     /// let source = std::sync::Arc::new(miette::NamedSource::new("test", ""));
-    /// let env = MacroEnv::new(source);
+    /// let env = MacroExpansionContext::new(source);
     /// let trace = env.trace();
     /// for step in trace {
     ///     println!("Expanded macro: {}", step.macro_name);
@@ -362,7 +362,7 @@ fn check_no_duplicate_params(
 // CALLABLE TRAIT IMPLEMENTATION
 // ============================================================================
 
-impl crate::atoms::Callable for MacroDef {
+impl crate::atoms::Callable for MacroDefinition {
     fn call(&self, _args: &[crate::ast::value::Value], _context: &mut crate::runtime::context::AtomExecutionContext, _current_world: &crate::runtime::world::World) -> Result<(crate::ast::value::Value, crate::runtime::world::World), crate::SutraError> {
         // Macros operate on AST nodes, not Values, so they cannot be called through the Callable interface
         // This is a design limitation - macros need syntax transformation, not evaluation

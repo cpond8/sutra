@@ -310,7 +310,7 @@ The Verse engine enforces a single source of truth for macro environment constru
 **Function:**
 
 ```rust
-build_canonical_macro_env() -> MacroEnv
+build_canonical_macro_env() -> MacroExpansionContext
 ```
 
 **Location:**
@@ -321,7 +321,7 @@ build_canonical_macro_env() -> MacroEnv
 
 - Registers all core/built-in macros.
 - Loads and registers all standard library macros from `src/macros/macros.sutra`.
-- Returns a fully populated `MacroEnv`.
+- Returns a fully populated `MacroExpansionContext`.
 
 **Usage:**
 

@@ -71,7 +71,7 @@ pub mod definition;
 
 // Core types - re-exported from types module
 pub use types::{
-    MacroDef, MacroEnv, MacroExpansionStep, MacroFn, MacroProvenance, MacroTemplate,
+    MacroDefinition, MacroExpansionContext, MacroExpansionStep, MacroFunction, MacroOrigin, MacroTemplate,
     MAX_MACRO_RECURSION_DEPTH,
 };
 
@@ -93,7 +93,7 @@ use ::std::sync;
 
 /// Creates a new macro environment with empty registries.
 ///
-/// This is a convenience function that creates a `MacroEnv` with empty
+/// This is a convenience function that creates a `MacroExpansionContext` with empty
 /// user and core macro registries and no expansion trace.
 ///
 /// # Examples
@@ -108,8 +108,8 @@ use ::std::sync;
 /// assert!(env.user_macros.is_empty());
 /// assert!(env.core_macros.is_empty());
 /// ```
-pub fn create_macro_env(source: sync::Arc<miette::NamedSource<String>>) -> MacroEnv {
-    MacroEnv::new(source)
+pub fn create_macro_env(source: sync::Arc<miette::NamedSource<String>>) -> MacroExpansionContext {
+    MacroExpansionContext::new(source)
 }
 
 /// Creates a new macro registry.

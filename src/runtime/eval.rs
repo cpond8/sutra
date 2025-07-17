@@ -32,7 +32,7 @@
 
 // The atom registry is a single source of truth and must be passed by reference to all validation and evaluation code. Never construct a local/hidden registry.
 use crate::ast::value::Value;
-use crate::ast::{AstNode, Expr, WithSpan};
+use crate::ast::{AstNode, Expr, Spanned};
 use crate::atoms::{AtomRegistry, OutputSink};
 use crate::diagnostics::SutraError;
 use crate::runtime::context::AtomExecutionContext;
@@ -76,7 +76,7 @@ impl EvaluationContext<'_, '_> {
         if let Some((_, macro_def)) = self.world.macros.lookup_macro(symbol_name) {
             // Handle macro expansion
             // Create the full call AST node
-            let call_node = WithSpan {
+            let call_node = Spanned {
                 value: std::sync::Arc::new(Expr::List(
                     {
                         let mut items = vec![head.clone()];
@@ -315,7 +315,7 @@ pub fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext) -> Res
                 let template = crate::macros::MacroTemplate::new(params.clone(), body.clone())?;
                 new_world.macros = new_world
                     .macros
-                    .with_user_macro(name.clone(), crate::macros::MacroDef::Template(template));
+                    .with_user_macro(name.clone(), crate::macros::MacroDefinition::Template(template));
                 Ok((Value::Nil, new_world))
             } else {
                 // It's a variable definition.
@@ -536,7 +536,7 @@ fn flatten_spread_args(
 
         // Process list items without nesting
         for v in items {
-            flat_tail.push(WithSpan {
+            flat_tail.push(Spanned {
                 value: Expr::from(v).into(), // FIX: wrap Expr in Arc via .into()
                 span: arg.span,
             });

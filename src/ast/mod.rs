@@ -15,13 +15,13 @@ pub struct Span {
 
 /// Wrapper for carrying source span information with any value
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct WithSpan<T> {
+pub struct Spanned<T> {
     pub value: T,
     pub span: Span,
 }
 
 /// Canonical AST node type with shared ownership for efficient macro expansion.
-pub type AstNode = WithSpan<Arc<Expr>>;
+pub type AstNode = Spanned<Arc<Expr>>;
 
 /// The core AST node for Sutra expressions.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -157,7 +157,7 @@ impl From<crate::ast::value::Value> for Expr {
             Value::String(s) => Expr::String(s, Span::default()),
             Value::Bool(b) => Expr::Bool(b, Span::default()),
             Value::List(items) => {
-                Expr::List(items.into_iter().map(|v| WithSpan { value: Arc::new(Expr::from(v)), span: Span::default() }).collect(), Span::default())
+                Expr::List(items.into_iter().map(|v| Spanned { value: Arc::new(Expr::from(v)), span: Span::default() }).collect(), Span::default())
             },
             Value::Map(_) => Expr::List(vec![], Span::default()),
             Value::Path(p) => Expr::Path(p, Span::default()),

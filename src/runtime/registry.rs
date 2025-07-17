@@ -23,7 +23,7 @@
 
 use crate::atoms::{self, AtomRegistry};
 use crate::macros::{self, MacroRegistry};
-use crate::macros::{load_macros_from_file, MacroDef, MacroEnv};
+use crate::macros::{load_macros_from_file, MacroDefinition, MacroExpansionContext};
 use crate::SutraError;
 use crate::err_ctx;
 use std::collections::HashMap;
@@ -73,13 +73,13 @@ pub fn build_default_macro_registry() -> MacroRegistry {
     registry
 }
 
-/// Builds and returns the canonical macro environment (MacroEnv) for the Sutra engine.
+/// Builds and returns the canonical macro environment (MacroExpansionContext) for the Sutra engine.
 ///
 /// This function is the single source of truth for macro environment construction. It:
 /// 1. Registers all core/built-in macros (quote, unquote, etc.)
 /// 2. Loads and registers all standard macros from `src/macros/macros.sutra`
 /// 3. Validates for duplicate macro names
-/// 4. Returns a complete MacroEnv ready for expansion
+/// 4. Returns a complete MacroExpansionContext ready for expansion
 ///
 /// Must be used by all entrypoints (CLI, library, tests) to ensure consistency.
 ///
@@ -97,7 +97,7 @@ pub fn build_default_macro_registry() -> MacroRegistry {
 ///
 /// # Safety
 /// This function is pure and has no side effects. All state is explicit.
-pub fn build_canonical_macro_env() -> Result<MacroEnv, SutraError> {
+pub fn build_canonical_macro_env() -> Result<MacroExpansionContext, SutraError> {
     let core_macros = build_core_macro_registry();
     let user_macros = load_and_process_user_macros("src/macros/macros.sutra")?;
     let source = std::sync::Arc::new(miette::NamedSource::new(
@@ -105,7 +105,7 @@ pub fn build_canonical_macro_env() -> Result<MacroEnv, SutraError> {
         std::fs::read_to_string("src/macros/macros.sutra").unwrap_or_default(),
     ));
 
-    Ok(MacroEnv {
+    Ok(MacroExpansionContext {
         user_macros,
         core_macros: core_macros.macros,
         trace: Vec::new(),
@@ -137,8 +137,8 @@ fn build_core_macro_registry() -> MacroRegistry {
 /// Performs the following operations:
 /// 1. Loads macro definitions from the given file path
 /// 2. Validates for duplicate macro names within the file
-/// 3. Converts macro templates to `MacroDef::Template` format
-/// 4. Returns a HashMap ready for inclusion in MacroEnv
+/// 3. Converts macro templates to `MacroDefinition::Template` format
+/// 4. Returns a HashMap ready for inclusion in MacroExpansionContext
 ///
 /// Used internally by `build_canonical_macro_env`.
 ///
@@ -149,7 +149,7 @@ fn build_core_macro_registry() -> MacroRegistry {
 /// Returns a `SutraError` if:
 /// - The file cannot be loaded or parsed
 /// - Duplicate macro names are found within the file
-fn load_and_process_user_macros(path: &str) -> Result<HashMap<String, MacroDef>, SutraError> {
+fn load_and_process_user_macros(path: &str) -> Result<HashMap<String, MacroDefinition>, SutraError> {
     // Load macros from file with error logging
     let macros = load_macros_from_file(path).map_err(|e| {
         #[cfg(debug_assertions)]
@@ -163,7 +163,7 @@ fn load_and_process_user_macros(path: &str) -> Result<HashMap<String, MacroDef>,
         if user_macros.contains_key(&name) {
             return Err(err_ctx!(Validation, "Duplicate macro name '{}' in standard macro library.", name));
         }
-        user_macros.insert(name, MacroDef::Template(template));
+        user_macros.insert(name, MacroDefinition::Template(template));
     }
 
     Ok(user_macros)

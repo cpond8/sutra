@@ -2,7 +2,7 @@ use crate::atoms::OutputSink;
 use crate::cli::output::StdoutSink;
 use crate::err_ctx;
 use crate::macros::definition::{is_macro_definition, parse_macro_definition};
-use crate::macros::{expand_macros_recursively, MacroDef};
+use crate::macros::{expand_macros_recursively, MacroDefinition};
 use crate::runtime::eval::evaluate;
 use crate::runtime::registry::build_canonical_macro_env;
 use crate::runtime::world::World;
@@ -33,7 +33,7 @@ pub fn run_sutra_source_with_output(
             return Err(err_ctx!(Validation, "Duplicate macro name '{}'", name));
         }
         env.user_macros
-            .insert(name.clone(), MacroDef::Template(template));
+            .insert(name.clone(), MacroDefinition::Template(template));
     }
 
     // 6. Wrap user_code in a (do ...) if needed

@@ -12,7 +12,7 @@
 
 use crate::ast::value::Value;
 use crate::ast::AstNode;
-use crate::ast::{Expr, WithSpan};
+use crate::ast::{Expr, Spanned};
 use crate::runtime::eval::{evaluate_ast_node, EvaluationContext};
 use crate::SutraError;
 use crate::err_msg;
@@ -325,7 +325,7 @@ pub fn eval_apply_normal_args(
     for arg in args {
         let mut sub_context = sub_eval_context!(context, &world);
         let (val, next_world) = evaluate_ast_node(arg, &mut sub_context)?;
-        evald_args.push(WithSpan {
+        evald_args.push(Spanned {
             value: Expr::from(val).into(), // FIX: wrap Expr in Arc via .into()
             span: arg.span,
         });
@@ -348,7 +348,7 @@ pub fn eval_apply_list_arg(
     };
     let list_items = items
         .into_iter()
-        .map(|v| WithSpan {
+        .map(|v| Spanned {
             value: Expr::from(v).into(), // FIX: wrap Expr in Arc via .into()
             span: *parent_span,
         })
@@ -367,7 +367,7 @@ pub fn build_apply_call_expr(
     call_items.push(func_expr.clone());
     call_items.extend(normal_args);
     call_items.extend(list_args);
-    WithSpan {
+    Spanned {
         value: Expr::List(call_items, *parent_span).into(), // FIX: wrap Expr in Arc via .into()
         span: *parent_span,
     }

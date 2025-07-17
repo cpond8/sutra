@@ -42,7 +42,7 @@ fn validate_node(
                 return;
             };
             if let Some(macro_def) = macros.lookup(name) {
-                if let crate::macros::MacroDef::Template(template) = macro_def {
+                if let crate::macros::MacroDefinition::Template(template) = macro_def {
                     validate_macro_args(name, template, nodes.len() - 1, result);
                 }
             } else if !atoms.has(name) {

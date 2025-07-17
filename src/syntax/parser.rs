@@ -40,7 +40,7 @@
 //! - Internally, `build_program` returns an `Expr::List` for uniformity, but this is unwrapped by `parse`.
 //! - If a canonical program node is ever needed, document and update accordingly.
 
-use crate::ast::{AstNode, Expr, Span, WithSpan};
+use crate::ast::{AstNode, Expr, Span, Spanned};
 use crate::SutraError;
 use crate::{err_ctx, err_msg};
 use once_cell::sync::Lazy;
@@ -100,9 +100,9 @@ pub fn parse(source: &str) -> Result<Vec<AstNode>, SutraError> {
 
 /// Utility: Wraps a list of AST nodes in a (do ...) form if needed.
 pub fn wrap_in_do(exprs: Vec<AstNode>) -> AstNode {
-    use crate::ast::{Expr, Span, WithSpan};
+    use crate::ast::{Expr, Span, Spanned};
     match exprs.len() {
-        0 => WithSpan {
+        0 => Spanned {
             value: Expr::List(vec![], Span { start: 0, end: 0 }).into(),
             span: Span { start: 0, end: 0 },
         },
@@ -112,14 +112,14 @@ pub fn wrap_in_do(exprs: Vec<AstNode>) -> AstNode {
                 start: exprs.first().map(|n| n.span.start).unwrap_or(0),
                 end: exprs.last().map(|n| n.span.end).unwrap_or(0),
             };
-            let do_symbol = WithSpan {
+            let do_symbol = Spanned {
                 value: Expr::Symbol("do".to_string(), span).into(),
                 span,
             };
             let mut items = Vec::with_capacity(exprs.len() + 1);
             items.push(do_symbol);
             items.extend(exprs);
-            WithSpan {
+            Spanned {
                 value: Expr::List(items, span).into(),
                 span,
             }
@@ -181,7 +181,7 @@ fn map_children_to_list<'a>(
     let exprs = children
         .map(|p| build_ast_from_pair(p, source))
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(WithSpan {
+    Ok(Spanned {
         value: Expr::List(exprs, span).into(),
         span,
     })
@@ -305,7 +305,7 @@ fn build_param_list(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErro
         }
     }
 
-    Ok(WithSpan {
+    Ok(Spanned {
         value: Expr::ParamList(crate::ast::ParamList {
             required: required_params,
             rest: rest_param,
@@ -347,7 +347,7 @@ fn build_number(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
         .as_str()
         .parse::<f64>()
         .map_err(|e| err_ctx!(Parse, format!("Number parse error: {}", e), source, span))?;
-    Ok(WithSpan {
+    Ok(Spanned {
         value: Expr::Number(n, span).into(),
         span,
     })
@@ -356,11 +356,11 @@ fn build_number(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
 fn build_boolean(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
     let span = get_span(&pair);
     match pair.as_str() {
-        "true" => Ok(WithSpan {
+        "true" => Ok(Spanned {
             value: Expr::Bool(true, span).into(),
             span,
         }),
-        "false" => Ok(WithSpan {
+        "false" => Ok(Spanned {
             value: Expr::Bool(false, span).into(),
             span,
         }),
@@ -375,7 +375,7 @@ fn build_boolean(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> 
 
 fn build_string(pair: Pair<Rule>, _source: &str) -> Result<AstNode, SutraError> {
     let span = get_span(&pair);
-    Ok(WithSpan {
+    Ok(Spanned {
         value: Expr::String(unescape_string(pair.clone())?, span).into(),
         span,
     })
@@ -411,12 +411,12 @@ fn build_symbol(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
             }
         }
 
-        Ok(WithSpan {
+        Ok(Spanned {
             value: Expr::Path(crate::runtime::path::Path(components), span).into(),
             span,
         })
     } else {
-        Ok(WithSpan {
+        Ok(Spanned {
             value: Expr::Symbol(s.to_string(), span).into(),
             span,
         })
@@ -595,7 +595,7 @@ fn build_quote(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
         })?,
         source,
     )?;
-    Ok(WithSpan {
+    Ok(Spanned {
         value: Expr::Quote(Box::new(quoted_expr), span).into(),
         span,
     })
@@ -653,7 +653,7 @@ fn build_define_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErr
     })?;
     let body = build_expr(body_pair, source)?;
 
-    Ok(WithSpan {
+    Ok(Spanned {
         value: Expr::Define {
             name,
             params: actual_params,
@@ -673,7 +673,7 @@ fn build_spread_arg(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErro
         })?,
         source,
     )?;
-    Ok(WithSpan {
+    Ok(Spanned {
         value: Expr::Spread(Box::new(symbol_expr)).into(),
         span,
     })

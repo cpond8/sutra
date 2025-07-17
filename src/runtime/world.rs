@@ -65,7 +65,7 @@ impl Default for WorldState {
 pub struct World {
     pub state: WorldState,
     pub prng: SmallRng,
-    pub macros: crate::macros::MacroEnv,
+    pub macros: crate::macros::MacroExpansionContext,
 }
 
 impl World {
@@ -74,7 +74,7 @@ impl World {
         Self {
             state: WorldState::new(),
             prng: SmallRng::from_entropy(),
-            macros: macros::MacroEnv::new(source),
+            macros: macros::MacroExpansionContext::new(source),
         }
     }
 
@@ -83,7 +83,7 @@ impl World {
         Self {
             state: WorldState::new(),
             prng: SmallRng::from_seed(seed),
-            macros: macros::MacroEnv::new(source),
+            macros: macros::MacroExpansionContext::new(source),
         }
     }
 
@@ -109,7 +109,7 @@ impl World {
         self.prng.next_u32()
     }
 
-    pub fn with_macros(self, macros: crate::macros::MacroEnv) -> Self {
+    pub fn with_macros(self, macros: crate::macros::MacroExpansionContext) -> Self {
         Self { macros, ..self }
     }
 }

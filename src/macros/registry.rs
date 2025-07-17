@@ -28,11 +28,11 @@
 //! # Serialization Example
 //! ```rust
 //! use sutra::macros::{MacroRegistry, MacroTemplate};
-//! use sutra::ast::{WithSpan, Expr, Span};
+//! use sutra::ast::{Spanned, Expr, Span};
 //! use std::sync::Arc;
 //! let mut reg = MacroRegistry::new();
 //! let params = sutra::ast::ParamList { required: vec![], rest: None, span: Span::default() };
-//! let body = Box::new(WithSpan { value: Arc::new(Expr::Number(0.0, Span::default())), span: Span::default() });
+//! let body = Box::new(Spanned { value: Arc::new(Expr::Number(0.0, Span::default())), span: Span::default() });
 //! let template = MacroTemplate::new(params, body).unwrap();
 //! reg.register_template("foo", template);
 //! let json = serde_json::to_string(&reg).unwrap();
@@ -51,10 +51,10 @@
 //! | lookup/contains             | N/A        | N/A                | N/A          | Case-sensitive lookup  |
 //!
 //! # See Also
-//! - [`MacroFn`](crate::macros::types::MacroFn)
+//! - [`MacroFunction`](crate::macros::types::MacroFunction)
 //! - [`MacroTemplate`](crate::macros::types::MacroTemplate)
 
-use crate::macros::types::{MacroDef, MacroFn, MacroTemplate};
+use crate::macros::types::{MacroDefinition, MacroFunction, MacroTemplate};
 use crate::SutraError;
 use crate::err_ctx;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -73,21 +73,21 @@ use std::collections::HashMap;
 ///
 /// # Example
 /// ```rust
-/// use sutra::macros::{MacroRegistry, MacroFn, MacroTemplate};
-/// use sutra::ast::{WithSpan, Expr, Span};
+/// use sutra::macros::{MacroRegistry, MacroFunction, MacroTemplate};
+/// use sutra::ast::{Spanned, Expr, Span};
 /// use std::sync::Arc;
 /// let mut reg = MacroRegistry::new();
-/// let my_macro_fn: MacroFn = |node| Ok(node.clone());
+/// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
 /// reg.register("foo", my_macro_fn);
 /// let params = sutra::ast::ParamList { required: vec![], rest: None, span: Span::default() };
-/// let body = Box::new(WithSpan { value: Arc::new(Expr::Number(0.0, Span::default())), span: Span::default() });
+/// let body = Box::new(Spanned { value: Arc::new(Expr::Number(0.0, Span::default())), span: Span::default() });
 /// let template = MacroTemplate::new(params, body).unwrap();
 /// reg.register_template("bar", template);
 /// ```
 #[derive(Debug, Clone, Default)]
 pub struct MacroRegistry {
     /// Map from macro name to macro definition (built-in or template).
-    pub macros: HashMap<String, MacroDef>,
+    pub macros: HashMap<String, MacroDefinition>,
 }
 
 impl MacroRegistry {
@@ -118,16 +118,16 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroFn};
+    /// use sutra::macros::{MacroRegistry, MacroFunction};
     /// let mut reg = MacroRegistry::new();
-    /// let my_macro_fn: MacroFn = |node| Ok(node.clone());
+    /// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
     /// let old = reg.register("foo", my_macro_fn).unwrap();
     /// assert!(old.is_none());
     /// let old2 = reg.register("foo", my_macro_fn).unwrap();
     /// assert!(old2.is_some());
     /// ```
-    pub fn register(&mut self, name: &str, func: MacroFn) -> Result<Option<MacroDef>, SutraError> {
-        let old_macro = self.macros.insert(name.to_string(), MacroDef::Fn(func));
+    pub fn register(&mut self, name: &str, func: MacroFunction) -> Result<Option<MacroDefinition>, SutraError> {
+        let old_macro = self.macros.insert(name.to_string(), MacroDefinition::Fn(func));
         Ok(old_macro)
     }
 
@@ -145,17 +145,17 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroFn};
+    /// use sutra::macros::{MacroRegistry, MacroFunction};
     /// let mut reg = MacroRegistry::new();
-    /// let my_macro_fn: MacroFn = |node| Ok(node.clone());
+    /// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
     /// reg.register_or_error("foo", my_macro_fn).unwrap();
     /// assert!(reg.register_or_error("foo", my_macro_fn).is_err());
     /// ```
-    pub fn register_or_error(&mut self, name: &str, func: MacroFn) -> Result<(), SutraError> {
+    pub fn register_or_error(&mut self, name: &str, func: MacroFunction) -> Result<(), SutraError> {
         if self.macros.contains_key(name) {
             return Err(err_ctx!(Validation, "Macro '{}' is already registered", name));
         }
-        self.macros.insert(name.to_string(), MacroDef::Fn(func));
+        self.macros.insert(name.to_string(), MacroDefinition::Fn(func));
         Ok(())
     }
 
@@ -174,20 +174,20 @@ impl MacroRegistry {
     /// # Example
     /// ```rust
     /// use sutra::macros::{MacroRegistry, MacroTemplate};
-    /// use sutra::ast::{WithSpan, Expr, Span};
+    /// use sutra::ast::{Spanned, Expr, Span};
     /// use std::sync::Arc;
     /// let mut reg = MacroRegistry::new();
     /// let params = sutra::ast::ParamList { required: vec![], rest: None, span: Span::default() };
-    /// let body = Box::new(WithSpan { value: Arc::new(Expr::Number(0.0, Span::default())), span: Span::default() });
+    /// let body = Box::new(Spanned { value: Arc::new(Expr::Number(0.0, Span::default())), span: Span::default() });
     /// let template = MacroTemplate::new(params, body).unwrap();
     /// let old = reg.register_template("foo", template.clone()).unwrap();
     /// assert!(old.is_none());
     /// let old2 = reg.register_template("foo", template).unwrap();
     /// assert!(old2.is_some());
     /// ```
-    pub fn register_template(&mut self, name: &str, template: MacroTemplate) -> Result<Option<MacroDef>, SutraError> {
+    pub fn register_template(&mut self, name: &str, template: MacroTemplate) -> Result<Option<MacroDefinition>, SutraError> {
         let old_macro = self.macros
-            .insert(name.to_string(), MacroDef::Template(template));
+            .insert(name.to_string(), MacroDefinition::Template(template));
         Ok(old_macro)
     }
 
@@ -206,11 +206,11 @@ impl MacroRegistry {
     /// # Example
     /// ```rust
     /// use sutra::macros::{MacroRegistry, MacroTemplate};
-    /// use sutra::ast::{WithSpan, Expr, Span};
+    /// use sutra::ast::{Spanned, Expr, Span};
     /// use std::sync::Arc;
     /// let mut reg = MacroRegistry::new();
     /// let params = sutra::ast::ParamList { required: vec![], rest: None, span: Span::default() };
-    /// let body = Box::new(WithSpan { value: Arc::new(Expr::Number(0.0, Span::default())), span: Span::default() });
+    /// let body = Box::new(Spanned { value: Arc::new(Expr::Number(0.0, Span::default())), span: Span::default() });
     /// let template = MacroTemplate::new(params, body).unwrap();
     /// reg.register_template_or_error("foo", template.clone()).unwrap();
     /// assert!(reg.register_template_or_error("foo", template).is_err());
@@ -224,7 +224,7 @@ impl MacroRegistry {
             return Err(err_ctx!(Validation, "Macro '{}' is already registered", name));
         }
         self.macros
-            .insert(name.to_string(), MacroDef::Template(template));
+            .insert(name.to_string(), MacroDefinition::Template(template));
         Ok(())
     }
 
@@ -236,15 +236,15 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroFn};
+    /// use sutra::macros::{MacroRegistry, MacroFunction};
     /// let mut reg = MacroRegistry::new();
-    /// let my_macro_fn: MacroFn = |node| Ok(node.clone());
+    /// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
     /// reg.register("foo", my_macro_fn);
     /// let removed = reg.unregister("foo");
     /// assert!(removed.is_some());
     /// assert!(!reg.contains("foo"));
     /// ```
-    pub fn unregister(&mut self, name: &str) -> Option<MacroDef> {
+    pub fn unregister(&mut self, name: &str) -> Option<MacroDefinition> {
         self.macros.remove(name)
     }
 
@@ -255,15 +255,15 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroFn};
+    /// use sutra::macros::{MacroRegistry, MacroFunction};
     /// let mut reg = MacroRegistry::new();
-    /// let my_macro_fn: MacroFn = |node| Ok(node.clone());
+    /// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
     /// reg.register("foo", my_macro_fn);
     /// if let Some(_macro_def) = reg.lookup("foo") {
     ///     // Found macro
     /// }
     /// ```
-    pub fn lookup(&self, name: &str) -> Option<&MacroDef> {
+    pub fn lookup(&self, name: &str) -> Option<&MacroDefinition> {
         self.macros.get(name)
     }
 
@@ -274,9 +274,9 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroFn};
+    /// use sutra::macros::{MacroRegistry, MacroFunction};
     /// let mut reg = MacroRegistry::new();
-    /// let my_macro_fn: MacroFn = |node| Ok(node.clone());
+    /// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
     /// reg.register("foo", my_macro_fn);
     /// assert!(reg.contains("foo"));
     /// assert!(!reg.contains("nonexistent"));
@@ -289,9 +289,9 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroFn};
+    /// use sutra::macros::{MacroRegistry, MacroFunction};
     /// let mut reg = MacroRegistry::new();
-    /// let my_macro_fn: MacroFn = |node| Ok(node.clone());
+    /// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
     /// assert_eq!(reg.len(), 0);
     /// reg.register("foo", my_macro_fn);
     /// assert_eq!(reg.len(), 1);
@@ -316,9 +316,9 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroFn};
+    /// use sutra::macros::{MacroRegistry, MacroFunction};
     /// let mut reg = MacroRegistry::new();
-    /// let my_macro_fn: MacroFn = |node| Ok(node.clone());
+    /// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
     /// reg.register("macro1", my_macro_fn);
     /// reg.register("macro2", my_macro_fn);
     /// let names: Vec<_> = reg.names().collect();
@@ -332,15 +332,15 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroFn};
+    /// use sutra::macros::{MacroRegistry, MacroFunction};
     /// let mut reg = MacroRegistry::new();
-    /// let my_macro_fn: MacroFn = |node| Ok(node.clone());
+    /// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
     /// reg.register("foo", my_macro_fn);
     /// for (_name, _def) in reg.iter() {
     ///     // ...
     /// }
     /// ```
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &MacroDef)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &MacroDefinition)> {
         self.macros.iter()
     }
 
@@ -348,9 +348,9 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroFn};
+    /// use sutra::macros::{MacroRegistry, MacroFunction};
     /// let mut reg = MacroRegistry::new();
-    /// let my_macro_fn: MacroFn = |node| Ok(node.clone());
+    /// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
     /// reg.register("foo", my_macro_fn);
     /// assert!(!reg.is_empty());
     /// reg.clear();
@@ -374,11 +374,11 @@ impl Serialize for MacroRegistry {
     /// # Example
     /// ```rust
     /// use sutra::macros::{MacroRegistry, MacroTemplate};
-    /// use sutra::ast::{WithSpan, Expr, Span};
+    /// use sutra::ast::{Spanned, Expr, Span};
     /// use std::sync::Arc;
     /// let mut reg = MacroRegistry::new();
     /// let params = sutra::ast::ParamList { required: vec![], rest: None, span: Span::default() };
-    /// let body = Box::new(WithSpan { value: Arc::new(Expr::Number(0.0, Span::default())), span: Span::default() });
+    /// let body = Box::new(Spanned { value: Arc::new(Expr::Number(0.0, Span::default())), span: Span::default() });
     /// let template = MacroTemplate::new(params, body).unwrap();
     /// reg.register_template("foo", template);
     /// let json = serde_json::to_string(&reg).unwrap();
@@ -393,7 +393,7 @@ impl Serialize for MacroRegistry {
             .macros
             .iter()
             .filter_map(|(name, def)| {
-                if let MacroDef::Template(template) = def {
+                if let MacroDefinition::Template(template) = def {
                     Some((name.clone(), template))
                 } else {
                     None
@@ -416,11 +416,11 @@ impl<'de> Deserialize<'de> for MacroRegistry {
     /// # Example
     /// ```rust
     /// use sutra::macros::{MacroRegistry, MacroTemplate};
-    /// use sutra::ast::{WithSpan, Expr, Span, ParamList};
+    /// use sutra::ast::{Spanned, Expr, Span, ParamList};
     /// use std::sync::Arc;
     /// // Construct a MacroTemplate and serialize it to JSON
     /// let params = ParamList { required: vec![], rest: None, span: Span::default() };
-    /// let body = Box::new(WithSpan { value: Arc::new(Expr::Number(0.0, Span::default())), span: Span::default() });
+    /// let body = Box::new(Spanned { value: Arc::new(Expr::Number(0.0, Span::default())), span: Span::default() });
     /// let template = MacroTemplate::new(params, body).unwrap();
     /// let mut reg = MacroRegistry::new();
     /// reg.register_template("foo", template);
@@ -441,7 +441,7 @@ impl<'de> Deserialize<'de> for MacroRegistry {
         let macros = helper
             .macros
             .into_iter()
-            .map(|(name, template)| (name, MacroDef::Template(template)))
+            .map(|(name, template)| (name, MacroDefinition::Template(template)))
             .collect();
 
         Ok(MacroRegistry { macros })
@@ -452,15 +452,15 @@ impl<'de> Deserialize<'de> for MacroRegistry {
 // MACRO DEFINITION SERIALIZATION
 // ============================================================================
 
-impl Serialize for MacroDef {
+impl Serialize for MacroDefinition {
     /// Serializes macro definitions.
     ///
     /// Only `Template` variants are serializable. Attempting to serialize a `Fn` variant will result in an error at runtime.
     ///
     /// # Example
     /// ```
-    /// use sutra::macros::MacroDef;
-    /// // let fn_macro = MacroDef::Fn(my_macro_fn);
+    /// use sutra::macros::MacroDefinition;
+    /// // let fn_macro = MacroDefinition::Fn(my_macro_fn);
     /// // serde_json::to_string(&fn_macro).unwrap(); // This will error
     /// ```
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -468,14 +468,14 @@ impl Serialize for MacroDef {
         S: Serializer,
     {
         match self {
-            MacroDef::Template(tmpl) => {
-                serializer.serialize_newtype_variant("MacroDef", 0, "Template", tmpl)
+            MacroDefinition::Template(tmpl) => {
+                serializer.serialize_newtype_variant("MacroDefinition", 0, "Template", tmpl)
             }
-            MacroDef::Fn(_) => {
+            MacroDefinition::Fn(_) => {
                 // Native functions cannot be serialized - this should never be reached
                 // when using the MacroRegistry serializer that filters them out
                 Err(serde::ser::Error::custom(
-                    "Cannot serialize MacroDef::Fn variant - use MacroRegistry serialization instead"
+                    "Cannot serialize MacroDefinition::Fn variant - use MacroRegistry serialization instead"
                 ))
             }
         }
@@ -488,7 +488,7 @@ enum MacroDefHelper {
     Template(MacroTemplate),
 }
 
-impl<'de> Deserialize<'de> for MacroDef {
+impl<'de> Deserialize<'de> for MacroDefinition {
     /// Deserializes macro definitions.
     ///
     /// Only the `Template` variant is deserializable, as function pointers cannot be serialized/deserialized.
@@ -497,7 +497,7 @@ impl<'de> Deserialize<'de> for MacroDef {
         D: Deserializer<'de>,
     {
         match MacroDefHelper::deserialize(deserializer)? {
-            MacroDefHelper::Template(tmpl) => Ok(MacroDef::Template(tmpl)),
+            MacroDefHelper::Template(tmpl) => Ok(MacroDefinition::Template(tmpl)),
         }
     }
 }
