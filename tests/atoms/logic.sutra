@@ -7,29 +7,29 @@
 ;;;
 
 (test "logic: not - true"
-      (expect false)
+      (expect (value false) (tags "logic"))
       (not true))
 
 (test "logic: not - false"
-      (expect true)
+      (expect (value true) (tags "logic"))
       (not false))
 
 (test "logic: not - truthy value (number)"
-      (expect false)
+      (expect (value false) (tags "logic"))
       (not 1))
 
 (test "logic: not - truthy value (string)"
-      (expect false)
+      (expect (value false) (tags "logic") (timeout 500))
       (not "hello"))
 
 (test "logic: not - falsy value (nil)"
-      (expect true)
+      (expect (value true) (tags "logic"))
       (not nil))
 
 (test "logic: not - arity error (too few)"
-      (expect ArityError)
+      (expect (error ArityError) (tags "logic") (skip "Demonstration of skip feature for test harness."))
       (not))
 
 (test "logic: not - arity error (too many)"
-      (expect ArityError)
+      (expect (error ArityError) (tags "logic"))
       (not true false))

@@ -7,27 +7,27 @@
 ;;;
 
 (test "control: if - then branch"
-      (expect "then")
+      (expect (value "then") (tags "control"))
       (if true "then" "else"))
 
 (test "control: if - else branch"
-      (expect "else")
+      (expect (value "else") (tags "control"))
       (if false "then" "else"))
 
 (test "control: if - truthy condition"
-      (expect "taken")
+      (expect (value "taken") (tags "control"))
       (if 1 "taken" "not-taken"))
 
 (test "control: if - falsy condition (nil)"
-      (expect "not-taken")
+      (expect (value "not-taken") (tags "control"))
       (if nil "taken" "not-taken"))
 
 (test "control: if - arity error (too few)"
-      (expect ArityError)
+      (expect (error ArityError) (tags "control"))
       (if true "then"))
 
 (test "control: if - arity error (too many)"
-      (expect ArityError)
+      (expect (error ArityError) (tags "control") (timeout 500))
       (if true "then" "else" "extra"))
 
 ;;;
@@ -35,18 +35,18 @@
 ;;;
 
 (test "control: do - sequence"
-      (expect 3)
+      (expect (value 3) (tags "control"))
       (do
         (set! x 1)
         (set! x 2)
         (set! x 3)))
 
 (test "control: do - returns last expression"
-      (expect "last")
+      (expect (value "last") (tags "control"))
       (do "first" "second" "last"))
 
 (test "control: do - empty"
-      (expect nil)
+      (expect (value nil) (tags "control"))
       (do))
 
 ;;;
@@ -54,31 +54,31 @@
 ;;;
 
 (test "control: cond - first clause matches"
-      (expect "first")
+      (expect (value "first") (tags "control"))
       (cond
         ((gt? 5 3) "first")
         (else "second")))
 
 (test "control: cond - second clause matches"
-      (expect "second")
+      (expect (value "second") (tags "control"))
       (cond
         ((lt? 5 3) "first")
         ((gt? 5 3) "second")))
 
 (test "control: cond - no match"
-      (expect nil)
+      (expect (value nil) (tags "control"))
       (cond
         (false "first")
         (false "second")))
 
 (test "control: cond - else clause"
-      (expect "else")
+      (expect (value "else") (tags "control"))
       (cond
         (false "first")
         (else "else")))
 
 (test "control: cond - only first match evaluated"
-      (expect "third")
+      (expect (value "third") (tags "control") (skip "Demonstration of skip feature for test harness."))
       (cond
         (false "first")
         (false "second")

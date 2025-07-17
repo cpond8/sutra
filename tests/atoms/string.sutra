@@ -7,17 +7,17 @@
 ;;;
 
 (test "string: str+ - success"
-      (expect "hello world")
+      (expect (value "hello world") (tags "string"))
       (str+ "hello" " " "world"))
 
 (test "string: str+ - with non-string types"
-      (expect "number1stringtrue")
+      (expect (value "number1stringtrue") (tags "string") (timeout 500))
       (str+ "number" 1 "string" true))
 
 (test "string: str+ - identity"
-      (expect "")
+      (expect (value "") (tags "string"))
       (str+))
 
 (test "string: str+ - single argument"
-      (expect "single")
+      (expect (value "single") (tags "string") (skip "Demonstration of skip feature for test harness."))
       (str+ "single"))

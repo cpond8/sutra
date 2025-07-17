@@ -32,11 +32,6 @@ pub fn register_std_macros(registry: &mut MacroRegistry) {
     // Control flow
     registry.register("if", expand_if);
 
-    // Predicates (building on core/get - alphabetical)
-    registry.register("is?", expand_is);
-    registry.register("over?", expand_over);
-    registry.register("under?", expand_under);
-
     // Compound assignments (building on core/get and core/set! - alphabetical)
     registry.register("add!", expand_add);
     registry.register("dec!", expand_dec);
@@ -141,69 +136,107 @@ fn create_canonical_path(path_arg: &AstNode) -> Result<AstNode, SutraError> {
 // Macro Pattern Generators
 // -----------------------------------------------
 
+/// Flexible helper for path operations that lets atoms handle arity validation.
+/// Requires at least min_args total arguments (including macro name).
+/// Converts the first argument to a canonical path if present.
+fn create_flexible_path_op(expr: &AstNode, op_name: &str, min_args: usize) -> Result<AstNode, SutraError> {
+    match &*expr.value {
+        Expr::List(items, span) if items.len() >= min_args => {
+            let atom_symbol = create_symbol(op_name, span);
+            let mut new_items = vec![atom_symbol];
+
+            // Convert first argument to canonical path if present
+            if items.len() > 1 {
+                let canonical_path = create_canonical_path(&items[1])?;
+                new_items.push(canonical_path);
+                // Add any additional arguments
+                if items.len() > 2 {
+                    new_items.extend_from_slice(&items[2..]);
+                }
+            }
+
+            Ok(WithSpan {
+                value: Expr::List(new_items, *span).into(),
+                span: *span,
+            })
+        }
+        Expr::List(items, _) => {
+            let expected = if min_args > 1 { min_args - 1 } else { 0 };
+            let got = if items.len() > 0 { items.len() - 1 } else { 0 };
+            let msg = format!("{} requires at least {} argument(s), got {}", op_name, expected, got);
+            Err(err_msg!(Validation, msg))
+        }
+        _ => Err(err_msg!(Validation, "Expected a list form for this macro")),
+    }
+}
+
 /// Helper for unary core path operations like `get`, `del!`, `exists?`.
 fn create_unary_op(expr: &AstNode, op_name: &str) -> Result<AstNode, SutraError> {
-    let (items, span) = expect_args(2, expr)?;
-    let atom_symbol = create_symbol(op_name, span);
-    let canonical_path = create_canonical_path(&items[1])?;
-    Ok(WithSpan {
-        value: Expr::List(vec![atom_symbol, canonical_path], *span).into(),
-        span: *span,
-    })
+    create_flexible_path_op(expr, op_name, 1) // Allow 0+ arguments, let atom validate
 }
 
 /// Helper for binary core path operations like `set!`.
 fn create_binary_op(expr: &AstNode, op_name: &str) -> Result<AstNode, SutraError> {
-    let (items, span) = expect_args(3, expr)?;
-    let atom_symbol = create_symbol(op_name, span);
-    let canonical_path = create_canonical_path(&items[1])?;
-    let value_arg = items[2].clone();
-    Ok(WithSpan {
-        value: Expr::List(vec![atom_symbol, canonical_path, value_arg], *span).into(),
-        span: *span,
-    })
+    create_flexible_path_op(expr, op_name, 2) // Allow 1+ arguments, let atom validate
 }
-
-/// Helper for assignment macros like `add!`, `sub!`, etc.
+/// Flexible helper for assignment macros like `add!`, `sub!`, etc.
 fn create_assignment_macro(expr: &AstNode, op_symbol: &str) -> Result<AstNode, SutraError> {
-    let (items, span) = expect_args(3, expr)?;
-    let set_symbol = create_symbol("core/set!", &items[0].span);
-    let canonical_path = create_canonical_path(&items[1])?;
-    let value_arg = items[2].clone();
-    let atom_symbol = create_symbol(op_symbol, &items[0].span);
-    let inner_expr = WithSpan {
-        value: Expr::List(
-            vec![atom_symbol, wrap_in_get(&items[1]), value_arg],
-            *span,
-        )
-        .into(),
-        span: *span,
-    };
-    Ok(WithSpan {
-        value: Expr::List(vec![set_symbol, canonical_path, inner_expr], *span).into(),
-        span: *span,
-    })
+    match &*expr.value {
+        Expr::List(items, span) if items.len() >= 3 => {
+            let set_symbol = create_symbol("core/set!", &items[0].span);
+            let canonical_path = create_canonical_path(&items[1])?;
+            let value_arg = items[2].clone();
+            let atom_symbol = create_symbol(op_symbol, &items[0].span);
+            let inner_expr = WithSpan {
+                value: Expr::List(
+                    vec![atom_symbol, wrap_in_get(&items[1]), value_arg],
+                    *span,
+                )
+                .into(),
+                span: *span,
+            };
+            Ok(WithSpan {
+                value: Expr::List(vec![set_symbol, canonical_path, inner_expr], *span).into(),
+                span: *span,
+            })
+        }
+        Expr::List(items, _) => {
+            let got = if items.len() > 0 { items.len() - 1 } else { 0 };
+            let msg = format!("{} requires 2 arguments (path and value), got {}", op_symbol, got);
+            Err(err_msg!(Validation, msg))
+        }
+        _ => Err(err_msg!(Validation, "Expected a list form for this macro")),
+    }
 }
 
-/// Helper for unary increment/decrement macros like `inc!`, `dec!`.
+/// Flexible helper for unary increment/decrement macros like `inc!`, `dec!`.
 fn create_unary_assignment_macro(expr: &AstNode, op_symbol: &str) -> Result<AstNode, SutraError> {
-    let (items, span) = expect_args(2, expr)?;
-    let set_symbol = create_symbol("core/set!", &items[0].span);
-    let canonical_path = create_canonical_path(&items[1])?;
-    let op_symbol_expr = create_symbol(op_symbol, &items[0].span);
-    let one = create_number(1.0, &items[0].span);
-    let inner_expr = WithSpan {
-        value: Expr::List(
-            vec![op_symbol_expr, wrap_in_get(&items[1]), one],
-            *span,
-        )
-        .into(),
-        span: *span,
-    };
-    Ok(WithSpan {
-        value: Expr::List(vec![set_symbol, canonical_path, inner_expr], *span).into(),
-        span: *span,
-    })
+    match &*expr.value {
+        Expr::List(items, span) if items.len() >= 2 => {
+            let set_symbol = create_symbol("core/set!", &items[0].span);
+            let canonical_path = create_canonical_path(&items[1])?;
+            let op_symbol_expr = create_symbol(op_symbol, &items[0].span);
+            let one = create_number(1.0, &items[0].span);
+            let inner_expr = WithSpan {
+                value: Expr::List(
+                    vec![op_symbol_expr, wrap_in_get(&items[1]), one],
+                    *span,
+                )
+                .into(),
+                span: *span,
+            };
+            Ok(WithSpan {
+                value: Expr::List(vec![set_symbol, canonical_path, inner_expr], *span).into(),
+                span: *span,
+            })
+        }
+        Expr::List(items, _) => {
+            let got = if items.len() > 0 { items.len() - 1 } else { 0 };
+            let msg = format!("{} requires 1 argument (path), got {}", op_symbol, got);
+            Err(err_msg!(Validation, msg))
+        }
+        _ => Err(err_msg!(Validation, "Expected a list form for this macro")),
+    }
 }
 
 // ===================================================================================================
@@ -232,17 +265,6 @@ pub fn expand_del(expr: &AstNode) -> Result<AstNode, SutraError> {
 /// Expands `(exists? foo)` to `(core/exists? (path foo))`.
 pub fn expand_exists(expr: &AstNode) -> Result<AstNode, SutraError> {
     create_unary_op(expr, "core/exists?")
-}
-
-// --- LOGICAL ---
-pub fn expand_is(expr: &AstNode) -> Result<AstNode, SutraError> {
-    create_binary_op(expr, "core/is?")
-}
-pub fn expand_over(expr: &AstNode) -> Result<AstNode, SutraError> {
-    create_unary_op(expr, "core/over?")
-}
-pub fn expand_under(expr: &AstNode) -> Result<AstNode, SutraError> {
-    create_unary_op(expr, "core/under?")
 }
 
 // --- ARITHMETIC ---
@@ -290,12 +312,19 @@ pub fn expand_if(expr: &AstNode) -> Result<AstNode, SutraError> {
 // I/O Operations
 // -----------------------------------------------
 
-/// Expands `(print x)` to `(core/print x)`.
+/// Expands `(print ...)` to `(core/print ...)`, letting the atom handle arity validation.
 pub fn expand_print(expr: &AstNode) -> Result<AstNode, SutraError> {
-    let (items, span) = expect_args(2, expr)?;
-    let atom_symbol = create_symbol("core/print", span);
-    Ok(WithSpan {
-        value: Expr::List(vec![atom_symbol, items[1].clone()], *span).into(),
-        span: *span,
-    })
+    match &*expr.value {
+        Expr::List(items, span) if items.len() >= 1 => {
+            let atom_symbol = create_symbol("core/print", span);
+            let mut new_items = vec![atom_symbol];
+            // Add all arguments after the macro name
+            new_items.extend_from_slice(&items[1..]);
+            Ok(WithSpan {
+                value: Expr::List(new_items, *span).into(),
+                span: *span,
+            })
+        }
+        _ => Err(err_msg!(Validation, "Expected a list form for this macro")),
+    }
 }

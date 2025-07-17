@@ -538,7 +538,7 @@ fn handle_list_atoms() -> Result<(), SutraError> {
 // --- Testing Commands: test execution and management ---
 
 /// Handles the `test` subcommand using the modern macro-based test harness.
-fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
+pub fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
     use termcolor::{ColorChoice, StandardStream};
 
     // Discover all .sutra files in the directory

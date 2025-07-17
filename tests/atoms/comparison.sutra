@@ -8,31 +8,31 @@
 ;;;
 
 (test "comparison: eq? - success true"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (eq? 5 5 5))
 
 (test "comparison: eq? - success false"
-      (expect false)
+      (expect (value false) (tags "comparison"))
       (eq? 5 5 6))
 
 (test "comparison: eq? - different types"
-      (expect false)
+      (expect (value false) (tags "comparison"))
       (eq? 1 "1"))
 
 (test "comparison: eq? - trivial truth (1 arg)"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (eq? 10))
 
 (test "comparison: eq? - trivial truth (0 args)"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (eq?))
 
 (test "comparison: = alias"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (= 1 1))
 
 (test "comparison: is? alias"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (is? "hello" "hello"))
 
 ;;;
@@ -40,31 +40,31 @@
 ;;;
 
 (test "comparison: gt? - success true"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (gt? 10 5 1))
 
 (test "comparison: gt? - success false"
-      (expect false)
+      (expect (value false) (tags "comparison"))
       (gt? 10 5 5))
 
 (test "comparison: gt? - trivial truth (1 arg)"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (gt? 10))
 
 (test "comparison: gt? - trivial truth (0 args)"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (gt?))
 
 (test "comparison: gt? - type error"
-      (expect TypeError)
+      (expect (error TypeError) (tags "comparison"))
       (gt? 10 "one"))
 
 (test "comparison: > alias"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (> 2 1))
 
 (test "comparison: over? alias"
-      (expect true)
+      (expect (value true) (tags "comparison") (timeout 500))
       (over? 10 0))
 
 ;;;
@@ -72,31 +72,31 @@
 ;;;
 
 (test "comparison: lt? - success true"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (lt? 1 5 10))
 
 (test "comparison: lt? - success false"
-      (expect false)
+      (expect (value false) (tags "comparison"))
       (lt? 1 5 5))
 
 (test "comparison: lt? - trivial truth (1 arg)"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (lt? 10))
 
 (test "comparison: lt? - trivial truth (0 args)"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (lt?))
 
 (test "comparison: lt? - type error"
-      (expect TypeError)
+      (expect (error TypeError) (tags "comparison"))
       (lt? 1 "ten"))
 
 (test "comparison: < alias"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (< 1 2))
 
 (test "comparison: under? alias"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (under? 0 10))
 
 ;;;
@@ -104,35 +104,35 @@
 ;;;
 
 (test "comparison: gte? - success true (greater)"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (gte? 10 5 1))
 
 (test "comparison: gte? - success true (equal)"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (gte? 10 5 5))
 
 (test "comparison: gte? - success false"
-      (expect false)
+      (expect (value false) (tags "comparison"))
       (gte? 10 5 4))
 
 (test "comparison: gte? - trivial truth (1 arg)"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (gte? 10))
 
 (test "comparison: gte? - trivial truth (0 args)"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (gte?))
 
 (test "comparison: gte? - type error"
-      (expect TypeError)
+      (expect (error TypeError) (tags "comparison"))
       (gte? 10 "one"))
 
 (test "comparison: >= alias"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (>= 2 2))
 
 (test "comparison: at-least? alias"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (at-least? 10 10))
 
 ;;;
@@ -140,33 +140,33 @@
 ;;;
 
 (test "comparison: lte? - success true (less)"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (lte? 1 5 10))
 
 (test "comparison: lte? - success true (equal)"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (lte? 1 5 5))
 
 (test "comparison: lte? - success false"
-      (expect false)
+      (expect (value false) (tags "comparison"))
       (lte? 1 6 5))
 
 (test "comparison: lte? - trivial truth (1 arg)"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (lte? 10))
 
 (test "comparison: lte? - trivial truth (0 args)"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (lte?))
 
 (test "comparison: lte? - type error"
-      (expect TypeError)
+      (expect (error TypeError) (tags "comparison"))
       (lte? 1 "ten"))
 
 (test "comparison: <= alias"
-      (expect true)
+      (expect (value true) (tags "comparison"))
       (<= 2 2))
 
 (test "comparison: at-most? alias"
-      (expect true)
+      (expect (value true) (tags "comparison") (skip "Demonstration of skip feature for test harness."))
       (at-most? 10 10))

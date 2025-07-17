@@ -8,27 +8,27 @@
 ;;;
 
 (test "assignment: set! and get"
-      (expect 100)
+      (expect (value 100) (tags "assignment"))
       (do
         (set! player.health 100)
         (get player.health)))
 
 (test "assignment: set! nested path"
-      (expect "sword")
+      (expect (value "sword") (tags "assignment"))
       (do
         (set! player.inventory.weapon "sword")
         (get player.inventory.weapon)))
 
 (test "assignment: get non-existent path"
-      (expect nil)
+      (expect (value nil) (tags "assignment"))
       (get non.existent.path))
 
 (test "assignment: set! arity error"
-      (expect ArityError)
+      (expect (error ArityError) (tags "assignment"))
       (set! player.score))
 
 (test "assignment: get arity error"
-      (expect ArityError)
+      (expect (error ArityError) (tags "assignment") (timeout 500))
       (get))
 
 ;;;
@@ -36,14 +36,14 @@
 ;;;
 
 (test "assignment: del! success"
-      (expect nil)
+      (expect (value nil) (tags "assignment"))
       (do
         (set! temp.value 42)
         (del! temp.value)
         (get temp.value)))
 
 (test "assignment: del! arity error"
-      (expect ArityError)
+      (expect (error ArityError) (tags "assignment") (skip "Demonstration of skip feature for test harness."))
       (del!))
 
 ;;;
@@ -51,21 +51,21 @@
 ;;;
 
 (test "assignment: add! success"
-      (expect 125)
+      (expect (value 125) (tags "assignment"))
       (do
         (set! player.mana 100)
         (add! player.mana 25)
         (get player.mana)))
 
 (test "assignment: sub! success"
-      (expect 75)
+      (expect (value 75) (tags "assignment"))
       (do
         (set! player.mana 100)
         (sub! player.mana 25)
         (get player.mana)))
 
 (test "assignment: add! type error"
-      (expect TypeError)
+      (expect (error TypeError) (tags "assignment"))
       (do
         (set! player.name "Roo")
         (add! player.name 10)))
@@ -75,19 +75,19 @@
 ;;;
 
 (test "assignment: inc! success"
-      (expect 11)
+      (expect (value 11) (tags "assignment"))
       (do
         (set! counter 10)
         (inc! counter)
         (get counter)))
 
 (test "assignment: dec! success"
-      (expect 9)
+      (expect (value 9) (tags "assignment"))
       (do
         (set! counter 10)
         (dec! counter)
         (get counter)))
 
 (test "assignment: inc! arity error"
-      (expect ArityError)
+      (expect (error ArityError) (tags "assignment") (skip "Demonstration of skip feature for test harness."))
       (inc! counter 2))

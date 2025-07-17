@@ -7,19 +7,19 @@
 ;;;
 
 (test "output: print - simple string"
-      (expect (output "hello\n"))
+      (expect (output "hello\n") (tags "output"))
       (print "hello"))
 
 (test "output: print - with number"
-      (expect (output "123\n"))
+      (expect (output "123\n") (tags "output") (timeout 500))
       (print 123))
 
 (test "output: print - arity error (too few)"
-      (expect ArityError)
+      (expect (error ArityError) (tags "output"))
       (print))
 
 (test "output: print - arity error (too many)"
-      (expect ArityError)
+      (expect (error ArityError) (tags "output") (skip "Demonstration of skip feature for test harness."))
       (print "one" "two"))
 
 ;;;
@@ -27,13 +27,13 @@
 ;;;
 
 (test "output: display - multiple args"
-      (expect (output "hello 123 true\n"))
+      (expect (output "hello 123 true\n") (tags "output"))
       (display "hello" 123 true))
 
 (test "output: display - single arg"
-      (expect (output "single\n"))
+      (expect (output "single\n") (tags "output"))
       (display "single"))
 
 (test "output: display - no args"
-      (expect (output "\n"))
+      (expect (output "\n") (tags "output"))
       (display))

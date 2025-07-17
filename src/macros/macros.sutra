@@ -95,6 +95,7 @@
 
 ;; eq? aliases
 (define (= ...args) (eq? ...args))
+(define (is? ...args) (eq? ...args))
 
 ;; gt? aliases
 (define (> ...args) (gt? ...args))
