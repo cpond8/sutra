@@ -40,17 +40,40 @@ Sutra is a minimal, homoiconic, expression-based language designed for composabl
 | List | `(1 2 "a" true)`   | Ordered, heterogeneous | `Value::List` |
 | Map  | `{foo: 1, bar: 2}` | Key-value, string keys | `Value::Map`  |
 
-### 2.3 Paths
+### 2.3 Symbol Resolution
+
+When evaluating a symbol (e.g., `x`), Sutra follows a specific precedence order:
+
+1. **Lexical Environment**: Variables bound by `let` or `lambda`
+2. **Atom Registry**: Built-in functions and special forms (must be called)
+3. **World State**: Global state paths (e.g., `x` → `world.state.x`)
+4. **Undefined**: Error if symbol is not found anywhere
+
+#### Examples
+
+```sutra
+(let x 42)     ; x resolves to 42 (lexical binding)
+(+ 1 2)        ; + resolves to atom (callable)
+x              ; Error: 'x' is an atom and must be called with arguments
+undefined-var  ; Error: undefined symbol: 'undefined-var'
+```
+
+#### Error Messages
+
+- **Atom Reference**: `'symbol' is an atom and must be called with arguments (e.g., (symbol ...))`
+- **Undefined Symbol**: `undefined symbol: 'symbol'`
+
+### 2.4 Paths
 
 - Used for world state access: `(path player hp)` or dotted symbol `player.hp`
 - Canonicalized by macro system (`src/macros/std.rs`)
 
-### 2.4 Quote
+### 2.5 Quote
 
 - `'expr` — returns the literal expression, not evaluated.
 - AST: `Expr::Quote`
 
-### 2.5 Spread Argument
+### 2.6 Spread Argument
 
 - `...symbol` — splices a list of arguments in call position.
 - Grammar: `spread_arg`

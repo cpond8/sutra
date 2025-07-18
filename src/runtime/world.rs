@@ -172,11 +172,6 @@ impl Default for World {
 pub fn build_default_atom_registry() -> AtomRegistry {
     let mut registry = AtomRegistry::new();
     atoms::register_all_atoms(&mut registry);
-    #[cfg(any(test, feature = "test-atom", debug_assertions))]
-    {
-        // Register test atoms only in debug/test builds
-        atoms::test::register_test_atoms(&mut registry);
-    }
     registry
 }
 

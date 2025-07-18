@@ -1,4 +1,3 @@
-use crate::cli::output::StdoutSink;
 use crate::err_ctx;
 use crate::macros::{is_macro_definition, parse_macro_definition};
 use crate::macros::{expand_macros_recursively, MacroDefinition};
@@ -12,7 +11,8 @@ use std::sync::Arc;
 use crate::atoms::SharedOutput;
 
 /// Unified execution pipeline that enforces strict layering: Parse → Expand → Validate → Evaluate
-/// This is the single source of truth for all Sutra execution paths.
+/// This is the single source of truth for all Sutra execution paths, including tests and production.
+/// All code execution, including test harnesses, must use this pipeline. Bypassing is forbidden.
 pub struct ExecutionPipeline {
     /// Maximum recursion depth for evaluation
     pub max_depth: usize,
@@ -31,7 +31,7 @@ impl Default for ExecutionPipeline {
 
 impl ExecutionPipeline {
     /// Executes Sutra source code through the complete pipeline.
-    /// This is the single entry point for all execution paths.
+    /// This is the single entry point for all execution paths, including tests.
     pub fn execute(
         &self,
         source: &str,
@@ -116,21 +116,4 @@ impl ExecutionPipeline {
         let atom_registry = crate::runtime::world::build_default_atom_registry();
         evaluate(expanded_ast, world, output, &atom_registry, source, self.max_depth)
     }
-}
-
-/// Run Sutra source with injectable output sink (engine orchestration entry point).
-/// **DEPRECATED**: Use ExecutionPipeline::execute instead for new code.
-pub fn run_sutra_source_with_output(
-    source: &str,
-    output: SharedOutput,
-) -> Result<(), SutraError> {
-    let pipeline = ExecutionPipeline::default();
-    pipeline.execute(source, output)
-}
-
-/// Run Sutra source and print output to stdout (legacy entry point).
-/// **DEPRECATED**: Use ExecutionPipeline::execute instead for new code.
-pub fn run_sutra_source(source: &str, _filename: Option<&str>) -> Result<(), SutraError> {
-    let output = SharedOutput::new(StdoutSink);
-    run_sutra_source_with_output(source, output)
 }

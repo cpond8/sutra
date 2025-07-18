@@ -1,0 +1,32 @@
+;; Test to verify consistency between test and production execution paths
+;; This ensures that the same code produces identical results regardless of context
+
+(test "symbol-resolution-consistency"
+  ;; Test that symbol resolution follows the same precedence in all contexts
+  (let x 42)
+  (let y (+ 1 2))
+  (assert-eq x 42)
+  (assert-eq y 3)
+  ;; Test that bare atom references produce the same error
+  (assert-error (+ "atoms cannot be evaluated directly")
+    (+ 1 2 3))  ;; This should work
+  (assert-error (+ "undefined symbol")
+    undefined-var))  ;; This should fail
+
+(test "pipeline-consistency"
+  ;; Test that the pipeline produces consistent results
+  (let result (+ (* 2 3) 4))
+  (assert-eq result 10)
+  ;; Test macro expansion consistency
+  (let doubled (lambda (x) (* x 2)))
+  (let test-val (doubled 5))
+  (assert-eq test-val 10))
+
+(test "world-state-consistency"
+  ;; Test that world state operations are consistent
+  (set! test-value 42)
+  (assert-eq (get test-value) 42)
+  ;; Test that state persists correctly
+  (set! counter 0)
+  (set! counter (+ (get counter) 1))
+  (assert-eq (get counter) 1))

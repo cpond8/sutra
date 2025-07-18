@@ -102,7 +102,7 @@ impl<'a> EvaluationContext<'a> {
     /// Looks up and invokes an atom by name, handling errors for missing atoms.
     /// **CRITICAL**: This function does NOT handle macro expansion. Macros must be
     /// expanded before evaluation according to the strict layering principle.
-    pub fn call_atom(
+    pub(crate) fn call_atom(
         &mut self,
         symbol_name: &str,
         head: &AstNode,
@@ -256,13 +256,36 @@ fn evaluate_literal_value(
 }
 
 /// Handles evaluation of invalid expression types that cannot be evaluated at runtime.
+///
+/// ## Symbol Resolution Precedence
+///
+/// When evaluating a bare symbol (e.g., `x`), the following precedence is used:
+///
+/// 1. **Lexical Environment**: Check for variables bound by `let` or `lambda`
+/// 2. **Atom Registry**: If symbol matches an atom, return error (atoms must be called)
+/// 3. **World State**: Check if symbol is a path in world state (e.g., `x` → `world.state.x`)
+/// 4. **Undefined**: Return "undefined symbol" error
+///
+/// ## Error Messages
+///
+/// - **Atom Reference**: `"atoms cannot be evaluated directly - they must be called"`
+/// - **Undefined Symbol**: `"undefined symbol"`
+///
+/// ## Examples
+///
+/// ```sutra
+/// (let x 42)     ; x resolves to 42 (lexical)
+/// (+ 1 2)        ; + resolves to atom (callable)
+/// x              ; Error: atoms cannot be evaluated directly
+/// undefined-var  ; Error: undefined symbol
+/// ```
 fn evaluate_invalid_expr(
     expr: &AstNode,
     context: &mut EvaluationContext,
 ) -> Result<(Value, World), SutraError> {
     let (msg, span) = match &*expr.value {
         Expr::ParamList(_) => (
-            "Cannot evaluate parameter list (ParamList AST node) at runtime",
+            "Cannot evaluate parameter list (ParamList AST node) at runtime".to_string(),
             expr.span,
         ),
         Expr::Symbol(s, span) => {
@@ -273,7 +296,7 @@ fn evaluate_invalid_expr(
             // Check if it's an atom in the registry
             if context.atom_registry.has(s) {
                 (
-                    "atoms cannot be evaluated directly - they must be called",
+                    format!("'{}' is an atom and must be called with arguments (e.g., ({} ...))", s, s),
                     *span,
                 )
             } else {
@@ -284,13 +307,13 @@ fn evaluate_invalid_expr(
                 }
                 // If the symbol is not found anywhere, it's an undefined symbol.
                 (
-                    "undefined symbol",
+                    format!("undefined symbol: '{}'", s),
                     *span,
                 )
             }
         }
         Expr::Spread(_) => (
-            "Spread argument not allowed outside of call position (list context)",
+            "Spread argument not allowed outside of call position (list context)".to_string(),
             expr.span,
         ),
         _ => unreachable!("eval_invalid_expr called with valid expression type"),
@@ -313,7 +336,7 @@ fn evaluate_invalid_expr(
 /// This is a low-level, internal function. Most users should use the higher-level `eval` API.
 /// **CRITICAL**: This function assumes all macros have been expanded before evaluation.
 /// Macro expansion must happen in a separate phase according to the strict layering principle.
-pub fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext) -> Result<(Value, World), SutraError> {
+pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext) -> Result<(Value, World), SutraError> {
     if context.depth > context.max_depth {
         return Err(err_src!(
             Internal,
@@ -371,6 +394,18 @@ pub fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext) -> Res
 /// Public API: evaluates an expression with the given world, output, atom registry, and max depth.
 /// **CRITICAL**: This function assumes all macros have been expanded before evaluation.
 /// Macro expansion must happen in a separate phase according to the strict layering principle.
+///
+/// # Usage
+///
+/// This function is intended for use by the `ExecutionPipeline` only. Direct usage
+/// bypasses the pipeline's validation and macro expansion, which may lead to
+/// inconsistent behavior. Use `ExecutionPipeline::execute` instead for most use cases.
+///
+/// # Safety
+///
+/// - All macros must be expanded before calling this function
+/// - The atom registry must be consistent with the one used for validation
+/// - World state must be properly initialized
 pub fn evaluate(
     expr: &AstNode,
     world: &World,

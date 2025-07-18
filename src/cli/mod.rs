@@ -5,7 +5,7 @@
 use crate::ast::AstNode;
 use crate::cli::args::{Command, SutraArgs};
 use crate::cli::output::StdoutSink;
-use crate::engine::{ExecutionPipeline, run_sutra_source_with_output};
+use crate::engine::ExecutionPipeline;
 use crate::err_ctx;
 use crate::err_msg;
 use crate::macros::{is_macro_definition, parse_macro_definition};
@@ -316,7 +316,8 @@ fn handle_run(path: &std::path::Path) -> Result<(), SutraError> {
 fn handle_macrotrace(path: &std::path::Path) -> Result<(), SutraError> {
     let source = read_file_to_string(path)?;
     let output = SharedOutput::new(StdoutSink);
-    run_sutra_source_with_output(&source, output)
+    let pipeline = ExecutionPipeline::default();
+    pipeline.execute(&source, output)
 }
 
 /// Handles the `list-macros` subcommand.
@@ -432,24 +433,13 @@ pub fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
                     span: test_form.span,
                 };
 
-                // Execute the test form using the unified execution pipeline
-                let before_count = 0; // Simplified for now
-
-                // Use the unified pipeline for test execution
-                let pipeline = ExecutionPipeline {
-                    max_depth: 100,
-                    validate: false, // Skip validation for tests
-                };
-
-                // Convert the test node to source code
+                // Use the canonical engine pipeline for test execution (no bypass)
+                let pipeline = ExecutionPipeline::default();
                 let test_source = test_node.value.pretty();
-
-                match pipeline.execute(&test_source, SharedOutput(Rc::new(RefCell::new(crate::cli::output::OutputBuffer::new())))) {
+                let output = SharedOutput(Rc::new(RefCell::new(crate::cli::output::OutputBuffer::new())));
+                match pipeline.execute(&test_source, output) {
                     Ok(_) => {
-                        let after_count = 0; // Simplified for now
-                        if after_count > before_count {
-                            registered += 1;
-                        }
+                        registered += 1;
                     }
                     Err(e) => {
                         // Error handling for test execution failures
