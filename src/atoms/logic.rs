@@ -13,9 +13,11 @@
 //! - **Boolean Results**: All operations return `Value::Bool`
 //! - **Numeric Comparison**: Comparison operations work with `Value::Number`
 
-use crate::{Value, AtomRegistry};
+use crate::atoms::helpers::{
+    pure_eval_numeric_sequence_comparison, pure_eval_unary_typed_op, validate_sequence_arity,
+};
 use crate::atoms::PureAtomFn;
-use crate::atoms::helpers::{validate_sequence_arity, pure_eval_numeric_sequence_comparison, pure_eval_unary_typed_op};
+use crate::{AtomRegistry, Value};
 
 // ============================================================================
 // COMPARISON OPERATIONS
@@ -58,9 +60,8 @@ pub const ATOM_EQ: PureAtomFn = |args| {
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_GT: PureAtomFn = |args| {
-    pure_eval_numeric_sequence_comparison(args, |a, b| a <= b, "gt?")
-};
+pub const ATOM_GT: PureAtomFn =
+    |args| pure_eval_numeric_sequence_comparison(args, |a, b| a <= b, "gt?");
 
 /// Returns true if a < b.
 ///
@@ -75,9 +76,8 @@ pub const ATOM_GT: PureAtomFn = |args| {
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_LT: PureAtomFn = |args| {
-    pure_eval_numeric_sequence_comparison(args, |a, b| a >= b, "lt?")
-};
+pub const ATOM_LT: PureAtomFn =
+    |args| pure_eval_numeric_sequence_comparison(args, |a, b| a >= b, "lt?");
 
 /// Returns true if a >= b.
 ///
@@ -92,9 +92,8 @@ pub const ATOM_LT: PureAtomFn = |args| {
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_GTE: PureAtomFn = |args| {
-    pure_eval_numeric_sequence_comparison(args, |a, b| a < b, "gte?")
-};
+pub const ATOM_GTE: PureAtomFn =
+    |args| pure_eval_numeric_sequence_comparison(args, |a, b| a < b, "gte?");
 
 /// Returns true if a <= b.
 ///
@@ -109,9 +108,8 @@ pub const ATOM_GTE: PureAtomFn = |args| {
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_LTE: PureAtomFn = |args| {
-    pure_eval_numeric_sequence_comparison(args, |a, b| a > b, "lte?")
-};
+pub const ATOM_LTE: PureAtomFn =
+    |args| pure_eval_numeric_sequence_comparison(args, |a, b| a > b, "lte?");
 
 // ============================================================================
 // LOGIC OPERATIONS
@@ -129,9 +127,8 @@ pub const ATOM_LTE: PureAtomFn = |args| {
 ///
 /// # Safety
 /// Pure, does not mutate state.
-pub const ATOM_NOT: PureAtomFn = |args| {
-    pure_eval_unary_typed_op::<bool, _>(args, |b| Value::Bool(!b), "not")
-};
+pub const ATOM_NOT: PureAtomFn =
+    |args| pure_eval_unary_typed_op::<bool, _>(args, |b| Value::Bool(!b), "not");
 
 // ============================================================================
 // REGISTRATION FUNCTION

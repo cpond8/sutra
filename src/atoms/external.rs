@@ -13,9 +13,9 @@
 //! - **Deterministic Where Possible**: Consistent behavior within constraints
 //! - **Minimal External Dependencies**: Simple implementations
 
-use crate::{Value, AtomRegistry};
-use crate::atoms::StatefulAtomFn;
 use crate::atoms::helpers::{validate_unary_arity, validate_zero_arity};
+use crate::atoms::StatefulAtomFn;
+use crate::{AtomRegistry, Value};
 
 // ============================================================================
 // I/O OPERATIONS

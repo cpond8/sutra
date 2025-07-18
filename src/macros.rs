@@ -52,15 +52,15 @@
 //! - **Token Efficiency**: Only load relevant modules for AI context
 
 use crate::ast::{AstNode, ParamList};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use crate::err_ctx;
+use crate::err_msg;
+use crate::AtomExecutionContext;
+use crate::Span;
+use crate::{to_error_source, Value, World};
 use ::std::collections::{HashMap, HashSet};
 use ::std::sync::Arc;
-use crate::err_msg;
-use crate::err_ctx;
 use miette::NamedSource;
-use crate::{to_error_source, Value, World};
-use crate::Span;
-use crate::AtomExecutionContext;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 // ============================================================================
 // MODULE DECLARATIONS
@@ -282,10 +282,7 @@ impl MacroTemplate {
     /// let body = Box::new(Spanned { value: Arc::new(sutra::ast::Expr::Number(0.0, sutra::ast::Span::default())), span: sutra::ast::Span::default() });
     /// let template = MacroTemplate::new(params, body).unwrap();
     /// ```
-    pub fn new(
-        params: ParamList,
-        body: Box<AstNode>,
-    ) -> Result<Self, crate::SutraError> {
+    pub fn new(params: ParamList, body: Box<AstNode>) -> Result<Self, crate::SutraError> {
         let mut all_names = params.required.clone();
 
         // Add variadic parameter if present
@@ -434,8 +431,14 @@ impl MacroRegistry {
     /// let old2 = reg.register("foo", my_macro_fn).unwrap();
     /// assert!(old2.is_some());
     /// ```
-    pub fn register(&mut self, name: &str, func: MacroFunction) -> Result<Option<MacroDefinition>, crate::SutraError> {
-        let old_macro = self.macros.insert(name.to_string(), MacroDefinition::Fn(func));
+    pub fn register(
+        &mut self,
+        name: &str,
+        func: MacroFunction,
+    ) -> Result<Option<MacroDefinition>, crate::SutraError> {
+        let old_macro = self
+            .macros
+            .insert(name.to_string(), MacroDefinition::Fn(func));
         Ok(old_macro)
     }
 
@@ -459,12 +462,23 @@ impl MacroRegistry {
     /// reg.register_or_error("foo", my_macro_fn).unwrap();
     /// assert!(reg.register_or_error("foo", my_macro_fn).is_err());
     /// ```
-    pub fn register_or_error(&mut self, name: &str, func: MacroFunction) -> Result<(), crate::SutraError> {
+    pub fn register_or_error(
+        &mut self,
+        name: &str,
+        func: MacroFunction,
+    ) -> Result<(), crate::SutraError> {
         if self.macros.contains_key(name) {
             let src_arc = to_error_source(name);
-            return Err(err_ctx!(Validation, format!("Macro '{}' is already registered", name), &src_arc, Span::default(), "Macro already registered"));
+            return Err(err_ctx!(
+                Validation,
+                format!("Macro '{}' is already registered", name),
+                &src_arc,
+                Span::default(),
+                "Macro already registered"
+            ));
         }
-        self.macros.insert(name.to_string(), MacroDefinition::Fn(func));
+        self.macros
+            .insert(name.to_string(), MacroDefinition::Fn(func));
         Ok(())
     }
 
@@ -494,8 +508,13 @@ impl MacroRegistry {
     /// let old2 = reg.register_template("foo", template).unwrap();
     /// assert!(old2.is_some());
     /// ```
-    pub fn register_template(&mut self, name: &str, template: MacroTemplate) -> Result<Option<MacroDefinition>, crate::SutraError> {
-        let old_macro = self.macros
+    pub fn register_template(
+        &mut self,
+        name: &str,
+        template: MacroTemplate,
+    ) -> Result<Option<MacroDefinition>, crate::SutraError> {
+        let old_macro = self
+            .macros
             .insert(name.to_string(), MacroDefinition::Template(template));
         Ok(old_macro)
     }
@@ -531,7 +550,13 @@ impl MacroRegistry {
     ) -> Result<(), crate::SutraError> {
         if self.macros.contains_key(name) {
             let src_arc = to_error_source(name);
-            return Err(err_ctx!(Validation, format!("Macro '{}' is already registered", name), &src_arc, Span::default(), "Macro already registered"));
+            return Err(err_ctx!(
+                Validation,
+                format!("Macro '{}' is already registered", name),
+                &src_arc,
+                Span::default(),
+                "Macro already registered"
+            ));
         }
         self.macros
             .insert(name.to_string(), MacroDefinition::Template(template));
@@ -824,9 +849,7 @@ impl<'de> Deserialize<'de> for MacroDefinition {
 /// # Errors
 ///
 /// Returns an error if any parameter name appears more than once.
-fn check_no_duplicate_params(
-    all_names: &[String],
-) -> Result<(), crate::SutraError> {
+fn check_no_duplicate_params(all_names: &[String]) -> Result<(), crate::SutraError> {
     let mut seen = HashSet::new();
     for name in all_names {
         if !seen.insert(name) {
@@ -841,7 +864,12 @@ fn check_no_duplicate_params(
 // ============================================================================
 
 impl crate::atoms::Callable for MacroDefinition {
-    fn call(&self, _args: &[Value], _context: &mut AtomExecutionContext, _current_world: &World) -> Result<(Value, World), crate::SutraError> {
+    fn call(
+        &self,
+        _args: &[Value],
+        _context: &mut AtomExecutionContext,
+        _current_world: &World,
+    ) -> Result<(Value, World), crate::SutraError> {
         // Macros operate on AST nodes, not Values, so they cannot be called through the Callable interface
         // This is a design limitation - macros need syntax transformation, not evaluation
         Err(err_msg!(Validation, "Macros cannot be called through Callable interface - they require AST transformation, not evaluation"))
@@ -853,10 +881,16 @@ impl crate::atoms::Callable for MacroDefinition {
 // ============================================================================
 
 // Loading operations - re-exported from loader module
-pub use loader::{check_arity, load_macros_from_file, parse_macros_from_source, is_macro_definition, parse_macro_definition};
+pub use loader::{
+    check_arity, is_macro_definition, load_macros_from_file, parse_macro_definition,
+    parse_macros_from_source,
+};
 
 // Expansion operations - re-exported from expander module
-pub use expander::{bind_macro_params, expand_macros_recursively, expand_macro_call, expand_template, substitute_template};
+pub use expander::{
+    bind_macro_params, expand_macro_call, expand_macros_recursively, expand_template,
+    substitute_template,
+};
 
 use ::std::sync;
 

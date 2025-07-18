@@ -9,10 +9,10 @@
 //! node. This is the only place in the entire engine where path syntax is parsed.
 
 use crate::ast::{AstNode, Expr, Spanned};
-use crate::{MacroRegistry, Path};
-use crate::SutraError;
 use crate::err_msg;
 use crate::Span;
+use crate::SutraError;
+use crate::{MacroRegistry, Path};
 
 // ===================================================================================================
 // REGISTRY: Standard Macro Registration
@@ -62,12 +62,18 @@ fn expr_to_path(expr: &AstNode) -> Result<Path, SutraError> {
                 .iter()
                 .map(|item| match &*item.value {
                     Expr::Symbol(s, _) | Expr::String(s, _) => Ok(s.clone()),
-                    _ => Err(err_msg!(Validation, "Path elements must be symbols or strings")),
+                    _ => Err(err_msg!(
+                        Validation,
+                        "Path elements must be symbols or strings"
+                    )),
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(Path(parts))
         }
-        _ => Err(err_msg!(Validation, "Expression cannot be converted to a path")),
+        _ => Err(err_msg!(
+            Validation,
+            "Expression cannot be converted to a path"
+        )),
     }
 }
 
@@ -88,8 +94,6 @@ fn wrap_in_get(expr: &AstNode) -> AstNode {
 // ===================================================================================================
 // INTERNAL HELPERS: Macro Construction Utilities
 // ===================================================================================================
-
-
 
 // -----------------------------------------------
 // AST Construction Helpers
@@ -126,7 +130,11 @@ fn create_canonical_path(path_arg: &AstNode) -> Result<AstNode, SutraError> {
 /// Flexible helper for path operations that lets atoms handle arity validation.
 /// Requires at least min_args total arguments (including macro name).
 /// Converts the first argument to a canonical path if present.
-fn create_flexible_path_op(expr: &AstNode, op_name: &str, min_args: usize) -> Result<AstNode, SutraError> {
+fn create_flexible_path_op(
+    expr: &AstNode,
+    op_name: &str,
+    min_args: usize,
+) -> Result<AstNode, SutraError> {
     match &*expr.value {
         Expr::List(items, span) if items.len() >= min_args => {
             let atom_symbol = create_symbol(op_name, span);
@@ -149,7 +157,11 @@ fn create_flexible_path_op(expr: &AstNode, op_name: &str, min_args: usize) -> Re
         }
         Expr::List(items, _) => {
             let expected = min_args.saturating_sub(1);
-            let got = if !items.is_empty() { items.len() - 1 } else { 0 };
+            let got = if !items.is_empty() {
+                items.len() - 1
+            } else {
+                0
+            };
             let msg = format!("{op_name} requires at least {expected} argument(s), got {got}");
             Err(err_msg!(Validation, msg))
         }
@@ -175,11 +187,8 @@ fn create_assignment_macro(expr: &AstNode, op_symbol: &str) -> Result<AstNode, S
             let value_arg = items[2].clone();
             let atom_symbol = create_symbol(op_symbol, &items[0].span);
             let inner_expr = Spanned {
-                value: Expr::List(
-                    vec![atom_symbol, wrap_in_get(&items[1]), value_arg],
-                    *span,
-                )
-                .into(),
+                value: Expr::List(vec![atom_symbol, wrap_in_get(&items[1]), value_arg], *span)
+                    .into(),
                 span: *span,
             };
             Ok(Spanned {
@@ -188,7 +197,11 @@ fn create_assignment_macro(expr: &AstNode, op_symbol: &str) -> Result<AstNode, S
             })
         }
         Expr::List(items, _) => {
-            let got = if !items.is_empty() { items.len() - 1 } else { 0 };
+            let got = if !items.is_empty() {
+                items.len() - 1
+            } else {
+                0
+            };
             let msg = format!("{op_symbol} requires 2 arguments (path and value), got {got}");
             Err(err_msg!(Validation, msg))
         }
@@ -218,11 +231,7 @@ fn create_unary_assignment_macro(expr: &AstNode, op_symbol: &str) -> Result<AstN
                 span: *span,
             };
             let inner_expr = Spanned {
-                value: Expr::List(
-                    vec![op_symbol_expr, get_call, one],
-                    *span,
-                )
-                .into(),
+                value: Expr::List(vec![op_symbol_expr, get_call, one], *span).into(),
                 span: *span,
             };
             Ok(Spanned {
@@ -231,7 +240,11 @@ fn create_unary_assignment_macro(expr: &AstNode, op_symbol: &str) -> Result<AstN
             })
         }
         Expr::List(items, _) => {
-            let got = if !items.is_empty() { items.len() - 1 } else { 0 };
+            let got = if !items.is_empty() {
+                items.len() - 1
+            } else {
+                0
+            };
             let msg = format!("{op_symbol} requires 1 argument (path), got {got}");
             Err(err_msg!(Validation, msg))
         }

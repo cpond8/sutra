@@ -46,7 +46,10 @@ struct SubstitutionContext<'a> {
 
 /// Public entry point for macro expansion.
 /// Expands all macro calls recursively within an AST node, tracing expansions.
-pub fn expand_macros_recursively(ast: AstNode, env: &mut MacroExpansionContext) -> Result<AstNode, SutraError> {
+pub fn expand_macros_recursively(
+    ast: AstNode,
+    env: &mut MacroExpansionContext,
+) -> Result<AstNode, SutraError> {
     expand_macros_recursively_with_trace(ast, env, 0)
 }
 
@@ -86,12 +89,7 @@ pub fn expand_macro_call(
             };
 
             let first = items.first().ok_or_else(|| {
-                err_src!(
-                    Eval,
-                    "Macro call cannot be empty",
-                    &env.source,
-                    call.span
-                )
+                err_src!(Eval, "Macro call cannot be empty", &env.source, call.span)
             })?;
 
             let macro_name = match &*first.value {
@@ -233,14 +231,7 @@ pub fn substitute_template(
             depth: depth + 1,
             macro_name,
         };
-        return substitute_if(
-            condition,
-            then_branch,
-            else_branch,
-            span,
-            &expr.span,
-            &ctx,
-        );
+        return substitute_if(condition, then_branch, else_branch, span, &expr.span, &ctx);
     }
     // Default: return as is (atomic types)
     Ok(expr.clone())
@@ -313,15 +304,16 @@ fn expand_macro_definition(
                 node.span
             )
         }),
-        MacroDefinition::Template(template) => expand_template(template, node, &macro_name, depth, env)
-            .map_err(|e| {
+        MacroDefinition::Template(template) => {
+            expand_template(template, node, &macro_name, depth, env).map_err(|e| {
                 err_src!(
                     Internal,
                     format!("Error in macro '{}': {}", macro_name, e),
                     &env.source,
                     node.span
                 )
-            }),
+            })
+        }
     };
 
     if let Ok(expanded_node) = &result {
@@ -528,9 +520,27 @@ fn substitute_if(
     original_span: &Span,
     ctx: &SubstitutionContext,
 ) -> Result<AstNode, SutraError> {
-    let new_condition = substitute_template(condition, ctx.bindings, ctx.env, ctx.depth + 1, ctx.macro_name)?;
-    let new_then = substitute_template(then_branch, ctx.bindings, ctx.env, ctx.depth + 1, ctx.macro_name)?;
-    let new_else = substitute_template(else_branch, ctx.bindings, ctx.env, ctx.depth + 1, ctx.macro_name)?;
+    let new_condition = substitute_template(
+        condition,
+        ctx.bindings,
+        ctx.env,
+        ctx.depth + 1,
+        ctx.macro_name,
+    )?;
+    let new_then = substitute_template(
+        then_branch,
+        ctx.bindings,
+        ctx.env,
+        ctx.depth + 1,
+        ctx.macro_name,
+    )?;
+    let new_else = substitute_template(
+        else_branch,
+        ctx.bindings,
+        ctx.env,
+        ctx.depth + 1,
+        ctx.macro_name,
+    )?;
 
     Ok(with_span(
         Expr::If {
@@ -583,7 +593,12 @@ fn is_variadic_param(name: &str, bindings: &HashMap<String, AstNode>) -> bool {
 // =============================
 
 /// Recursively maps a function over child AST nodes.
-fn map_ast<F>(node: AstNode, f: &F, env: &mut MacroExpansionContext, depth: usize) -> Result<AstNode, SutraError>
+fn map_ast<F>(
+    node: AstNode,
+    f: &F,
+    env: &mut MacroExpansionContext,
+    depth: usize,
+) -> Result<AstNode, SutraError>
 where
     F: Fn(AstNode, &mut MacroExpansionContext, usize) -> Result<AstNode, SutraError>,
 {

@@ -1,11 +1,11 @@
+use crate::ast::value::{Lambda, Value};
 use crate::ast::{AstNode, Expr};
-use crate::ast::value::{Value, Lambda};
-use crate::atoms::{SpecialFormAtomFn};
 use crate::atoms::helpers::{validate_special_form_arity, validate_special_form_min_arity};
-use crate::runtime::eval::{evaluate_ast_node, evaluate_condition_as_bool};
-use crate::World;
-use crate::SutraError;
+use crate::atoms::SpecialFormAtomFn;
 use crate::err_msg;
+use crate::runtime::eval::{evaluate_ast_node, evaluate_condition_as_bool};
+use crate::SutraError;
+use crate::World;
 use std::rc::Rc;
 
 /// Implements the (if ...) special form with lazy evaluation.
@@ -29,7 +29,12 @@ pub const ATOM_LAMBDA: SpecialFormAtomFn = |args, context, span| {
     // Parse parameter list
     let param_list = match &*args[0].value {
         Expr::ParamList(pl) => pl.clone(),
-        _ => return Err(err_msg!(Eval, "lambda: first argument must be a parameter list")),
+        _ => {
+            return Err(err_msg!(
+                Eval,
+                "lambda: first argument must be a parameter list"
+            ))
+        }
     };
 
     // Validate parameter names (no duplicates, all symbols)
@@ -41,7 +46,11 @@ pub const ATOM_LAMBDA: SpecialFormAtomFn = |args, context, span| {
     }
     if let Some(rest) = &param_list.rest {
         if !seen.insert(rest) {
-            return Err(err_msg!(Eval, "lambda: duplicate variadic parameter '{}'", rest));
+            return Err(err_msg!(
+                Eval,
+                "lambda: duplicate variadic parameter '{}'",
+                rest
+            ));
         }
     }
 
@@ -54,12 +63,18 @@ pub const ATOM_LAMBDA: SpecialFormAtomFn = |args, context, span| {
             exprs.push(expr.clone());
         }
         let do_expr = Expr::List(
-            std::iter::once(AstNode { value: std::sync::Arc::new(Expr::Symbol("do".to_string(), *span)), span: *span })
-                .chain(exprs)
-                .collect(),
+            std::iter::once(AstNode {
+                value: std::sync::Arc::new(Expr::Symbol("do".to_string(), *span)),
+                span: *span,
+            })
+            .chain(exprs)
+            .collect(),
             *span,
         );
-        Box::new(AstNode { value: std::sync::Arc::new(do_expr), span: *span })
+        Box::new(AstNode {
+            value: std::sync::Arc::new(do_expr),
+            span: *span,
+        })
     };
 
     // Capture the current lexical environment by flattening all frames
@@ -69,7 +84,14 @@ pub const ATOM_LAMBDA: SpecialFormAtomFn = |args, context, span| {
             captured_env.insert(key.clone(), value.clone());
         }
     }
-    Ok((Value::Lambda(Rc::new(Lambda { params: param_list, body, captured_env })), context.world.clone()))
+    Ok((
+        Value::Lambda(Rc::new(Lambda {
+            params: param_list,
+            body,
+            captured_env,
+        })),
+        context.world.clone(),
+    ))
 };
 
 /// Implements the (let ...) special form.
@@ -78,7 +100,12 @@ pub const ATOM_LET: SpecialFormAtomFn = |args, context, span| {
     // Parse bindings
     let bindings = match &*args[0].value {
         Expr::List(pairs, _) => pairs,
-        _ => return Err(err_msg!(Eval, "let: first argument must be a list of bindings")),
+        _ => {
+            return Err(err_msg!(
+                Eval,
+                "let: first argument must be a list of bindings"
+            ))
+        }
     };
 
     let mut new_context = context.clone_with_new_lexical_frame();
@@ -86,13 +113,16 @@ pub const ATOM_LET: SpecialFormAtomFn = |args, context, span| {
     // Evaluate and bind each (name value) pair in order
     for pair in bindings {
         let (name, value_expr) = match &*pair.value {
-            Expr::List(items, _) if items.len() == 2 => {
-                match &*items[0].value {
-                    Expr::Symbol(name, _) => (name.clone(), &items[1]),
-                    _ => return Err(err_msg!(Eval, "let: binding name must be a symbol")),
-                }
+            Expr::List(items, _) if items.len() == 2 => match &*items[0].value {
+                Expr::Symbol(name, _) => (name.clone(), &items[1]),
+                _ => return Err(err_msg!(Eval, "let: binding name must be a symbol")),
+            },
+            _ => {
+                return Err(err_msg!(
+                    Eval,
+                    "let: each binding must be a (name value) pair"
+                ))
             }
-            _ => return Err(err_msg!(Eval, "let: each binding must be a (name value) pair")),
         };
         let (value, _) = evaluate_ast_node(value_expr, &mut new_context)?;
         new_context.set_lexical_var(&name, value);
@@ -108,12 +138,18 @@ pub const ATOM_LET: SpecialFormAtomFn = |args, context, span| {
             exprs.push(expr.clone());
         }
         let do_expr = Expr::List(
-            std::iter::once(AstNode { value: std::sync::Arc::new(Expr::Symbol("do".to_string(), *span)), span: *span })
-                .chain(exprs)
-                .collect(),
+            std::iter::once(AstNode {
+                value: std::sync::Arc::new(Expr::Symbol("do".to_string(), *span)),
+                span: *span,
+            })
+            .chain(exprs)
+            .collect(),
             *span,
         );
-        &AstNode { value: std::sync::Arc::new(do_expr), span: *span }
+        &AstNode {
+            value: std::sync::Arc::new(do_expr),
+            span: *span,
+        }
     };
 
     let (result, world) = evaluate_ast_node(body, &mut new_context)?;

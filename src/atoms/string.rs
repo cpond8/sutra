@@ -7,9 +7,9 @@
 //! - **`str`**: Converts any value to its string representation.
 //! - **`str+`**: Concatenates multiple values into a single string.
 
-use crate::{Value, AtomRegistry};
+use crate::atoms::helpers::{pure_eval_string_concat, validate_unary_arity};
 use crate::atoms::PureAtomFn;
-use crate::atoms::helpers::{validate_unary_arity, pure_eval_string_concat};
+use crate::{AtomRegistry, Value};
 
 // ============================================================================
 // STRING OPERATIONS
@@ -32,9 +32,7 @@ pub const ATOM_STR: PureAtomFn = |args| {
 ///   - <value...>: Zero or more values to concatenate.
 ///
 /// Returns: A new String value. If no arguments are provided, returns an empty string.
-pub const ATOM_STR_PLUS: PureAtomFn = |args| {
-    pure_eval_string_concat(args, "str+")
-};
+pub const ATOM_STR_PLUS: PureAtomFn = |args| pure_eval_string_concat(args, "str+");
 
 // ============================================================================
 // REGISTRATION FUNCTION

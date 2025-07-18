@@ -4,9 +4,9 @@
 //! formatting errors, and generating JSON. By centralizing output logic here,
 //! we ensure a consistent user experience across all commands.
 
-use crate::Span;
 use crate::atoms::OutputSink;
 use crate::macros::MacroExpansionStep;
+use crate::Span;
 use difference::Changeset;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 

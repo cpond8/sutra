@@ -86,7 +86,7 @@
     clippy::try_err,
     clippy::unnecessary_safety_comment,
     clippy::unnecessary_safety_doc,
-    clippy::unnested_or_patterns,
+    clippy::unnested_or_patterns
 )]
 #![allow(clippy::multiple_crate_versions)] // Unavoidable due to transitive dependencies; does not affect correctness or safety. Remove if/when all upstream crates unify versions.
 

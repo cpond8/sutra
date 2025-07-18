@@ -13,10 +13,10 @@
 //! - **Immutable Operations**: Pure functions where possible
 //! - **Mutable Operations**: World-state operations for list manipulation
 
-use crate::{Value, AtomRegistry};
+use crate::atoms::helpers::{validate_binary_arity, validate_even_arity, validate_unary_arity};
 use crate::atoms::{PureAtomFn, StatefulAtomFn};
-use crate::atoms::helpers::{validate_unary_arity, validate_binary_arity, validate_even_arity};
 use crate::err_msg;
+use crate::{AtomRegistry, Value};
 
 // ============================================================================
 // LIST OPERATIONS
@@ -251,7 +251,11 @@ pub const ATOM_CAR: PureAtomFn = |args| {
                 Err(err_msg!(Eval, "car: empty list"))
             }
         }
-        _ => Err(err_msg!(Eval, "car expects a List, found {}", args[0].to_string())),
+        _ => Err(err_msg!(
+            Eval,
+            "car expects a List, found {}",
+            args[0].to_string()
+        )),
     }
 };
 
@@ -277,7 +281,11 @@ pub const ATOM_CDR: PureAtomFn = |args| {
                 Ok(Value::List(items[1..].to_vec()))
             }
         }
-        _ => Err(err_msg!(Eval, "cdr expects a List, found {}", args[0].to_string())),
+        _ => Err(err_msg!(
+            Eval,
+            "cdr expects a List, found {}",
+            args[0].to_string()
+        )),
     }
 };
 
@@ -303,7 +311,11 @@ pub const ATOM_CONS: PureAtomFn = |args| {
             new_list.extend_from_slice(items);
             Ok(Value::List(new_list))
         }
-        _ => Err(err_msg!(Eval, "cons expects second argument to be a List, found {}", args[1].to_string())),
+        _ => Err(err_msg!(
+            Eval,
+            "cons expects second argument to be a List, found {}",
+            args[1].to_string()
+        )),
     }
 };
 
@@ -321,13 +333,19 @@ pub const ATOM_CONS: PureAtomFn = |args| {
 /// # Errors
 /// Returns an error if the number of arguments is odd or if any key is not a string.
 pub const ATOM_CORE_MAP: PureAtomFn = |args| {
-        validate_even_arity(args, "core/map")?;
+    validate_even_arity(args, "core/map")?;
 
     let mut map = im::HashMap::new();
     for chunk in args.chunks(2) {
         let key = match &chunk[0] {
             Value::String(s) => s.clone(),
-            _ => return Err(err_msg!(Eval, "core/map expects string keys, found {}", chunk[0].to_string())),
+            _ => {
+                return Err(err_msg!(
+                    Eval,
+                    "core/map expects string keys, found {}",
+                    chunk[0].to_string()
+                ))
+            }
         };
         let value = chunk[1].clone();
         map.insert(key, value);

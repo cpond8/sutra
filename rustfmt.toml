@@ -1,5 +1,3 @@
-imports_granularity = "Crate"         # Common for most teams ("Module" is also popular)
-group_imports = "StdExternalCrate"    # Enables std/external/internal split (nightly only)
-reorder_imports = true                # Alphabetizes within each group
-unstable_features = true              # Activates nightly features
-edition = "2021"                      # Match the project's edition
+edition = "2021"
+reorder_imports = true
+wrap_comments = true

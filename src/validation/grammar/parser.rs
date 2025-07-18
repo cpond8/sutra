@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use crate::validation::grammar::{CollectionState, Rule};
 use regex::Regex;
-use crate::validation::grammar::{Rule, CollectionState};
+use std::collections::HashMap;
 
 /// Parser for grammar rule definitions
 /// Handles the complex state machine logic for collecting multi-line rule definitions
@@ -25,7 +25,10 @@ impl Default for GrammarParser {
 }
 
 impl GrammarParser {
-    pub fn parse_rules(&self, content: &str) -> Result<HashMap<String, Rule>, Box<dyn std::error::Error>> {
+    pub fn parse_rules(
+        &self,
+        content: &str,
+    ) -> Result<HashMap<String, Rule>, Box<dyn std::error::Error>> {
         if self.is_empty_or_whitespace(content) {
             return Err("Empty grammar content".into());
         }
@@ -50,7 +53,11 @@ impl GrammarParser {
         Ok(rules)
     }
 
-    fn parse_single_rule(&self, lines: &[&str], start_index: usize) -> Result<Option<(Rule, usize)>, Box<dyn std::error::Error>> {
+    fn parse_single_rule(
+        &self,
+        lines: &[&str],
+        start_index: usize,
+    ) -> Result<Option<(Rule, usize)>, Box<dyn std::error::Error>> {
         if start_index >= lines.len() {
             return Ok(None);
         }
@@ -70,14 +77,22 @@ impl GrammarParser {
         Ok(Some((rule, end_index)))
     }
 
-    fn collect_rule_definition(&self, lines: &[&str], start_index: usize) -> Result<(String, usize), Box<dyn std::error::Error>> {
+    fn collect_rule_definition(
+        &self,
+        lines: &[&str],
+        start_index: usize,
+    ) -> Result<(String, usize), Box<dyn std::error::Error>> {
         self.validate_collection_input(lines, start_index)?;
         let mut state = self.initialize_collection_state(start_index);
         self.collect_lines_until_complete(lines, &mut state);
         Ok((state.definition, state.current_index))
     }
 
-    fn validate_collection_input(&self, lines: &[&str], start_index: usize) -> Result<(), Box<dyn std::error::Error>> {
+    fn validate_collection_input(
+        &self,
+        lines: &[&str],
+        start_index: usize,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         if start_index >= lines.len() {
             return Err("Invalid start index for rule collection".into());
         }
@@ -108,7 +123,9 @@ impl GrammarParser {
     }
 
     fn line_completes_rule(&self, cleaned_line: &str, state: &mut CollectionState) -> bool {
-        if let Some((new_brace_count, rule_started)) = self.process_line_braces(cleaned_line, state.brace_count, state.in_rule) {
+        if let Some((new_brace_count, rule_started)) =
+            self.process_line_braces(cleaned_line, state.brace_count, state.in_rule)
+        {
             state.brace_count = new_brace_count;
             state.in_rule = rule_started;
             self.should_complete_collection(state.brace_count, state.in_rule)
@@ -121,7 +138,12 @@ impl GrammarParser {
         brace_count == 0 && in_rule
     }
 
-    fn process_line_braces(&self, line: &str, mut brace_count: i32, mut in_rule: bool) -> Option<(i32, bool)> {
+    fn process_line_braces(
+        &self,
+        line: &str,
+        mut brace_count: i32,
+        mut in_rule: bool,
+    ) -> Option<(i32, bool)> {
         let mut found_braces = false;
 
         for ch in line.chars() {
@@ -175,7 +197,11 @@ impl GrammarParser {
         for cap in self.rule_regex.captures_iter(definition) {
             let name = &cap[1];
             // Heuristic: skip obvious literals and operators
-            if !["true", "false", "and", "or", "not", "if", "else", "define", "quote", "do", "..."].contains(&name) {
+            if ![
+                "true", "false", "and", "or", "not", "if", "else", "define", "quote", "do", "...",
+            ]
+            .contains(&name)
+            {
                 refs.push(name.to_string());
             }
         }

@@ -2,10 +2,10 @@
 //!
 //! This module provides the core Abstract Syntax Tree types for representing Sutra expressions with source location tracking.
 
-use serde::{Deserialize, Serialize};
 use crate::Path;
-use std::sync::Arc;
 use crate::Value;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// Represents a span in the source code.
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -94,12 +94,17 @@ impl Expr {
             Expr::String(s, _) => format!("\"{s}\""),
             Expr::Number(n, _) => n.to_string(),
             Expr::Bool(b, _) => b.to_string(),
-            Expr::If { condition, then_branch, else_branch, .. } => {
-                Self::pretty_if(condition, then_branch, else_branch)
-            }
+            Expr::If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => Self::pretty_if(condition, then_branch, else_branch),
             Expr::Quote(expr, _) => format!("'{}", expr.value.pretty()),
             Expr::ParamList(param_list) => Self::pretty_param_list(param_list),
-            Expr::Define { name, params, body, .. } => {
+            Expr::Define {
+                name, params, body, ..
+            } => {
                 // Reconstruct the original define syntax: (define (name params...) body)
                 let mut param_list_str = String::from("(");
                 param_list_str.push_str(name);
@@ -169,9 +174,16 @@ impl From<Value> for Expr {
             Value::Number(n) => Expr::Number(n, Span::default()),
             Value::String(s) => Expr::String(s, Span::default()),
             Value::Bool(b) => Expr::Bool(b, Span::default()),
-            Value::List(items) => {
-                Expr::List(items.into_iter().map(|v| Spanned { value: Arc::new(Expr::from(v)), span: Span::default() }).collect(), Span::default())
-            },
+            Value::List(items) => Expr::List(
+                items
+                    .into_iter()
+                    .map(|v| Spanned {
+                        value: Arc::new(Expr::from(v)),
+                        span: Span::default(),
+                    })
+                    .collect(),
+                Span::default(),
+            ),
             Value::Map(_) => Expr::List(vec![], Span::default()),
             Value::Path(p) => Expr::Path(p, Span::default()),
             Value::Lambda(_) => Expr::Symbol("<lambda>".to_string(), Span::default()),

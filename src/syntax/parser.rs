@@ -41,10 +41,10 @@
 //! - If a canonical program node is ever needed, document and update accordingly.
 
 use crate::ast::{AstNode, Expr, Span, Spanned};
+use crate::ParamList;
 use crate::SutraError;
 use crate::{err_ctx, err_msg};
 use crate::{to_error_source, Path};
-use crate::ParamList;
 use once_cell::sync::Lazy;
 use pest::error::InputLocation;
 use pest::iterators::Pair;
@@ -60,16 +60,26 @@ struct SutraParser;
 /// Convert pest parse errors to user-friendly SutraError messages
 fn improve_parse_error_message(msg: &str) -> (String, Option<String>) {
     if msg.contains("expected list_elem") || msg.contains("expected ')'") {
-        ("Unmatched or missing closing parenthesis ')'".to_string(),
-         Some("Check for missing or extra parentheses in your code.".to_string()))
-    } else if msg.contains("expected '}'") || msg.contains("expected block") ||
-              (msg.contains("expected expr") && msg.contains("{")) {
-        ("Unmatched or missing closing brace '}'".to_string(),
-         Some("Check for missing or extra braces in your code.".to_string()))
-    } else if msg.contains("expected string") || msg.contains("expected '\"'") ||
-              (msg.contains("expected program") && msg.contains("\"")) {
-        ("Unmatched or missing closing quote '\"'".to_string(),
-         Some("Check for missing or extra quotes in your code.".to_string()))
+        (
+            "Unmatched or missing closing parenthesis ')'".to_string(),
+            Some("Check for missing or extra parentheses in your code.".to_string()),
+        )
+    } else if msg.contains("expected '}'")
+        || msg.contains("expected block")
+        || (msg.contains("expected expr") && msg.contains("{"))
+    {
+        (
+            "Unmatched or missing closing brace '}'".to_string(),
+            Some("Check for missing or extra braces in your code.".to_string()),
+        )
+    } else if msg.contains("expected string")
+        || msg.contains("expected '\"'")
+        || (msg.contains("expected program") && msg.contains("\""))
+    {
+        (
+            "Unmatched or missing closing quote '\"'".to_string(),
+            Some("Check for missing or extra quotes in your code.".to_string()),
+        )
     } else {
         (msg.to_string(), None)
     }
@@ -92,7 +102,10 @@ pub fn parse(source: &str) -> Result<Vec<AstNode>, SutraError> {
     // If it fails, it returns a `pest` error, which we map to our `SutraError`.
     let pairs = SutraParser::parse(Rule::program, source).map_err(|e| {
         let span = match e.location {
-            pest::error::InputLocation::Pos(pos) => Span { start: pos, end: pos },
+            pest::error::InputLocation::Pos(pos) => Span {
+                start: pos,
+                end: pos,
+            },
             pest::error::InputLocation::Span((start, end)) => Span { start, end },
         };
         let msg = e.to_string();
@@ -134,7 +147,10 @@ pub fn wrap_in_do(exprs: Vec<AstNode>) -> AstNode {
             value: Expr::List(vec![], Span { start: 0, end: 0 }).into(),
             span: Span { start: 0, end: 0 },
         },
-        1 => exprs.into_iter().next().expect("wrap_in_do: exprs should have at least one element"),
+        1 => exprs
+            .into_iter()
+            .next()
+            .expect("wrap_in_do: exprs should have at least one element"),
         _ => {
             let span = Span {
                 start: exprs.first().map(|n| n.span.start).unwrap_or(0),
@@ -190,16 +206,14 @@ pub static AST_BUILDERS: Lazy<HashMap<Rule, AstBuilderFn>> = Lazy::new(|| {
 // Dispatcher: looks up the handler in the map and calls it
 fn build_ast_from_pair(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
     let src_arc = to_error_source(source);
-    AST_BUILDERS
-        .get(&pair.as_rule())
-        .ok_or_else(|| {
-            err_ctx!(
-                Internal,
-                format!("No AST builder for rule: {:?}", pair.as_rule()),
-                &src_arc,
-                get_span(&pair)
-            )
-        })?(pair, source)
+    AST_BUILDERS.get(&pair.as_rule()).ok_or_else(|| {
+        err_ctx!(
+            Internal,
+            format!("No AST builder for rule: {:?}", pair.as_rule()),
+            &src_arc,
+            get_span(&pair)
+        )
+    })?(pair, source)
 }
 
 // Private combinator for mapping children to Expr::List
@@ -278,14 +292,25 @@ fn build_list(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
 /// assert!(matches!(result.value, Expr::ParamList(_)));
 /// ```
 // Helper: construct param_list errors
-fn param_list_error(msg: impl Into<String>, src_arc: &crate::diagnostics::SourceArc, span: Span) -> SutraError {
+fn param_list_error(
+    msg: impl Into<String>,
+    src_arc: &crate::diagnostics::SourceArc,
+    span: Span,
+) -> SutraError {
     err_ctx!(Internal, msg.into(), src_arc, span)
 }
 // Helper: handle spread_arg
-fn extract_spread_symbol(item: &Pair<Rule>, src_arc: &crate::diagnostics::SourceArc) -> Result<String, SutraError> {
+fn extract_spread_symbol(
+    item: &Pair<Rule>,
+    src_arc: &crate::diagnostics::SourceArc,
+) -> Result<String, SutraError> {
     let mut spread_inner = item.clone().into_inner();
     let symbol_pair = spread_inner.next().ok_or_else(|| {
-        param_list_error("spread_arg: missing symbol after '...'", src_arc, get_span(item))
+        param_list_error(
+            "spread_arg: missing symbol after '...'",
+            src_arc,
+            get_span(item),
+        )
     })?;
     as_symbol(&symbol_pair)
 }
@@ -296,9 +321,9 @@ fn build_param_list(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErro
     let mut inner = pair.clone().into_inner();
 
     // The param_list rule contains a single param_items rule
-    let param_items_pair = inner.next().ok_or_else(|| {
-        param_list_error("param_list: Missing param_items", &src_arc, span)
-    })?;
+    let param_items_pair = inner
+        .next()
+        .ok_or_else(|| param_list_error("param_list: Missing param_items", &src_arc, span))?;
 
     let mut required_params = Vec::new();
     let mut rest_param = None;
@@ -350,7 +375,11 @@ fn build_param_list(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErro
 
 fn as_symbol(pair: &Pair<Rule>) -> Result<String, SutraError> {
     if pair.as_rule() != Rule::symbol {
-        return Err(err_msg!(Internal, "Expected symbol, found {:?}", pair.as_rule()));
+        return Err(err_msg!(
+            Internal,
+            "Expected symbol, found {:?}",
+            pair.as_rule()
+        ));
     }
     Ok(pair.as_str().to_string())
 }
@@ -511,14 +540,8 @@ pub struct SutraCstNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SutraCstParseError {
-    Syntax {
-        span: Span,
-        message: String,
-    },
-    Incomplete {
-        span: Span,
-        message: String,
-    },
+    Syntax { span: Span, message: String },
+    Incomplete { span: Span, message: String },
     // ...
 }
 
@@ -607,7 +630,12 @@ fn build_quote(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
     let span = get_span(&pair);
     let quoted_expr = build_expr(
         pair.clone().into_inner().next().ok_or_else(|| {
-            err_ctx!(Parse, "Malformed quote: missing inner expression", &src_arc, span)
+            err_ctx!(
+                Parse,
+                "Malformed quote: missing inner expression",
+                &src_arc,
+                span
+            )
         })?,
         source,
     )?;
@@ -651,14 +679,17 @@ fn build_define_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErr
             ));
         }
     };
-    let name = required.first().ok_or_else(|| {
-        err_ctx!(
-            Internal,
-            "Define form must have a name in its parameter list",
-            &src_arc,
-            span
-        )
-    })?.clone();
+    let name = required
+        .first()
+        .ok_or_else(|| {
+            err_ctx!(
+                Internal,
+                "Define form must have a name in its parameter list",
+                &src_arc,
+                span
+            )
+        })?
+        .clone();
     let actual_params = ParamList {
         required: required[1..].to_vec(),
         rest,
@@ -729,22 +760,25 @@ fn build_lambda_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErr
     })?;
     let body = build_expr(body, source)?;
     Ok(Spanned {
-        value: Expr::List(vec![
-            Spanned {
-                value: Expr::Symbol("lambda".to_string(), span).into(),
-                span,
-            },
-            Spanned {
-                value: Expr::ParamList(ParamList {
-                    required,
-                    rest,
-                    span: param_span,
-                })
-                .into(),
-                span,
-            },
-            body.clone(),
-        ], span)
+        value: Expr::List(
+            vec![
+                Spanned {
+                    value: Expr::Symbol("lambda".to_string(), span).into(),
+                    span,
+                },
+                Spanned {
+                    value: Expr::ParamList(ParamList {
+                        required,
+                        rest,
+                        span: param_span,
+                    })
+                    .into(),
+                    span,
+                },
+                body.clone(),
+            ],
+            span,
+        )
         .into(),
         span,
     })
@@ -754,9 +788,10 @@ fn build_spread_arg(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErro
     let src_arc = to_error_source(source);
     let span = get_span(&pair);
     let symbol_expr = build_symbol(
-        pair.clone().into_inner().next().ok_or_else(|| {
-            err_ctx!(Parse, "Malformed spread: missing symbol", &src_arc, span)
-        })?,
+        pair.clone()
+            .into_inner()
+            .next()
+            .ok_or_else(|| err_ctx!(Parse, "Malformed spread: missing symbol", &src_arc, span))?,
         source,
     )?;
     Ok(Spanned {

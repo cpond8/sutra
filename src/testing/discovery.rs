@@ -5,8 +5,8 @@ use miette::NamedSource;
 use walkdir::WalkDir;
 
 use crate::ast::{AstNode, Expr, Span};
-use crate::SutraError;
 use crate::syntax::parser;
+use crate::SutraError;
 use crate::{err_msg, err_src};
 
 /// AST representation of a test definition extracted from a `.sutra` file.
@@ -37,12 +37,8 @@ impl TestDiscoverer {
     pub fn discover_test_files<P: AsRef<Path>>(root: P) -> Result<Vec<PathBuf>, SutraError> {
         let mut files = Vec::new();
         for entry in WalkDir::new(root) {
-            let entry = entry.map_err(|e| {
-                err_msg!(
-                    Internal,
-                    format!("Failed to walk directory: {}", e)
-                )
-            })?;
+            let entry = entry
+                .map_err(|e| err_msg!(Internal, format!("Failed to walk directory: {}", e)))?;
             if !entry.file_type().is_file() {
                 continue;
             }
@@ -76,15 +72,17 @@ impl TestDiscoverer {
 
         let mut tests = Vec::new();
         for node in ast {
-            let Expr::List(items, span) = &*node.value else { continue };
+            let Expr::List(items, span) = &*node.value else {
+                continue;
+            };
             let Some(head) = items.first() else { continue };
-            let Expr::Symbol(s, _) = &*head.value else { continue };
-            if s != "test" { continue }
-            tests.push(Self::parse_test_form(
-                items,
-                *span,
-                source_file.clone(),
-            )?);
+            let Expr::Symbol(s, _) = &*head.value else {
+                continue;
+            };
+            if s != "test" {
+                continue;
+            }
+            tests.push(Self::parse_test_form(items, *span, source_file.clone())?);
         }
 
         Ok(tests)
@@ -97,15 +95,17 @@ impl TestDiscoverer {
     ) -> Result<Vec<ASTDefinition>, SutraError> {
         let mut tests = Vec::new();
         for node in ast {
-            let Expr::List(items, span) = &*node.value else { continue };
+            let Expr::List(items, span) = &*node.value else {
+                continue;
+            };
             let Some(head) = items.first() else { continue };
-            let Expr::Symbol(s, _) = &*head.value else { continue };
-            if s != "test" { continue }
-            tests.push(Self::parse_test_form(
-                items,
-                *span,
-                source_file.clone(),
-            )?);
+            let Expr::Symbol(s, _) = &*head.value else {
+                continue;
+            };
+            if s != "test" {
+                continue;
+            }
+            tests.push(Self::parse_test_form(items, *span, source_file.clone())?);
         }
         Ok(tests)
     }

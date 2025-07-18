@@ -53,10 +53,10 @@
 //! ****************************************************************************************
 //!
 
-use std::sync::Arc;
-use miette::{Diagnostic, NamedSource, LabeledSpan, SourceCode};
-use thiserror::Error;
 use crate::Span;
+use miette::{Diagnostic, LabeledSpan, NamedSource, SourceCode};
+use std::sync::Arc;
+use thiserror::Error;
 
 // Type aliases for clarity and brevity
 pub type SourceArc = Arc<NamedSource<String>>;
@@ -85,27 +85,52 @@ pub struct ErrorContext {
 impl ErrorContext {
     /// Returns an empty error context (no source, span, or help).
     pub fn none() -> Self {
-        Self { source: None, span: None, help: None, related: vec![] }
+        Self {
+            source: None,
+            span: None,
+            help: None,
+            related: vec![],
+        }
     }
 
     /// Creates a context with only a source.
     pub fn with_source(source: SourceArc) -> Self {
-        Self { source: Some(source), span: None, help: None, related: vec![] }
+        Self {
+            source: Some(source),
+            span: None,
+            help: None,
+            related: vec![],
+        }
     }
 
     /// Creates a context with only a span.
     pub fn with_span(span: Span) -> Self {
-        Self { source: None, span: Some(span), help: None, related: vec![] }
+        Self {
+            source: None,
+            span: Some(span),
+            help: None,
+            related: vec![],
+        }
     }
 
     /// Creates a context with both source and span.
     pub fn with_source_and_span(source: SourceArc, span: Span) -> Self {
-        Self { source: Some(source), span: Some(span), help: None, related: vec![] }
+        Self {
+            source: Some(source),
+            span: Some(span),
+            help: None,
+            related: vec![],
+        }
     }
 
     /// Creates a context with source, span, and help message.
     pub fn with_all(source: SourceArc, span: Span, help: String) -> Self {
-        Self { source: Some(source), span: Some(span), help: Some(help), related: vec![] }
+        Self {
+            source: Some(source),
+            span: Some(span),
+            help: Some(help),
+            related: vec![],
+        }
     }
 }
 
@@ -191,11 +216,17 @@ impl Diagnostic for SutraError {
     }
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        self.get_ctx().help.as_ref().map(|h| Box::new(h) as Box<dyn std::fmt::Display + 'a>)
+        self.get_ctx()
+            .help
+            .as_ref()
+            .map(|h| Box::new(h) as Box<dyn std::fmt::Display + 'a>)
     }
 
     fn source_code(&self) -> Option<&dyn SourceCode> {
-        self.get_ctx().source.as_ref().map(|s| s.as_ref() as &dyn SourceCode)
+        self.get_ctx()
+            .source
+            .as_ref()
+            .map(|s| s.as_ref() as &dyn SourceCode)
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
@@ -212,13 +243,25 @@ impl Diagnostic for SutraError {
                 SutraError::Internal { message, .. } => Some(message.clone()),
                 SutraError::TestFailure { message, .. } => Some(message.clone()),
             };
-            let len = if span.end > span.start { span.end - span.start } else { 1 };
+            let len = if span.end > span.start {
+                span.end - span.start
+            } else {
+                1
+            };
             labels.push(LabeledSpan::new(text, span.start, len));
         }
         // Related labels
         for rel in &ctx.related {
-            let len = if rel.span.end > rel.span.start { rel.span.end - rel.span.start } else { 1 };
-            labels.push(LabeledSpan::new(Some(rel.label.clone()), rel.span.start, len));
+            let len = if rel.span.end > rel.span.start {
+                rel.span.end - rel.span.start
+            } else {
+                1
+            };
+            labels.push(LabeledSpan::new(
+                Some(rel.label.clone()),
+                rel.span.start,
+                len,
+            ));
         }
         if labels.is_empty() {
             None
@@ -393,8 +436,16 @@ mod diagnostics_tests {
         let span1 = Span { start: 0, end: 3 };
         let span2 = Span { start: 4, end: 7 };
         let related = vec![
-            RelatedLabel { source: src1.clone(), span: span1, label: "first label".to_string() },
-            RelatedLabel { source: src2.clone(), span: span2, label: "second label".to_string() },
+            RelatedLabel {
+                source: src1.clone(),
+                span: span1,
+                label: "first label".to_string(),
+            },
+            RelatedLabel {
+                source: src2.clone(),
+                span: span2,
+                label: "second label".to_string(),
+            },
         ];
         let ctx = ErrorContext {
             source: Some(src1.clone()),
@@ -402,7 +453,11 @@ mod diagnostics_tests {
             help: Some("This is a help message.".to_string()),
             related,
         };
-        let err = SutraError::Validation { message: "Validation failed".to_string(), ctx, source: None };
+        let err = SutraError::Validation {
+            message: "Validation failed".to_string(),
+            ctx,
+            source: None,
+        };
         let report = Report::new(err);
         let output = format!("{report:?}");
         assert!(output.contains("first label"));
@@ -414,10 +469,28 @@ mod diagnostics_tests {
     fn test_error_chaining() {
         let src = Arc::new(NamedSource::new("file.sutra", "abc def".to_string()));
         let span = Span { start: 0, end: 3 };
-        let ctx1 = ErrorContext { source: Some(src.clone()), span: Some(span), help: None, related: vec![] };
-        let cause = SutraError::Parse { message: "Parse error".to_string(), ctx: ctx1, source: None };
-        let ctx2 = ErrorContext { source: Some(src.clone()), span: Some(span), help: Some("Top-level help".to_string()), related: vec![] };
-        let err = SutraError::Validation { message: "Validation failed".to_string(), ctx: ctx2, source: Some(Box::new(cause)) };
+        let ctx1 = ErrorContext {
+            source: Some(src.clone()),
+            span: Some(span),
+            help: None,
+            related: vec![],
+        };
+        let cause = SutraError::Parse {
+            message: "Parse error".to_string(),
+            ctx: ctx1,
+            source: None,
+        };
+        let ctx2 = ErrorContext {
+            source: Some(src.clone()),
+            span: Some(span),
+            help: Some("Top-level help".to_string()),
+            related: vec![],
+        };
+        let err = SutraError::Validation {
+            message: "Validation failed".to_string(),
+            ctx: ctx2,
+            source: Some(Box::new(cause)),
+        };
         let report = Report::new(err);
         let output = format!("{report:?}");
         assert!(output.contains("Validation failed"));
@@ -430,21 +503,52 @@ mod diagnostics_tests {
         // No help, no related, no cause
         let src = Arc::new(NamedSource::new("file.sutra", "abc def".to_string()));
         let span = Span { start: 0, end: 3 };
-        let ctx = ErrorContext { source: Some(src.clone()), span: Some(span), help: None, related: vec![] };
-        let err = SutraError::Eval { message: "Eval error".to_string(), ctx, source: None };
+        let ctx = ErrorContext {
+            source: Some(src.clone()),
+            span: Some(span),
+            help: None,
+            related: vec![],
+        };
+        let err = SutraError::Eval {
+            message: "Eval error".to_string(),
+            ctx,
+            source: None,
+        };
         let report = Report::new(err);
         let output = format!("{report:?}");
         assert!(output.contains("Eval error"));
         // With help, no related, no cause
-        let ctx = ErrorContext { source: Some(src.clone()), span: Some(span), help: Some("Help!".to_string()), related: vec![] };
-        let err = SutraError::Eval { message: "Eval error".to_string(), ctx, source: None };
+        let ctx = ErrorContext {
+            source: Some(src.clone()),
+            span: Some(span),
+            help: Some("Help!".to_string()),
+            related: vec![],
+        };
+        let err = SutraError::Eval {
+            message: "Eval error".to_string(),
+            ctx,
+            source: None,
+        };
         let report = Report::new(err);
         let output = format!("{report:?}");
         assert!(output.contains("Help!"));
         // With related, no help, no cause
-        let related = vec![RelatedLabel { source: src.clone(), span, label: "label".to_string() }];
-        let ctx = ErrorContext { source: Some(src.clone()), span: Some(span), help: None, related };
-        let err = SutraError::Eval { message: "Eval error".to_string(), ctx, source: None };
+        let related = vec![RelatedLabel {
+            source: src.clone(),
+            span,
+            label: "label".to_string(),
+        }];
+        let ctx = ErrorContext {
+            source: Some(src.clone()),
+            span: Some(span),
+            help: None,
+            related,
+        };
+        let err = SutraError::Eval {
+            message: "Eval error".to_string(),
+            ctx,
+            source: None,
+        };
         let report = Report::new(err);
         let output = format!("{report:?}");
         assert!(output.contains("label"));

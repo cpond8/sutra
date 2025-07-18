@@ -1,16 +1,18 @@
 use crate::err_ctx;
 use crate::err_msg;
-use crate::macros::{parse_macro_definition, expand_macros_recursively, MacroDefinition, is_macro_definition};
+use crate::macros::{
+    expand_macros_recursively, is_macro_definition, parse_macro_definition, MacroDefinition,
+};
 use crate::runtime::eval::evaluate;
 use crate::runtime::world::build_canonical_macro_env;
-use crate::{World, SharedOutput, AstNode, MacroRegistry, to_error_source, Value};
 use crate::syntax::parser::wrap_in_do;
-use crate::SutraError;
-use miette::NamedSource;
-use std::sync::Arc;
-use std::rc::Rc;
-use std::cell::RefCell;
 use crate::OutputBuffer;
+use crate::SutraError;
+use crate::{to_error_source, AstNode, MacroRegistry, SharedOutput, Value, World};
+use miette::NamedSource;
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::Arc;
 
 /// Unified execution pipeline that enforces strict layering: Parse → Expand → Validate → Evaluate
 /// This is the single source of truth for all Sutra execution paths, including tests and production.
@@ -34,11 +36,7 @@ impl Default for ExecutionPipeline {
 impl ExecutionPipeline {
     /// Executes Sutra source code through the complete pipeline.
     /// This is the single entry point for all execution paths, including tests.
-    pub fn execute(
-        &self,
-        source: &str,
-        output: SharedOutput,
-    ) -> Result<(), SutraError> {
+    pub fn execute(&self, source: &str, output: SharedOutput) -> Result<(), SutraError> {
         let src_arc = to_error_source(source);
         // Phase 1: Parse the source into AST nodes
         let ast_nodes = crate::syntax::parser::parse(source)?;
@@ -97,8 +95,14 @@ impl ExecutionPipeline {
         let world = World::default();
         let source = Arc::new(NamedSource::new("source", source.to_string()));
         let atom_registry = crate::runtime::world::build_default_atom_registry();
-        let (result, _updated_world) =
-            evaluate(&expanded, &world, output.clone(), &atom_registry, source.clone(), self.max_depth)?;
+        let (result, _updated_world) = evaluate(
+            &expanded,
+            &world,
+            output.clone(),
+            &atom_registry,
+            source.clone(),
+            self.max_depth,
+        )?;
 
         // Phase 9: Output result (if not nil)
         if !result.is_nil() {
@@ -119,7 +123,14 @@ impl ExecutionPipeline {
         source: Arc<NamedSource<String>>,
     ) -> Result<(Value, World), SutraError> {
         let atom_registry = crate::runtime::world::build_default_atom_registry();
-        evaluate(expanded_ast, world, output, &atom_registry, source, self.max_depth)
+        evaluate(
+            expanded_ast,
+            world,
+            output,
+            &atom_registry,
+            source,
+            self.max_depth,
+        )
     }
 
     /// Executes test code with proper macro expansion and special form preservation.
@@ -140,8 +151,14 @@ impl ExecutionPipeline {
         let world = World::default();
         let source = Arc::new(NamedSource::new("test", "".to_string()));
         let atom_registry = crate::runtime::world::build_default_atom_registry();
-        let (result, _updated_world) =
-            evaluate(&expanded, &world, output.clone(), &atom_registry, source.clone(), self.max_depth)?;
+        let (result, _updated_world) = evaluate(
+            &expanded,
+            &world,
+            output.clone(),
+            &atom_registry,
+            source.clone(),
+            self.max_depth,
+        )?;
 
         // Phase 4: Output result (if not nil)
         if !result.is_nil() {
@@ -166,7 +183,8 @@ impl ExecutionPipeline {
             if env.user_macros.contains_key(&name) {
                 return Err(err_msg!(Validation, "Duplicate macro name '{}'", name));
             }
-            env.user_macros.insert(name.clone(), MacroDefinition::Template(template));
+            env.user_macros
+                .insert(name.clone(), MacroDefinition::Template(template));
         }
 
         // Wrap user_code in a (do ...) if needed
@@ -221,4 +239,3 @@ impl ExecutionPipeline {
         Ok(result)
     }
 }
-

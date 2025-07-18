@@ -13,10 +13,10 @@
 //! - **Immutable World**: World state is copied and modified, never mutated in place
 //! - **Safe Defaults**: Missing values return `Value::Nil` rather than errors
 
-use crate::{Value, Path, AtomRegistry};
-use crate::atoms::StatefulAtomFn;
 use crate::atoms::helpers::{validate_binary_arity, validate_unary_arity, ExtractValue};
+use crate::atoms::StatefulAtomFn;
 use crate::err_msg;
+use crate::{AtomRegistry, Path, Value};
 
 // ============================================================================
 // WORLD STATE OPERATIONS
@@ -68,7 +68,11 @@ pub const ATOM_PATH: StatefulAtomFn = |args, _context| {
             let path = Path(vec![s.clone()]);
             Ok(Value::Path(path))
         }
-        _ => Err(err_msg!(TypeError, "path expects a String, found {}", args[0].to_string())),
+        _ => Err(err_msg!(
+            TypeError,
+            "path expects a String, found {}",
+            args[0].to_string()
+        )),
     }
 };
 

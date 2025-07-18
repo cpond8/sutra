@@ -1,8 +1,6 @@
 pub mod parser;
 pub mod validators;
 
-
-
 // =====================
 // Core Data Structures
 // =====================
@@ -44,12 +42,27 @@ pub struct CollectionState {
 
 pub const GRAMMAR_CONSTANTS: GrammarConstants = GrammarConstants {
     built_ins: &[
-        "SOI", "EOI", "WHITESPACE", "COMMENT", "ANY",
-        "ASCII_DIGIT", "ASCII_ALPHA", "ASCII_ALPHANUMERIC",
-        "POP", "PUSH", "PEEK", "PEEK_ALL", "DROP",
-        "define", "quote", "lambda",
+        "SOI",
+        "EOI",
+        "WHITESPACE",
+        "COMMENT",
+        "ANY",
+        "ASCII_DIGIT",
+        "ASCII_ALPHA",
+        "ASCII_ALPHANUMERIC",
+        "POP",
+        "PUSH",
+        "PEEK",
+        "PEEK_ALL",
+        "DROP",
+        "define",
+        "quote",
+        "lambda",
         // Pest-specific tokens
-        "_", "n", "t", "r",
+        "_",
+        "n",
+        "t",
+        "r",
     ],
     critical_rules: &["program", "expr", "list", "atom", "symbol"],
 };

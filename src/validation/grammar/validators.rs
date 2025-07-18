@@ -1,5 +1,5 @@
+use crate::validation::grammar::{Rule, ValidationReporter, ValidationResult, GRAMMAR_CONSTANTS};
 use std::collections::{HashMap, HashSet};
-use crate::validation::grammar::{Rule, ValidationResult, ValidationReporter, GRAMMAR_CONSTANTS};
 
 /// Validates grammar rules for various correctness issues
 /// Each validator focuses on a single validation concern
@@ -29,20 +29,28 @@ impl GrammarValidators {
         }
     }
 
-    fn report_undefined_references(rule: &Rule, rule_names: &HashSet<&String>, result: &mut ValidationResult) {
+    fn report_undefined_references(
+        rule: &Rule,
+        rule_names: &HashSet<&String>,
+        result: &mut ValidationResult,
+    ) {
         for reference in &rule.references {
-            if !rule_names.contains(reference) && !GRAMMAR_CONSTANTS.built_ins.contains(&reference.as_str()) {
+            if !rule_names.contains(reference)
+                && !GRAMMAR_CONSTANTS.built_ins.contains(&reference.as_str())
+            {
                 result.report_error(format!(
                     "Rule '{}' references undefined rule '{}'.",
-                    rule.name,
-                    reference
+                    rule.name, reference
                 ));
             }
         }
     }
 
     /// Checks for consistency between inline patterns and references.
-    pub fn check_inline_vs_reference_consistency(rules: &HashMap<String, Rule>, result: &mut ValidationResult) {
+    pub fn check_inline_vs_reference_consistency(
+        rules: &HashMap<String, Rule>,
+        result: &mut ValidationResult,
+    ) {
         for rule in rules.values() {
             Self::report_inline_reference_overlap(rule, result);
         }
@@ -53,15 +61,17 @@ impl GrammarValidators {
             if rule.references.contains(pattern) {
                 result.report_warning(format!(
                     "Rule '{}' uses '{}' as both inline pattern and reference.",
-                    rule.name,
-                    pattern
+                    rule.name, pattern
                 ));
             }
         }
     }
 
     /// Checks that all critical rules are present in the grammar.
-    pub fn check_critical_rule_coverage(rules: &HashMap<String, Rule>, result: &mut ValidationResult) {
+    pub fn check_critical_rule_coverage(
+        rules: &HashMap<String, Rule>,
+        result: &mut ValidationResult,
+    ) {
         for &critical in GRAMMAR_CONSTANTS.critical_rules {
             if !rules.contains_key(critical) {
                 result.report_error(format!(

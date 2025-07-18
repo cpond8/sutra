@@ -31,17 +31,17 @@
 //! All evaluation, type, and recursion errors use this system.
 
 // The atom registry is a single source of truth and must be passed by reference to all validation and evaluation code. Never construct a local/hidden registry.
-use crate::{AtomRegistry, SutraError, SharedOutput};
-use crate::{Value, Path, Span};
 use crate::ast::{AstNode, Expr, Spanned};
-use crate::runtime::world::{AtomExecutionContext, World};
 use crate::err_ctx;
 use crate::err_src;
+use crate::runtime::world::{AtomExecutionContext, World};
+use crate::ParamList;
+use crate::{AtomRegistry, SharedOutput, SutraError};
+use crate::{Path, Span, Value};
 use miette::NamedSource;
-use std::sync::Arc;
 use std::collections::HashMap;
 use std::rc::Rc;
-use crate::ParamList;
+use std::sync::Arc;
 
 // ===================================================================================================
 // CORE DATA STRUCTURES: Evaluation Context
@@ -306,10 +306,7 @@ fn evaluate_invalid_expr(
                     return wrap_value_with_world_state(value.clone(), context.world);
                 }
                 // If the symbol is not found anywhere, it's an undefined symbol.
-                (
-                    format!("undefined symbol: '{s}'"),
-                    *span,
-                )
+                (format!("undefined symbol: '{s}'"), *span)
             }
         }
         Expr::Spread(_) => (
@@ -318,12 +315,7 @@ fn evaluate_invalid_expr(
         ),
         _ => unreachable!("eval_invalid_expr called with valid expression type"),
     };
-    Err(err_src!(
-        Eval,
-        msg,
-        &context.source,
-        span
-    ))
+    Err(err_src!(Eval, msg, &context.source, span))
 }
 
 fn capture_lexical_env(lexical_env: &[HashMap<String, Value>]) -> HashMap<String, Value> {
@@ -416,7 +408,10 @@ fn handle_define_special_form(
 /// This is a low-level, internal function. Most users should use the higher-level `eval` API.
 /// **CRITICAL**: This function assumes all macros have been expanded before evaluation.
 /// Macro expansion must happen in a separate phase according to the strict layering principle.
-pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext) -> Result<(Value, World), SutraError> {
+pub(crate) fn evaluate_ast_node(
+    expr: &AstNode,
+    context: &mut EvaluationContext,
+) -> Result<(Value, World), SutraError> {
     if context.depth > context.max_depth {
         return Err(err_src!(
             Internal,
@@ -429,15 +424,15 @@ pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext)
         // Complex expression types with dedicated handlers
         Expr::List(items, span) => evaluate_list(items, span, context),
         Expr::Quote(inner, _) => evaluate_quote(inner, context),
-        Expr::If { .. } => {
-            Err(err_src!(
-                Eval,
-                "If expressions should be evaluated as special forms, not as AST nodes",
-                &context.source,
-                expr.span
-            ))
-        },
-        Expr::Define { name, params, body, .. } => {
+        Expr::If { .. } => Err(err_src!(
+            Eval,
+            "If expressions should be evaluated as special forms, not as AST nodes",
+            &context.source,
+            expr.span
+        )),
+        Expr::Define {
+            name, params, body, ..
+        } => {
             if !params.required.is_empty() || params.rest.is_some() {
                 let captured_env = capture_lexical_env(&context.lexical_env);
                 let lambda = Value::Lambda(Rc::new(crate::ast::value::Lambda {
@@ -458,7 +453,9 @@ pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext)
         Expr::Path(..) | Expr::String(..) | Expr::Number(..) | Expr::Bool(..) => {
             evaluate_literal_value(expr, context)
         }
-        Expr::ParamList(..) | Expr::Symbol(..) | Expr::Spread(..) => evaluate_invalid_expr(expr, context),
+        Expr::ParamList(..) | Expr::Symbol(..) | Expr::Spread(..) => {
+            evaluate_invalid_expr(expr, context)
+        }
     }
 }
 
@@ -564,7 +561,9 @@ fn evaluate_quote(
 ) -> Result<(Value, World), SutraError> {
     match &*inner.value {
         Expr::Symbol(s, _) => wrap_value_with_world_state(Value::String(s.clone()), context.world),
-        Expr::List(exprs, _) => wrap_value_with_world_state(evaluate_quoted_list(exprs, context)?, context.world),
+        Expr::List(exprs, _) => {
+            wrap_value_with_world_state(evaluate_quoted_list(exprs, context)?, context.world)
+        }
         Expr::Number(n, _) => wrap_value_with_world_state(Value::Number(*n), context.world),
         Expr::Bool(b, _) => wrap_value_with_world_state(Value::Bool(*b), context.world),
         Expr::String(s, _) => wrap_value_with_world_state(Value::String(s.clone()), context.world),
@@ -623,9 +622,14 @@ fn evaluate_quoted_expr(expr: &AstNode, context: &EvaluationContext) -> Result<V
 }
 
 /// Evaluates a quoted list by converting each element to a value.
-fn evaluate_quoted_list(exprs: &[AstNode], context: &EvaluationContext) -> Result<Value, SutraError> {
-    let vals: Result<Vec<_>, SutraError> =
-        exprs.iter().map(|e| evaluate_quoted_expr(e, context)).collect();
+fn evaluate_quoted_list(
+    exprs: &[AstNode],
+    context: &EvaluationContext,
+) -> Result<Value, SutraError> {
+    let vals: Result<Vec<_>, SutraError> = exprs
+        .iter()
+        .map(|e| evaluate_quoted_expr(e, context))
+        .collect();
     Ok(Value::List(vals?))
 }
 

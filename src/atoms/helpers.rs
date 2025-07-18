@@ -10,9 +10,9 @@
 //! - **Consistency**: Standardized error messages and evaluation patterns
 //! - **Safety**: All functions handle ownership and borrowing correctly
 
-use crate::{AstNode, Path, Expr, Span, Spanned, SutraError, Value, World};
 use crate::err_msg;
 use crate::runtime::eval::{evaluate_ast_node, EvaluationContext};
+use crate::{AstNode, Expr, Path, Span, Spanned, SutraError, Value, World};
 
 // ============================================================================
 // TYPE ALIASES AND CORE TYPES
@@ -36,7 +36,11 @@ impl ExtractValue<f64> for Value {
     fn extract(&self) -> Result<f64, SutraError> {
         match self {
             Value::Number(n) => Ok(*n),
-            _ => Err(err_msg!(TypeError, "Expected number, got {}", self.type_name())),
+            _ => Err(err_msg!(
+                TypeError,
+                "Expected number, got {}",
+                self.type_name()
+            )),
         }
     }
 }
@@ -45,7 +49,11 @@ impl ExtractValue<bool> for Value {
     fn extract(&self) -> Result<bool, SutraError> {
         match self {
             Value::Bool(b) => Ok(*b),
-            _ => Err(err_msg!(TypeError, "Expected boolean, got {}", self.type_name())),
+            _ => Err(err_msg!(
+                TypeError,
+                "Expected boolean, got {}",
+                self.type_name()
+            )),
         }
     }
 }
@@ -54,7 +62,11 @@ impl ExtractValue<Path> for Value {
     fn extract(&self) -> Result<Path, SutraError> {
         match self {
             Value::Path(path) => Ok(path.clone()),
-            _ => Err(err_msg!(TypeError, "Expected path, got {}", self.type_name())),
+            _ => Err(err_msg!(
+                TypeError,
+                "Expected path, got {}",
+                self.type_name()
+            )),
         }
     }
 }
@@ -131,9 +143,12 @@ pub fn eval_n_args<const N: usize>(
 
     // Convert Vec to array - this is safe because we checked length above
     // The try_into() should never fail given the length check, but we handle it defensively
-    let values_array: [Value; N] = values
-        .try_into()
-        .map_err(|_| err_msg!(Internal, "Failed to convert evaluated arguments to array - this should never happen"))?;
+    let values_array: [Value; N] = values.try_into().map_err(|_| {
+        err_msg!(
+            Internal,
+            "Failed to convert evaluated arguments to array - this should never happen"
+        )
+    })?;
 
     Ok((values_array, world))
 }
@@ -478,10 +493,7 @@ pub fn eval_unary_path_template<F>(
     op: F,
 ) -> Result<(Value, World), SutraError>
 where
-    F: Fn(
-        Path,
-        World,
-    ) -> Result<(Value, World), SutraError>,
+    F: Fn(Path, World) -> Result<(Value, World), SutraError>,
 {
     let (val, world) = eval_single_arg(args, context)?;
     let path = val.extract()?;
@@ -496,11 +508,7 @@ pub fn eval_binary_path_template<F>(
     op: F,
 ) -> Result<(Value, World), SutraError>
 where
-    F: Fn(
-        Path,
-        Value,
-        World,
-    ) -> Result<(Value, World), SutraError>,
+    F: Fn(Path, Value, World) -> Result<(Value, World), SutraError>,
 {
     let (path_val, value, world) = eval_binary_args(args, context)?;
     let path = path_val.extract()?;
@@ -515,11 +523,7 @@ pub fn eval_unary_value_template<F>(
     op: F,
 ) -> Result<(Value, World), SutraError>
 where
-    F: Fn(
-        Value,
-        World,
-        &mut EvaluationContext<'_>,
-    ) -> Result<(Value, World), SutraError>,
+    F: Fn(Value, World, &mut EvaluationContext<'_>) -> Result<(Value, World), SutraError>,
 {
     let (val, world) = eval_single_arg(args, context)?;
     op(val, world, context)

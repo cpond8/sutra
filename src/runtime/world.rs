@@ -1,17 +1,17 @@
-use crate::Value;
+use crate::atoms::{self, AtomRegistry};
+use crate::atoms::{SharedOutput, StateContext};
+use crate::err_ctx;
+use crate::macros::{self, MacroRegistry};
+use crate::macros::{load_macros_from_file, MacroDefinition, MacroExpansionContext};
+use crate::to_error_source;
 use crate::Span;
+use crate::SutraError;
+use crate::Value;
 use im::HashMap;
 use rand::{RngCore, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
-use crate::atoms::{StateContext, SharedOutput};
-use crate::atoms::{self, AtomRegistry};
-use crate::macros::{self, MacroRegistry};
-use crate::macros::{load_macros_from_file, MacroDefinition, MacroExpansionContext};
-use crate::SutraError;
-use crate::err_ctx;
-use crate::to_error_source;
-use std::collections::HashMap as StdHashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap as StdHashMap;
 use std::fmt;
 
 // Using a concrete, seedable PRNG for determinism.
@@ -62,7 +62,9 @@ impl WorldState {
     pub fn get(&self, path: &Path) -> Option<&Value> {
         let mut current = &self.data;
         for key in &path.0 {
-            let Value::Map(map) = current else { return None };
+            let Value::Map(map) = current else {
+                return None;
+            };
             let value = map.get(key.as_str())?;
             current = value;
         }
@@ -271,7 +273,9 @@ fn build_core_macro_registry() -> MacroRegistry {
 /// Returns a `SutraError` if:
 /// - The file cannot be loaded or parsed
 /// - Duplicate macro names are found within the file
-fn load_and_process_user_macros(path: &str) -> Result<StdHashMap<String, MacroDefinition>, SutraError> {
+fn load_and_process_user_macros(
+    path: &str,
+) -> Result<StdHashMap<String, MacroDefinition>, SutraError> {
     // Load macros from file with error logging
     let macros = load_macros_from_file(path).map_err(|e| {
         #[cfg(debug_assertions)]
@@ -284,7 +288,13 @@ fn load_and_process_user_macros(path: &str) -> Result<StdHashMap<String, MacroDe
     for (name, template) in macros {
         if user_macros.contains_key(&name) {
             let src_arc = to_error_source(&name);
-            return Err(err_ctx!(Validation, format!("Duplicate macro name '{}' in standard macro library.", name), &src_arc, Span::default(), "Duplicate macro name in standard macro library."));
+            return Err(err_ctx!(
+                Validation,
+                format!("Duplicate macro name '{}' in standard macro library.", name),
+                &src_arc,
+                Span::default(),
+                "Duplicate macro name in standard macro library."
+            ));
         }
         user_macros.insert(name, MacroDefinition::Template(template));
     }

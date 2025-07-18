@@ -10,15 +10,15 @@
 //! - May stress-test internal systems (borrowing, recursion, etc.)
 //! - May have non-standard return values for testing edge cases
 
-use crate::{Value, World, to_error_source};
 use crate::ast::{AstNode, Expr, Span, Spanned};
-use crate::atoms::{AtomRegistry, SpecialFormAtomFn};
 use crate::atoms::helpers::validate_special_form_arity;
+use crate::atoms::{AtomRegistry, SpecialFormAtomFn};
 use crate::runtime::eval::{evaluate_ast_node, EvaluationContext};
 use crate::{err_ctx, err_src, SutraError};
-use std::sync::{Arc, Mutex};
+use crate::{to_error_source, Value, World};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 // Use the public context helper macro
 use crate::sub_eval_context;
@@ -37,7 +37,6 @@ pub struct TestDefinition {
 /// A global registry for storing test definitions.
 pub static TEST_REGISTRY: Lazy<Mutex<HashMap<String, TestDefinition>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
-
 
 /// `register-test!` special form updated for AST storage.
 ///
@@ -78,9 +77,9 @@ fn register_test_atom(
     };
 
     let expect = args[1].clone();
-    let body = args[2..args.len()-1].to_vec();
+    let body = args[2..args.len() - 1].to_vec();
 
-    let (metadata_val, _) = evaluate_ast_node(&args[args.len()-1], ctx)?;
+    let (metadata_val, _) = evaluate_ast_node(&args[args.len() - 1], ctx)?;
     let metadata = match metadata_val.as_map() {
         Some(m) => m,
         _ => {
@@ -88,7 +87,7 @@ fn register_test_atom(
                 Validation,
                 "Test metadata must be a map",
                 &ctx.source,
-                args[args.len()-1].span
+                args[args.len() - 1].span
             ));
         }
     };
@@ -96,8 +95,15 @@ fn register_test_atom(
     let source_file = match metadata.get(":source-file") {
         Some(Value::String(file_path)) => {
             let src_arc = to_error_source(file_path);
-            let source = std::fs::read_to_string(file_path)
-                .map_err(|e| err_ctx!(Internal, format!("Failed to read source file: {}", e.to_string()), &src_arc, Span::default(), "Check that the test source file exists and is readable."))?;
+            let source = std::fs::read_to_string(file_path).map_err(|e| {
+                err_ctx!(
+                    Internal,
+                    format!("Failed to read source file: {}", e.to_string()),
+                    &src_arc,
+                    Span::default(),
+                    "Check that the test source file exists and is readable."
+                )
+            })?;
             Arc::new(NamedSource::new(file_path.clone(), source))
         }
         _ => {
@@ -105,7 +111,7 @@ fn register_test_atom(
                 Validation,
                 "Test metadata must contain :source-file string",
                 &ctx.source,
-                args[args.len()-1].span
+                args[args.len() - 1].span
             ));
         }
     };
@@ -123,7 +129,6 @@ fn register_test_atom(
 
     Ok((Value::Nil, ctx.world.clone()))
 }
-
 
 /// Value atom for test assertions.
 ///
@@ -331,10 +336,7 @@ fn test_borrow_stress_atom(
 /// # Safety
 /// Test atoms may have side effects (output, recursion) intended for testing.
 pub fn register_test_atoms(registry: &mut AtomRegistry) {
-    registry.register(
-        "test/echo",
-        crate::atoms::Atom::SpecialForm(test_echo_atom),
-    );
+    registry.register("test/echo", crate::atoms::Atom::SpecialForm(test_echo_atom));
     registry.register(
         "test/borrow_stress",
         crate::atoms::Atom::SpecialForm(test_borrow_stress_atom),
@@ -345,24 +347,12 @@ pub fn register_test_atoms(registry: &mut AtomRegistry) {
     );
 
     // Register test assertion atoms
-    registry.register(
-        "value",
-        crate::atoms::Atom::SpecialForm(value_atom),
-    );
-    registry.register(
-        "tags",
-        crate::atoms::Atom::SpecialForm(tags_atom),
-    );
+    registry.register("value", crate::atoms::Atom::SpecialForm(value_atom));
+    registry.register("tags", crate::atoms::Atom::SpecialForm(tags_atom));
 
     // Register assertion atoms for testing
-    registry.register(
-        "assert",
-        crate::atoms::Atom::SpecialForm(assert_atom),
-    );
-    registry.register(
-        "assert-eq",
-        crate::atoms::Atom::SpecialForm(assert_eq_atom),
-    );
+    registry.register("assert", crate::atoms::Atom::SpecialForm(assert_atom));
+    registry.register("assert-eq", crate::atoms::Atom::SpecialForm(assert_eq_atom));
 }
 
 /// `assert` atom - basic assertion that fails if argument is false.
@@ -430,7 +420,10 @@ fn assert_eq_atom(
     if expected != actual {
         return Err(err_src!(
             Eval,
-            format!("Assertion failed: expected {:?}, got {:?}", expected, actual),
+            format!(
+                "Assertion failed: expected {:?}, got {:?}",
+                expected, actual
+            ),
             &ctx.source,
             *span
         ));

@@ -2,20 +2,23 @@
 //! This module is the main entry point for all CLI commands and orchestrates
 //! the core library functions.
 
-use crate::{AstNode, MacroDefinition, MacroRegistry, expand_macros_recursively, SharedOutput, SutraError, Expr, Span, Spanned};
 use crate::cli::args::{Command, SutraArgs};
 use crate::cli::output::StdoutSink;
 use crate::engine::ExecutionPipeline;
 use crate::err_ctx;
 use crate::err_msg;
+use crate::err_src;
 use crate::macros::{is_macro_definition, parse_macro_definition};
 use crate::runtime::world::build_canonical_macro_env;
 use crate::testing::discovery::TestDiscoverer;
-use clap::Parser;
-use termcolor::WriteColor;
-use std::io::Write;
-use crate::err_src;
 use crate::to_error_source;
+use crate::{
+    expand_macros_recursively, AstNode, Expr, MacroDefinition, MacroRegistry, SharedOutput, Span,
+    Spanned, SutraError,
+};
+use clap::Parser;
+use std::io::Write;
+use termcolor::WriteColor;
 
 pub mod args;
 pub mod output;
@@ -80,8 +83,15 @@ fn safe_path_display(path: &std::path::Path) -> &str {
 fn read_file_to_string(path: &std::path::Path) -> Result<String, SutraError> {
     let filename = path_to_str(path)?;
     let src_arc = to_error_source(filename);
-    std::fs::read_to_string(filename)
-        .map_err(|e| err_ctx!(Internal, format!("Failed to read file: {}", e.to_string()), &src_arc, Span::default(), "Check that the file exists and is readable."))
+    std::fs::read_to_string(filename).map_err(|e| {
+        err_ctx!(
+            Internal,
+            format!("Failed to read file: {}", e.to_string()),
+            &src_arc,
+            Span::default(),
+            "Check that the file exists and is readable."
+        )
+    })
 }
 
 // ============================================================================
@@ -214,7 +224,11 @@ fn print_registry_listing<T: AsRef<str>>(
 
 /// Sets output color for formatted output.
 fn set_output_color(stdout: &mut termcolor::StandardStream, color: termcolor::Color, bold: bool) {
-    let _ = stdout.set_color(termcolor::ColorSpec::new().set_fg(Some(color)).set_bold(bold));
+    let _ = stdout.set_color(
+        termcolor::ColorSpec::new()
+            .set_fg(Some(color))
+            .set_bold(bold),
+    );
 }
 
 /// Resets output color to default.
@@ -252,7 +266,8 @@ fn register_tests_from_files(
 
     for file_path in test_files {
         let file_display = file_path.display().to_string();
-        let (registered, failed, errors) = register_tests_from_single_file(file_path, &file_display);
+        let (registered, failed, errors) =
+            register_tests_from_single_file(file_path, &file_display);
         for (idx, e) in errors.into_iter().enumerate() {
             let label = if idx == 0 {
                 format!("{file_display} (file-level)")
@@ -262,7 +277,13 @@ fn register_tests_from_files(
             registration_errors.push((label, e));
         }
         tests_per_file.insert(file_display.clone(), registered);
-        print_success_message(&file_display, registered, failed, &registration_errors, error_log);
+        print_success_message(
+            &file_display,
+            registered,
+            failed,
+            &registration_errors,
+            error_log,
+        );
         // Warn if no tests were registered from this file
         if registered == 0 {
             eprintln!("[Warning] No tests registered from file: {file_display}. This may indicate a parse error or invalid test forms.");
@@ -381,20 +402,17 @@ fn execute_single_test(test_def: &crate::atoms::test::TestDefinition) -> Result<
     let pipeline = ExecutionPipeline::default();
 
     // Execute test body directly using AST with enhanced error context
-    pipeline.execute_ast(&test_def.body)
-        .map_err(|_| {
-            err_src!(
-                TestFailure,
-                format!("Test '{}' failed", test_def.name),
-                &test_def.source_file,
-                test_def.span
-            )
-        })?;
+    pipeline.execute_ast(&test_def.body).map_err(|_| {
+        err_src!(
+            TestFailure,
+            format!("Test '{}' failed", test_def.name),
+            &test_def.source_file,
+            test_def.span
+        )
+    })?;
 
     Ok(())
 }
-
-
 
 /// Prints test summary statistics.
 fn print_test_summary(summary: &TestSummary) {
@@ -423,25 +441,43 @@ fn print_test_summary(summary: &TestSummary) {
 }
 
 /// Prints a success message for test registration.
-fn print_success_message(file_display: &str, registered: usize, failed: usize, errors: &[RegistrationError], error_log: &mut Option<std::fs::File>) {
+fn print_success_message(
+    file_display: &str,
+    registered: usize,
+    failed: usize,
+    errors: &[RegistrationError],
+    error_log: &mut Option<std::fs::File>,
+) {
     use termcolor::{Color, ColorSpec, WriteColor};
 
     let mut stdout = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
     if failed > 0 {
         let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Yellow)).set_bold(true));
-        let _ = writeln!(stdout, "[WARNING] Registered {registered} test(s), {failed} failed in file: {file_display}");
+        let _ = writeln!(
+            stdout,
+            "[WARNING] Registered {registered} test(s), {failed} failed in file: {file_display}"
+        );
         for (label, error) in errors {
-            let _ = writeln!(stdout, "[WARNING] Test registration error in {label}: {error}");
+            let _ = writeln!(
+                stdout,
+                "[WARNING] Test registration error in {label}: {error}"
+            );
         }
         let _ = stdout.reset();
     } else if registered == 0 {
         let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Yellow)).set_bold(true));
-        let _ = writeln!(stdout, "[WARNING] Registered 0 test(s) from file: {file_display}");
+        let _ = writeln!(
+            stdout,
+            "[WARNING] Registered 0 test(s) from file: {file_display}"
+        );
         let _ = writeln!(stdout, "[WARNING] No tests registered from file: {file_display}. This may indicate a parse error or invalid test forms.");
         let _ = stdout.reset();
     } else {
         let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green)).set_bold(true));
-        let _ = writeln!(stdout, "[OK] Registered {registered} test(s) from file: {file_display}");
+        let _ = writeln!(
+            stdout,
+            "[OK] Registered {registered} test(s) from file: {file_display}"
+        );
         let _ = stdout.reset();
     }
 
@@ -452,10 +488,16 @@ fn print_success_message(file_display: &str, registered: usize, failed: usize, e
                 let _ = writeln!(log, "[WARNING] Test registration error in {label}: {error}");
             }
         } else if registered == 0 {
-            let _ = writeln!(log, "[WARNING] Registered 0 test(s) from file: {file_display}");
+            let _ = writeln!(
+                log,
+                "[WARNING] Registered 0 test(s) from file: {file_display}"
+            );
             let _ = writeln!(log, "[WARNING] No tests registered from file: {file_display}. This may indicate a parse error or invalid test forms.");
         } else {
-            let _ = writeln!(log, "[OK] Registered {registered} test(s) from file: {file_display}");
+            let _ = writeln!(
+                log,
+                "[OK] Registered {registered} test(s) from file: {file_display}"
+            );
         }
     }
 }
@@ -470,7 +512,12 @@ fn print_test_pass(stdout: &mut termcolor::StandardStream, test_name: &str, file
 }
 
 /// Prints a test error message.
-fn print_test_error(stdout: &mut termcolor::StandardStream, test_name: &str, file_info: &str, error: &SutraError) {
+fn print_test_error(
+    stdout: &mut termcolor::StandardStream,
+    test_name: &str,
+    file_info: &str,
+    error: &SutraError,
+) {
     use termcolor::{Color, ColorSpec, WriteColor};
 
     let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true));
@@ -514,8 +561,15 @@ fn handle_validate() -> Result<(), SutraError> {
 
     let grammar_path = "src/syntax/grammar.pest";
     let src_arc = to_error_source(grammar_path);
-    let validation_result = validate_grammar(grammar_path)
-        .map_err(|e| err_ctx!(Internal, format!("Failed to validate grammar: {}", e.to_string()), &src_arc, Span::default(), "Check the grammar file for syntax errors or missing rules."))?;
+    let validation_result = validate_grammar(grammar_path).map_err(|e| {
+        err_ctx!(
+            Internal,
+            format!("Failed to validate grammar: {}", e.to_string()),
+            &src_arc,
+            Span::default(),
+            "Check the grammar file for syntax errors or missing rules."
+        )
+    })?;
 
     // Early return on validation failure
     if !validation_result.is_valid() {
@@ -536,8 +590,15 @@ fn handle_validate_grammar() -> Result<(), SutraError> {
 
     let grammar_path = "src/syntax/grammar.pest";
     let src_arc = to_error_source(grammar_path);
-    let validation_result = validate_grammar(grammar_path)
-        .map_err(|e| err_ctx!(Internal, format!("Failed to validate grammar: {}", e.to_string()), &src_arc, Span::default(), "Check the grammar file for syntax errors or missing rules."))?;
+    let validation_result = validate_grammar(grammar_path).map_err(|e| {
+        err_ctx!(
+            Internal,
+            format!("Failed to validate grammar: {}", e.to_string()),
+            &src_arc,
+            Span::default(),
+            "Check the grammar file for syntax errors or missing rules."
+        )
+    })?;
 
     // Early return on validation failure
     if !validation_result.is_valid() {
@@ -553,20 +614,37 @@ fn handle_validate_grammar() -> Result<(), SutraError> {
 }
 
 /// Handles validation failure by printing errors and exiting.
-fn handle_validation_failure(grammar_path: &str, validation_result: &crate::validation::grammar::ValidationResult) -> Result<(), SutraError> {
+fn handle_validation_failure(
+    grammar_path: &str,
+    validation_result: &crate::validation::grammar::ValidationResult,
+) -> Result<(), SutraError> {
     let src_arc = to_error_source(grammar_path);
-    let mut error = err_ctx!(Validation, "Grammar validation failed", &src_arc, Span::default(), "Check the grammar file for syntax errors or missing rules.");
+    let mut error = err_ctx!(
+        Validation,
+        "Grammar validation failed",
+        &src_arc,
+        Span::default(),
+        "Check the grammar file for syntax errors or missing rules."
+    );
     for err in &validation_result.errors {
         // Attach each error as help (miette will show all help messages)
         error = match error {
-            SutraError::Validation { message, mut ctx, source } => {
+            SutraError::Validation {
+                message,
+                mut ctx,
+                source,
+            } => {
                 let help = ctx.help.get_or_insert(String::new());
                 if !help.is_empty() {
                     help.push('\n');
                 }
                 help.push_str(&format!("• {err}"));
-                SutraError::Validation { message, ctx, source }
-            },
+                SutraError::Validation {
+                    message,
+                    ctx,
+                    source,
+                }
+            }
             _ => error,
         };
     }
@@ -643,8 +721,8 @@ fn handle_list_macros() -> Result<(), SutraError> {
 
 /// Handles the `list-atoms` subcommand.
 fn handle_list_atoms() -> Result<(), SutraError> {
-    use crate::runtime::world::build_default_atom_registry;
     use crate::atoms::Atom;
+    use crate::runtime::world::build_default_atom_registry;
 
     let registry = build_default_atom_registry();
     let mut pure_atoms = Vec::new();
@@ -694,7 +772,8 @@ pub fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
     println!("Discovered {} test file(s)", test_files.len());
 
     // Register tests from all files (metadata-only, no execution)
-    let (_registration_errors, _tests_per_file) = register_tests_from_files(&test_files, &mut error_log)?;
+    let (_registration_errors, _tests_per_file) =
+        register_tests_from_files(&test_files, &mut error_log)?;
 
     // All test execution happens after registration
     let test_definitions = get_registered_tests()?;
@@ -703,7 +782,10 @@ pub fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
         return Ok(());
     }
 
-    println!("\nExecuting {} registered test(s)...", test_definitions.len());
+    println!(
+        "\nExecuting {} registered test(s)...",
+        test_definitions.len()
+    );
     let test_results = execute_all_tests(&test_definitions);
 
     // Print summary and return result
@@ -715,5 +797,3 @@ pub fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
 
     Ok(())
 }
-
-

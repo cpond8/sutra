@@ -36,14 +36,14 @@
 // and likely panic. Debug assertions have been added to `eval::call_atom` to
 // catch such misclassifications for known special forms.
 
-use crate::{Path, World, Value, AstNode, Span};
+use crate::err_msg;
 use crate::runtime::eval::EvaluationContext;
 use crate::AtomExecutionContext;
-use im::HashMap;
 use crate::SutraError;
-use crate::err_msg;
-use std::rc::Rc;
+use crate::{AstNode, Path, Span, Value, World};
+use im::HashMap;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 // ============================================================================
 // NEW ATOM ARCHITECTURE TYPES
@@ -184,9 +184,9 @@ pub mod execution;
 pub mod external;
 pub mod logic;
 pub mod math;
+pub mod special_forms;
 pub mod string;
 pub mod world;
-pub mod special_forms;
 
 // Test atoms module - only available in debug/test builds
 #[cfg(any(test, feature = "test-atom", debug_assertions))]

@@ -13,7 +13,6 @@
 //! - **Meta-Programming**: Function application with argument flattening
 //! - **State Threading**: Proper world state propagation through execution
 
-use crate::{Value, AtomRegistry};
 use crate::atoms::helpers::{
     build_apply_call_expr, eval_apply_list_arg, eval_apply_normal_args, eval_single_arg,
     sub_eval_context, validate_special_form_min_arity,
@@ -21,6 +20,7 @@ use crate::atoms::helpers::{
 use crate::atoms::SpecialFormAtomFn;
 use crate::err_msg;
 use crate::runtime::eval::evaluate_ast_node;
+use crate::{AtomRegistry, Value};
 
 // ============================================================================
 // CONTROL FLOW OPERATIONS

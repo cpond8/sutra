@@ -6,9 +6,9 @@
 use crate::ast::{AstNode, Expr, ParamList, Span};
 use crate::err_ctx;
 use crate::err_msg;
+use crate::to_error_source;
 use crate::MacroTemplate;
 use crate::SutraError;
-use crate::to_error_source;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
@@ -38,8 +38,15 @@ pub fn load_macros_from_file<P: AsRef<Path>>(
 ) -> Result<Vec<(String, MacroTemplate)>, SutraError> {
     let path_str = path.as_ref().to_string_lossy();
     let src_arc = to_error_source(&*path_str);
-    let source = fs::read_to_string(&path)
-        .map_err(|e| err_ctx!(Internal, format!("Failed to read file: {}", e.to_string()), &src_arc, Span::default(), "Check that the macro file exists and is readable."))?;
+    let source = fs::read_to_string(&path).map_err(|e| {
+        err_ctx!(
+            Internal,
+            format!("Failed to read file: {}", e.to_string()),
+            &src_arc,
+            Span::default(),
+            "Check that the macro file exists and is readable."
+        )
+    })?;
     parse_macros_from_source(&source)
 }
 
@@ -151,7 +158,10 @@ pub fn parse_macro_definition(expr: &AstNode) -> Result<(String, MacroTemplate),
         return Err(err_msg!(Internal, "First element must be 'define'."));
     }
     let Expr::ParamList(param_list) = &*items[1].value else {
-        return Err(err_msg!(Internal, "Second element must be a parameter list."));
+        return Err(err_msg!(
+            Internal,
+            "Second element must be a parameter list."
+        ));
     };
     let macro_name = param_list
         .required

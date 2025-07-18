@@ -1,7 +1,7 @@
-use crate::{MacroRegistry, AtomRegistry, MacroDefinition};
-use crate::MacroTemplate;
 use crate::ast::{AstNode, Expr};
-use crate::validation::grammar::{ValidationResult, ValidationReporter};
+use crate::validation::grammar::{ValidationReporter, ValidationResult};
+use crate::MacroTemplate;
+use crate::{AtomRegistry, MacroDefinition, MacroRegistry};
 
 /// Validates AST nodes for semantic correctness
 /// Focuses on macro/atom existence and argument validation
@@ -26,7 +26,14 @@ impl AstValidator {
                 else_branch,
                 ..
             } => {
-                Self::validate_if_expression(condition, then_branch, else_branch, macros, atoms, result);
+                Self::validate_if_expression(
+                    condition,
+                    then_branch,
+                    else_branch,
+                    macros,
+                    atoms,
+                    result,
+                );
             }
             Expr::Define { body, .. } => {
                 Self::validate_define_expression(body, macros, atoms, result);
@@ -63,7 +70,7 @@ impl AstValidator {
         }
     }
 
-        fn validate_function_call(
+    fn validate_function_call(
         name: &str,
         nodes: &[AstNode],
         macros: &MacroRegistry,
