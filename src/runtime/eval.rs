@@ -41,6 +41,7 @@ use crate::err_src;
 use miette::NamedSource;
 use std::sync::Arc;
 use std::collections::HashMap;
+use std::rc::Rc;
 use crate::atoms::SharedOutput;
 
 // ===================================================================================================
@@ -126,6 +127,7 @@ impl<'a> EvaluationContext<'a> {
         #[cfg(debug_assertions)]
         {
             const SPECIAL_FORM_NAMES: &[&str] = &[
+                "define",
                 "do",
                 "error",
                 "apply",
@@ -362,20 +364,32 @@ pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext)
         Expr::Define {
             name, params, body, ..
         } => {
-            // If params are not empty, it's a function/macro definition.
+                        // If params are not empty, it's a function definition.
             if !params.required.is_empty() || params.rest.is_some() {
-                let mut new_world = context.world.clone();
-                let template = crate::macros::MacroTemplate::new(params.clone(), body.clone())?;
-                new_world.macros = new_world
-                    .macros
-                    .with_user_macro(name.clone(), crate::macros::MacroDefinition::Template(template));
+                // Create a Lambda value for function definitions
+                // Capture the current lexical environment
+                let mut captured_env = std::collections::HashMap::new();
+                for frame in &context.lexical_env {
+                    for (key, value) in frame {
+                        captured_env.insert(key.clone(), value.clone());
+                    }
+                }
+                let lambda = Value::Lambda(Rc::new(crate::ast::value::Lambda {
+                    params: params.clone(),
+                    body: body.clone(),
+                    captured_env,
+                }));
+
+                // Store in world state for global access
+                let path = crate::runtime::world::Path(vec![name.clone()]);
+                let new_world = context.world.set(&path, lambda);
+
                 Ok((Value::Nil, new_world))
             } else {
                 // It's a variable definition.
                 let (value, world) = evaluate_ast_node(body, context)?;
-                let new_world = world;
                 let path = crate::runtime::world::Path(vec![name.clone()]);
-                new_world.state.set(&path, value.clone());
+                let new_world = world.set(&path, value.clone());
                 Ok((value, new_world))
             }
         }
@@ -453,9 +467,86 @@ fn evaluate_list(
         ));
     };
 
-    // Use direct atom resolution for all symbols
+        // Use direct atom resolution for all symbols
     let flat_tail = flatten_spread_args(tail, context)?;
-    // If the symbol is not an atom, check if it's a lambda in the lexical environment
+
+    // Handle define as a special form
+    if symbol_name == "define" {
+        // For define, we need to construct the proper Expr::Define structure
+        if flat_tail.len() != 2 {
+            return Err(err_src!(
+                Eval,
+                "define expects exactly 2 arguments: (define name value) or (define (name params...) body)",
+                &context.source,
+                head.span
+            ));
+        }
+
+        let name_expr = &flat_tail[0];
+        let value_expr = &flat_tail[1];
+
+        // Check if it's a function definition: (define (name params...) body)
+        if let Expr::ParamList(param_list) = &*name_expr.value {
+            // Function definition
+            let name = param_list.required.first().cloned().ok_or_else(|| {
+                err_src!(
+                    Eval,
+                    "define: function name missing in parameter list",
+                    &context.source,
+                    name_expr.span
+                )
+            })?;
+
+            let actual_params = crate::ast::ParamList {
+                required: param_list.required[1..].to_vec(),
+                rest: param_list.rest.clone(),
+                span: param_list.span,
+            };
+
+            let define_expr = AstNode {
+                value: std::sync::Arc::new(Expr::Define {
+                    name,
+                    params: actual_params,
+                    body: Box::new(value_expr.clone()),
+                    span: *span,
+                }),
+                span: *span,
+            };
+
+            return evaluate_ast_node(&define_expr, context);
+        } else {
+            // Variable definition: (define name value)
+            let name = match &*name_expr.value {
+                Expr::Symbol(s, _) => s.clone(),
+                _ => {
+                    return Err(err_src!(
+                        Eval,
+                        "define: first argument must be a symbol or parameter list",
+                        &context.source,
+                        name_expr.span
+                    ));
+                }
+            };
+
+            let define_expr = AstNode {
+                value: std::sync::Arc::new(Expr::Define {
+                    name,
+                    params: crate::ast::ParamList {
+                        required: vec![],
+                        rest: None,
+                        span: *span,
+                    },
+                    body: Box::new(value_expr.clone()),
+                    span: *span,
+                }),
+                span: *span,
+            };
+
+            return evaluate_ast_node(&define_expr, context);
+        }
+    }
+
+    // Check if it's a lambda in the lexical environment
     if let Some(Value::Lambda(lambda_rc)) = context.get_lexical_var(symbol_name) {
         let lambda = lambda_rc.clone();
         // Evaluate arguments eagerly
@@ -471,6 +562,26 @@ fn evaluate_list(
         };
         return crate::atoms::special_forms::call_lambda(&lambda, &arg_values, &mut lambda_context);
     }
+
+    // Check if it's a function in world state
+    let world_path = crate::runtime::world::Path(vec![symbol_name.clone()]);
+    if let Some(lambda_value) = context.world.state.get(&world_path) {
+        if let Value::Lambda(lambda) = lambda_value {
+            // Evaluate arguments eagerly
+            let (arg_values, world_after_args) = evaluate_eager_args(&flat_tail, context)?;
+            let mut lambda_context = EvaluationContext {
+                world: &world_after_args,
+                output: context.output.clone(),
+                atom_registry: context.atom_registry,
+                source: context.source.clone(),
+                max_depth: context.max_depth,
+                depth: context.depth + 1,
+                lexical_env: context.lexical_env.clone(),
+            };
+            return crate::atoms::special_forms::call_lambda(&lambda, &arg_values, &mut lambda_context);
+        }
+    }
+
     context.call_atom(symbol_name, head, &flat_tail, span)
 }
 
@@ -601,7 +712,7 @@ fn flatten_spread_args(
         // Process list items without nesting
         for v in items {
             flat_tail.push(Spanned {
-                value: Expr::from(v).into(), // FIX: wrap Expr in Arc via .into()
+                value: Expr::from(v).into(),
                 span: arg.span,
             });
         }

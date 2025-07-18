@@ -15,7 +15,8 @@ Sutra is a minimal, homoiconic, expression-based language designed for composabl
 ### Example
 
 ```sutra
-(define (add x y) (+ x y))
+(define (add x y)
+  (+ x y))
 (add 2 3) ; => 5
 ```
 
@@ -95,15 +96,15 @@ undefined-var  ; Error: undefined symbol: 'undefined-var'
 
 ### 3.3 Control Flow
 
-| Construct  | Arity | Example                          | Description              | Impl.       | Status  |
-| :--------- | :---- | :------------------------------- | :----------------------- | :---------- | :------ |
-| `if`       | 3     | `(if condition then else)`       | Conditional              | `Expr::If`  | impl.   |
-| `cond`     | 3..   | `(cond ((cond1) then) ...)`      | Branching Conditional    | Macro       | impl.   |
-| `do`       | 0..   | `(do expr1 expr2 ...)`           | Sequence, returns last   | Atom: `do`  | impl.   |
-| `when`     | 2..   | `(when condition ...)`           | Conditional `if` w/ `do` | Macro       | planned |
-| `let`      | 2     | `(let ((var val) ...) body ...)` | Lexical bindings         | SpecialForm | impl.   |
-| `lambda`   | 2..   | `(lambda (params) body ...)`     | Anonymous function       | SpecialForm | impl.   |
-| `for-each` | 3     | `(for-each ...)`                 | Looping construct        | Macro       | planned |
+| Construct  | Arity | Example                          | Description              | Impl.       | Status |
+| :--------- | :---- | :------------------------------- | :----------------------- | :---------- | :----- |
+| `if`       | 3     | `(if condition then else)`       | Conditional              | `Expr::If`  | impl.  |
+| `cond`     | 3..   | `(cond ((cond1) then) ...)`      | Branching Conditional    | Macro       | impl.  |
+| `do`       | 0..   | `(do expr1 expr2 ...)`           | Sequence, returns last   | Atom: `do`  | impl.  |
+| `when`     | 2..   | `(when condition ...)`           | Conditional `if` w/ `do` | Macro       | impl.  |
+| `let`      | 2     | `(let ((var val) ...) body ...)` | Lexical bindings         | SpecialForm | impl.  |
+| `lambda`   | 2..   | `(lambda (params) body ...)`     | Anonymous function       | SpecialForm | impl.  |
+| `for-each` | 3..   | `(for-each ...)`                 | Looping construct        | Macro       | impl.  |
 
 ### 3.4 Arity (Function & Macro Arguments)
 
@@ -141,10 +142,15 @@ Sutra supports first-class, lexically scoped anonymous functions via the `lambda
 ### Example
 
 ```sutra
-(define add (lambda (x y) (+ x y)))
+(define add
+  (lambda (x y)
+    (+ x y)))
 (add 2 3) ; => 5
 
-(define make-adder (lambda (n) (lambda (x) (+ x n))))
+(define make-adder
+  (lambda (n)
+    (lambda (x)
+      (+ x n))))
 (define add5 (make-adder 5))
 (add5 10) ; => 15
 ```
@@ -172,11 +178,13 @@ The `let` special form introduces new lexical bindings for the duration of its b
 ### Example
 
 ```sutra
-(let ((x 2) (y 3))
+(let ((x 2)
+      (y 3))
   (* x y)) ; => 6
 
 (let ((x 1))
-  (let ((x 2) (y x))
+  (let ((x 2)
+        (y x))
     (+ x y))) ; => 3
 ```
 
@@ -211,10 +219,11 @@ storylet "kitchen" {
 Each newline-terminated line is parsed as a separate s-expression. This transforms to:
 
 ```sutra
-(storylet "kitchen" (do
-  (print "You enter the kitchen")
-  (set! player.location "kitchen")
-  (inc! player.steps)))
+(storylet "kitchen"
+  (do
+    (print "You enter the kitchen")
+    (set! player.location "kitchen")
+    (inc! player.steps)))
 ```
 
 This is why Block style doesn't require parentheses around each expression—the newlines provide the necessary syntactic boundaries.
@@ -259,7 +268,11 @@ storylet "duel" {
 }
 ```
 
-→ `(storylet "duel" (do (tag combat) (weight agent.rivalry) (print "Swords clash!")))`
+→ `(storylet "duel"
+     (do
+       (tag combat)
+       (weight agent.rivalry)
+       (print "Swords clash!")))`
 
 #### 3.4.2 Thread Constructs
 
@@ -270,7 +283,12 @@ define exploration thread {
 }
 ```
 
-→ `(define exploration thread (do (start entrance) (state (do (visited false)))))`
+→ `(define exploration thread
+     (do
+       (start entrance)
+       (state
+         (do
+           (visited false)))))`
 
 #### 3.4.3 Conditional Constructs
 
@@ -281,7 +299,10 @@ if player.hungry {
 }
 ```
 
-→ `(if player.hungry (do (print "Your stomach growls") (dec! player.energy)))`
+→ `(if player.hungry
+     (do
+       (print "Your stomach growls")
+       (dec! player.energy)))`
 
 #### 3.4.4 Choice Constructs
 
@@ -292,7 +313,14 @@ choices {
 }
 ```
 
-→ `(choices (do ("Enter tavern" (do (set! player.location "tavern"))) ("Continue walking" (do (inc! player.steps)))))`
+→ `(choices
+     (do
+       ("Enter tavern"
+         (do
+           (set! player.location "tavern")))
+       ("Continue walking"
+         (do
+           (inc! player.steps)))))`
 
 ### 3.5 The Unifying S-Expression Principle
 
@@ -332,36 +360,39 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ## 6. Assignment & State
 
-| Macro   | Arity | Expansion Pattern                            | Impl.       | Status            |
-| :------ | :---- | :------------------------------------------- | :---------- | :---------------- |
-| `set!`  | 2     | `(core/set! (path ...) value)`               | Macro, Atom | impl.             |
-| `del!`  | 1     | `(core/del! (path ...))`                     | Macro, Atom | impl.             |
-| `add!`  | 2     | `(core/set! (path ...) (+ (get ...) value))` | Macro, Atom | impl.             |
-| `sub!`  | 2     | `(core/set! (path ...) (- (get ...) value))` | Macro, Atom | impl.             |
-| `inc!`  | 1     | `(core/set! (path ...) (+ (get ...) 1))`     | Macro, Atom | impl.             |
-| `dec!`  | 1     | `(core/set! (path ...) (- (get ...) 1))`     | Macro, Atom | impl.             |
-| `mul!`  | 2     | `(core/set! (path ...) (* (get ...) value))` | Macro, Atom | impl.             |
-| `div!`  | 2     | `(core/set! (path ...) (/ (get ...) value))` | Macro, Atom | impl.             |
-| `push!` | 1..   | `(core/push! (path ...) value ...)`          | Macro, Atom | impl. via core/\* |
-| `pull!` | 1..   | `(core/pull! (path ...) value ...)`          | Macro, Atom | impl. via core/\* |
+| Macro     | Arity | Expansion Pattern                            | Impl.       | Status            |
+| :-------- | :---- | :------------------------------------------- | :---------- | :---------------- |
+| `set!`    | 2     | `(core/set! (path ...) value)`               | Macro, Atom | impl.             |
+| `del!`    | 1     | `(core/del! (path ...))`                     | Macro, Atom | impl.             |
+| `add!`    | 2     | `(core/set! (path ...) (+ (get ...) value))` | Macro, Atom | impl.             |
+| `sub!`    | 2     | `(core/set! (path ...) (- (get ...) value))` | Macro, Atom | impl.             |
+| `inc!`    | 1     | `(core/set! (path ...) (+ (get ...) 1))`     | Macro, Atom | impl.             |
+| `dec!`    | 1     | `(core/set! (path ...) (- (get ...) 1))`     | Macro, Atom | impl.             |
+| `mul!`    | 2     | `(core/set! (path ...) (* (get ...) value))` | Macro, Atom | impl.             |
+| `div!`    | 2     | `(core/set! (path ...) (/ (get ...) value))` | Macro, Atom | impl.             |
+| `push!`   | 1..   | `(core/push! (path ...) value ...)`          | Macro, Atom | impl. via core/\* |
+| `pull!`   | 1..   | `(core/pull! (path ...) value ...)`          | Macro, Atom | impl. via core/\* |
+| `get`     | 1     | `(core/get (path ...))`                      | Macro, Atom | impl.             |
+| `exists?` | 1     | `(core/exists? (path ...))`                  | Macro, Atom | impl.             |
 
 ---
 
 ## 7. Predicates & Logic
 
-| Macro     | Arity | Expands to     | Purpose                  | Impl. | Status  | Macro Aliases     |
-| :-------- | :---- | :------------- | :----------------------- | :---- | :------ | :---------------- |
-| `eq?`     | 2..   | —              | Equality                 | Atom  | impl.   | `=`, `is?`        |
-| `gt?`     | 2..   | —              | Greater than             | Atom  | impl.   | `>`, `over?`      |
-| `lt?`     | 2..   | —              | Less than                | Atom  | impl.   | `<`, `under?`     |
-| `gte?`    | 2..   | —              | Greater/equal            | Atom  | impl.   | `>=`, `at-least?` |
-| `lte?`    | 2..   | —              | Less/equal               | Atom  | impl.   | `<=`, `at-most?`  |
-| `not`     | 1     | —              | Negation                 | Atom  | impl.   | —                 |
-| `has?`    | 2..   | —              | Membership in collection | Atom  | impl.   | —                 |
-| `exists?` | 1     | `core/exists?` | Path/value existence     | Macro | impl.   | —                 |
-| `and`     | 0..   | `(if ...)`     | Logical AND              | Macro | impl.   | —                 |
-| `or`      | 0..   | `(if ...)`     | Logical OR               | Macro | impl.   | —                 |
-| `empty?`  | 1     | `eq?` + `len`  | Collection is empty      | Macro | impl.   | —                 |
+| Macro     | Arity | Expands to     | Purpose                  | Impl. | Status | Macro Aliases     |
+| :-------- | :---- | :------------- | :----------------------- | :---- | :----- | :---------------- |
+| `eq?`     | 2..   | —              | Equality                 | Atom  | impl.  | `=`, `is?`        |
+| `gt?`     | 2..   | —              | Greater than             | Atom  | impl.  | `>`, `over?`      |
+| `lt?`     | 2..   | —              | Less than                | Atom  | impl.  | `<`, `under?`     |
+| `gte?`    | 2..   | —              | Greater/equal            | Atom  | impl.  | `>=`, `at-least?` |
+| `lte?`    | 2..   | —              | Less/equal               | Atom  | impl.  | `<=`, `at-most?`  |
+| `not`     | 1     | —              | Negation                 | Atom  | impl.  | —                 |
+| `has?`    | 2..   | —              | Membership in collection | Atom  | impl.  | —                 |
+| `exists?` | 1     | `core/exists?` | Path/value existence     | Macro | impl.  | —                 |
+| `and`     | 0..   | `(if ...)`     | Logical AND              | Macro | impl.  | —                 |
+| `or`      | 0..   | `(if ...)`     | Logical OR               | Macro | impl.  | —                 |
+| `empty?`  | 1     | `eq?` + `len`  | Collection is empty      | Macro | impl.  | —                 |
+| `null?`   | 1     | `eq?` + `len`  | List is empty            | Macro | impl.  | —                 |
 
 ---
 
@@ -423,53 +454,87 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ## 9. String Utilities
 
-| Macro/Atom  | Arity | Signature                 | Purpose                       | Impl. | Status  |
-| :---------- | :---- | :------------------------ | :---------------------------- | :---- | :------ |
-| `display`   | 0..   | `(display a b ...)`       | Print multiple values         | Macro | impl.   |
-| `str`       | 1     | `(str x)`                 | Typecast to string            | Atom  | impl.   |
-| `str+`      | 0..   | `(str+ a b ...)`          | Concatenate strings           | Atom  | impl.   |
-| `join-str+` | 2..   | `(join-str+ sep a b ...)` | Join strings with a separator | Macro | impl.   |
+| Macro/Atom  | Arity | Signature                 | Purpose                       | Impl. | Status |
+| :---------- | :---- | :------------------------ | :---------------------------- | :---- | :----- |
+| `display`   | 0..   | `(display a b ...)`       | Print multiple values         | Macro | impl.  |
+| `str`       | 1     | `(str x)`                 | Typecast to string            | Atom  | impl.  |
+| `str+`      | 0..   | `(str+ a b ...)`          | Concatenate strings           | Atom  | impl.  |
+| `core/str+` | 0..   | `(core/str+ a b ...)`     | Concatenate strings (core)    | Atom  | impl.  |
+| `join-str+` | 2..   | `(join-str+ sep a b ...)` | Join strings with a separator | Macro | impl.  |
 
 ---
 
 ## 10. Additional Utility Macros
 
-| Macro     | Arity | Purpose                           | Usage Example                    | Status |
-| :-------- | :---- | :-------------------------------- | :------------------------------- | :----- |
-| `when`    | 2..   | Execute body when condition true  | `(when cond ...body)`           | impl.  |
-| `test`    | 3..   | Define test case                  | `(test "name" expect body...)`  | impl.  |
-| `expect`  | 0..   | Declare test expectations         | `(expect ...conditions)`        | impl.  |
-| `cadr`    | 1     | Second element of list            | `(cadr (list 1 2 3))`          | impl.  |
-| `null?`   | 1     | Check if list is empty           | `(null? (list))`               | impl.  |
-| `append`  | 2     | Append two lists                 | `(append l1 l2)`               | impl.  |
-| `map`     | 2     | Map function over list           | `(map f lst)`                  | impl.  |
-| `for-each`| 3..   | Loop over collection             | `(for-each var coll ...body)`  | impl.  |
+| Macro      | Arity | Purpose                          | Usage Example                  | Status |
+| :--------- | :---- | :------------------------------- | :----------------------------- | :----- |
+| `when`     | 2..   | Execute body when condition true | `(when cond ...body)`          | impl.  |
+| `cond`     | 3..   | Multi-branch conditional         | `(cond ((test1) expr1) ...)`   | impl.  |
+| `test`     | 3..   | Define test case                 | `(test "name" expect body...)` | impl.  |
+| `expect`   | 0..   | Declare test expectations        | `(expect ...conditions)`       | impl.  |
+| `cadr`     | 1     | Second element of list           | `(cadr (list 1 2 3))`          | impl.  |
+| `null?`    | 1     | Check if list is empty           | `(null? (list))`               | impl.  |
+| `append`   | 2     | Append two lists                 | `(append l1 l2)`               | impl.  |
+| `map`      | 2     | Map function over list           | `(map f lst)`                  | impl.  |
+| `for-each` | 3..   | Loop over collection             | `(for-each var coll ...body)`  | impl.  |
 
 ---
 
 ## 11. World Interaction
 
-| Atom           | Arity | Purpose              | Impl. |
-| :------------- | :---- | :------------------- | :---- |
-| `core/set!`    | 2     | Set value at path    | Atom  |
-| `core/get`     | 1     | Get value at path    | Atom  |
-| `core/del!`    | 1     | Delete value at path | Atom  |
-| `core/exists?` | 1     | Path existence       | Atom  |
+| Atom           | Arity | Purpose                         | Impl. |
+| :------------- | :---- | :------------------------------ | :---- |
+| `core/set!`    | 2     | Set value at path               | Atom  |
+| `core/get`     | 1     | Get value at path               | Atom  |
+| `core/del!`    | 1     | Delete value at path            | Atom  |
+| `core/exists?` | 1     | Path existence                  | Atom  |
+| `path`         | 1     | Create path from string         | Atom  |
+| `core/map`     | 0..   | Create map from key-value pairs | Atom  |
 
 ---
 
 ## 12. I/O & Random
 
-| Atom/Macro | Arity | Purpose                    | Impl. | Status  |
-| :--------- | :---- | :------------------------- | :---- | :------ |
-| `print`    | 1     | Output single value        | Atom  | impl.   |
-| `display`  | 0..   | Output multiple values     | Macro | impl.   |
-| `rand`     | 0     | Random float               | Atom  | impl.   |
-| `chance?`  | 1     | Macro: true with X% chance | Macro | planned |
+| Atom/Macro | Arity | Purpose                     | Impl. | Status  |
+| :--------- | :---- | :-------------------------- | :---- | :------ |
+| `print`    | 1     | Output single value         | Atom  | impl.   |
+| `output`   | 1     | Output single value (alias) | Atom  | impl.   |
+| `display`  | 0..   | Output multiple values      | Macro | impl.   |
+| `rand`     | 0     | Random float                | Atom  | impl.   |
+| `chance?`  | 1     | Macro: true with X% chance  | Macro | planned |
 
 ---
 
-## 13. Error Handling
+## 13. Special Forms
+
+| Special Form | Arity | Purpose                             | Impl.       | Status |
+| :----------- | :---- | :---------------------------------- | :---------- | :----- |
+| `if`         | 3     | Conditional evaluation              | SpecialForm | impl.  |
+| `lambda`     | 2..   | Anonymous function                  | SpecialForm | impl.  |
+| `let`        | 2..   | Lexical bindings                    | SpecialForm | impl.  |
+| `do`         | 0..   | Sequential evaluation               | SpecialForm | impl.  |
+| `apply`      | 2..   | Function application with list args | SpecialForm | impl.  |
+| `error`      | 1     | Raise error with message            | SpecialForm | impl.  |
+
+---
+
+## 14. Test Atoms (Debug/Test Only)
+
+| Test Atom            | Arity | Purpose                    | Impl.       | Status |
+| :------------------- | :---- | :------------------------- | :---------- | :----- |
+| `register-test!`     | 4..   | Register test definition   | SpecialForm | impl.  |
+| `value`              | 1     | Test expected value        | SpecialForm | impl.  |
+| `tags`               | 0..   | Test tags                  | SpecialForm | impl.  |
+| `test/echo`          | 1     | Echo value for testing     | SpecialForm | impl.  |
+| `test/borrow_stress` | 2     | Stress test borrow checker | SpecialForm | impl.  |
+| `assert`             | 1     | Assert condition is true   | SpecialForm | impl.  |
+| `assert-eq`          | 2     | Assert two values equal    | SpecialForm | impl.  |
+
+**Note:** Test atoms are only available when compiled with debug assertions or the `test-atom` feature.
+
+---
+
+## 15. Error Handling
 
 - **Parse-time:** Invalid tokens, unmatched delimiters, bad escapes.
 - **Validation:** Unknown macros/atoms, arity/type errors, invalid paths.
@@ -477,13 +542,13 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 14. Comments
+## 16. Comments
 
 - Start with `;` and continue to end of line.
 
 ---
 
-## 15. Example Program
+## 17. Example Program
 
 ```sutra
 ; Factorial function
@@ -496,14 +561,14 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 16. Grammar Summary
+## 18. Grammar Summary
 
 - See `src/syntax/grammar.pest` for the full PEG grammar.
 - All syntax is formally specified and enforced by the parser.
 
 ---
 
-## 17. Macro System
+## 19. Macro System
 
 - All author-facing macros are defined in `src/macros/macros.sutra` and registered at startup.
 - Macro expansion is canonical and deterministic.
@@ -511,7 +576,7 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 18. Validation & Evaluation
+## 20. Validation & Evaluation
 
 - All code is parsed, macroexpanded, validated, and then evaluated.
 - Validation checks for unknown macros/atoms, arity, and type errors.
@@ -519,7 +584,7 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 19. Value Types
+## 21. Value Types
 
 | Type   | Example         | Description            |
 | :----- | :-------------- | :--------------------- |
@@ -533,21 +598,21 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 20. CLI & Tooling
+## 22. CLI & Tooling
 
 - CLI supports: run, macroexpand, macrotrace, validate, format, test, list-macros, list-atoms, ast, gen-expected.
 - Output is pretty-printed and colorized.
 
 ---
 
-## 21. Extensibility
+## 23. Extensibility
 
 - New atoms/macros can be added via Rust or Sutra macro files.
 - All macro and atom registration is centralized and canonical.
 
 ---
 
-## 22. Not Yet impl. (Planned)
+## 24. Not Yet impl. (Planned)
 
 - Tier 2+ high-level macros (e.g., `requires`, `threshold`, `hub`, `select`).
 - Map literals and advanced collection utilities.
@@ -555,7 +620,7 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 23. References
+## 25. References
 
 - Macro library: `src/macros/macros.sutra`
 - Grammar: `src/syntax/grammar.pest`

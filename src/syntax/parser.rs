@@ -177,6 +177,7 @@ pub static AST_BUILDERS: Lazy<HashMap<Rule, AstBuilderFn>> = Lazy::new(|| {
     m.insert(Rule::symbol, build_symbol as AstBuilderFn);
     m.insert(Rule::quote, build_quote as AstBuilderFn);
     m.insert(Rule::define_form, build_define_form as AstBuilderFn);
+    m.insert(Rule::lambda_form, build_lambda_form as AstBuilderFn);
     m.insert(Rule::atom, build_atom as AstBuilderFn);
     m.insert(Rule::spread_arg, build_spread_arg as AstBuilderFn);
     m.insert(Rule::list_elem, build_list_elem as AstBuilderFn);
@@ -686,6 +687,56 @@ fn build_define_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErr
             span,
         }
         .into(),
+        span,
+    })
+}
+
+fn build_lambda_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
+    let span = get_span(&pair);
+    let mut inner = pair.clone().into_inner();
+
+    // The grammar: lambda_form = { "(" ~ "lambda" ~ param_list ~ expr ~ ")" }
+    // The CST children are: param_list, expr (body)
+    let param_list_pair = inner.next().ok_or_else(|| {
+        err_ctx!(
+            Internal,
+            "Missing parameter list in lambda form",
+            source,
+            span
+        )
+    })?;
+    let param_list_node = build_param_list(param_list_pair, source)?;
+    let Expr::ParamList(params) = &*param_list_node.value else {
+        return Err(err_ctx!(
+            Internal,
+            "Expected ParamList AST node for lambda form parameters",
+            source,
+            span
+        ));
+    };
+
+    let body_pair = inner.next().ok_or_else(|| {
+        err_ctx!(
+            Internal,
+            "Missing body expression in lambda form",
+            source,
+            span
+        )
+    })?;
+    let body = build_expr(body_pair, source)?;
+
+    Ok(Spanned {
+        value: crate::ast::Expr::List(
+            vec![
+                AstNode {
+                    value: std::sync::Arc::new(crate::ast::Expr::Symbol("lambda".to_string(), span)),
+                    span,
+                },
+                param_list_node,
+                body.clone(),
+            ],
+            span,
+        ).into(),
         span,
     })
 }

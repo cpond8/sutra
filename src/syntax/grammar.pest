@@ -20,7 +20,7 @@ program = { SOI ~ expr* ~ EOI }
 
 // An `expr` (expression) is the fundamental recursive unit of the language.
 // Now includes spread_arg for call position.
-expr = { define_form | quote | list | block | atom | spread_arg }
+expr = { define_form | lambda_form | quote | list | block | atom | spread_arg | param_list }
 
 // Spread argument: ...symbol (for use in call position)
 spread_arg = { "..." ~ symbol }
@@ -89,3 +89,6 @@ param_items = { symbol* ~ spread_arg? } // Only ...rest is supported for variadi
 
 // Macro/function definition: (define (name ... [ ...rest ]) body)
 define_form = { "(" ~ "define" ~ param_list ~ expr ~ ")" }
+
+// Lambda function: (lambda (params...) body)
+lambda_form = { "(" ~ "lambda" ~ param_list ~ expr ~ ")" }

@@ -45,6 +45,8 @@ pub enum Command {
         #[arg(required = true)]
         file: PathBuf,
     },
+    /// Validate the grammar.pest file for correctness.
+    ValidateGrammar,
     /// Pretty-print and normalize a script.
     Format {
         /// The path to the Sutra script file to format.

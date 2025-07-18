@@ -18,7 +18,10 @@ use termcolor::WriteColor;
 use std::rc::Rc;
 use std::cell::RefCell;
 use crate::atoms::SharedOutput;
+use crate::runtime::world::World;
+use miette::NamedSource;
 use std::io::Write;
+use std::sync::Arc;
 
 pub mod args;
 pub mod output;
@@ -48,6 +51,7 @@ pub fn run() {
         Command::ListAtoms => handle_list_atoms(),
         Command::Ast { file } => handle_ast(file),
         Command::Validate { .. } => handle_validate(),
+        Command::ValidateGrammar => handle_validate_grammar(),
         Command::Macroexpand { file } => handle_macroexpand(file),
         Command::Format { file } => handle_format(file),
         Command::Test { path } => handle_test(path),
@@ -413,6 +417,7 @@ fn execute_single_test(test_def: &crate::atoms::test::TestDefinition) -> Result<
     let output_buffer = Rc::new(RefCell::new(crate::cli::output::OutputBuffer::new()));
     let output = SharedOutput(output_buffer.clone());
 
+    // Convert AST back to source and run through full pipeline to ensure macro expansion
     let body_source = build_test_body_source(test_def);
     pipeline.execute(&body_source, output)
 }
@@ -428,6 +433,8 @@ fn build_test_body_source(test_def: &crate::atoms::test::TestDefinition) -> Stri
         .collect();
     format!("(do {})", items.join(" "))
 }
+
+
 
 /// Prints test summary statistics.
 fn print_test_summary(summary: &TestSummary) {
@@ -545,6 +552,27 @@ fn handle_ast(path: &std::path::Path) -> Result<(), SutraError> {
 
 /// Handles the `validate` subcommand.
 fn handle_validate() -> Result<(), SutraError> {
+    use crate::validation::grammar::validate_grammar;
+
+    let grammar_path = "src/syntax/grammar.pest";
+    let validation_result = validate_grammar(grammar_path)
+        .map_err(|e| err_ctx!(Internal, "Failed to validate grammar: {}", e.to_string()))?;
+
+    // Early return on validation failure
+    if !validation_result.is_valid() {
+        return handle_validation_failure(grammar_path, &validation_result);
+    }
+
+    // Print warnings and suggestions
+    print_validation_warnings(&validation_result);
+    print_validation_suggestions(&validation_result);
+
+    println!("Grammar validation passed");
+    Ok(())
+}
+
+/// Handles the `validate-grammar` subcommand.
+fn handle_validate_grammar() -> Result<(), SutraError> {
     use crate::validation::grammar::validate_grammar;
 
     let grammar_path = "src/syntax/grammar.pest";

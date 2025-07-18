@@ -99,7 +99,23 @@ impl Expr {
             Expr::Quote(expr, _) => format!("'{}", expr.value.pretty()),
             Expr::ParamList(param_list) => Self::pretty_param_list(param_list),
             Expr::Define { name, params, body, .. } => {
-                format!("(define {} {} {})", name, Self::pretty_param_list(params), body.value.pretty())
+                // Reconstruct the original define syntax: (define (name params...) body)
+                let mut param_list_str = String::from("(");
+                param_list_str.push_str(name);
+                for param in &params.required {
+                    param_list_str.push(' ');
+                    param_list_str.push_str(param);
+                }
+                if let Some(rest) = &params.rest {
+                    if !params.required.is_empty() {
+                        param_list_str.push_str(" ...");
+                    } else {
+                        param_list_str.push_str(" ...");
+                    }
+                    param_list_str.push_str(rest);
+                }
+                param_list_str.push(')');
+                format!("(define {} {})", param_list_str, body.value.pretty())
             }
             Expr::Spread(expr) => format!("...{}", expr.value.pretty()),
         }

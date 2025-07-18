@@ -39,7 +39,7 @@ impl ExtractValue<f64> for Value {
     fn extract(&self) -> Result<f64, SutraError> {
         match self {
             Value::Number(n) => Ok(*n),
-            _ => Err(err_msg!(TypeError, "Type error")),
+            _ => Err(err_msg!(TypeError, "Expected number, got {}", self.type_name())),
         }
     }
 }
@@ -48,7 +48,7 @@ impl ExtractValue<bool> for Value {
     fn extract(&self) -> Result<bool, SutraError> {
         match self {
             Value::Bool(b) => Ok(*b),
-            _ => Err(err_msg!(TypeError, "Type error")),
+            _ => Err(err_msg!(TypeError, "Expected boolean, got {}", self.type_name())),
         }
     }
 }
@@ -57,7 +57,7 @@ impl ExtractValue<crate::runtime::world::Path> for Value {
     fn extract(&self) -> Result<crate::runtime::world::Path, SutraError> {
         match self {
             Value::Path(path) => Ok(path.clone()),
-            _ => Err(err_msg!(TypeError, "Type error")),
+            _ => Err(err_msg!(TypeError, "Expected path, got {}", self.type_name())),
         }
     }
 }
@@ -132,10 +132,11 @@ pub fn eval_n_args<const N: usize>(
         world = next_world;
     }
 
-    // Convert Vec to array - this is safe because we checked length
+    // Convert Vec to array - this is safe because we checked length above
+    // The try_into() should never fail given the length check, but we handle it defensively
     let values_array: [Value; N] = values
         .try_into()
-        .map_err(|_| err_msg!(Eval, "Arity error"))?;
+        .map_err(|_| err_msg!(Internal, "Failed to convert evaluated arguments to array - this should never happen"))?;
 
     Ok((values_array, world))
 }
@@ -162,31 +163,13 @@ pub fn eval_binary_args(
 // TYPE EXTRACTION FUNCTIONS
 // ============================================================================
 
-/// Extracts two numbers from values with type checking using the trait
+/// Extracts two numbers from values with type checking using the trait.
+/// For single value extraction, use val.extract() directly.
 pub fn extract_numbers(val1: &Value, val2: &Value) -> Result<(f64, f64), SutraError> {
     let n1 = val1.extract()?;
     let n2 = val2.extract()?;
     Ok((n1, n2))
 }
-
-/// Extracts a single number from a value with type checking using the trait
-pub fn extract_number(val: &Value) -> Result<f64, SutraError> {
-    val.extract()
-}
-
-/// Extracts a boolean from a value with type checking using the trait
-pub fn extract_bool(val: &Value) -> Result<bool, SutraError> {
-    val.extract()
-}
-
-/// Extracts a path from a value with type checking using the trait
-pub fn extract_path(val: &Value) -> Result<crate::runtime::world::Path, SutraError> {
-    val.extract()
-}
-
-// ============================================================================
-// ARITY VALIDATION HELPERS
-// ============================================================================
 
 /// Validates that the number of arguments matches the expected count.
 /// Provides consistent error messages for arity validation across all atoms.
@@ -429,7 +412,7 @@ pub fn validate_special_form_min_arity(
 
 /// Evaluates a binary numeric operation atomically, with optional validation.
 /// Handles arity, type checking, and error construction.
-pub fn eval_binary_numeric_op<F, V>(
+pub fn eval_binary_numeric_template<F, V>(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
     op: F,
@@ -451,7 +434,7 @@ where
 
 /// Evaluates an n-ary numeric operation (e.g., sum, product).
 /// Handles arity, type checking, and error construction.
-pub fn eval_nary_numeric_op<F>(
+pub fn eval_nary_numeric_template<F>(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
     init: f64,
@@ -468,7 +451,7 @@ where
     let mut acc = init;
 
     for v in values.iter() {
-        let n = extract_number(v).map_err(|_| err_msg!(TypeError, "Type error"))?;
+        let n = v.extract().map_err(|_| err_msg!(TypeError, "Type error"))?;
         acc = fold(acc, n);
     }
 
@@ -477,7 +460,7 @@ where
 
 /// Evaluates a unary boolean operation.
 /// Handles arity, type checking, and error construction.
-pub fn eval_unary_bool_op<F>(
+pub fn eval_unary_bool_template<F>(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
     op: F,
@@ -486,13 +469,13 @@ where
     F: Fn(bool) -> Value,
 {
     let (val, world) = eval_single_arg(args, context)?;
-    let b = extract_bool(&val)?;
+    let b = val.extract()?;
     Ok((op(b), world))
 }
 
 /// Evaluates a unary path operation (get, del).
 /// Handles arity, type checking, and error construction.
-pub fn eval_unary_path_op<F>(
+pub fn eval_unary_path_template<F>(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
     op: F,
@@ -504,13 +487,13 @@ where
     ) -> Result<(Value, crate::runtime::world::World), SutraError>,
 {
     let (val, world) = eval_single_arg(args, context)?;
-    let path = extract_path(&val)?;
+    let path = val.extract()?;
     op(path, world)
 }
 
 /// Evaluates a binary path operation (set).
 /// Handles arity, type checking, and error construction.
-pub fn eval_binary_path_op<F>(
+pub fn eval_binary_path_template<F>(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
     op: F,
@@ -523,13 +506,13 @@ where
     ) -> Result<(Value, crate::runtime::world::World), SutraError>,
 {
     let (path_val, value, world) = eval_binary_args(args, context)?;
-    let path = extract_path(&path_val)?;
+    let path = path_val.extract()?;
     op(path, value, world)
 }
 
 /// Evaluates a unary operation that takes any value.
 /// Handles arity and error construction.
-pub fn eval_unary_value_op<F>(
+pub fn eval_unary_value_template<F>(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
     op: F,
@@ -560,25 +543,25 @@ where
 ///
 /// # Example
 /// ```ignore
-/// let result = eval_numeric_sequence_comparison(
+/// let result = eval_numeric_sequence_comparison_template(
 ///     args, context, |a, b| a <= b, "gt?"
 /// )?;
 /// ```
-pub fn eval_numeric_sequence_comparison<F>(
+pub fn eval_numeric_sequence_comparison_template<F>(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
     comparison: F,
-    _atom_name: &str,
+    atom_name: &str,
 ) -> Result<(Value, crate::runtime::world::World), SutraError>
 where
     F: Fn(f64, f64) -> bool,
 {
     let (values, world) = eval_args(args, context)?;
-    validate_sequence_arity(&values, _atom_name)?;
+    validate_sequence_arity(&values, atom_name)?;
 
     for i in 0..values.len() - 1 {
-        let a = extract_number(&values[i])?;
-        let b = extract_number(&values[i + 1])?;
+        let a = values[i].extract()?;
+        let b = values[i + 1].extract()?;
         if comparison(a, b) {
             return Ok((Value::Bool(false), world));
         }
@@ -602,26 +585,26 @@ where
 ///
 /// # Example
 /// ```ignore
-/// let result = eval_nary_numeric_op_custom(
+/// let result = eval_nary_numeric_op_custom_template(
 ///     args, context, 0.0, |acc, n| acc + n, "sum"
 /// )?;
 /// ```
-pub fn eval_nary_numeric_op_custom<F>(
+pub fn eval_nary_numeric_op_custom_template<F>(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
     init: f64,
     fold: F,
-    _atom_name: &str,
+    atom_name: &str,
 ) -> Result<(Value, crate::runtime::world::World), SutraError>
 where
     F: Fn(f64, f64) -> f64,
 {
     let (values, world) = eval_args(args, context)?;
-    validate_min_arity(&values, 1, _atom_name)?;
+    validate_min_arity(&values, 1, atom_name)?;
 
     let mut result = init;
     for v in values.iter() {
-        let n = extract_number(v)?;
+        let n = v.extract()?;
         result = fold(result, n);
     }
     Ok((Value::Number(result), world))
@@ -642,11 +625,11 @@ where
 ///
 /// # Example
 /// ```ignore
-/// let result = eval_unary_typed_op(
+/// let result = eval_unary_typed_template(
 ///     args, context, |b| Value::Bool(!b), "not"
 /// )?;
 /// ```
-pub fn eval_unary_typed_op<T, F>(
+pub fn eval_unary_typed_template<T, F>(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
     op: F,
@@ -694,8 +677,8 @@ where
     validate_sequence_arity(args, atom_name)?;
 
     for i in 0..args.len() - 1 {
-        let a = extract_number(&args[i])?;
-        let b = extract_number(&args[i + 1])?;
+        let a = args[i].extract()?;
+        let b = args[i + 1].extract()?;
         if comparison(a, b) {
             return Ok(Value::Bool(false));
         }
@@ -735,7 +718,7 @@ where
 
     let mut result = init;
     for v in args.iter() {
-        let n = extract_number(v)?;
+        let n = v.extract()?;
         result = fold(result, n);
     }
     Ok(Value::Number(result))
@@ -812,7 +795,7 @@ pub fn eval_apply_normal_args(
         let mut sub_context = sub_eval_context!(context, &world);
         let (val, next_world) = evaluate_ast_node(arg, &mut sub_context)?;
         evald_args.push(Spanned {
-            value: Expr::from(val).into(), // FIX: wrap Expr in Arc via .into()
+            value: Expr::from(val).into(),
             span: arg.span,
         });
         world = next_world;
@@ -835,7 +818,7 @@ pub fn eval_apply_list_arg(
     let list_items = items
         .into_iter()
         .map(|v| Spanned {
-            value: Expr::from(v).into(), // FIX: wrap Expr in Arc via .into()
+            value: Expr::from(v).into(),
             span: *parent_span,
         })
         .collect();
@@ -854,7 +837,7 @@ pub fn build_apply_call_expr(
     call_items.extend(normal_args);
     call_items.extend(list_args);
     Spanned {
-        value: Expr::List(call_items, *parent_span).into(), // FIX: wrap Expr in Arc via .into()
+        value: Expr::List(call_items, *parent_span).into(),
         span: *parent_span,
     }
 }

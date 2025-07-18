@@ -15,7 +15,7 @@
 
 use crate::ast::value::Value;
 use crate::atoms::StatefulAtomFn;
-use crate::atoms::helpers::{extract_path, validate_binary_arity, validate_unary_arity};
+use crate::atoms::helpers::{validate_binary_arity, validate_unary_arity, ExtractValue};
 use crate::err_msg;
 
 // ============================================================================
@@ -26,7 +26,7 @@ use crate::err_msg;
 /// `(core/set! <path> <value>)`
 pub const ATOM_CORE_SET: StatefulAtomFn = |args, context| {
     validate_binary_arity(args, "core/set!")?;
-    let path = &extract_path(&args[0])?;
+    let path = &args[0].extract()?;
     let value = args[1].clone();
     context.state.set(path, value);
     Ok(Value::Nil)
@@ -36,7 +36,7 @@ pub const ATOM_CORE_SET: StatefulAtomFn = |args, context| {
 /// `(core/get <path>)`
 pub const ATOM_CORE_GET: StatefulAtomFn = |args, context| {
     validate_unary_arity(args, "core/get")?;
-    let path = &extract_path(&args[0])?;
+    let path = &args[0].extract()?;
     let value = context.state.get(path).cloned().unwrap_or_default();
     Ok(value)
 };
@@ -45,7 +45,7 @@ pub const ATOM_CORE_GET: StatefulAtomFn = |args, context| {
 /// `(core/del! <path>)`
 pub const ATOM_CORE_DEL: StatefulAtomFn = |args, context| {
     validate_unary_arity(args, "core/del!")?;
-    let path = &extract_path(&args[0])?;
+    let path = &args[0].extract()?;
     context.state.del(path);
     Ok(Value::Nil)
 };
@@ -54,7 +54,7 @@ pub const ATOM_CORE_DEL: StatefulAtomFn = |args, context| {
 /// `(core/exists? <path>)`
 pub const ATOM_EXISTS: StatefulAtomFn = |args, context| {
     validate_unary_arity(args, "core/exists?")?;
-    let path = &extract_path(&args[0])?;
+    let path = &args[0].extract()?;
     let exists = context.state.get(path).is_some();
     Ok(Value::Bool(exists))
 };

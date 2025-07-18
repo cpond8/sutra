@@ -15,7 +15,7 @@
 
 use crate::ast::value::Value;
 use crate::atoms::PureAtomFn;
-use crate::atoms::helpers::{extract_number, validate_binary_arity, validate_min_arity, pure_eval_nary_numeric_op_custom, pure_eval_unary_typed_op};
+use crate::atoms::helpers::{validate_binary_arity, validate_min_arity, pure_eval_nary_numeric_op_custom, pure_eval_unary_typed_op, ExtractValue};
 use crate::err_msg;
 
 // ============================================================================
@@ -47,14 +47,15 @@ pub const ATOM_ADD: PureAtomFn = |args| {
 pub const ATOM_SUB: PureAtomFn = |args| {
     validate_min_arity(args, 1, "-")?;
 
-    let first = extract_number(&args[0])?;
+    let first: f64 = args[0].extract()?;
     if args.len() == 1 {
         return Ok(Value::Number(-first));
     }
 
     let mut result = first;
     for arg in args.iter().skip(1) {
-        result -= extract_number(arg)?;
+        let n: f64 = arg.extract()?;
+        result -= n;
     }
     Ok(Value::Number(result))
 };
@@ -85,7 +86,7 @@ pub const ATOM_MUL: PureAtomFn = |args| {
 pub const ATOM_DIV: PureAtomFn = |args| {
     validate_min_arity(args, 1, "/")?;
 
-    let first = extract_number(&args[0])?;
+    let first: f64 = args[0].extract()?;
     if args.len() == 1 {
         if first == 0.0 {
             return Err(err_msg!(Eval, "division by zero"));
@@ -95,7 +96,7 @@ pub const ATOM_DIV: PureAtomFn = |args| {
 
     let mut result = first;
     for arg in args.iter().skip(1) {
-        let n = extract_number(arg)?;
+        let n: f64 = arg.extract()?;
         if n == 0.0 {
             return Err(err_msg!(Eval, "division by zero"));
         }
@@ -117,8 +118,8 @@ pub const ATOM_DIV: PureAtomFn = |args| {
 /// Note: Errors on division by zero or non-integer input.
 pub const ATOM_MOD: PureAtomFn = |args| {
     validate_binary_arity(args, "mod")?;
-    let a = extract_number(&args[0])?;
-    let b = extract_number(&args[1])?;
+    let a: f64 = args[0].extract()?;
+    let b: f64 = args[1].extract()?;
 
     if b == 0.0 {
         return Err(err_msg!(Eval, "modulo by zero"));

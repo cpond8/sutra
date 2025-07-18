@@ -96,10 +96,12 @@ impl GrammarParser {
     fn collect_lines_until_complete(&self, lines: &[&str], state: &mut CollectionState) {
         while state.current_index < lines.len() {
             let current_line = lines[state.current_index];
-            state.definition.push_str(current_line);
+            // Remove inline comments before adding to definition
+            let cleaned_line = self.remove_inline_comment(current_line);
+            state.definition.push_str(&cleaned_line);
             state.definition.push('\n');
 
-            if let Some((new_brace_count, rule_started)) = self.process_line_braces(current_line, state.brace_count, state.in_rule) {
+            if let Some((new_brace_count, rule_started)) = self.process_line_braces(&cleaned_line, state.brace_count, state.in_rule) {
                 state.brace_count = new_brace_count;
                 state.in_rule = rule_started;
 
@@ -200,5 +202,13 @@ impl GrammarParser {
 
     fn is_empty_or_whitespace(&self, s: &str) -> bool {
         s.trim().is_empty()
+    }
+
+    fn remove_inline_comment(&self, line: &str) -> String {
+        if let Some(comment_pos) = line.find("//") {
+            line[..comment_pos].trim_end().to_string()
+        } else {
+            line.to_string()
+        }
     }
 }

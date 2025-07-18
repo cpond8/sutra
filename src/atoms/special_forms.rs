@@ -24,7 +24,7 @@ pub const ATOM_IF: SpecialFormAtomFn = |args, context, _span| {
 };
 
 /// Implements the (lambda ...) special form.
-pub const ATOM_LAMBDA: SpecialFormAtomFn = |args, _context, span| {
+pub const ATOM_LAMBDA: SpecialFormAtomFn = |args, context, span| {
     validate_special_form_min_arity(args, 2, "lambda")?;
     // Parse parameter list
     let param_list = match &*args[0].value {
@@ -62,7 +62,14 @@ pub const ATOM_LAMBDA: SpecialFormAtomFn = |args, _context, span| {
         Box::new(AstNode { value: std::sync::Arc::new(do_expr), span: *span })
     };
 
-    Ok((Value::Lambda(Rc::new(Lambda { params: param_list, body })), _context.world.clone()))
+    // Capture the current lexical environment by flattening all frames
+    let mut captured_env = std::collections::HashMap::new();
+    for frame in &context.lexical_env {
+        for (key, value) in frame {
+            captured_env.insert(key.clone(), value.clone());
+        }
+    }
+    Ok((Value::Lambda(Rc::new(Lambda { params: param_list, body, captured_env })), context.world.clone()))
 };
 
 /// Implements the (let ...) special form.
@@ -120,6 +127,11 @@ pub fn call_lambda(
     context: &mut crate::runtime::eval::EvaluationContext,
 ) -> Result<(Value, World), SutraError> {
     let mut new_context = context.clone_with_new_lexical_frame();
+
+    // Restore the captured lexical environment
+    for (key, value) in &lambda.captured_env {
+        new_context.set_lexical_var(key, value.clone());
+    }
 
     // Bind parameters
     let fixed = lambda.params.required.len();

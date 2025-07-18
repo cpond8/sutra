@@ -38,7 +38,7 @@ pub enum Value {
 pub struct Lambda {
     pub params: crate::ast::ParamList,      // Parameter names, variadic info
     pub body: Box<crate::ast::AstNode>,     // The function body (AST)
-    // Optionally: captured_env: LexicalEnv, // For closures (future)
+    pub captured_env: std::collections::HashMap<String, Value>, // Captured lexical environment
 }
 
 impl Value {

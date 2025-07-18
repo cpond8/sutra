@@ -41,8 +41,13 @@ impl ExecutionPipeline {
         let ast_nodes = crate::syntax::parser::parse(source)?;
 
         // Phase 2: Partition AST nodes: macro definitions vs user code
+        // Note: define forms are special forms that should be evaluated, not treated as macros
         let (macro_defs, user_code): (Vec<_>, Vec<_>) =
-            ast_nodes.into_iter().partition(is_macro_definition);
+            ast_nodes.into_iter().partition(|expr| {
+                // Only treat define forms as macros if they're in a macro context
+                // For now, we'll treat all define forms as special forms to be evaluated
+                false // Don't partition define forms as macros
+            });
 
         // Phase 3: Build canonical macro environment
         let mut env = build_canonical_macro_env()?;
@@ -115,5 +120,34 @@ impl ExecutionPipeline {
     ) -> Result<(crate::ast::value::Value, World), SutraError> {
         let atom_registry = crate::runtime::world::build_default_atom_registry();
         evaluate(expanded_ast, world, output, &atom_registry, source, self.max_depth)
+    }
+
+    /// Executes test code with proper macro expansion and special form preservation.
+    /// This method is specifically designed for test execution and ensures that
+    /// both macro expansion and special form evaluation work correctly.
+    pub fn execute_test(
+        &self,
+        test_body: &crate::ast::AstNode,
+        output: SharedOutput,
+    ) -> Result<(), SutraError> {
+        // Phase 1: Build canonical macro environment (includes null?, etc.)
+        let mut env = build_canonical_macro_env()?;
+
+        // Phase 2: Expand macros in the test body
+        let expanded = expand_macros_recursively(test_body.clone(), &mut env)?;
+
+        // Phase 3: Evaluate the expanded AST
+        let world = World::default();
+        let source = Arc::new(NamedSource::new("test", "".to_string()));
+        let atom_registry = crate::runtime::world::build_default_atom_registry();
+        let (result, _updated_world) =
+            evaluate(&expanded, &world, output.clone(), &atom_registry, source.clone(), self.max_depth)?;
+
+        // Phase 4: Output result (if not nil)
+        if !result.is_nil() {
+            output.emit(&result.to_string(), None);
+        }
+
+        Ok(())
     }
 }
