@@ -60,34 +60,38 @@ pub fn expand_macro_call(
 
     match macro_def {
         MacroDefinition::Template(template) => {
-            // Extract macro name from call node
-            let macro_name = if let Expr::List(items, _) = &*call.value {
-                if let Some(first) = items.first() {
-                    if let Expr::Symbol(s, _) = &*first.value {
-                        s
-                    } else {
-                        return Err(err_src!(
-                            Eval,
-                            "Macro call head must be a symbol",
-                            &env.source,
-                            first.span
-                        ));
-                    }
-                } else {
+            // Extract macro name from call node with guard clauses
+            let items = match &*call.value {
+                Expr::List(items, _) => items,
+                _ => {
                     return Err(err_src!(
                         Eval,
-                        "Macro call cannot be empty",
+                        "Macro call must be a list",
                         &env.source,
                         call.span
                     ));
                 }
-            } else {
-                return Err(err_src!(
+            };
+
+            let first = items.first().ok_or_else(|| {
+                err_src!(
                     Eval,
-                    "Macro call must be a list",
+                    "Macro call cannot be empty",
                     &env.source,
                     call.span
-                ));
+                )
+            })?;
+
+            let macro_name = match &*first.value {
+                Expr::Symbol(s, _) => s,
+                _ => {
+                    return Err(err_src!(
+                        Eval,
+                        "Macro call head must be a symbol",
+                        &env.source,
+                        first.span
+                    ));
+                }
             };
 
             expand_template(template, call, macro_name, depth, env)

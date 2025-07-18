@@ -2,42 +2,56 @@
 
 (test "car returns first element of list"
   (expect (= (car (list 1 2 3)) 1))
+  (car (list 1 2 3))
 
 (test "car returns first string element"
   (expect (= (car (list "a" "b")) "a"))
+  (car (list "a" "b"))
 
 (test "car errors on empty list"
   (expect (eq? (try (car (list))) (error "car: empty list")))
+  (car (list))
 
 (test "car errors on non-list argument"
   (expect (eq? (try (car 42)) (error "car expects a List, found 42")))
+  (car 42)
 
 (test "cdr returns tail of list"
   (expect (= (cdr (list 1 2 3)) (list 2 3)))
+  (cdr (list 1 2 3))
 
 (test "cdr returns tail with one element"
   (expect (= (cdr (list "a" "b")) (list "b")))
+  (cdr (list "a" "b"))
 
 (test "cdr errors on empty list"
   (expect (eq? (try (cdr (list))) (error "cdr: empty list")))
+  (cdr (list))
 
 (test "cdr errors on non-list argument"
   (expect (eq? (try (cdr 42)) (error "cdr expects a List, found 42")))
+  (cdr 42)
 
 (test "cons prepends element to list"
   (expect (= (cons 1 (list 2 3)) (list 1 2 3)))
+  (cons 1 (list 2 3))
 
 (test "cons prepends string to list"
   (expect (= (cons "a" (list "b" "c")) (list "a" "b" "c")))
+  (cons "a" (list "b" "c"))
 
 (test "cons errors if second argument is not a list"
   (expect (eq? (try (cons 1 2)) (error "cons expects second argument to be a List, found 2")))
+  (cons 1 2)
 
 (test "cons errors on wrong arity (one argument)"
   (expect (eq? (try (cons 1)) (error "cons expects 2 arguments, got 1")))
+  (cons 1)
 
 (test "car errors on wrong arity (no arguments)"
   (expect (eq? (try (car)) (error "car expects 1 argument, got 0")))
+  (car)
 
 (test "cdr errors on wrong arity (no arguments)"
   (expect (eq? (try (cdr)) (error "cdr expects 1 argument, got 0")))
+  (cdr)

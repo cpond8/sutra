@@ -99,7 +99,7 @@ impl ErrorContext {
 }
 
 /// Unified error type for all Sutra engine failure modes.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub enum SutraError {
     #[error("Parse error: {message}")]
     Parse {

@@ -180,7 +180,7 @@
 ;; test: Define test case
 ;; (test "name" (expect ...) body...)
 (define (test name expect ...rest)
-  (register-test! name expect (list ...rest) (core/map ":span" (list 0 0) ":file" "test.sutra")))
+  (register-test! name expect ...rest (core/map ":span" (list 0 0) ":file" "test.sutra")))
 
 ;; expect: Declare test expectations
 ;; (expect ...args)

@@ -55,6 +55,24 @@ use std::collections::HashMap;
 #[grammar = "syntax/grammar.pest"]
 struct SutraParser;
 
+/// Convert pest parse errors to user-friendly SutraError messages
+fn improve_parse_error_message(msg: &str) -> (String, Option<String>) {
+    if msg.contains("expected list_elem") || msg.contains("expected ')'") {
+        ("Unmatched or missing closing parenthesis ')'".to_string(),
+         Some("Check for missing or extra parentheses in your code.".to_string()))
+    } else if msg.contains("expected '}'") || msg.contains("expected block") ||
+              (msg.contains("expected expr") && msg.contains("{")) {
+        ("Unmatched or missing closing brace '}'".to_string(),
+         Some("Check for missing or extra braces in your code.".to_string()))
+    } else if msg.contains("expected string") || msg.contains("expected '\"'") ||
+              (msg.contains("expected program") && msg.contains("\"")) {
+        ("Unmatched or missing closing quote '\"'".to_string(),
+         Some("Check for missing or extra quotes in your code.".to_string()))
+    } else {
+        (msg.to_string(), None)
+    }
+}
+
 /// Parses a source string into a vector of top-level Sutra `Expr` AST nodes.
 ///
 /// This function is the sole public entry point to the parser. It is purely
@@ -74,7 +92,14 @@ pub fn parse(source: &str) -> Result<Vec<AstNode>, SutraError> {
             pest::error::InputLocation::Pos(pos) => Span { start: pos, end: pos },
             pest::error::InputLocation::Span((start, end)) => Span { start, end },
         };
-        err_ctx!(Parse, e.to_string(), source, span)
+                let msg = e.to_string();
+        let (custom_msg, help) = improve_parse_error_message(&msg);
+
+        if let Some(help_msg) = help {
+            err_ctx!(Parse, custom_msg, source, span, help_msg)
+        } else {
+            err_ctx!(Parse, custom_msg, source, span)
+        }
     })?;
 
     // The `program` rule is guaranteed to have one inner pair (itself) if parsing succeeds.

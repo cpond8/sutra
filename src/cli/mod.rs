@@ -11,12 +11,14 @@ use crate::err_msg;
 use crate::macros::{is_macro_definition, parse_macro_definition};
 use crate::macros::{expand_macros_recursively, MacroDefinition, MacroRegistry};
 use crate::runtime::world::build_canonical_macro_env;
+use crate::testing::discovery::TestDiscoverer;
 use crate::SutraError;
 use clap::Parser;
 use termcolor::WriteColor;
 use std::rc::Rc;
 use std::cell::RefCell;
 use crate::atoms::SharedOutput;
+use std::io::Write;
 
 pub mod args;
 pub mod output;
@@ -98,20 +100,31 @@ fn load_file_to_ast(path: &std::path::Path) -> Result<(String, Vec<AstNode>), Su
 
 /// Wraps AST nodes in a (do ...) if needed.
 fn wrap_in_do_if_needed(ast_nodes: Vec<AstNode>, source: &str) -> AstNode {
+    // Early return for single node
     if ast_nodes.len() == 1 {
         return ast_nodes.into_iter().next().unwrap();
     }
+
+    // Create do wrapper for multiple nodes
+    create_do_wrapper(ast_nodes, source)
+}
+
+/// Creates a (do ...) wrapper around multiple AST nodes.
+fn create_do_wrapper(ast_nodes: Vec<AstNode>, source: &str) -> AstNode {
     let span = Span {
         start: 0,
         end: source.len(),
     };
+
     let do_symbol = Spanned {
-        value: Expr::Symbol("do".to_string(), span).into(), // FIX: wrap Expr in Arc via .into()
+        value: Expr::Symbol("do".to_string(), span).into(),
         span,
     };
+
     let mut items = Vec::with_capacity(ast_nodes.len() + 1);
     items.push(do_symbol);
     items.extend(ast_nodes);
+
     Spanned {
         value: Expr::List(items, span).into(),
         span,
@@ -229,6 +242,266 @@ pub enum TestResult {
     Error { message: String },
 }
 
+/// Test execution summary statistics.
+#[derive(Debug, Default)]
+struct TestSummary {
+    passed: usize,
+    failed: usize,
+    skipped: usize,
+    errored: usize,
+}
+
+/// Discovers test files in the given directory.
+fn discover_test_files(path: &std::path::Path) -> Result<Vec<std::path::PathBuf>, SutraError> {
+    TestDiscoverer::discover_test_files(path)
+}
+
+/// Registers tests from all discovered files.
+fn register_tests_from_files(
+    test_files: &[std::path::PathBuf],
+    error_log: &mut Option<std::fs::File>,
+) -> Result<(Vec<(String, SutraError)>, std::collections::HashMap<String, usize>), SutraError> {
+    use std::collections::HashMap;
+
+    let mut registration_errors = Vec::new();
+    let mut tests_per_file = HashMap::new();
+
+    for file_path in test_files {
+        let file_display = file_path.display().to_string();
+        let registration_result = register_tests_from_single_file(file_path, &file_display, &mut registration_errors);
+
+        match registration_result {
+            Ok(registered) => {
+                tests_per_file.insert(file_display.clone(), registered);
+                print_success_message(&file_display, registered, error_log);
+            }
+            Err(e) => {
+                print_file_error_message(&file_display, &e);
+                registration_errors.push((format!("{} (file-level)", file_display), e));
+            }
+        }
+    }
+
+    Ok((registration_errors, tests_per_file))
+}
+
+/// Registers tests from a single file.
+fn register_tests_from_single_file(
+    file_path: &std::path::Path,
+    file_display: &str,
+    registration_errors: &mut Vec<(String, SutraError)>,
+) -> Result<usize, SutraError> {
+    let (_source, _ast_nodes) = load_file_to_ast(file_path)?;
+
+    let test_forms = match TestDiscoverer::extract_tests_from_file(file_path) {
+        Ok(forms) => forms,
+        Err(e) => {
+            registration_errors.push((format!("{} (file-level)", file_display), e));
+            return Ok(0);
+        }
+    };
+
+    let mut registered = 0;
+    for (test_idx, test_form) in test_forms.iter().enumerate() {
+        match register_single_test(test_form, test_idx, file_display) {
+            Ok(_) => registered += 1,
+            Err(e) => {
+                registration_errors.push((format!("{} (test #{})", file_display, test_idx + 1), e));
+            }
+        }
+    }
+
+    Ok(registered)
+}
+
+/// Registers a single test form.
+fn register_single_test(
+    test_form: &crate::testing::discovery::RawTestDefinition,
+    test_idx: usize,
+    file_display: &str,
+) -> Result<(), SutraError> {
+
+    let test_node = build_test_ast_node(test_form);
+    let pipeline = ExecutionPipeline::default();
+    let test_source = test_node.value.pretty();
+    let output = SharedOutput(Rc::new(RefCell::new(crate::cli::output::OutputBuffer::new())));
+
+    match pipeline.execute(&test_source, output) {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            print_test_error_message(test_idx, file_display, &e);
+            Err(e)
+        }
+    }
+}
+
+/// Builds an AST node for a test form.
+fn build_test_ast_node(test_form: &crate::testing::discovery::RawTestDefinition) -> AstNode {
+    let mut items = vec![
+        AstNode {
+            value: std::sync::Arc::new(Expr::Symbol("test".to_string(), test_form.span)),
+            span: test_form.span,
+        },
+        AstNode {
+            value: std::sync::Arc::new(Expr::String(test_form.name.clone(), test_form.span)),
+            span: test_form.span,
+        },
+    ];
+
+    if let Some(expect) = &test_form.expect_form {
+        items.push(expect.clone());
+    }
+    items.extend(test_form.body.clone());
+
+    AstNode {
+        value: std::sync::Arc::new(Expr::List(items, test_form.span)),
+        span: test_form.span,
+    }
+}
+
+/// Gets all registered tests from the test registry.
+fn get_registered_tests() -> Result<Vec<crate::atoms::test::TestDefinition>, SutraError> {
+    use crate::atoms::test::TEST_REGISTRY;
+
+    let registry = TEST_REGISTRY.lock().unwrap();
+    let test_definitions: Vec<_> = registry.values().cloned().collect();
+    drop(registry); // Release lock before execution
+
+    Ok(test_definitions)
+}
+
+/// Executes all registered tests and returns summary statistics.
+fn execute_all_tests(test_definitions: &[crate::atoms::test::TestDefinition]) -> TestSummary {
+    let mut summary = TestSummary::default();
+    let mut stdout = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
+
+    for test_def in test_definitions {
+        let test_name = &test_def.name;
+        let file_info = test_def.file.as_deref().unwrap_or("unknown");
+
+        match execute_single_test(test_def) {
+            Ok(_) => {
+                summary.passed += 1;
+                print_test_pass(&mut stdout, test_name, file_info);
+            }
+            Err(e) => {
+                summary.errored += 1;
+                print_test_error(&mut stdout, test_name, file_info, &e);
+            }
+        }
+    }
+
+    summary
+}
+
+/// Executes a single test and returns the result.
+fn execute_single_test(test_def: &crate::atoms::test::TestDefinition) -> Result<(), SutraError> {
+    let pipeline = ExecutionPipeline::default();
+    let output_buffer = Rc::new(RefCell::new(crate::cli::output::OutputBuffer::new()));
+    let output = SharedOutput(output_buffer.clone());
+
+    let body_source = build_test_body_source(test_def);
+    pipeline.execute(&body_source, output)
+}
+
+/// Builds source code for test body execution.
+fn build_test_body_source(test_def: &crate::atoms::test::TestDefinition) -> String {
+    if test_def.body.is_empty() {
+        return "nil".to_string();
+    }
+
+    let items: Vec<_> = test_def.body.iter()
+        .map(|node| node.value.pretty())
+        .collect();
+    format!("(do {})", items.join(" "))
+}
+
+/// Prints test summary statistics.
+fn print_test_summary(summary: &TestSummary) {
+    let mut stdout = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
+
+    println!("\nTest Summary:");
+    println!("=============");
+
+    if summary.passed > 0 {
+        set_output_color(&mut stdout, termcolor::Color::Green, true);
+        println!("  PASSED: {}", summary.passed);
+    }
+    if summary.failed > 0 {
+        set_output_color(&mut stdout, termcolor::Color::Red, true);
+        println!("  FAILED: {}", summary.failed);
+    }
+    if summary.skipped > 0 {
+        set_output_color(&mut stdout, termcolor::Color::Yellow, true);
+        println!("  SKIPPED: {}", summary.skipped);
+    }
+    if summary.errored > 0 {
+        set_output_color(&mut stdout, termcolor::Color::Red, true);
+        println!("  ERRORED: {}", summary.errored);
+    }
+    reset_output_color(&mut stdout);
+}
+
+/// Prints a success message for test registration.
+fn print_success_message(file_display: &str, registered: usize, error_log: &mut Option<std::fs::File>) {
+    use termcolor::{Color, ColorSpec, WriteColor};
+
+    let mut stdout = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
+    let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green)).set_bold(true));
+    let _ = writeln!(stdout, "[OK] Registered {} test(s) from file: {}", registered, file_display);
+    let _ = stdout.reset();
+
+    if let Some(log) = error_log.as_mut() {
+        let _ = writeln!(log, "[OK] Registered {} test(s) from file: {}", registered, file_display);
+    }
+}
+
+/// Prints an error message for file processing failures.
+fn print_file_error_message(file_display: &str, error: &SutraError) {
+    use termcolor::{Color, ColorSpec, WriteColor};
+
+    let mut stderr = termcolor::StandardStream::stderr(termcolor::ColorChoice::Auto);
+    let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true));
+    let _ = writeln!(stderr, "\n[ERROR] Failed to process file: {}\n----------------------------------------", file_display);
+    let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::White)).set_bold(false));
+    let _ = writeln!(stderr, "{}", error);
+    let _ = stderr.reset();
+}
+
+/// Prints an error message for test execution failures during registration.
+fn print_test_error_message(test_idx: usize, file_display: &str, error: &SutraError) {
+    use termcolor::{Color, ColorSpec, WriteColor};
+
+    let mut stderr = termcolor::StandardStream::stderr(termcolor::ColorChoice::Auto);
+    let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true));
+    let _ = writeln!(stderr, "\n[ERROR] Failed to execute test #{} in file: {}\n----------------------------------------", test_idx + 1, file_display);
+    let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::White)).set_bold(false));
+    let _ = writeln!(stderr, "{}", error);
+    let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Yellow)).set_bold(false));
+    let _ = writeln!(stderr, "Suggestion: Check for execution errors in this test form.");
+    let _ = stderr.reset();
+}
+
+/// Prints a test pass message.
+fn print_test_pass(stdout: &mut termcolor::StandardStream, test_name: &str, file_info: &str) {
+    use termcolor::{Color, ColorSpec, WriteColor};
+
+    let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green)).set_bold(true));
+    let _ = writeln!(stdout, "[PASS] {} ({})", test_name, file_info);
+    let _ = stdout.reset();
+}
+
+/// Prints a test error message.
+fn print_test_error(stdout: &mut termcolor::StandardStream, test_name: &str, file_info: &str, error: &SutraError) {
+    use termcolor::{Color, ColorSpec, WriteColor};
+
+    let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true));
+    let _ = writeln!(stdout, "[ERROR] {} ({})", test_name, file_info);
+    let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::White)).set_bold(false));
+    let _ = writeln!(stdout, "  Error: {}", error);
+    let _ = stdout.reset();
+}
+
 // ============================================================================
 // COMMAND HANDLERS - CLI command implementations organized by functional area
 // ============================================================================
@@ -260,30 +533,51 @@ fn handle_ast(path: &std::path::Path) -> Result<(), SutraError> {
 /// Handles the `validate` subcommand.
 fn handle_validate() -> Result<(), SutraError> {
     use crate::validation::grammar::validate_grammar;
-    use std::fs;
+
     let grammar_path = "src/syntax/grammar.pest";
     let validation_result = validate_grammar(grammar_path)
         .map_err(|e| err_ctx!(Internal, "Failed to validate grammar: {}", e.to_string()))?;
 
+    // Early return on validation failure
     if !validation_result.is_valid() {
-        let grammar_source = fs::read_to_string(grammar_path).unwrap_or_default();
-        let error = err_ctx!(Validation, "Grammar validation failed", grammar_source);
-        eprintln!("{}", error);
-        for err in &validation_result.errors {
-            eprintln!("  • {}", err);
-        }
-        std::process::exit(1);
+        return handle_validation_failure(grammar_path, &validation_result);
     }
 
-    for warning in &validation_result.warnings {
-        eprintln!("[Warning] {}", warning);
-    }
-    for suggestion in &validation_result.suggestions {
-        eprintln!("[Suggestion] {}", suggestion);
-    }
+    // Print warnings and suggestions
+    print_validation_warnings(&validation_result);
+    print_validation_suggestions(&validation_result);
 
     println!("Grammar validation passed");
     Ok(())
+}
+
+/// Handles validation failure by printing errors and exiting.
+fn handle_validation_failure(grammar_path: &str, validation_result: &crate::validation::grammar::ValidationResult) -> Result<(), SutraError> {
+    use std::fs;
+
+    let grammar_source = fs::read_to_string(grammar_path).unwrap_or_default();
+    let error = err_ctx!(Validation, "Grammar validation failed", grammar_source);
+    eprintln!("{}", error);
+
+    for err in &validation_result.errors {
+        eprintln!("  • {}", err);
+    }
+
+    std::process::exit(1);
+}
+
+/// Prints validation warnings.
+fn print_validation_warnings(validation_result: &crate::validation::grammar::ValidationResult) {
+    for warning in &validation_result.warnings {
+        eprintln!("[Warning] {}", warning);
+    }
+}
+
+/// Prints validation suggestions.
+fn print_validation_suggestions(validation_result: &crate::validation::grammar::ValidationResult) {
+    for suggestion in &validation_result.suggestions {
+        eprintln!("[Suggestion] {}", suggestion);
+    }
 }
 
 /// Handles the `macroexpand` subcommand.
@@ -374,10 +668,6 @@ fn handle_list_atoms() -> Result<(), SutraError> {
 /// Handles the `test` subcommand using the unified execution pipeline.
 pub fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
     use std::fs::OpenOptions;
-    use std::io::Write as IoWrite;
-    use std::collections::HashMap;
-    use termcolor::{Color, ColorSpec, WriteColor};
-    use crate::diagnostics::SutraError;
 
     // Prepare error log file
     let mut error_log = OpenOptions::new()
@@ -387,8 +677,8 @@ pub fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
         .open("sutra-test-errors.log")
         .ok();
 
-    // Discover all .sutra files in the directory
-    let test_files = TestDiscoverer::discover_test_files(path)?;
+    // Discover and validate test files
+    let test_files = discover_test_files(path)?;
     if test_files.is_empty() {
         println!("No .sutra test files found in {}", path.display());
         return Ok(());
@@ -396,224 +686,27 @@ pub fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
 
     println!("Discovered {} test file(s)", test_files.len());
 
-    // Process each file to register tests via macro expansion using the unified pipeline
-    let mut registration_errors = Vec::new();
-    let mut tests_per_file = HashMap::new();
-    for file_path in &test_files {
-        let file_display = file_path.display().to_string();
-        let registration_result = (|| {
-            let (_source, _ast_nodes) = load_file_to_ast(file_path)?;
-            // Extract all test forms from the file
-            let test_forms = match TestDiscoverer::extract_tests_from_file(file_path) {
-                Ok(forms) => forms,
-                Err(e) => {
-                    registration_errors.push((format!("{} (file-level)", file_display), e));
-                    return Ok(0);
-                }
-            };
-            let mut registered = 0;
-            for (test_idx, test_form) in test_forms.iter().enumerate() {
-                // Reconstruct the (test ...) AST node from RawTestDefinition
-                let mut items = vec![
-                    crate::ast::AstNode {
-                        value: std::sync::Arc::new(crate::ast::Expr::Symbol("test".to_string(), test_form.span)),
-                        span: test_form.span,
-                    },
-                    crate::ast::AstNode {
-                        value: std::sync::Arc::new(crate::ast::Expr::String(test_form.name.clone(), test_form.span)),
-                        span: test_form.span,
-                    },
-                ];
-                if let Some(expect) = &test_form.expectation {
-                    items.push(expect.clone());
-                }
-                items.extend(test_form.body.clone());
-                let test_node = crate::ast::AstNode {
-                    value: std::sync::Arc::new(crate::ast::Expr::List(items, test_form.span)),
-                    span: test_form.span,
-                };
+    // Register tests from all files
+    let (_registration_errors, _tests_per_file) = register_tests_from_files(&test_files, &mut error_log)?;
 
-                // Use the canonical engine pipeline for test execution (no bypass)
-                let pipeline = ExecutionPipeline::default();
-                let test_source = test_node.value.pretty();
-                let output = SharedOutput(Rc::new(RefCell::new(crate::cli::output::OutputBuffer::new())));
-                match pipeline.execute(&test_source, output) {
-                    Ok(_) => {
-                        registered += 1;
-                    }
-                    Err(e) => {
-                        // Error handling for test execution failures
-                        let mut stderr = termcolor::StandardStream::stderr(termcolor::ColorChoice::Auto);
-                        let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true));
-                        let _ = writeln!(stderr, "\n[ERROR] Failed to execute test #{} in file: {}\n----------------------------------------", test_idx + 1, file_display);
-                        let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::White)).set_bold(false));
-                        let _ = writeln!(stderr, "{}", e);
-                        let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Yellow)).set_bold(false));
-                        let _ = writeln!(stderr, "Suggestion: Check for execution errors in this test form.");
-                        let _ = stderr.reset();
-                        registration_errors.push((format!("{} (test #{})", file_display, test_idx + 1), e));
-                    }
-                }
-            }
-            Ok::<usize, SutraError>(registered)
-        })();
-        match registration_result {
-            Ok(registered) => {
-                tests_per_file.insert(file_display.clone(), registered);
-                let mut stdout = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
-                let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green)).set_bold(true));
-                let _ = writeln!(stdout, "[OK] Registered {} test(s) from file: {}", registered, file_display);
-                let _ = stdout.reset();
-                if let Some(log) = error_log.as_mut() {
-                    let _ = writeln!(log, "[OK] Registered {} test(s) from file: {}", registered, file_display);
-                }
-            }
-            Err(e) => {
-                // This should not happen, but if it does, treat as a file-level error
-                let mut stderr = termcolor::StandardStream::stderr(termcolor::ColorChoice::Auto);
-                let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true));
-                let _ = writeln!(stderr, "\n[ERROR] Failed to process file: {}\n----------------------------------------", file_display);
-                let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::White)).set_bold(false));
-                let _ = writeln!(stderr, "{}", e);
-                let _ = stderr.reset();
-                registration_errors.push((format!("{} (file-level)", file_display), e));
-                continue;
-            }
-        }
-    }
-
-    // Execute all registered tests using the unified pipeline
-    if tests_per_file.is_empty() {
+    // Execute registered tests
+    let test_definitions = get_registered_tests()?;
+    if test_definitions.is_empty() {
         println!("No tests were registered successfully.");
         return Ok(());
     }
 
-    println!("\nExecuting {} registered test(s)...", tests_per_file.values().sum::<usize>());
-    let mut stdout = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
-    let failed = 0;
-    let skipped = 0;
-    let errored = 0;
+    println!("\nExecuting {} registered test(s)...", test_definitions.len());
+    let test_results = execute_all_tests(&test_definitions);
 
-    // For now, just report that tests were processed
-    for (file, count) in &tests_per_file {
-        println!("Processed {} test(s) from {}", count, file);
-    }
+    // Print summary and return result
+    print_test_summary(&test_results);
 
-    // Print summary
-    println!("\nTest Summary:");
-    println!("=============");
-    if failed > 0 {
-        set_output_color(&mut stdout, termcolor::Color::Red, true);
-        println!("  FAILED: {}", failed);
-    }
-    if skipped > 0 {
-        set_output_color(&mut stdout, termcolor::Color::Yellow, true);
-        println!("  SKIPPED: {}", skipped);
-    }
-    if errored > 0 {
-        set_output_color(&mut stdout, termcolor::Color::Red, true);
-        println!("  ERRORED: {}", errored);
-    }
-    reset_output_color(&mut stdout);
-
-    if failed > 0 || errored > 0 {
+    if test_results.failed > 0 || test_results.errored > 0 {
         return Err(err_msg!(Internal, "Some tests failed"));
     }
 
     Ok(())
 }
 
-// ============================================================================
-// TEST DISCOVERY - Test file discovery and parsing infrastructure
-// ============================================================================
 
-/// Test discovery and parsing infrastructure.
-pub struct TestDiscoverer;
-
-impl TestDiscoverer {
-    /// Discovers all .sutra test files in the given directory.
-    pub fn discover_test_files(path: &std::path::Path) -> Result<Vec<std::path::PathBuf>, SutraError> {
-        use std::fs;
-        let mut test_files = Vec::new();
-
-        if path.is_file() {
-            if path.extension().and_then(|s| s.to_str()) == Some("sutra") {
-                test_files.push(path.to_path_buf());
-            }
-        } else if path.is_dir() {
-            for entry in fs::read_dir(path)
-                .map_err(|e| err_ctx!(Internal, "Failed to read directory: {}", e.to_string()))?
-            {
-                let entry = entry
-                    .map_err(|e| err_ctx!(Internal, "Failed to read directory entry: {}", e.to_string()))?;
-                let path = entry.path();
-                if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("sutra") {
-                    test_files.push(path);
-                }
-            }
-        }
-
-        Ok(test_files)
-    }
-
-    /// Extracts test definitions from a file.
-    pub fn extract_tests_from_file(path: &std::path::Path) -> Result<Vec<RawTestDefinition>, SutraError> {
-        use crate::ast::Expr;
-        let (_source, ast_nodes) = load_file_to_ast(path)?;
-        let mut tests = Vec::new();
-
-        for node in ast_nodes {
-            if let Expr::List(items, span) = &*node.value {
-                if items.len() >= 2 {
-                    if let Expr::Symbol(symbol, _) = &*items[0].value {
-                        if symbol == "test" {
-                            if let Expr::String(test_name, _) = &*items[1].value {
-                                let mut test_def = RawTestDefinition {
-                                    name: test_name.clone(),
-                                    body: Vec::new(),
-                                    expectation: None,
-                                    span: *span,
-                                };
-
-                                // Parse optional expectation
-                                if items.len() >= 3 {
-                                    if let Expr::List(expect_items, _) = &*items[2].value {
-                                        if !expect_items.is_empty() {
-                                            if let Expr::Symbol(expect_symbol, _) = &*expect_items[0].value {
-                                                if expect_symbol.starts_with("expect") {
-                                                    test_def.expectation = Some(items[2].clone());
-                                                    test_def.body = items[3..].to_vec();
-                                                } else {
-                                                    test_def.body = items[2..].to_vec();
-                                                }
-                                            } else {
-                                                test_def.body = items[2..].to_vec();
-                                            }
-                                        } else {
-                                            test_def.body = items[2..].to_vec();
-                                        }
-                                    } else {
-                                        test_def.body = items[2..].to_vec();
-                                    }
-                                }
-
-                                tests.push(test_def);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(tests)
-    }
-}
-
-/// Raw test definition extracted from AST.
-#[derive(Debug)]
-pub struct RawTestDefinition {
-    pub name: String,
-    pub body: Vec<crate::ast::AstNode>,
-    pub expectation: Option<crate::ast::AstNode>,
-    pub span: crate::ast::Span,
-}

@@ -55,10 +55,10 @@ fn register_test_atom(
     ctx: &mut EvaluationContext,
     span: &Span,
 ) -> Result<(Value, World), SutraError> {
-    if args.len() != 4 {
+    if args.len() < 4 {
         return Err(err_src!(
             Validation,
-            "Expected 4 arguments",
+            "Expected at least 4 arguments (name, expect, metadata, and at least one body expression)",
             &ctx.source,
             *span
         ));
@@ -77,19 +77,10 @@ fn register_test_atom(
     };
 
     let expect = args[1].clone();
-    let body = match &*args[2].value {
-        Expr::List(l, _) => l.clone(),
-        _ => {
-            return Err(err_src!(
-                Validation,
-                "Test body must be a list of expressions",
-                &ctx.source,
-                args[2].span
-            ));
-        }
-    };
+    // The body arguments are passed directly as individual arguments, not as a list
+    let body = args[2..args.len()-1].to_vec();
 
-    let (metadata_val, _) = evaluate_ast_node(&args[3], ctx)?;
+    let (metadata_val, _) = evaluate_ast_node(&args[args.len()-1], ctx)?;
     let metadata = match metadata_val.as_map() {
         Some(m) => m,
         _ => {
