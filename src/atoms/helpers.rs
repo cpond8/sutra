@@ -1,4 +1,3 @@
-//!
 //! This module provides the shared infrastructure used by all atom implementations.
 //! It contains argument evaluation, type extraction, operation templates, and error
 //! construction utilities.
@@ -22,6 +21,24 @@ use crate::{
 
 /// Convenient type alias for atom return values - modern Rust idiom
 pub type AtomResult = Result<(Value, World), SutraError>;
+
+/// Type alias for evaluation context to reduce verbosity
+pub type EvalContext<'a> = &'a mut EvaluationContext<'a>;
+
+/// Type alias for pure atom functions that only return values
+pub type PureResult = Result<Value, SutraError>;
+
+/// Type alias for functions that return multiple values with world state
+pub type MultiValueResult = Result<(Vec<Value>, World), SutraError>;
+
+/// Type alias for functions that return typed arrays with world state
+pub type ArrayResult<const N: usize> = Result<([Value; N], World), SutraError>;
+
+/// Type alias for binary operations returning two values and world
+pub type BinaryResult = Result<(Value, Value, World), SutraError>;
+
+/// Type alias for validation functions that return unit
+pub type ValidationResult = Result<(), SutraError>;
 
 // ============================================================================
 // TRAIT-BASED TYPE EXTRACTION
@@ -109,10 +126,7 @@ pub use sub_eval_context;
 
 /// Evaluates all arguments in sequence, threading world state through each evaluation.
 /// This is the fundamental building block for all multi-argument atom operations.
-pub fn eval_args(
-    args: &[AstNode],
-    context: &mut EvaluationContext<'_>,
-) -> Result<(Vec<Value>, World), SutraError> {
+pub fn eval_args(args: &[AstNode], context: &mut EvaluationContext<'_>) -> MultiValueResult {
     args.iter().try_fold(
         (Vec::with_capacity(args.len()), context.world.clone()),
         |(mut values, world), arg| {
@@ -128,7 +142,7 @@ pub fn eval_args(
 pub fn eval_n_args<const N: usize>(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
-) -> Result<([Value; N], World), SutraError> {
+) -> ArrayResult<N> {
     if args.len() != N {
         return Err(err_msg!(Eval, "Arity error"));
     }
@@ -156,19 +170,13 @@ pub fn eval_n_args<const N: usize>(
 }
 
 /// Evaluates a single argument and returns the value and world
-pub fn eval_single_arg(
-    args: &[AstNode],
-    context: &mut EvaluationContext<'_>,
-) -> Result<(Value, World), SutraError> {
+pub fn eval_single_arg(args: &[AstNode], context: &mut EvaluationContext<'_>) -> AtomResult {
     let ([val], world) = eval_n_args::<1>(args, context)?;
     Ok((val, world))
 }
 
 /// Evaluates two arguments and returns both values and the final world
-pub fn eval_binary_args(
-    args: &[AstNode],
-    context: &mut EvaluationContext<'_>,
-) -> Result<(Value, Value, World), SutraError> {
+pub fn eval_binary_args(args: &[AstNode], context: &mut EvaluationContext<'_>) -> BinaryResult {
     let ([val1, val2], world) = eval_n_args::<2>(args, context)?;
     Ok((val1, val2, world))
 }
@@ -201,7 +209,7 @@ pub fn extract_numbers(val1: &Value, val2: &Value) -> Result<(f64, f64), SutraEr
 /// ```ignore
 /// validate_arity(args, 2, "eq?")?;
 /// ```
-pub fn validate_arity(args: &[Value], expected: usize, atom_name: &str) -> Result<(), SutraError> {
+pub fn validate_arity(args: &[Value], expected: usize, atom_name: &str) -> ValidationResult {
     if args.len() != expected {
         let msg = format!(
             "{} expects {} arguments, got {}",
@@ -234,7 +242,7 @@ pub fn validate_min_arity(
     args: &[Value],
     min_expected: usize,
     atom_name: &str,
-) -> Result<(), SutraError> {
+) -> ValidationResult {
     if args.len() < min_expected {
         let msg = format!(
             "{} expects at least {} arguments, got {}",
@@ -262,7 +270,7 @@ pub fn validate_min_arity(
 /// ```ignore
 /// validate_unary_arity(args, "abs")?;
 /// ```
-pub fn validate_unary_arity(args: &[Value], atom_name: &str) -> Result<(), SutraError> {
+pub fn validate_unary_arity(args: &[Value], atom_name: &str) -> ValidationResult {
     validate_arity(args, 1, atom_name)
 }
 
@@ -281,7 +289,7 @@ pub fn validate_unary_arity(args: &[Value], atom_name: &str) -> Result<(), Sutra
 /// ```ignore
 /// validate_binary_arity(args, "eq?")?;
 /// ```
-pub fn validate_binary_arity(args: &[Value], atom_name: &str) -> Result<(), SutraError> {
+pub fn validate_binary_arity(args: &[Value], atom_name: &str) -> ValidationResult {
     validate_arity(args, 2, atom_name)
 }
 
@@ -300,7 +308,7 @@ pub fn validate_binary_arity(args: &[Value], atom_name: &str) -> Result<(), Sutr
 /// ```ignore
 /// validate_sequence_arity(args, "eq?")?;
 /// ```
-pub fn validate_sequence_arity(args: &[Value], atom_name: &str) -> Result<(), SutraError> {
+pub fn validate_sequence_arity(args: &[Value], atom_name: &str) -> ValidationResult {
     validate_min_arity(args, 2, atom_name)
 }
 
@@ -319,7 +327,7 @@ pub fn validate_sequence_arity(args: &[Value], atom_name: &str) -> Result<(), Su
 /// ```ignore
 /// validate_even_arity(args, "core/map")?;
 /// ```
-pub fn validate_even_arity(args: &[Value], atom_name: &str) -> Result<(), SutraError> {
+pub fn validate_even_arity(args: &[Value], atom_name: &str) -> ValidationResult {
     if args.len() % 2 != 0 {
         let msg = format!(
             "{} expects an even number of arguments, got {}",
@@ -346,7 +354,7 @@ pub fn validate_even_arity(args: &[Value], atom_name: &str) -> Result<(), SutraE
 /// ```ignore
 /// validate_zero_arity(args, "rand")?;
 /// ```
-pub fn validate_zero_arity(args: &[Value], atom_name: &str) -> Result<(), SutraError> {
+pub fn validate_zero_arity(args: &[Value], atom_name: &str) -> ValidationResult {
     if !args.is_empty() {
         let msg = format!("{} expects 0 arguments, got {}", atom_name, args.len());
         return Err(err_msg!(Eval, msg));
@@ -374,7 +382,7 @@ pub fn validate_special_form_arity(
     args: &[AstNode],
     expected: usize,
     atom_name: &str,
-) -> Result<(), SutraError> {
+) -> ValidationResult {
     if args.len() != expected {
         let msg = format!(
             "{} expects exactly {} arguments, got {}",
@@ -407,7 +415,7 @@ pub fn validate_special_form_min_arity(
     args: &[AstNode],
     min_expected: usize,
     atom_name: &str,
-) -> Result<(), SutraError> {
+) -> ValidationResult {
     if args.len() < min_expected {
         let msg = format!(
             "{} expects at least {} arguments, got {}",
@@ -431,7 +439,7 @@ pub fn eval_binary_numeric_template<F, V>(
     context: &mut EvaluationContext<'_>,
     op: F,
     validator: Option<V>,
-) -> Result<(Value, World), SutraError>
+) -> AtomResult
 where
     F: Fn(f64, f64) -> Value,
     V: Fn(f64, f64) -> Result<(), &'static str>,
@@ -453,7 +461,7 @@ pub fn eval_nary_numeric_template<F>(
     context: &mut EvaluationContext<'_>,
     init: f64,
     fold: F,
-) -> Result<(Value, World), SutraError>
+) -> AtomResult
 where
     F: Fn(f64, f64) -> f64,
 {
@@ -478,7 +486,7 @@ pub fn eval_unary_bool_template<F>(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
     op: F,
-) -> Result<(Value, World), SutraError>
+) -> AtomResult
 where
     F: Fn(bool) -> Value,
 {
@@ -493,9 +501,9 @@ pub fn eval_unary_path_template<F>(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
     op: F,
-) -> Result<(Value, World), SutraError>
+) -> AtomResult
 where
-    F: Fn(Path, World) -> Result<(Value, World), SutraError>,
+    F: Fn(Path, World) -> AtomResult,
 {
     let (val, world) = eval_single_arg(args, context)?;
     let path = val.extract()?;
@@ -508,9 +516,9 @@ pub fn eval_binary_path_template<F>(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
     op: F,
-) -> Result<(Value, World), SutraError>
+) -> AtomResult
 where
-    F: Fn(Path, Value, World) -> Result<(Value, World), SutraError>,
+    F: Fn(Path, Value, World) -> AtomResult,
 {
     let (path_val, value, world) = eval_binary_args(args, context)?;
     let path = path_val.extract()?;
@@ -523,9 +531,9 @@ pub fn eval_unary_value_template<F>(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
     op: F,
-) -> Result<(Value, World), SutraError>
+) -> AtomResult
 where
-    F: Fn(Value, World, &mut EvaluationContext<'_>) -> Result<(Value, World), SutraError>,
+    F: Fn(Value, World, &mut EvaluationContext<'_>) -> AtomResult,
 {
     let (val, world) = eval_single_arg(args, context)?;
     op(val, world, context)
@@ -555,7 +563,7 @@ pub fn eval_numeric_sequence_comparison_template<F>(
     context: &mut EvaluationContext<'_>,
     comparison: F,
     atom_name: &str,
-) -> Result<(Value, World), SutraError>
+) -> AtomResult
 where
     F: Fn(f64, f64) -> bool,
 {
@@ -598,7 +606,7 @@ pub fn eval_nary_numeric_op_custom_template<F>(
     init: f64,
     fold: F,
     atom_name: &str,
-) -> Result<(Value, World), SutraError>
+) -> AtomResult
 where
     F: Fn(f64, f64) -> f64,
 {
@@ -637,7 +645,7 @@ pub fn eval_unary_typed_template<T, F>(
     context: &mut EvaluationContext<'_>,
     op: F,
     _atom_name: &str,
-) -> Result<(Value, World), SutraError>
+) -> AtomResult
 where
     Value: ExtractValue<T>,
     F: Fn(T) -> Value,
@@ -673,7 +681,7 @@ pub fn pure_eval_numeric_sequence_comparison<F>(
     args: &[Value],
     comparison: F,
     atom_name: &str,
-) -> Result<Value, SutraError>
+) -> PureResult
 where
     F: Fn(f64, f64) -> bool,
 {
@@ -713,7 +721,7 @@ pub fn pure_eval_nary_numeric_op_custom<F>(
     init: f64,
     fold: F,
     atom_name: &str,
-) -> Result<Value, SutraError>
+) -> PureResult
 where
     F: Fn(f64, f64) -> f64,
 {
@@ -745,11 +753,7 @@ where
 ///     args, |b| Value::Bool(!b), "not"
 /// )?;
 /// ```
-pub fn pure_eval_unary_typed_op<T, F>(
-    args: &[Value],
-    op: F,
-    atom_name: &str,
-) -> Result<Value, SutraError>
+pub fn pure_eval_unary_typed_op<T, F>(args: &[Value], op: F, atom_name: &str) -> PureResult
 where
     Value: ExtractValue<T>,
     F: Fn(T) -> Value,
@@ -774,7 +778,7 @@ where
 /// ```ignore
 /// let result = pure_eval_string_concat(args, "str+")?;
 /// ```
-pub fn pure_eval_string_concat(args: &[Value], _atom_name: &str) -> Result<Value, SutraError> {
+pub fn pure_eval_string_concat(args: &[Value], _atom_name: &str) -> PureResult {
     let mut result = String::new();
     for arg in args {
         result.push_str(&arg.to_string());

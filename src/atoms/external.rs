@@ -16,9 +16,9 @@
 use crate::{
     atoms::{
         helpers::{validate_unary_arity, validate_zero_arity},
-        StatefulAtomFn,
+        Atom, AtomRegistry, StatefulAtomFn,
     },
-    AtomRegistry, Value,
+    Value,
 };
 
 // ============================================================================
@@ -95,10 +95,10 @@ pub const ATOM_RAND: StatefulAtomFn = |args, context| {
 /// Registers all external interface atoms with the given registry.
 pub fn register_external_atoms(registry: &mut AtomRegistry) {
     // I/O operations
-    registry.register("print", crate::atoms::Atom::Stateful(ATOM_PRINT));
-    registry.register("core/print", crate::atoms::Atom::Stateful(ATOM_PRINT));
-    registry.register("output", crate::atoms::Atom::Stateful(ATOM_OUTPUT));
+    registry.register("print", Atom::Stateful(ATOM_PRINT));
+    registry.register("core/print", Atom::Stateful(ATOM_PRINT));
+    registry.register("output", Atom::Stateful(ATOM_OUTPUT));
 
     // Randomness
-    registry.register("rand", crate::atoms::Atom::Stateful(ATOM_RAND));
+    registry.register("rand", Atom::Stateful(ATOM_RAND));
 }

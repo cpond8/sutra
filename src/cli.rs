@@ -37,6 +37,18 @@ type TestsPerFile = std::collections::HashMap<String, usize>;
 /// Result of registering tests from multiple files
 type TestRegistrationResult = Result<(Vec<RegistrationError>, TestsPerFile), SutraError>;
 
+/// Type alias for CLI operation results
+type CliResult = Result<(), SutraError>;
+
+/// Type alias for file reading operations
+type FileResult = Result<String, SutraError>;
+
+/// Type alias for AST parsing operations
+type AstResult = Result<Vec<AstNode>, SutraError>;
+
+/// Type alias for macro parsing operations
+type MacroParseResult = Result<(MacroRegistry, Vec<AstNode>), SutraError>;
+
 /// The main entry point for the CLI.
 pub fn run() {
     let args = SutraArgs::parse();
@@ -81,7 +93,7 @@ fn safe_path_display(path: &std::path::Path) -> &str {
 }
 
 /// Reads a file to a String, given a path.
-fn read_file_to_string(path: &std::path::Path) -> Result<String, SutraError> {
+fn read_file_to_string(path: &std::path::Path) -> FileResult {
     let filename = path_to_str(path)?;
     let src_arc = to_error_source(filename);
     std::fs::read_to_string(filename).map_err(|e| {
@@ -100,7 +112,7 @@ fn read_file_to_string(path: &std::path::Path) -> Result<String, SutraError> {
 // ============================================================================
 
 /// Parses Sutra source code into AST nodes.
-fn parse_source_to_ast(source: &str) -> Result<Vec<AstNode>, SutraError> {
+fn parse_source_to_ast(source: &str) -> AstResult {
     crate::syntax::parser::parse(source)
 }
 
@@ -145,7 +157,6 @@ fn create_do_wrapper(ast_nodes: Vec<AstNode>, source: &str) -> AstNode {
 }
 
 /// Partitions AST nodes into macro definitions and user code, and builds a user macro registry.
-type MacroParseResult = Result<(MacroRegistry, Vec<AstNode>), SutraError>;
 fn partition_and_build_user_macros(ast_nodes: Vec<AstNode>) -> MacroParseResult {
     let (macro_defs, user_code): (Vec<_>, Vec<_>) =
         ast_nodes.into_iter().partition(is_macro_definition);
@@ -273,7 +284,7 @@ fn register_tests_from_files(
             let label = if idx == 0 {
                 format!("{file_display} (file-level)")
             } else {
-                format!("{} (test #{} )", file_display, idx)
+                format!("{file_display} (test #{idx} )")
             };
             registration_errors.push((label, e));
         }
@@ -325,7 +336,7 @@ fn register_single_test(
     test_form: &crate::testing::discovery::ASTDefinition,
     _test_idx: usize,
     _file_display: &str,
-) -> Result<(), SutraError> {
+) -> CliResult {
     use crate::atoms::test::{TestDefinition, TEST_REGISTRY};
 
     // Convert ASTDefinition to TestDefinition
@@ -399,7 +410,7 @@ fn execute_all_tests(test_definitions: &[crate::atoms::test::TestDefinition]) ->
 }
 
 /// Executes a single test and returns the result.
-fn execute_single_test(test_def: &crate::atoms::test::TestDefinition) -> Result<(), SutraError> {
+fn execute_single_test(test_def: &crate::atoms::test::TestDefinition) -> CliResult {
     let pipeline = ExecutionPipeline::default();
 
     // Execute test body directly using AST with enhanced error context
@@ -535,7 +546,7 @@ fn print_test_error(
 // --- Analysis Commands: AST, validation, macro expansion, formatting ---
 
 /// Handles the `ast` subcommand.
-fn handle_ast(path: &std::path::Path) -> Result<(), SutraError> {
+fn handle_ast(path: &std::path::Path) -> CliResult {
     let (_source, ast_nodes) = load_file_to_ast(path)?;
 
     let filename = safe_path_display(path);
@@ -557,7 +568,7 @@ fn handle_ast(path: &std::path::Path) -> Result<(), SutraError> {
 }
 
 /// Handles the `validate` subcommand.
-fn handle_validate() -> Result<(), SutraError> {
+fn handle_validate() -> CliResult {
     use crate::validation::grammar::validate_grammar;
 
     let grammar_path = "src/syntax/grammar.pest";
@@ -586,7 +597,7 @@ fn handle_validate() -> Result<(), SutraError> {
 }
 
 /// Handles the `validate-grammar` subcommand.
-fn handle_validate_grammar() -> Result<(), SutraError> {
+fn handle_validate_grammar() -> CliResult {
     use crate::validation::grammar::validate_grammar;
 
     let grammar_path = "src/syntax/grammar.pest";
@@ -618,7 +629,7 @@ fn handle_validate_grammar() -> Result<(), SutraError> {
 fn handle_validation_failure(
     grammar_path: &str,
     validation_result: &crate::validation::grammar::ValidationResult,
-) -> Result<(), SutraError> {
+) -> CliResult {
     let src_arc = to_error_source(grammar_path);
     let mut error = err_ctx!(
         Validation,
@@ -667,7 +678,7 @@ fn print_validation_suggestions(validation_result: &crate::validation::grammar::
 }
 
 /// Handles the `macroexpand` subcommand.
-fn handle_macroexpand(path: &std::path::Path) -> Result<(), SutraError> {
+fn handle_macroexpand(path: &std::path::Path) -> CliResult {
     let (source, ast_nodes) = load_file_to_ast(path)?;
     let expanded = build_macro_environment_and_expand(ast_nodes, &source)?;
     println!("{}", expanded.value.pretty());
@@ -675,7 +686,7 @@ fn handle_macroexpand(path: &std::path::Path) -> Result<(), SutraError> {
 }
 
 /// Handles the `format` subcommand.
-fn handle_format(path: &std::path::Path) -> Result<(), SutraError> {
+fn handle_format(path: &std::path::Path) -> CliResult {
     let (source, ast_nodes) = load_file_to_ast(path)?;
     let expanded = build_macro_environment_and_expand(ast_nodes, &source)?;
     println!("{}", expanded.value.pretty());
@@ -683,7 +694,7 @@ fn handle_format(path: &std::path::Path) -> Result<(), SutraError> {
 }
 
 /// Handles the `run` subcommand using the unified execution pipeline.
-fn handle_run(path: &std::path::Path) -> Result<(), SutraError> {
+fn handle_run(path: &std::path::Path) -> CliResult {
     let source = read_file_to_string(path)?;
     let output = SharedOutput::new(StdoutSink);
 
@@ -693,7 +704,7 @@ fn handle_run(path: &std::path::Path) -> Result<(), SutraError> {
 }
 
 /// Handles the `macrotrace` subcommand.
-fn handle_macrotrace(path: &std::path::Path) -> Result<(), SutraError> {
+fn handle_macrotrace(path: &std::path::Path) -> CliResult {
     let source = read_file_to_string(path)?;
     let output = SharedOutput::new(StdoutSink);
     let pipeline = ExecutionPipeline::default();
@@ -701,7 +712,7 @@ fn handle_macrotrace(path: &std::path::Path) -> Result<(), SutraError> {
 }
 
 /// Handles the `list-macros` subcommand.
-fn handle_list_macros() -> Result<(), SutraError> {
+fn handle_list_macros() -> CliResult {
     use crate::runtime::world::build_canonical_macro_env;
 
     let env = build_canonical_macro_env()?;
@@ -721,7 +732,7 @@ fn handle_list_macros() -> Result<(), SutraError> {
 }
 
 /// Handles the `list-atoms` subcommand.
-fn handle_list_atoms() -> Result<(), SutraError> {
+fn handle_list_atoms() -> CliResult {
     use crate::{atoms::Atom, runtime::world::build_default_atom_registry};
 
     let registry = build_default_atom_registry();
@@ -751,7 +762,7 @@ fn handle_list_atoms() -> Result<(), SutraError> {
 }
 
 /// Handles the `test` subcommand using the unified execution pipeline.
-pub fn handle_test(path: &std::path::Path) -> Result<(), SutraError> {
+pub fn handle_test(path: &std::path::Path) -> CliResult {
     use std::fs::OpenOptions;
 
     // Prepare error log file

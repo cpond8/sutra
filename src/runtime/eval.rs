@@ -37,6 +37,7 @@ use miette::NamedSource;
 
 use crate::{
     ast::{AstNode, Expr, Spanned},
+    atoms::helpers::AtomResult,
     err_ctx, err_src,
     runtime::world::{AtomExecutionContext, World},
     AtomRegistry, ParamList, Path, SharedOutput, Span, SutraError, Value,
@@ -107,7 +108,7 @@ impl<'a> EvaluationContext<'a> {
         head: &AstNode,
         args: &[AstNode],
         span: &Span,
-    ) -> Result<(Value, World), SutraError> {
+    ) -> AtomResult {
         // Look up atom in registry
         let Some(atom) = self.atom_registry.get(symbol_name).cloned() else {
             return Err(crate::err_src!(
@@ -208,7 +209,7 @@ fn evaluate_eager_args(
 }
 
 /// Wraps a value with the current world state in the standard (Value, World) result format.
-fn wrap_value_with_world_state(value: Value, world: &World) -> Result<(Value, World), SutraError> {
+fn wrap_value_with_world_state(value: Value, world: &World) -> AtomResult {
     Ok((value, world.clone()))
 }
 
@@ -233,10 +234,7 @@ pub fn evaluate_condition_as_bool(
 }
 
 /// Evaluates literal value expressions (Path, String, Number, Bool).
-fn evaluate_literal_value(
-    expr: &AstNode,
-    context: &mut EvaluationContext,
-) -> Result<(Value, World), SutraError> {
+fn evaluate_literal_value(expr: &AstNode, context: &mut EvaluationContext) -> AtomResult {
     let value = match &*expr.value {
         Expr::Path(p, _) => Value::Path(p.clone()),
         Expr::String(s, _) => Value::String(s.clone()),
@@ -278,10 +276,7 @@ fn evaluate_literal_value(
 /// x              ; Error: atoms cannot be evaluated directly
 /// undefined-var  ; Error: undefined symbol
 /// ```
-fn evaluate_invalid_expr(
-    expr: &AstNode,
-    context: &mut EvaluationContext,
-) -> Result<(Value, World), SutraError> {
+fn evaluate_invalid_expr(expr: &AstNode, context: &mut EvaluationContext) -> AtomResult {
     let (msg, span) = match &*expr.value {
         Expr::ParamList(_) => (
             "Cannot evaluate parameter list (ParamList AST node) at runtime".to_string(),
@@ -332,7 +327,7 @@ fn handle_define_special_form(
     span: &Span,
     context: &mut EvaluationContext,
     head: &AstNode,
-) -> Result<(Value, World), SutraError> {
+) -> AtomResult {
     if flat_tail.len() != 2 {
         return Err(err_src!(
             Eval,
@@ -407,10 +402,7 @@ fn handle_define_special_form(
 /// This is a low-level, internal function. Most users should use the higher-level `eval` API.
 /// **CRITICAL**: This function assumes all macros have been expanded before evaluation.
 /// Macro expansion must happen in a separate phase according to the strict layering principle.
-pub(crate) fn evaluate_ast_node(
-    expr: &AstNode,
-    context: &mut EvaluationContext,
-) -> Result<(Value, World), SutraError> {
+pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext) -> AtomResult {
     if context.depth > context.max_depth {
         return Err(err_src!(
             Internal,
@@ -480,7 +472,7 @@ pub fn evaluate(
     atom_registry: &AtomRegistry,
     source: Arc<NamedSource<String>>,
     max_depth: usize,
-) -> Result<(Value, World), SutraError> {
+) -> AtomResult {
     let mut context = EvaluationContext {
         world,
         output,
@@ -500,11 +492,7 @@ pub fn evaluate(
 // --- Core Expression Handlers ---
 
 /// Helper for evaluating Expr::List arms.
-fn evaluate_list(
-    items: &[AstNode],
-    span: &Span,
-    context: &mut EvaluationContext,
-) -> Result<(Value, World), SutraError> {
+fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext) -> AtomResult {
     if items.is_empty() {
         return wrap_value_with_world_state(Value::List(vec![]), context.world);
     }
@@ -554,10 +542,7 @@ fn evaluate_list(
 }
 
 /// Helper for evaluating Expr::Quote arms.
-fn evaluate_quote(
-    inner: &AstNode,
-    context: &mut EvaluationContext,
-) -> Result<(Value, World), SutraError> {
+fn evaluate_quote(inner: &AstNode, context: &mut EvaluationContext) -> AtomResult {
     match &*inner.value {
         Expr::Symbol(s, _) => wrap_value_with_world_state(Value::String(s.clone()), context.world),
         Expr::List(exprs, _) => {
@@ -638,7 +623,7 @@ fn evaluate_quoted_if(
     then_branch: &AstNode,
     else_branch: &AstNode,
     context: &mut EvaluationContext,
-) -> Result<(Value, World), SutraError> {
+) -> AtomResult {
     let (is_true, next_world) = evaluate_condition_as_bool(condition, context)?;
     let mut sub_context = EvaluationContext {
         world: &next_world,

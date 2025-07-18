@@ -10,7 +10,9 @@
 
 use crate::{
     ast::{AstNode, Expr, Spanned},
-    err_msg, MacroRegistry, Path, Span, SutraError,
+    err_msg,
+    macros::MacroExpansionResult,
+    MacroRegistry, Path, Span, SutraError,
 };
 
 // ===================================================================================================
@@ -115,7 +117,7 @@ fn create_number(value: f64, span: &Span) -> AstNode {
 }
 
 /// Converts a path argument to a canonical `Expr::Path` node.
-fn create_canonical_path(path_arg: &AstNode) -> Result<AstNode, SutraError> {
+fn create_canonical_path(path_arg: &AstNode) -> MacroExpansionResult {
     Ok(Spanned {
         value: Expr::Path(expr_to_path(path_arg)?, path_arg.span).into(),
         span: path_arg.span,
@@ -129,11 +131,7 @@ fn create_canonical_path(path_arg: &AstNode) -> Result<AstNode, SutraError> {
 /// Flexible helper for path operations that lets atoms handle arity validation.
 /// Requires at least min_args total arguments (including macro name).
 /// Converts the first argument to a canonical path if present.
-fn create_flexible_path_op(
-    expr: &AstNode,
-    op_name: &str,
-    min_args: usize,
-) -> Result<AstNode, SutraError> {
+fn create_flexible_path_op(expr: &AstNode, op_name: &str, min_args: usize) -> MacroExpansionResult {
     match &*expr.value {
         Expr::List(items, span) if items.len() >= min_args => {
             let atom_symbol = create_symbol(op_name, span);
@@ -169,16 +167,16 @@ fn create_flexible_path_op(
 }
 
 /// Helper for unary core path operations like `get`, `del!`, `exists?`.
-fn create_unary_op(expr: &AstNode, op_name: &str) -> Result<AstNode, SutraError> {
+fn create_unary_op(expr: &AstNode, op_name: &str) -> MacroExpansionResult {
     create_flexible_path_op(expr, op_name, 1) // Allow 0+ arguments, let atom validate
 }
 
 /// Helper for binary core path operations like `set!`.
-fn create_binary_op(expr: &AstNode, op_name: &str) -> Result<AstNode, SutraError> {
+fn create_binary_op(expr: &AstNode, op_name: &str) -> MacroExpansionResult {
     create_flexible_path_op(expr, op_name, 2) // Allow 1+ arguments, let atom validate
 }
 /// Flexible helper for assignment macros like `add!`, `sub!`, etc.
-fn create_assignment_macro(expr: &AstNode, op_symbol: &str) -> Result<AstNode, SutraError> {
+fn create_assignment_macro(expr: &AstNode, op_symbol: &str) -> MacroExpansionResult {
     match &*expr.value {
         Expr::List(items, span) if items.len() >= 3 => {
             let set_symbol = create_symbol("core/set!", &items[0].span);
@@ -209,7 +207,7 @@ fn create_assignment_macro(expr: &AstNode, op_symbol: &str) -> Result<AstNode, S
 }
 
 /// Flexible helper for unary increment/decrement macros like `inc!`, `dec!`.
-fn create_unary_assignment_macro(expr: &AstNode, op_symbol: &str) -> Result<AstNode, SutraError> {
+fn create_unary_assignment_macro(expr: &AstNode, op_symbol: &str) -> MacroExpansionResult {
     match &*expr.value {
         Expr::List(items, span) if items.len() >= 2 => {
             let set_symbol = create_symbol("core/set!", &items[0].span);
@@ -260,42 +258,42 @@ fn create_unary_assignment_macro(expr: &AstNode, op_symbol: &str) -> Result<AstN
 // -----------------------------------------------
 
 /// Expands `(set! foo bar)` to `(core/set! (path foo) bar)`.
-pub fn expand_set(expr: &AstNode) -> Result<AstNode, SutraError> {
+pub fn expand_set(expr: &AstNode) -> MacroExpansionResult {
     create_binary_op(expr, "core/set!")
 }
 
 /// Expands `(get foo)` to `(core/get (path foo))`.
-pub fn expand_get(expr: &AstNode) -> Result<AstNode, SutraError> {
+pub fn expand_get(expr: &AstNode) -> MacroExpansionResult {
     create_unary_op(expr, "core/get")
 }
 
 /// Expands `(del! foo)` to `(core/del! (path foo))`.
-pub fn expand_del(expr: &AstNode) -> Result<AstNode, SutraError> {
+pub fn expand_del(expr: &AstNode) -> MacroExpansionResult {
     create_unary_op(expr, "core/del!")
 }
 
 /// Expands `(exists? foo)` to `(core/exists? (path foo))`.
-pub fn expand_exists(expr: &AstNode) -> Result<AstNode, SutraError> {
+pub fn expand_exists(expr: &AstNode) -> MacroExpansionResult {
     create_unary_op(expr, "core/exists?")
 }
 
 // --- ARITHMETIC ---
-pub fn expand_add(expr: &AstNode) -> Result<AstNode, SutraError> {
+pub fn expand_add(expr: &AstNode) -> MacroExpansionResult {
     create_assignment_macro(expr, "add!")
 }
 
 /// Expands `(sub! foo 1)` to `(core/set! (path foo) (- (core/get foo) 1))`.
-pub fn expand_sub(expr: &AstNode) -> Result<AstNode, SutraError> {
+pub fn expand_sub(expr: &AstNode) -> MacroExpansionResult {
     create_assignment_macro(expr, "sub!")
 }
 
 /// Expands `(inc! foo)` to `(core/set! (path foo) (+ (core/get foo) 1))`.
-pub fn expand_inc(expr: &AstNode) -> Result<AstNode, SutraError> {
+pub fn expand_inc(expr: &AstNode) -> MacroExpansionResult {
     create_unary_assignment_macro(expr, "inc!")
 }
 
 /// Expands `(dec! foo)` to `(core/set! (path foo) (- (core/get foo) 1))`.
-pub fn expand_dec(expr: &AstNode) -> Result<AstNode, SutraError> {
+pub fn expand_dec(expr: &AstNode) -> MacroExpansionResult {
     create_unary_assignment_macro(expr, "dec!")
 }
 
@@ -311,7 +309,7 @@ pub fn expand_dec(expr: &AstNode) -> Result<AstNode, SutraError> {
 // -----------------------------------------------
 
 /// Expands `(print ...)` to `(core/print ...)`, letting the atom handle arity validation.
-pub fn expand_print(expr: &AstNode) -> Result<AstNode, SutraError> {
+pub fn expand_print(expr: &AstNode) -> MacroExpansionResult {
     match &*expr.value {
         Expr::List(items, span) if !items.is_empty() => {
             let atom_symbol = create_symbol("core/print", span);

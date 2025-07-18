@@ -78,6 +78,13 @@ pub mod std_macros;
 /// Maximum recursion depth for macro expansion to prevent infinite loops.
 pub const MAX_MACRO_RECURSION_DEPTH: usize = 128;
 
+// ============================================================================
+// TYPE ALIASES - Reduce verbosity in macro functions
+// ============================================================================
+
+/// Type alias for macro expansion results
+pub type MacroExpansionResult = Result<AstNode, crate::SutraError>;
+
 /// A macro function is a native Rust function that transforms an AST.
 ///
 /// Macro functions operate purely on the AST level and must:

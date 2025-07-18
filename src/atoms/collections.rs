@@ -16,9 +16,9 @@
 use crate::{
     atoms::{
         helpers::{validate_binary_arity, validate_even_arity, validate_unary_arity},
-        PureAtomFn, StatefulAtomFn,
+        Atom, AtomRegistry, PureAtomFn, StatefulAtomFn,
     },
-    err_msg, AtomRegistry, Value,
+    err_msg, Value,
 };
 
 // ============================================================================
@@ -364,18 +364,18 @@ pub const ATOM_CORE_MAP: PureAtomFn = |args| {
 /// Registers all collection atoms with the given registry.
 pub fn register_collection_atoms(registry: &mut AtomRegistry) {
     // List operations
-    registry.register("list", crate::atoms::Atom::Pure(ATOM_LIST));
-    registry.register("len", crate::atoms::Atom::Pure(ATOM_LEN));
-    registry.register("has?", crate::atoms::Atom::Pure(ATOM_HAS));
-    registry.register("core/push!", crate::atoms::Atom::Stateful(ATOM_CORE_PUSH));
-    registry.register("core/pull!", crate::atoms::Atom::Stateful(ATOM_CORE_PULL));
+    registry.register("list", Atom::Pure(ATOM_LIST));
+    registry.register("len", Atom::Pure(ATOM_LEN));
+    registry.register("has?", Atom::Pure(ATOM_HAS));
+    registry.register("core/push!", Atom::Stateful(ATOM_CORE_PUSH));
+    registry.register("core/pull!", Atom::Stateful(ATOM_CORE_PULL));
 
     // String operations
-    registry.register("core/str+", crate::atoms::Atom::Pure(ATOM_CORE_STR_PLUS));
-    registry.register("car", crate::atoms::Atom::Pure(ATOM_CAR));
-    registry.register("cdr", crate::atoms::Atom::Pure(ATOM_CDR));
-    registry.register("cons", crate::atoms::Atom::Pure(ATOM_CONS));
+    registry.register("core/str+", Atom::Pure(ATOM_CORE_STR_PLUS));
+    registry.register("car", Atom::Pure(ATOM_CAR));
+    registry.register("cdr", Atom::Pure(ATOM_CDR));
+    registry.register("cons", Atom::Pure(ATOM_CONS));
 
     // Map operations
-    registry.register("core/map", crate::atoms::Atom::Pure(ATOM_CORE_MAP));
+    registry.register("core/map", Atom::Pure(ATOM_CORE_MAP));
 }

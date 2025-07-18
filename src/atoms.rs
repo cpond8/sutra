@@ -41,8 +41,10 @@ use std::{cell::RefCell, rc::Rc};
 use im::HashMap;
 
 use crate::{
-    err_msg, runtime::eval::EvaluationContext, AstNode, AtomExecutionContext, Path, Span,
-    SutraError, Value, World,
+    atoms::helpers::{AtomResult, PureResult},
+    err_msg,
+    runtime::eval::EvaluationContext,
+    AstNode, AtomExecutionContext, Path, Span, SutraError, Value, World,
 };
 
 // ============================================================================
@@ -53,18 +55,14 @@ use crate::{
 // dual-convention architecture. Correct classification is critical for stability.
 
 /// Pure atoms: operate only on values, no state access
-pub type PureAtomFn = fn(args: &[Value]) -> Result<Value, SutraError>;
+pub type PureAtomFn = fn(args: &[Value]) -> PureResult;
 
 /// Stateful atoms: need limited state access via Context facade
-pub type StatefulAtomFn =
-    fn(args: &[Value], context: &mut AtomExecutionContext) -> Result<Value, SutraError>;
+pub type StatefulAtomFn = fn(args: &[Value], context: &mut AtomExecutionContext) -> PureResult;
 
 /// Special Form atoms: for atoms that need to control their own argument evaluation
-pub type SpecialFormAtomFn = fn(
-    args: &[AstNode],
-    context: &mut EvaluationContext,
-    parent_span: &Span,
-) -> Result<(Value, World), SutraError>;
+pub type SpecialFormAtomFn =
+    fn(args: &[AstNode], context: &mut EvaluationContext, parent_span: &Span) -> AtomResult;
 
 /// The unified atom representation supporting three calling conventions
 #[derive(Clone)]
@@ -248,7 +246,7 @@ impl Callable for Atom {
         args: &[Value],
         context: &mut AtomExecutionContext,
         current_world: &World,
-    ) -> Result<(Value, World), SutraError> {
+    ) -> AtomResult {
         match self {
             Atom::Pure(pure_fn) => {
                 let result = pure_fn(args)?;

@@ -12,6 +12,16 @@ use crate::{
     to_error_source, AstNode, MacroRegistry, OutputBuffer, SharedOutput, SutraError, Value, World,
 };
 
+// ============================================================================
+// TYPE ALIASES - Reduce verbosity in engine functions
+// ============================================================================
+
+/// Type alias for execution results
+type ExecutionResult = Result<(), SutraError>;
+
+/// Type alias for AST execution results
+type AstExecutionResult = Result<Value, SutraError>;
+
 /// Unified execution pipeline that enforces strict layering: Parse → Expand → Validate → Evaluate
 /// This is the single source of truth for all Sutra execution paths, including tests and production.
 /// All code execution, including test harnesses, must use this pipeline. Bypassing is forbidden.
@@ -34,7 +44,7 @@ impl Default for ExecutionPipeline {
 impl ExecutionPipeline {
     /// Executes Sutra source code through the complete pipeline.
     /// This is the single entry point for all execution paths, including tests.
-    pub fn execute(&self, source: &str, output: SharedOutput) -> Result<(), SutraError> {
+    pub fn execute(&self, source: &str, output: SharedOutput) -> ExecutionResult {
         let src_arc = to_error_source(source);
         // Phase 1: Parse the source into AST nodes
         let ast_nodes = crate::syntax::parser::parse(source)?;
@@ -134,11 +144,7 @@ impl ExecutionPipeline {
     /// Executes test code with proper macro expansion and special form preservation.
     /// This method is specifically designed for test execution and ensures that
     /// both macro expansion and special form evaluation work correctly.
-    pub fn execute_test(
-        &self,
-        test_body: &AstNode,
-        output: SharedOutput,
-    ) -> Result<(), SutraError> {
+    pub fn execute_test(&self, test_body: &AstNode, output: SharedOutput) -> ExecutionResult {
         // Phase 1: Build canonical macro environment (includes null?, etc.)
         let mut env = build_canonical_macro_env()?;
 
@@ -168,7 +174,7 @@ impl ExecutionPipeline {
 
     /// Executes AST nodes directly without parsing, avoiding double execution.
     /// This is optimized for test execution where AST is already available.
-    pub fn execute_ast(&self, nodes: &[AstNode]) -> Result<Value, SutraError> {
+    pub fn execute_ast(&self, nodes: &[AstNode]) -> AstExecutionResult {
         // Partition AST nodes: macro definitions vs user code
         let (macro_defs, user_code) = nodes.iter().cloned().partition(is_macro_definition);
 

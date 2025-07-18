@@ -47,9 +47,22 @@ use pest::{error::InputLocation, iterators::Pair, Parser};
 use pest_derive::Parser;
 
 use crate::{
-    ast::{AstNode, Expr, Span, Spanned},
-    err_ctx, err_msg, to_error_source, ParamList, Path, SutraError,
+    ast::{AstNode, Expr, ParamList, Span, Spanned},
+    err_ctx, err_msg, to_error_source, Path, SutraError,
 };
+
+// ============================================================================
+// TYPE ALIASES - Reduce verbosity in parser functions
+// ============================================================================
+
+/// Type alias for parser results
+type ParseResult = Result<Vec<AstNode>, SutraError>;
+
+/// Type alias for AST builder function results
+type AstBuilderResult = Result<AstNode, SutraError>;
+
+/// Type alias for text parsing results (symbols, strings, etc.)
+type TextParseResult = Result<String, SutraError>;
 
 // This derive macro generates the parser implementation from our grammar file.
 #[derive(Parser)]
@@ -95,7 +108,7 @@ fn improve_parse_error_message(msg: &str) -> (String, Option<String>) {
 /// # Returns
 /// * `Ok(Vec<Expr>)` - A vector of expressions found at the top level of the source.
 /// * `Err(SutraError)` - If parsing fails.
-pub fn parse(source: &str) -> Result<Vec<AstNode>, SutraError> {
+pub fn parse(source: &str) -> ParseResult {
     let src_arc = to_error_source(source);
     // `SutraParser::parse` attempts to match the `program` rule from the grammar.
     // If it fails, it returns a `pest` error, which we map to our `SutraError`.
@@ -179,7 +192,7 @@ fn get_span(pair: &pest::iterators::Pair<Rule>) -> Span {
 }
 
 // Type alias for AST builder functions
-pub type AstBuilderFn = fn(Pair<Rule>, &str) -> Result<AstNode, SutraError>;
+pub type AstBuilderFn = fn(Pair<Rule>, &str) -> AstBuilderResult;
 
 // Static map from Rule to handler function
 pub static AST_BUILDERS: Lazy<HashMap<Rule, AstBuilderFn>> = Lazy::new(|| {
@@ -203,7 +216,7 @@ pub static AST_BUILDERS: Lazy<HashMap<Rule, AstBuilderFn>> = Lazy::new(|| {
 });
 
 // Dispatcher: looks up the handler in the map and calls it
-fn build_ast_from_pair(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
+fn build_ast_from_pair(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
     let src_arc = to_error_source(source);
     AST_BUILDERS.get(&pair.as_rule()).ok_or_else(|| {
         err_ctx!(
@@ -220,7 +233,7 @@ fn map_children_to_list<'a>(
     children: Box<dyn Iterator<Item = Pair<Rule>> + 'a>,
     span: Span,
     source: &str,
-) -> Result<AstNode, SutraError> {
+) -> AstBuilderResult {
     let exprs = children
         .map(|p| build_ast_from_pair(p, source))
         .collect::<Result<Vec<_>, _>>()?;
@@ -234,7 +247,7 @@ fn map_children_to_list<'a>(
 ///
 /// Note: Returns an `Expr::List` for internal uniformity, but the public `parse` API collects top-level forms as a `Vec<Expr>`.
 /// If a canonical program node is ever needed, update this convention and document accordingly.
-fn build_program(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
+fn build_program(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
     let span = get_span(&pair);
     map_children_to_list(
         Box::new(
@@ -248,7 +261,7 @@ fn build_program(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> 
 }
 
 /// Handles expr rule (delegates to subrules).
-fn build_expr(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
+fn build_expr(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
     let src_arc = to_error_source(source);
     let mut inner = pair.clone().into_inner();
     let sub = inner.next().ok_or_else(|| {
@@ -263,7 +276,7 @@ fn build_expr(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
 }
 
 /// Handles list rule (proper lists only).
-fn build_list(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
+fn build_list(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
     let span = get_span(&pair);
     map_children_to_list(Box::new(pair.clone().into_inner()), span, source)
 }
@@ -302,7 +315,7 @@ fn param_list_error(
 fn extract_spread_symbol(
     item: &Pair<Rule>,
     src_arc: &crate::diagnostics::SourceArc,
-) -> Result<String, SutraError> {
+) -> TextParseResult {
     let mut spread_inner = item.clone().into_inner();
     let symbol_pair = spread_inner.next().ok_or_else(|| {
         param_list_error(
@@ -314,7 +327,7 @@ fn extract_spread_symbol(
     as_symbol(&symbol_pair)
 }
 
-fn build_param_list(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
+fn build_param_list(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
     let src_arc = to_error_source(source);
     let span = get_span(&pair);
     let mut inner = pair.clone().into_inner();
@@ -372,7 +385,7 @@ fn build_param_list(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErro
     })
 }
 
-fn as_symbol(pair: &Pair<Rule>) -> Result<String, SutraError> {
+fn as_symbol(pair: &Pair<Rule>) -> TextParseResult {
     if pair.as_rule() != Rule::symbol {
         return Err(err_msg!(
             Internal,
@@ -384,12 +397,12 @@ fn as_symbol(pair: &Pair<Rule>) -> Result<String, SutraError> {
 }
 
 /// Handles brace-block rule (which is just a list).
-fn build_block(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
+fn build_block(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
     let span = get_span(&pair);
     map_children_to_list(Box::new(pair.clone().into_inner()), span, source)
 }
 
-fn build_atom(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
+fn build_atom(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
     let src_arc = to_error_source(source);
     let inner = pair.clone().into_inner().next().ok_or_else(|| {
         err_ctx!(
@@ -402,7 +415,7 @@ fn build_atom(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
     build_ast_from_pair(inner, source)
 }
 
-fn build_number(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
+fn build_number(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
     let src_arc = to_error_source(source);
     let span = get_span(&pair);
     let n = pair
@@ -415,7 +428,7 @@ fn build_number(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
     })
 }
 
-fn build_boolean(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
+fn build_boolean(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
     let src_arc = to_error_source(source);
     let span = get_span(&pair);
     match pair.as_str() {
@@ -436,7 +449,7 @@ fn build_boolean(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> 
     }
 }
 
-fn build_string(pair: Pair<Rule>, _source: &str) -> Result<AstNode, SutraError> {
+fn build_string(pair: Pair<Rule>, _source: &str) -> AstBuilderResult {
     let span = get_span(&pair);
     Ok(Spanned {
         value: Expr::String(unescape_string(pair.clone())?, span).into(),
@@ -444,7 +457,7 @@ fn build_string(pair: Pair<Rule>, _source: &str) -> Result<AstNode, SutraError> 
     })
 }
 
-fn build_symbol(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
+fn build_symbol(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
     let src_arc = to_error_source(source);
     let span = get_span(&pair);
     let s = pair.as_str();
@@ -491,7 +504,7 @@ fn build_symbol(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
 ///
 /// Note: Only supports basic escapes (\n, \t, \\, \"). Unicode (\uXXXX) and hex/octal escapes are NOT supported.
 /// This is sufficient for current narrative scripting, but should be extended if such escapes are needed in the future.
-fn unescape_string(pair: Pair<Rule>) -> Result<String, SutraError> {
+fn unescape_string(pair: Pair<Rule>) -> TextParseResult {
     // The `string` rule in the grammar is `@{ "\"" ~ inner ~ "\"" }`.
     // `pair.as_str()` gives us the full text, including the surrounding quotes.
     let full_str = pair.as_str();
@@ -624,7 +637,7 @@ fn build_cst_from_pair(pair: Pair<Rule>) -> SutraCstNode {
     }
 }
 
-fn build_quote(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
+fn build_quote(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
     let src_arc = to_error_source(source);
     let span = get_span(&pair);
     let quoted_expr = build_expr(
@@ -644,7 +657,7 @@ fn build_quote(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
     })
 }
 
-fn build_define_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
+fn build_define_form(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
     let src_arc = to_error_source(source);
     let span = get_span(&pair);
     let mut inner = pair.clone().into_inner();
@@ -715,7 +728,7 @@ fn build_define_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErr
     })
 }
 
-fn build_lambda_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
+fn build_lambda_form(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
     let src_arc = to_error_source(source);
     let span = get_span(&pair);
     let mut inner = pair.clone().into_inner();
@@ -783,7 +796,7 @@ fn build_lambda_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErr
     })
 }
 
-fn build_spread_arg(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
+fn build_spread_arg(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
     let src_arc = to_error_source(source);
     let span = get_span(&pair);
     let symbol_expr = build_symbol(
@@ -799,7 +812,7 @@ fn build_spread_arg(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErro
     })
 }
 
-fn build_list_elem(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
+fn build_list_elem(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
     build_expr(pair, source)
 }
 

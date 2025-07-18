@@ -16,12 +16,11 @@
 use crate::{
     atoms::{
         helpers::{
-            pure_eval_numeric_sequence_comparison, pure_eval_unary_typed_op,
-            validate_sequence_arity,
+            pure_eval_numeric_sequence_comparison, pure_eval_unary_typed_op, validate_binary_arity,
         },
-        PureAtomFn,
+        Atom, AtomRegistry, PureAtomFn,
     },
-    AtomRegistry, Value,
+    Value,
 };
 
 // ============================================================================
@@ -43,7 +42,7 @@ use crate::{
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_EQ: PureAtomFn = |args| {
-    validate_sequence_arity(args, "eq?")?;
+    validate_binary_arity(args, "eq?")?;
     for window in args.windows(2) {
         if window[0] != window[1] {
             return Ok(Value::Bool(false));
@@ -142,24 +141,24 @@ pub const ATOM_NOT: PureAtomFn =
 /// Registers all logic and comparison atoms with the given registry.
 pub fn register_logic_atoms(registry: &mut AtomRegistry) {
     // Comparison operations
-    registry.register("eq?", crate::atoms::Atom::Pure(ATOM_EQ));
-    registry.register("gt?", crate::atoms::Atom::Pure(ATOM_GT));
-    registry.register("lt?", crate::atoms::Atom::Pure(ATOM_LT));
-    registry.register("gte?", crate::atoms::Atom::Pure(ATOM_GTE));
-    registry.register("lte?", crate::atoms::Atom::Pure(ATOM_LTE));
+    registry.register("eq?", Atom::Pure(ATOM_EQ));
+    registry.register("gt?", Atom::Pure(ATOM_GT));
+    registry.register("lt?", Atom::Pure(ATOM_LT));
+    registry.register("gte?", Atom::Pure(ATOM_GTE));
+    registry.register("lte?", Atom::Pure(ATOM_LTE));
 
     // Comparison aliases
-    registry.register("=", crate::atoms::Atom::Pure(ATOM_EQ));
-    registry.register(">", crate::atoms::Atom::Pure(ATOM_GT));
-    registry.register("<", crate::atoms::Atom::Pure(ATOM_LT));
-    registry.register(">=", crate::atoms::Atom::Pure(ATOM_GTE));
-    registry.register("<=", crate::atoms::Atom::Pure(ATOM_LTE));
-    registry.register("is?", crate::atoms::Atom::Pure(ATOM_EQ));
-    registry.register("over?", crate::atoms::Atom::Pure(ATOM_GT));
-    registry.register("under?", crate::atoms::Atom::Pure(ATOM_LT));
-    registry.register("at-least?", crate::atoms::Atom::Pure(ATOM_GTE));
-    registry.register("at-most?", crate::atoms::Atom::Pure(ATOM_LTE));
+    registry.register("=", Atom::Pure(ATOM_EQ));
+    registry.register(">", Atom::Pure(ATOM_GT));
+    registry.register("<", Atom::Pure(ATOM_LT));
+    registry.register(">=", Atom::Pure(ATOM_GTE));
+    registry.register("<=", Atom::Pure(ATOM_LTE));
+    registry.register("is?", Atom::Pure(ATOM_EQ));
+    registry.register("over?", Atom::Pure(ATOM_GT));
+    registry.register("under?", Atom::Pure(ATOM_LT));
+    registry.register("at-least?", Atom::Pure(ATOM_GTE));
+    registry.register("at-most?", Atom::Pure(ATOM_LTE));
 
     // Logic operations
-    registry.register("not", crate::atoms::Atom::Pure(ATOM_NOT));
+    registry.register("not", Atom::Pure(ATOM_NOT));
 }

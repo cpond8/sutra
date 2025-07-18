@@ -19,11 +19,11 @@ use crate::{
             build_apply_call_expr, eval_apply_list_arg, eval_apply_normal_args, eval_single_arg,
             sub_eval_context, validate_special_form_min_arity,
         },
-        SpecialFormAtomFn,
+        Atom, AtomRegistry, SpecialFormAtomFn,
     },
     err_msg,
     runtime::eval::evaluate_ast_node,
-    AtomRegistry, Value,
+    Value,
 };
 
 // ============================================================================
@@ -126,9 +126,9 @@ pub const ATOM_APPLY: SpecialFormAtomFn = |args, context, parent_span| {
 /// Registers all execution control atoms with the given registry.
 pub fn register_execution_atoms(registry: &mut AtomRegistry) {
     // Control flow
-    registry.register("do", crate::atoms::Atom::SpecialForm(ATOM_DO));
-    registry.register("error", crate::atoms::Atom::SpecialForm(ATOM_ERROR));
+    registry.register("do", Atom::SpecialForm(ATOM_DO));
+    registry.register("error", Atom::SpecialForm(ATOM_ERROR));
 
     // Higher-order functions
-    registry.register("apply", crate::atoms::Atom::SpecialForm(ATOM_APPLY));
+    registry.register("apply", Atom::SpecialForm(ATOM_APPLY));
 }

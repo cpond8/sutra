@@ -16,9 +16,9 @@
 use crate::{
     atoms::{
         helpers::{validate_binary_arity, validate_unary_arity, ExtractValue},
-        StatefulAtomFn,
+        Atom, AtomRegistry, StatefulAtomFn,
     },
-    err_msg, AtomRegistry, Path, Value,
+    err_msg, Path, Value,
 };
 
 // ============================================================================
@@ -85,9 +85,9 @@ pub const ATOM_PATH: StatefulAtomFn = |args, _context| {
 
 /// Registers all world state atoms with the given registry.
 pub fn register_world_atoms(registry: &mut AtomRegistry) {
-    registry.register("core/set!", crate::atoms::Atom::Stateful(ATOM_CORE_SET));
-    registry.register("core/get", crate::atoms::Atom::Stateful(ATOM_CORE_GET));
-    registry.register("core/del!", crate::atoms::Atom::Stateful(ATOM_CORE_DEL));
-    registry.register("core/exists?", crate::atoms::Atom::Stateful(ATOM_EXISTS));
-    registry.register("path", crate::atoms::Atom::Stateful(ATOM_PATH));
+    registry.register("core/set!", Atom::Stateful(ATOM_CORE_SET));
+    registry.register("core/get", Atom::Stateful(ATOM_CORE_GET));
+    registry.register("core/del!", Atom::Stateful(ATOM_CORE_DEL));
+    registry.register("core/exists?", Atom::Stateful(ATOM_EXISTS));
+    registry.register("path", Atom::Stateful(ATOM_PATH));
 }
