@@ -130,6 +130,11 @@ pub enum SutraError {
         message: String,
         ctx: ErrorContext,
     },
+    #[error("Test failure: {message}")]
+    TestFailure {
+        message: String,
+        ctx: ErrorContext,
+    },
 }
 
 impl SutraError {
@@ -141,6 +146,7 @@ impl SutraError {
             SutraError::TypeError { ctx, .. } => ctx,
             SutraError::DivisionByZero { ctx } => ctx,
             SutraError::Internal { ctx, .. } => ctx,
+            SutraError::TestFailure { ctx, .. } => ctx,
         }
     }
 }
@@ -154,6 +160,7 @@ impl Diagnostic for SutraError {
             SutraError::TypeError { .. } => "sutra::type_error",
             SutraError::DivisionByZero { .. } => "sutra::division_by_zero",
             SutraError::Internal { .. } => "sutra::internal",
+            SutraError::TestFailure { .. } => "sutra::test_failure",
         };
         Some(Box::new(code))
     }
@@ -176,6 +183,7 @@ impl Diagnostic for SutraError {
                 SutraError::TypeError { message, .. } => Some(message.clone()),
                 SutraError::DivisionByZero { .. } => Some("division by zero".to_string()),
                 SutraError::Internal { message, .. } => Some(message.clone()),
+                SutraError::TestFailure { message, .. } => Some(message.clone()),
             };
             let len = if span.end > span.start { span.end - span.start } else { 1 };
             let labels = vec![miette::LabeledSpan::new(text, span.start, len)];

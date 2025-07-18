@@ -107,11 +107,7 @@ impl Expr {
                     param_list_str.push_str(param);
                 }
                 if let Some(rest) = &params.rest {
-                    if !params.required.is_empty() {
-                        param_list_str.push_str(" ...");
-                    } else {
-                        param_list_str.push_str(" ...");
-                    }
+                    param_list_str.push_str(" ...");
                     param_list_str.push_str(rest);
                 }
                 param_list_str.push(')');

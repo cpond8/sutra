@@ -592,27 +592,6 @@ fn build_cst_from_pair(pair: Pair<Rule>) -> SutraCstNode {
     }
 }
 
-#[cfg(test)]
-mod pest_cst_tests {
-    use super::*;
-    #[test]
-    fn pest_cst_parser_parses_simple_program() {
-        let parser = PestCstParser;
-        let input = "(foo 42)";
-        let cst = parser.parse(input).unwrap();
-        assert_eq!(cst.rule, "program");
-        assert_eq!(cst.children.len(), 2); // expr + EOI
-        let expr = &cst.children[0];
-        assert_eq!(expr.rule, "expr");
-        assert_eq!(expr.children.len(), 1);
-        let list = &expr.children[0];
-        assert_eq!(list.rule, "list");
-        assert_eq!(list.span.start, 0);
-        assert_eq!(list.span.end, 8);
-    }
-}
-
-// Add missing handler for quote
 fn build_quote(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
     let span = get_span(&pair);
     let quoted_expr = build_expr(
@@ -627,11 +606,9 @@ fn build_quote(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
     })
 }
 
-// Add missing handler for define_form
 fn build_define_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
     let span = get_span(&pair);
     let mut inner = pair.clone().into_inner();
-
     // The grammar: define_form = { "(" ~ "define" ~ param_list ~ expr ~ ")" }
     // The CST children are: param_list, expr (body)
     let param_list_pair = inner.next().ok_or_else(|| {
@@ -651,7 +628,6 @@ fn build_define_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErr
             span
         ));
     };
-
     // The first element of the param_list is the macro name
     let name = full_params.required.first().cloned().ok_or_else(|| {
         err_ctx!(
@@ -661,14 +637,12 @@ fn build_define_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErr
             span
         )
     })?;
-
     // Create a new ParamList without the macro name (the actual parameters)
     let actual_params = crate::ast::ParamList {
         required: full_params.required[1..].to_vec(),
         rest: full_params.rest.clone(),
         span: full_params.span,
     };
-
     let body_pair = inner.next().ok_or_else(|| {
         err_ctx!(
             Internal,
@@ -678,7 +652,6 @@ fn build_define_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErr
         )
     })?;
     let body = build_expr(body_pair, source)?;
-
     Ok(Spanned {
         value: Expr::Define {
             name,
@@ -694,7 +667,6 @@ fn build_define_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErr
 fn build_lambda_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
     let span = get_span(&pair);
     let mut inner = pair.clone().into_inner();
-
     // The grammar: lambda_form = { "(" ~ "lambda" ~ param_list ~ expr ~ ")" }
     // The CST children are: param_list, expr (body)
     let param_list_pair = inner.next().ok_or_else(|| {
@@ -706,7 +678,7 @@ fn build_lambda_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErr
         )
     })?;
     let param_list_node = build_param_list(param_list_pair, source)?;
-    let Expr::ParamList(params) = &*param_list_node.value else {
+    let Expr::ParamList(_params) = &*param_list_node.value else {
         return Err(err_ctx!(
             Internal,
             "Expected ParamList AST node for lambda form parameters",
@@ -714,7 +686,6 @@ fn build_lambda_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErr
             span
         ));
     };
-
     let body_pair = inner.next().ok_or_else(|| {
         err_ctx!(
             Internal,
@@ -724,7 +695,6 @@ fn build_lambda_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErr
         )
     })?;
     let body = build_expr(body_pair, source)?;
-
     Ok(Spanned {
         value: crate::ast::Expr::List(
             vec![
@@ -757,4 +727,24 @@ fn build_spread_arg(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErro
 
 fn build_list_elem(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
     build_expr(pair, source)
+}
+
+#[cfg(test)]
+mod pest_cst_tests {
+    use super::*;
+    #[test]
+    fn pest_cst_parser_parses_simple_program() {
+        let parser = PestCstParser;
+        let input = "(foo 42)";
+        let cst = parser.parse(input).unwrap();
+        assert_eq!(cst.rule, "program");
+        assert_eq!(cst.children.len(), 2); // expr + EOI
+        let expr = &cst.children[0];
+        assert_eq!(expr.rule, "expr");
+        assert_eq!(expr.children.len(), 1);
+        let list = &expr.children[0];
+        assert_eq!(list.rule, "list");
+        assert_eq!(list.span.start, 0);
+        assert_eq!(list.span.end, 8);
+    }
 }

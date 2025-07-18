@@ -1,14 +1,16 @@
 use crate::err_ctx;
-use crate::macros::{is_macro_definition, parse_macro_definition};
-use crate::macros::{expand_macros_recursively, MacroDefinition};
+use crate::macros::{parse_macro_definition, expand_macros_recursively, MacroDefinition, is_macro_definition};
 use crate::runtime::eval::evaluate;
 use crate::runtime::world::build_canonical_macro_env;
 use crate::runtime::world::World;
 use crate::syntax::parser::wrap_in_do;
 use crate::SutraError;
+use crate::atoms::SharedOutput;
+use crate::ast::AstNode;
 use miette::NamedSource;
 use std::sync::Arc;
-use crate::atoms::SharedOutput;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 /// Unified execution pipeline that enforces strict layering: Parse → Expand → Validate → Evaluate
 /// This is the single source of truth for all Sutra execution paths, including tests and production.
@@ -43,11 +45,7 @@ impl ExecutionPipeline {
         // Phase 2: Partition AST nodes: macro definitions vs user code
         // Note: define forms are special forms that should be evaluated, not treated as macros
         let (macro_defs, user_code): (Vec<_>, Vec<_>) =
-            ast_nodes.into_iter().partition(|expr| {
-                // Only treat define forms as macros if they're in a macro context
-                // For now, we'll treat all define forms as special forms to be evaluated
-                false // Don't partition define forms as macros
-            });
+            ast_nodes.into_iter().partition(|_expr| false); // Don't partition define forms as macros
 
         // Phase 3: Build canonical macro environment
         let mut env = build_canonical_macro_env()?;
@@ -150,4 +148,73 @@ impl ExecutionPipeline {
 
         Ok(())
     }
+
+    /// Executes AST nodes directly without parsing, avoiding double execution.
+    /// This is optimized for test execution where AST is already available.
+    pub fn execute_ast(&self, nodes: &[AstNode]) -> Result<crate::ast::value::Value, SutraError> {
+        // Partition AST nodes: macro definitions vs user code
+        let (macro_defs, user_code) = nodes.iter().cloned().partition(|expr| is_macro_definition(expr));
+
+        // Build canonical macro environment
+        let mut env = build_canonical_macro_env()?;
+
+        // Extend env.user_macros with user-defined macros
+        for macro_expr in macro_defs {
+            let (name, template) = parse_macro_definition(&macro_expr)?;
+            if env.user_macros.contains_key(&name) {
+                return Err(err_ctx!(Validation, "Duplicate macro name '{}'", name));
+            }
+            env.user_macros.insert(name.clone(), MacroDefinition::Template(template));
+        }
+
+        // Wrap user_code in a (do ...) if needed
+        let program = wrap_in_do(user_code);
+
+        // Expand macros
+        let expanded = expand_macros_recursively(program, &mut env)?;
+
+        // Optional validation step
+        if self.validate {
+            let atom_registry = crate::runtime::world::build_default_atom_registry();
+            let mut combined_macros = env.core_macros.clone();
+            combined_macros.extend(env.user_macros.clone());
+            let macro_registry = crate::macros::MacroRegistry {
+                macros: combined_macros,
+            };
+
+            let validation_result = crate::validation::semantic::validate_expanded_ast(
+                &expanded,
+                &macro_registry,
+                &atom_registry,
+            );
+
+            if !validation_result.is_valid() {
+                let errors = validation_result.errors.join("\n");
+                return Err(err_ctx!(
+                    Validation,
+                    format!("Semantic validation failed:\n{}", errors),
+                    "", // No source available for AST execution
+                    expanded.span
+                ));
+            }
+        }
+
+        // Evaluate the expanded AST
+        let world = World::default();
+        let source = Arc::new(NamedSource::new("ast_execution", "".to_string()));
+        let atom_registry = crate::runtime::world::build_default_atom_registry();
+        let output = SharedOutput(Rc::new(RefCell::new(crate::cli::output::OutputBuffer::new())));
+
+        let (result, _) = evaluate(
+            &expanded,
+            &world,
+            output,
+            &atom_registry,
+            source,
+            self.max_depth,
+        )?;
+
+        Ok(result)
+    }
 }
+

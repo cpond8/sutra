@@ -565,21 +565,19 @@ fn evaluate_list(
 
     // Check if it's a function in world state
     let world_path = crate::runtime::world::Path(vec![symbol_name.clone()]);
-    if let Some(lambda_value) = context.world.state.get(&world_path) {
-        if let Value::Lambda(lambda) = lambda_value {
-            // Evaluate arguments eagerly
-            let (arg_values, world_after_args) = evaluate_eager_args(&flat_tail, context)?;
-            let mut lambda_context = EvaluationContext {
-                world: &world_after_args,
-                output: context.output.clone(),
-                atom_registry: context.atom_registry,
-                source: context.source.clone(),
-                max_depth: context.max_depth,
-                depth: context.depth + 1,
-                lexical_env: context.lexical_env.clone(),
-            };
-            return crate::atoms::special_forms::call_lambda(&lambda, &arg_values, &mut lambda_context);
-        }
+    if let Some(Value::Lambda(lambda)) = context.world.state.get(&world_path) {
+        // Evaluate arguments eagerly
+        let (arg_values, world_after_args) = evaluate_eager_args(&flat_tail, context)?;
+        let mut lambda_context = EvaluationContext {
+            world: &world_after_args,
+            output: context.output.clone(),
+            atom_registry: context.atom_registry,
+            source: context.source.clone(),
+            max_depth: context.max_depth,
+            depth: context.depth + 1,
+            lexical_env: context.lexical_env.clone(),
+        };
+        return crate::atoms::special_forms::call_lambda(lambda, &arg_values, &mut lambda_context);
     }
 
     context.call_atom(symbol_name, head, &flat_tail, span)

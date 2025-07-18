@@ -16,22 +16,23 @@ use crate::atoms::{AtomRegistry, SpecialFormAtomFn};
 use crate::atoms::helpers::validate_special_form_arity;
 use crate::runtime::eval::{evaluate_ast_node, EvaluationContext};
 use crate::runtime::world::World;
-use crate::{err_src, SutraError};
+use crate::{err_ctx, err_src, SutraError};
 use std::sync::{Arc, Mutex};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
 // Use the public context helper macro
 use crate::sub_eval_context;
+use miette::NamedSource;
 
-/// Represents a single test case definition.
+/// Represents a single test case definition with source context for diagnostics.
 #[derive(Debug, Clone)]
 pub struct TestDefinition {
     pub name: String,
     pub expect: AstNode,
     pub body: Vec<AstNode>,
     pub span: Span,
-    pub file: Option<String>,
+    pub source_file: Arc<NamedSource<String>>,
 }
 
 /// A global registry for storing test definitions.
@@ -39,16 +40,16 @@ pub static TEST_REGISTRY: Lazy<Mutex<HashMap<String, TestDefinition>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
 
-/// `register-test!` special form.
+/// `register-test!` special form updated for AST storage.
 ///
 /// Usage: (register-test! <name> <expect-form> <body> <metadata>)
 /// - <name>: A string representing the name of the test.
-/// - <expect-form>: An s-expression detailing the test's expectations.
-/// - <body>: A list of expressions to execute as the test body.
-/// - <metadata>: A map containing metadata like :span and :file.
+/// - <expect-form>: An s-expression detailing the test's expectations (AST node).
+/// - <body>: A list of expressions to execute as the test body (AST nodes).
+/// - <metadata>: A map containing metadata like :span and :source-file.
 ///
-/// This atom is intended to be used by the `(test ...)` macro, not directly.
-/// It registers a test definition into a global registry for later execution.
+/// This atom registers a test definition into the global registry using AST nodes
+/// and preserves the source context for diagnostics.
 ///
 /// Returns `nil`.
 fn register_test_atom(
@@ -78,7 +79,6 @@ fn register_test_atom(
     };
 
     let expect = args[1].clone();
-    // The body arguments are passed directly as individual arguments, not as a list
     let body = args[2..args.len()-1].to_vec();
 
     let (metadata_val, _) = evaluate_ast_node(&args[args.len()-1], ctx)?;
@@ -89,19 +89,33 @@ fn register_test_atom(
                 Validation,
                 "Test metadata must be a map",
                 &ctx.source,
-                args[3].span
+                args[args.len()-1].span
             ));
         }
     };
 
-    let file = metadata.get(":file").and_then(|v| v.as_string());
+    let source_file = match metadata.get(":source-file") {
+        Some(Value::String(file_path)) => {
+            let source = std::fs::read_to_string(file_path)
+                .map_err(|e| err_ctx!(Internal, "Failed to read source file: {}", e.to_string()))?;
+            Arc::new(NamedSource::new(file_path.clone(), source))
+        }
+        _ => {
+            return Err(err_src!(
+                Validation,
+                "Test metadata must contain :source-file string",
+                &ctx.source,
+                args[args.len()-1].span
+            ));
+        }
+    };
 
     let test_def = TestDefinition {
         name: name.clone(),
         expect,
         body,
         span: *span,
-        file,
+        source_file,
     };
 
     let mut registry = TEST_REGISTRY.lock().unwrap();

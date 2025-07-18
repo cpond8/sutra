@@ -1,4 +1,3 @@
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -10,9 +9,11 @@ use crate::diagnostics::SutraError;
 use crate::syntax::parser;
 use crate::{err_msg, err_src};
 
-/// A test definition extracted from a `.sutra` file before macro expansion.
+/// AST representation of a test definition extracted from a `.sutra` file.
+/// Stores the test in AST form to avoid redundant parsing and preserve original
+/// span information for diagnostics.
 #[derive(Debug, Clone)]
-pub struct RawTestDefinition {
+pub struct ASTDefinition {
     pub name: String,
     pub expect_form: Option<AstNode>,
     pub body: Vec<AstNode>,
@@ -49,15 +50,15 @@ impl TestDiscoverer {
         Ok(files)
     }
 
-    /// Parses a single `.sutra` file and extracts all `(test ...)` forms.
+    /// Parses a single `.sutra` file and extracts all `(test ...)` forms as AST nodes.
     ///
-    /// This function does not perform macro expansion. It only extracts the raw
-    /// test definitions.
+    /// This function does not perform macro expansion. It extracts the test definitions
+    /// in AST form and preserves source context for diagnostics.
     pub fn extract_tests_from_file<P: AsRef<Path>>(
         file_path: P,
-    ) -> Result<Vec<RawTestDefinition>, SutraError> {
+    ) -> Result<Vec<ASTDefinition>, SutraError> {
         let path_str = file_path.as_ref().display().to_string();
-        let source = fs::read_to_string(file_path.as_ref()).map_err(|e| {
+        let source = std::fs::read_to_string(file_path.as_ref()).map_err(|e| {
             err_msg!(
                 Internal,
                 format!("Failed to read file '{}': {}", path_str, e)
@@ -65,7 +66,7 @@ impl TestDiscoverer {
         })?;
 
         let ast = parser::parse(&source)?;
-        let source_file = Arc::new(NamedSource::new(path_str, source.clone()));
+        let source_file = Arc::new(NamedSource::new(path_str, source));
 
         let mut tests = Vec::new();
         for node in ast {
@@ -83,11 +84,31 @@ impl TestDiscoverer {
         Ok(tests)
     }
 
+    /// Directly extracts tests from a pre-parsed AST
+    pub fn extract_tests_from_ast(
+        ast: Vec<AstNode>,
+        source_file: Arc<NamedSource<String>>,
+    ) -> Result<Vec<ASTDefinition>, SutraError> {
+        let mut tests = Vec::new();
+        for node in ast {
+            let Expr::List(items, span) = &*node.value else { continue };
+            let Some(head) = items.first() else { continue };
+            let Expr::Symbol(s, _) = &*head.value else { continue };
+            if s != "test" { continue }
+            tests.push(Self::parse_test_form(
+                items,
+                *span,
+                source_file.clone(),
+            )?);
+        }
+        Ok(tests)
+    }
+
     fn parse_test_form(
         items: &[AstNode],
         span: Span,
         source_file: Arc<NamedSource<String>>,
-    ) -> Result<RawTestDefinition, SutraError> {
+    ) -> Result<ASTDefinition, SutraError> {
         // (test "test-name" (expect ...) body...)
         if items.len() < 2 {
             return Err(err_src!(
@@ -128,7 +149,7 @@ impl TestDiscoverer {
 
         let body = items.get(body_start_index..).unwrap_or_default().to_vec();
 
-        Ok(RawTestDefinition {
+        Ok(ASTDefinition {
             name,
             expect_form,
             body,
