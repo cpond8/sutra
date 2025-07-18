@@ -58,8 +58,7 @@ impl GrammarValidators {
         for &critical in GRAMMAR_CONSTANTS.critical_rules {
             if !rules.contains_key(critical) {
                 result.report_error(format!(
-                    "Critical rule '{}' is missing from the grammar.",
-                    critical
+                    "Critical rule '{critical}' is missing from the grammar."
                 ));
             }
         }

@@ -114,7 +114,7 @@ fn register_test_atom(
 ///
 /// Usage: (value <expected-value>)
 /// - <expected-value>: The expected value for the test assertion
-///     Returns: The expected value
+///   Returns: The expected value
 ///
 /// Example:
 ///   (value "sword") ; => "sword"
@@ -138,7 +138,7 @@ fn value_atom(
 ///
 /// Usage: (tags <tag1> <tag2> ...)
 /// - <tag1>, <tag2>, ...: Tags to associate with the test
-///     Returns: A list of tags
+///   Returns: A list of tags
 ///
 /// Example:
 ///   (tags "assignment" "core") ; => ["assignment" "core"]
@@ -164,7 +164,7 @@ fn tags_atom(
 ///
 /// Usage: (test/echo <value>)
 /// - <value>: Any value to echo
-///     Returns: The echoed value
+///   Returns: The echoed value
 ///
 /// Example:
 ///   (test/echo "hello") ; => "hello" (also emits "hello")
@@ -242,7 +242,7 @@ fn emit_borrow_stress_output(
 ) {
     ctx.output
         .borrow_mut()
-        .emit(&format!("[{}:{}:{}]", phase, depth, msg), Some(span));
+        .emit(&format!("[{phase}:{depth}:{msg}]"), Some(span));
 }
 
 /// Handle recursive case of borrow stress test.
@@ -305,7 +305,7 @@ fn test_borrow_stress_atom(
         test_echo_atom,
     )?;
     emit_borrow_stress_output(ctx, depth, &msg, span, "after");
-    Ok((Value::String(format!("depth:{};msg:{}", depth, msg)), world))
+    Ok((Value::String(format!("depth:{depth};msg:{msg}")), world))
 }
 
 /// Registers all test atoms in the given registry.

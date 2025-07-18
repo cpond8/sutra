@@ -103,7 +103,7 @@ impl Value {
             if i > 0 {
                 write!(f, " ")?;
             }
-            write!(f, "{}", item)?;
+            write!(f, "{item}")?;
         }
         write!(f, ")")
     }
@@ -115,7 +115,7 @@ impl Value {
             if !first {
                 write!(f, ", ")?;
             }
-            write!(f, "{}: {}", k, v)?;
+            write!(f, "{k}: {v}")?;
             first = false;
         }
         write!(f, "}}")
@@ -130,14 +130,14 @@ impl fmt::Display for Value {
                 if n.fract() == 0.0 {
                     write!(f, "{}", *n as i64)
                 } else {
-                    write!(f, "{}", n)
+                    write!(f, "{n}")
                 }
             }
-            Value::String(s) => write!(f, "{}", s),
-            Value::Bool(b) => write!(f, "{}", b),
+            Value::String(s) => write!(f, "{s}"),
+            Value::Bool(b) => write!(f, "{b}"),
             Value::List(items) => Value::fmt_list(f, items),
             Value::Map(map) => Value::fmt_map(f, map),
-            Value::Path(p) => write!(f, "{}", p),
+            Value::Path(p) => write!(f, "{p}"),
             Value::Lambda(_) => write!(f, "<lambda>"),
         }
     }

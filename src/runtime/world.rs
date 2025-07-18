@@ -273,7 +273,7 @@ fn load_and_process_user_macros(path: &str) -> Result<StdHashMap<String, MacroDe
     // Load macros from file with error logging
     let macros = load_macros_from_file(path).map_err(|e| {
         #[cfg(debug_assertions)]
-        eprintln!("[sutra:build_canonical_macro_env] Failed to load standard macros: {}", e);
+        eprintln!("[sutra:build_canonical_macro_env] Failed to load standard macros: {e}");
         e
     })?;
 

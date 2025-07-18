@@ -148,9 +148,9 @@ fn create_flexible_path_op(expr: &AstNode, op_name: &str, min_args: usize) -> Re
             })
         }
         Expr::List(items, _) => {
-            let expected = if min_args > 1 { min_args - 1 } else { 0 };
-            let got = if items.len() > 0 { items.len() - 1 } else { 0 };
-            let msg = format!("{} requires at least {} argument(s), got {}", op_name, expected, got);
+            let expected = min_args.saturating_sub(1);
+            let got = if !items.is_empty() { items.len() - 1 } else { 0 };
+            let msg = format!("{op_name} requires at least {expected} argument(s), got {got}");
             Err(err_msg!(Validation, msg))
         }
         _ => Err(err_msg!(Validation, "Expected a list form for this macro")),
@@ -188,8 +188,8 @@ fn create_assignment_macro(expr: &AstNode, op_symbol: &str) -> Result<AstNode, S
             })
         }
         Expr::List(items, _) => {
-            let got = if items.len() > 0 { items.len() - 1 } else { 0 };
-            let msg = format!("{} requires 2 arguments (path and value), got {}", op_symbol, got);
+            let got = if !items.is_empty() { items.len() - 1 } else { 0 };
+            let msg = format!("{op_symbol} requires 2 arguments (path and value), got {got}");
             Err(err_msg!(Validation, msg))
         }
         _ => Err(err_msg!(Validation, "Expected a list form for this macro")),
@@ -231,8 +231,8 @@ fn create_unary_assignment_macro(expr: &AstNode, op_symbol: &str) -> Result<AstN
             })
         }
         Expr::List(items, _) => {
-            let got = if items.len() > 0 { items.len() - 1 } else { 0 };
-            let msg = format!("{} requires 1 argument (path), got {}", op_symbol, got);
+            let got = if !items.is_empty() { items.len() - 1 } else { 0 };
+            let msg = format!("{op_symbol} requires 1 argument (path), got {got}");
             Err(err_msg!(Validation, msg))
         }
         _ => Err(err_msg!(Validation, "Expected a list form for this macro")),
@@ -301,7 +301,7 @@ pub fn expand_dec(expr: &AstNode) -> Result<AstNode, SutraError> {
 /// Expands `(print ...)` to `(core/print ...)`, letting the atom handle arity validation.
 pub fn expand_print(expr: &AstNode) -> Result<AstNode, SutraError> {
     match &*expr.value {
-        Expr::List(items, span) if items.len() >= 1 => {
+        Expr::List(items, span) if !items.is_empty() => {
             let atom_symbol = create_symbol("core/print", span);
             let mut new_items = vec![atom_symbol];
             // Add all arguments after the macro name

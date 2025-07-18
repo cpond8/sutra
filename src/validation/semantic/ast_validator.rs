@@ -76,8 +76,7 @@ impl AstValidator {
             }
         } else if !atoms.has(name) {
             result.report_error(format!(
-                "'{}' is not defined as an atom or macro",
-                name
+                "'{name}' is not defined as an atom or macro"
             ));
         }
     }
@@ -115,13 +114,11 @@ impl AstValidator {
 
         if !has_rest && actual_args != required_args {
             result.report_error(format!(
-                "Macro '{}' expects {} arguments, but got {}",
-                name, required_args, actual_args
+                "Macro '{name}' expects {required_args} arguments, but got {actual_args}"
             ));
         } else if has_rest && actual_args < required_args {
             result.report_error(format!(
-                "Macro '{}' expects at least {} arguments, but got {}",
-                name, required_args, actual_args
+                "Macro '{name}' expects at least {required_args} arguments, but got {actual_args}"
             ));
         }
     }

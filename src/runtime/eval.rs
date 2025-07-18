@@ -140,8 +140,7 @@ impl<'a> EvaluationContext<'a> {
             if SPECIAL_FORM_NAMES.contains(&symbol_name) {
                 assert!(
                     matches!(atom, crate::atoms::Atom::SpecialForm(_)),
-                    "CRITICAL: Atom '{}' is a special form and MUST be registered as Atom::SpecialForm.",
-                    symbol_name
+                    "CRITICAL: Atom '{symbol_name}' is a special form and MUST be registered as Atom::SpecialForm."
                 );
             }
         }
@@ -296,7 +295,7 @@ fn evaluate_invalid_expr(
             // Check if it's an atom in the registry
             if context.atom_registry.has(s) {
                 (
-                    format!("'{}' is an atom and must be called with arguments (e.g., ({} ...))", s, s),
+                    format!("'{s}' is an atom and must be called with arguments (e.g., ({s} ...))"),
                     *span,
                 )
             } else {
@@ -307,7 +306,7 @@ fn evaluate_invalid_expr(
                 }
                 // If the symbol is not found anywhere, it's an undefined symbol.
                 (
-                    format!("undefined symbol: '{}'", s),
+                    format!("undefined symbol: '{s}'"),
                     *span,
                 )
             }
@@ -457,22 +456,20 @@ fn evaluate_list(
     // Use direct atom resolution for all symbols
     let flat_tail = flatten_spread_args(tail, context)?;
     // If the symbol is not an atom, check if it's a lambda in the lexical environment
-    if let Some(val) = context.get_lexical_var(symbol_name) {
-        if let Value::Lambda(lambda_rc) = val {
-            let lambda = lambda_rc.clone();
-            // Evaluate arguments eagerly
-            let (arg_values, world_after_args) = evaluate_eager_args(&flat_tail, context)?;
-            let mut lambda_context = EvaluationContext {
-                world: &world_after_args,
-                output: context.output.clone(),
-                atom_registry: context.atom_registry,
-                source: context.source.clone(),
-                max_depth: context.max_depth,
-                depth: context.depth + 1,
-                lexical_env: context.lexical_env.clone(),
-            };
-            return crate::atoms::special_forms::call_lambda(&lambda, &arg_values, &mut lambda_context);
-        }
+    if let Some(Value::Lambda(lambda_rc)) = context.get_lexical_var(symbol_name) {
+        let lambda = lambda_rc.clone();
+        // Evaluate arguments eagerly
+        let (arg_values, world_after_args) = evaluate_eager_args(&flat_tail, context)?;
+        let mut lambda_context = EvaluationContext {
+            world: &world_after_args,
+            output: context.output.clone(),
+            atom_registry: context.atom_registry,
+            source: context.source.clone(),
+            max_depth: context.max_depth,
+            depth: context.depth + 1,
+            lexical_env: context.lexical_env.clone(),
+        };
+        return crate::atoms::special_forms::call_lambda(&lambda, &arg_values, &mut lambda_context);
     }
     context.call_atom(symbol_name, head, &flat_tail, span)
 }

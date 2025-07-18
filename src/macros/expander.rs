@@ -29,6 +29,18 @@ use crate::SutraError;
 use std::collections::HashMap;
 
 // =============================
+// Type definitions for parameter grouping
+// =============================
+
+/// Groups parameters commonly used in template substitution functions
+struct SubstitutionContext<'a> {
+    bindings: &'a HashMap<String, AstNode>,
+    env: &'a MacroExpansionContext,
+    depth: usize,
+    macro_name: &'a str,
+}
+
+// =============================
 // Public API for macro expansion
 // =============================
 
@@ -167,7 +179,7 @@ pub fn bind_macro_params(
 
     // Also create a boolean marker for the variadic parameter name
     bindings.insert(
-        format!("__variadic__{}", variadic_name),
+        format!("__variadic__{variadic_name}"),
         with_span(Expr::Bool(true, *expr_span), expr_span),
     );
 
@@ -215,16 +227,19 @@ pub fn substitute_template(
         span,
     } = &*expr.value
     {
+        let ctx = SubstitutionContext {
+            bindings,
+            env,
+            depth: depth + 1,
+            macro_name,
+        };
         return substitute_if(
             condition,
             then_branch,
             else_branch,
-            bindings,
             span,
             &expr.span,
-            env,
-            depth + 1,
-            macro_name,
+            &ctx,
         );
     }
     // Default: return as is (atomic types)
@@ -273,7 +288,7 @@ fn expand_macro_once(
         None => return Ok(None),
     };
 
-    let expanded = expand_macro_definition(&macro_def, node, &macro_name, depth, env, provenance)?;
+    let expanded = expand_macro_definition(&macro_def, node, macro_name, depth, env, provenance)?;
     Ok(Some((macro_name.to_string(), provenance, expanded)))
 }
 
@@ -363,7 +378,7 @@ fn substitute_symbol(
     let bound_node = bindings.get(name)?;
 
     // If it's a variadic parameter, convert its list to a `(list ...)` call
-    if bindings.contains_key(&format!("__variadic__{}", name)) {
+    if bindings.contains_key(&format!("__variadic__{name}")) {
         if let Expr::List(elements, _) = &*bound_node.value {
             return Some(Ok(make_list_call(elements, &expr.span)));
         }
@@ -509,16 +524,13 @@ fn substitute_if(
     condition: &AstNode,
     then_branch: &AstNode,
     else_branch: &AstNode,
-    bindings: &HashMap<String, AstNode>,
     if_span: &Span,
     original_span: &Span,
-    env: &MacroExpansionContext,
-    depth: usize,
-    macro_name: &str,
+    ctx: &SubstitutionContext,
 ) -> Result<AstNode, SutraError> {
-    let new_condition = substitute_template(condition, bindings, env, depth + 1, macro_name)?;
-    let new_then = substitute_template(then_branch, bindings, env, depth + 1, macro_name)?;
-    let new_else = substitute_template(else_branch, bindings, env, depth + 1, macro_name)?;
+    let new_condition = substitute_template(condition, ctx.bindings, ctx.env, ctx.depth + 1, ctx.macro_name)?;
+    let new_then = substitute_template(then_branch, ctx.bindings, ctx.env, ctx.depth + 1, ctx.macro_name)?;
+    let new_else = substitute_template(else_branch, ctx.bindings, ctx.env, ctx.depth + 1, ctx.macro_name)?;
 
     Ok(with_span(
         Expr::If {
@@ -563,7 +575,7 @@ fn extract_variadic_param_name<'a>(
 
 // Checks if a given symbol name corresponds to a variadic parameter in the bindings.
 fn is_variadic_param(name: &str, bindings: &HashMap<String, AstNode>) -> bool {
-    bindings.contains_key(&format!("__variadic__{}", name))
+    bindings.contains_key(&format!("__variadic__{name}"))
 }
 
 // =============================

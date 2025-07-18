@@ -90,7 +90,7 @@ impl Expr {
             Expr::List(exprs, _) => Self::pretty_list(exprs),
             Expr::Symbol(s, _) => s.clone(),
             Expr::Path(p, _) => format!("(path {})", p.0.join(" ")),
-            Expr::String(s, _) => format!("\"{}\"", s),
+            Expr::String(s, _) => format!("\"{s}\""),
             Expr::Number(n, _) => n.to_string(),
             Expr::Bool(b, _) => b.to_string(),
             Expr::If { condition, then_branch, else_branch, .. } => {
@@ -111,7 +111,7 @@ impl Expr {
             .map(|e| e.value.pretty())
             .collect::<Vec<_>>()
             .join(" ");
-        format!("({})", inner)
+        format!("({inner})")
     }
 
     fn pretty_if(condition: &AstNode, then_branch: &AstNode, else_branch: &AstNode) -> String {

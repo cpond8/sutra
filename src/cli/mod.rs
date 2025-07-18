@@ -23,6 +23,19 @@ use std::io::Write;
 pub mod args;
 pub mod output;
 
+// ============================================================================
+// TYPE DEFINITIONS - Simplify complex return types
+// ============================================================================
+
+/// Registration error with context about where it occurred
+type RegistrationError = (String, SutraError);
+
+/// Map of file names to number of tests registered from each file
+type TestsPerFile = std::collections::HashMap<String, usize>;
+
+/// Result of registering tests from multiple files
+type TestRegistrationResult = Result<(Vec<RegistrationError>, TestsPerFile), SutraError>;
+
 /// The main entry point for the CLI.
 pub fn run() {
     let args = SutraArgs::parse();
@@ -55,7 +68,7 @@ pub fn run() {
 
 /// Prints a SutraError to standard error using miette's diagnostic formatting.
 pub fn print_error_to_stderr(error: &SutraError) {
-    eprintln!("{}", error);
+    eprintln!("{error}");
 }
 
 use crate::ast::{Expr, Span, Spanned};
@@ -186,7 +199,7 @@ fn print_sorted_list<T: AsRef<str>>(title: &str, names: &[T]) {
     let mut sorted: Vec<_> = names.iter().map(|n| n.as_ref()).collect();
     sorted.sort();
     for name in sorted {
-        println!("  {}", name);
+        println!("  {name}");
     }
 }
 
@@ -260,7 +273,7 @@ fn discover_test_files(path: &std::path::Path) -> Result<Vec<std::path::PathBuf>
 fn register_tests_from_files(
     test_files: &[std::path::PathBuf],
     error_log: &mut Option<std::fs::File>,
-) -> Result<(Vec<(String, SutraError)>, std::collections::HashMap<String, usize>), SutraError> {
+) -> TestRegistrationResult {
     use std::collections::HashMap;
 
     let mut registration_errors = Vec::new();
@@ -277,7 +290,7 @@ fn register_tests_from_files(
             }
             Err(e) => {
                 print_file_error_message(&file_display, &e);
-                registration_errors.push((format!("{} (file-level)", file_display), e));
+                registration_errors.push((format!("{file_display} (file-level)"), e));
             }
         }
     }
@@ -296,7 +309,7 @@ fn register_tests_from_single_file(
     let test_forms = match TestDiscoverer::extract_tests_from_file(file_path) {
         Ok(forms) => forms,
         Err(e) => {
-            registration_errors.push((format!("{} (file-level)", file_display), e));
+            registration_errors.push((format!("{file_display} (file-level)"), e));
             return Ok(0);
         }
     };
@@ -448,11 +461,11 @@ fn print_success_message(file_display: &str, registered: usize, error_log: &mut 
 
     let mut stdout = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
     let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green)).set_bold(true));
-    let _ = writeln!(stdout, "[OK] Registered {} test(s) from file: {}", registered, file_display);
+    let _ = writeln!(stdout, "[OK] Registered {registered} test(s) from file: {file_display}");
     let _ = stdout.reset();
 
     if let Some(log) = error_log.as_mut() {
-        let _ = writeln!(log, "[OK] Registered {} test(s) from file: {}", registered, file_display);
+        let _ = writeln!(log, "[OK] Registered {registered} test(s) from file: {file_display}");
     }
 }
 
@@ -462,9 +475,9 @@ fn print_file_error_message(file_display: &str, error: &SutraError) {
 
     let mut stderr = termcolor::StandardStream::stderr(termcolor::ColorChoice::Auto);
     let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true));
-    let _ = writeln!(stderr, "\n[ERROR] Failed to process file: {}\n----------------------------------------", file_display);
+    let _ = writeln!(stderr, "\n[ERROR] Failed to process file: {file_display}\n----------------------------------------");
     let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::White)).set_bold(false));
-    let _ = writeln!(stderr, "{}", error);
+    let _ = writeln!(stderr, "{error}");
     let _ = stderr.reset();
 }
 
@@ -476,7 +489,7 @@ fn print_test_error_message(test_idx: usize, file_display: &str, error: &SutraEr
     let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true));
     let _ = writeln!(stderr, "\n[ERROR] Failed to execute test #{} in file: {}\n----------------------------------------", test_idx + 1, file_display);
     let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::White)).set_bold(false));
-    let _ = writeln!(stderr, "{}", error);
+    let _ = writeln!(stderr, "{error}");
     let _ = stderr.set_color(ColorSpec::new().set_fg(Some(Color::Yellow)).set_bold(false));
     let _ = writeln!(stderr, "Suggestion: Check for execution errors in this test form.");
     let _ = stderr.reset();
@@ -487,7 +500,7 @@ fn print_test_pass(stdout: &mut termcolor::StandardStream, test_name: &str, file
     use termcolor::{Color, ColorSpec, WriteColor};
 
     let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green)).set_bold(true));
-    let _ = writeln!(stdout, "[PASS] {} ({})", test_name, file_info);
+    let _ = writeln!(stdout, "[PASS] {test_name} ({file_info})");
     let _ = stdout.reset();
 }
 
@@ -496,9 +509,9 @@ fn print_test_error(stdout: &mut termcolor::StandardStream, test_name: &str, fil
     use termcolor::{Color, ColorSpec, WriteColor};
 
     let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Red)).set_bold(true));
-    let _ = writeln!(stdout, "[ERROR] {} ({})", test_name, file_info);
+    let _ = writeln!(stdout, "[ERROR] {test_name} ({file_info})");
     let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::White)).set_bold(false));
-    let _ = writeln!(stdout, "  Error: {}", error);
+    let _ = writeln!(stdout, "  Error: {error}");
     let _ = stdout.reset();
 }
 
@@ -513,7 +526,7 @@ fn handle_ast(path: &std::path::Path) -> Result<(), SutraError> {
     let (_source, ast_nodes) = load_file_to_ast(path)?;
 
     let filename = safe_path_display(path);
-    println!("AST for {}:", filename);
+    println!("AST for {filename}:");
     println!("={}=", "=".repeat(filename.len() + 9));
 
     if ast_nodes.is_empty() {
@@ -524,7 +537,7 @@ fn handle_ast(path: &std::path::Path) -> Result<(), SutraError> {
         if ast_nodes.len() > 1 {
             println!("\nNode {}:", i + 1);
         }
-        println!("{:#?}", node);
+        println!("{node:#?}");
     }
 
     Ok(())
@@ -557,10 +570,10 @@ fn handle_validation_failure(grammar_path: &str, validation_result: &crate::vali
 
     let grammar_source = fs::read_to_string(grammar_path).unwrap_or_default();
     let error = err_ctx!(Validation, "Grammar validation failed", grammar_source);
-    eprintln!("{}", error);
+    eprintln!("{error}");
 
     for err in &validation_result.errors {
-        eprintln!("  • {}", err);
+        eprintln!("  • {err}");
     }
 
     std::process::exit(1);
@@ -569,14 +582,14 @@ fn handle_validation_failure(grammar_path: &str, validation_result: &crate::vali
 /// Prints validation warnings.
 fn print_validation_warnings(validation_result: &crate::validation::grammar::ValidationResult) {
     for warning in &validation_result.warnings {
-        eprintln!("[Warning] {}", warning);
+        eprintln!("[Warning] {warning}");
     }
 }
 
 /// Prints validation suggestions.
 fn print_validation_suggestions(validation_result: &crate::validation::grammar::ValidationResult) {
     for suggestion in &validation_result.suggestions {
-        eprintln!("[Suggestion] {}", suggestion);
+        eprintln!("[Suggestion] {suggestion}");
     }
 }
 

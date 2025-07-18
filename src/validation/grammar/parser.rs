@@ -16,7 +16,15 @@ impl GrammarParser {
             identifier_regex: Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_]*$").unwrap(),
         }
     }
+}
 
+impl Default for GrammarParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl GrammarParser {
     pub fn parse_rules(&self, content: &str) -> Result<HashMap<String, Rule>, Box<dyn std::error::Error>> {
         if self.is_empty_or_whitespace(content) {
             return Err("Empty grammar content".into());

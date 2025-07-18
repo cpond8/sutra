@@ -49,7 +49,7 @@ pub struct StdoutSink;
 
 impl OutputSink for StdoutSink {
     fn emit(&mut self, text: &str, _span: Option<&crate::ast::Span>) {
-        println!("{}", text);
+        println!("{text}");
     }
 }
 
@@ -70,7 +70,7 @@ pub fn print_trace(trace: &[MacroExpansionStep]) {
         let current_ast_str = step.output.value.pretty();
 
         if i == 0 {
-            println!("{}", current_ast_str);
+            println!("{current_ast_str}");
             last_ast_str = current_ast_str;
             println!();
             continue;
@@ -86,7 +86,7 @@ pub fn print_trace(trace: &[MacroExpansionStep]) {
 pub fn print_result<T: std::fmt::Debug>(result: &T) {
     let mut stdout = StandardStream::stdout(ColorChoice::Auto);
     let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green)).set_bold(true));
-    println!("Result: {:#?}", result);
+    println!("Result: {result:#?}");
     let _ = stdout.reset();
 }
 
@@ -99,15 +99,15 @@ fn print_diff(stdout: &mut StandardStream, diffs: &[difference::Difference]) {
         match diff {
             difference::Difference::Same(ref x) => {
                 let _ = stdout.reset();
-                println!(" {}", x);
+                println!(" {x}");
             }
             difference::Difference::Add(ref x) => {
                 let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green)));
-                println!("+{}", x);
+                println!("+{x}");
             }
             difference::Difference::Rem(ref x) => {
                 let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Red)));
-                println!("-{}", x);
+                println!("-{x}");
             }
         }
     }
