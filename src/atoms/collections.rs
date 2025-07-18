@@ -15,6 +15,7 @@
 
 use crate::ast::value::Value;
 use crate::atoms::{PureAtomFn, StatefulAtomFn};
+use crate::atoms::helpers::{validate_unary_arity, validate_binary_arity, validate_even_arity};
 use crate::err_msg;
 
 // ============================================================================
@@ -49,9 +50,7 @@ pub const ATOM_LIST: PureAtomFn = |args| Ok(Value::List(args.to_vec()));
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_LEN: PureAtomFn = |args| {
-    if args.len() != 1 {
-        return Err(err_msg!(Eval, "len expects 1 argument, got {}", args.len()));
-    }
+    validate_unary_arity(args, "len")?;
     match &args[0] {
         Value::List(items) => Ok(Value::Number(items.len() as f64)),
         Value::String(s) => Ok(Value::Number(s.len() as f64)),
@@ -79,13 +78,7 @@ pub const ATOM_LEN: PureAtomFn = |args| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_HAS: PureAtomFn = |args| {
-    if args.len() != 2 {
-        return Err(err_msg!(
-            Eval,
-            "has? expects 2 arguments, got {}",
-            args.len()
-        ));
-    }
+    validate_binary_arity(args, "has?")?;
     let collection_val = &args[0];
     let search_val = &args[1];
     let found = match collection_val {
@@ -125,13 +118,7 @@ pub const ATOM_HAS: PureAtomFn = |args| {
 /// # Safety
 /// Mutates the world at the given path. **Creates a new empty list if the path doesn't exist.**
 pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
-    if args.len() != 2 {
-        return Err(err_msg!(
-            Eval,
-            "core/push! expects 2 arguments, got {}",
-            args.len()
-        ));
-    }
+    validate_binary_arity(args, "core/push!")?;
     let path = match &args[0] {
         Value::Path(p) => p,
         _ => {
@@ -175,13 +162,7 @@ pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
 /// # Safety
 /// Mutates the world at the given path. **Creates a new empty list if the path doesn't exist.**
 pub const ATOM_CORE_PULL: StatefulAtomFn = |args, context| {
-    if args.len() != 1 {
-        return Err(err_msg!(
-            Eval,
-            "core/pull! expects 1 argument, got {}",
-            args.len()
-        ));
-    }
+    validate_unary_arity(args, "core/pull!")?;
     let path = match &args[0] {
         Value::Path(p) => p,
         _ => {
@@ -261,9 +242,7 @@ pub const ATOM_CORE_STR_PLUS: PureAtomFn = |args| {
 /// # Errors
 /// Returns an error if the argument is not a list or if the list is empty.
 pub const ATOM_CAR: PureAtomFn = |args| {
-    if args.len() != 1 {
-        return Err(err_msg!(Eval, "car expects 1 argument, got {}", args.len()));
-    }
+    validate_unary_arity(args, "car")?;
     match &args[0] {
         Value::List(items) => {
             if let Some(first) = items.first() {
@@ -289,9 +268,7 @@ pub const ATOM_CAR: PureAtomFn = |args| {
 /// # Errors
 /// Returns an error if the argument is not a list or if the list is empty.
 pub const ATOM_CDR: PureAtomFn = |args| {
-    if args.len() != 1 {
-        return Err(err_msg!(Eval, "cdr expects 1 argument, got {}", args.len()));
-    }
+    validate_unary_arity(args, "cdr")?;
     match &args[0] {
         Value::List(items) => {
             if items.is_empty() {
@@ -318,9 +295,7 @@ pub const ATOM_CDR: PureAtomFn = |args| {
 /// # Errors
 /// Returns an error if the second argument is not a list.
 pub const ATOM_CONS: PureAtomFn = |args| {
-    if args.len() != 2 {
-        return Err(err_msg!(Eval, "cons expects 2 arguments, got {}", args.len()));
-    }
+    validate_binary_arity(args, "cons")?;
     match &args[1] {
         Value::List(items) => {
             let mut new_list = Vec::with_capacity(items.len() + 1);
@@ -346,9 +321,7 @@ pub const ATOM_CONS: PureAtomFn = |args| {
 /// # Errors
 /// Returns an error if the number of arguments is odd or if any key is not a string.
 pub const ATOM_CORE_MAP: PureAtomFn = |args| {
-        if args.len() % 2 != 0 {
-        return Err(err_msg!(Eval, "core/map expects an even number of arguments, got {}", args.len()));
-    }
+        validate_even_arity(args, "core/map")?;
 
     let mut map = im::HashMap::new();
     for chunk in args.chunks(2) {

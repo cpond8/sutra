@@ -16,11 +16,11 @@
 use crate::ast::value::Value;
 use crate::atoms::helpers::{
     build_apply_call_expr, eval_apply_list_arg, eval_apply_normal_args, eval_single_arg,
-    sub_eval_context,
+    sub_eval_context, validate_special_form_min_arity,
 };
 use crate::atoms::SpecialFormAtomFn;
-use crate::runtime::eval::evaluate_ast_node;
 use crate::err_msg;
+use crate::runtime::eval::evaluate_ast_node;
 
 // ============================================================================
 // CONTROL FLOW OPERATIONS
@@ -96,9 +96,7 @@ pub const ATOM_ERROR: SpecialFormAtomFn = |args, context, _parent_span| {
 /// # Safety
 /// Pure, does not mutate state. All state is explicit.
 pub const ATOM_APPLY: SpecialFormAtomFn = |args, context, parent_span| {
-    if args.len() < 2 {
-        return Err(err_msg!(TypeError, "apply expects at least 2 arguments"));
-    }
+    validate_special_form_min_arity(args, 2, "apply")?;
 
     let func_expr = &args[0];
     let normal_args_slice = &args[1..args.len() - 1];

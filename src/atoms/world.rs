@@ -15,7 +15,7 @@
 
 use crate::ast::value::Value;
 use crate::atoms::StatefulAtomFn;
-use crate::atoms::helpers::extract_path;
+use crate::atoms::helpers::{extract_path, validate_binary_arity, validate_unary_arity};
 use crate::err_msg;
 
 // ============================================================================
@@ -25,13 +25,7 @@ use crate::err_msg;
 /// Sets a value at a path in the world state.
 /// `(core/set! <path> <value>)`
 pub const ATOM_CORE_SET: StatefulAtomFn = |args, context| {
-    if args.len() != 2 {
-        return Err(err_msg!(
-            Eval,
-            "core/set! expects 2 arguments, got {}",
-            args.len()
-        ));
-    }
+    validate_binary_arity(args, "core/set!")?;
     let path = &extract_path(&args[0])?;
     let value = args[1].clone();
     context.state.set(path, value);
@@ -41,13 +35,7 @@ pub const ATOM_CORE_SET: StatefulAtomFn = |args, context| {
 /// Gets a value at a path in the world state.
 /// `(core/get <path>)`
 pub const ATOM_CORE_GET: StatefulAtomFn = |args, context| {
-    if args.len() != 1 {
-        return Err(err_msg!(
-            Eval,
-            "core/get expects 1 argument, got {}",
-            args.len()
-        ));
-    }
+    validate_unary_arity(args, "core/get")?;
     let path = &extract_path(&args[0])?;
     let value = context.state.get(path).cloned().unwrap_or_default();
     Ok(value)
@@ -56,13 +44,7 @@ pub const ATOM_CORE_GET: StatefulAtomFn = |args, context| {
 /// Deletes a value at a path in the world state.
 /// `(core/del! <path>)`
 pub const ATOM_CORE_DEL: StatefulAtomFn = |args, context| {
-    if args.len() != 1 {
-        return Err(err_msg!(
-            Eval,
-            "core/del! expects 1 argument, got {}",
-            args.len()
-        ));
-    }
+    validate_unary_arity(args, "core/del!")?;
     let path = &extract_path(&args[0])?;
     context.state.del(path);
     Ok(Value::Nil)
@@ -71,13 +53,7 @@ pub const ATOM_CORE_DEL: StatefulAtomFn = |args, context| {
 /// Returns true if a path exists in the world state.
 /// `(core/exists? <path>)`
 pub const ATOM_EXISTS: StatefulAtomFn = |args, context| {
-    if args.len() != 1 {
-        return Err(err_msg!(
-            Eval,
-            "core/exists? expects 1 argument, got {}",
-            args.len()
-        ));
-    }
+    validate_unary_arity(args, "core/exists?")?;
     let path = &extract_path(&args[0])?;
     let exists = context.state.get(path).is_some();
     Ok(Value::Bool(exists))
@@ -86,13 +62,7 @@ pub const ATOM_EXISTS: StatefulAtomFn = |args, context| {
 /// Creates a path from a string.
 /// `(path <string>)`
 pub const ATOM_PATH: StatefulAtomFn = |args, _context| {
-    if args.len() != 1 {
-        return Err(err_msg!(
-            Eval,
-            "path expects 1 argument, got {}",
-            args.len()
-        ));
-    }
+    validate_unary_arity(args, "path")?;
     match &args[0] {
         Value::String(s) => {
             let path = crate::runtime::world::Path(vec![s.clone()]);

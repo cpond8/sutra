@@ -15,7 +15,7 @@
 
 use crate::ast::value::Value;
 use crate::atoms::StatefulAtomFn;
-use crate::err_msg;
+use crate::atoms::helpers::{validate_unary_arity, validate_zero_arity};
 
 // ============================================================================
 // I/O OPERATIONS
@@ -34,13 +34,7 @@ use crate::err_msg;
 /// # Safety
 /// Emits output, does not mutate world state.
 pub const ATOM_PRINT: StatefulAtomFn = |args, context| {
-    if args.len() != 1 {
-        return Err(err_msg!(
-            Eval,
-            "print expects 1 argument, got {}",
-            args.len()
-        ));
-    }
+    validate_unary_arity(args, "print")?;
 
     context.output.borrow_mut().emit(&args[0].to_string(), None);
     Ok(Value::Nil)
@@ -59,13 +53,7 @@ pub const ATOM_PRINT: StatefulAtomFn = |args, context| {
 /// # Safety
 /// Emits output, does not mutate world state.
 pub const ATOM_OUTPUT: StatefulAtomFn = |args, context| {
-    if args.len() != 1 {
-        return Err(err_msg!(
-            Eval,
-            "output expects 1 argument, got {}",
-            args.len()
-        ));
-    }
+    validate_unary_arity(args, "output")?;
 
     context.output.borrow_mut().emit(&args[0].to_string(), None);
     Ok(Value::Nil)
@@ -89,13 +77,7 @@ pub const ATOM_OUTPUT: StatefulAtomFn = |args, context| {
 /// Pure random generation, does not mutate world state.
 /// Uses a simple pseudo-random generator based on system time.
 pub const ATOM_RAND: StatefulAtomFn = |args, context| {
-    if !args.is_empty() {
-        return Err(err_msg!(
-            Eval,
-            "rand expects 0 arguments, got {}",
-            args.len()
-        ));
-    }
+    validate_zero_arity(args, "rand")?;
 
     let n = context.rng.next_u32();
     let random_value = (n as f64) / (u32::MAX as f64);

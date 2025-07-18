@@ -9,7 +9,7 @@
 
 use crate::ast::value::Value;
 use crate::atoms::PureAtomFn;
-use crate::err_msg;
+use crate::atoms::helpers::{validate_unary_arity, pure_eval_string_concat};
 
 // ============================================================================
 // STRING OPERATIONS
@@ -22,9 +22,7 @@ use crate::err_msg;
 ///
 /// Returns: A new String value.
 pub const ATOM_STR: PureAtomFn = |args| {
-    if args.len() != 1 {
-        return Err(err_msg!(Eval, "str expects 1 argument, got {}", args.len()));
-    }
+    validate_unary_arity(args, "str")?;
     Ok(Value::String(args[0].to_string()))
 };
 
@@ -35,11 +33,7 @@ pub const ATOM_STR: PureAtomFn = |args| {
 ///
 /// Returns: A new String value. If no arguments are provided, returns an empty string.
 pub const ATOM_STR_PLUS: PureAtomFn = |args| {
-    let mut result = String::new();
-    for arg in args {
-        result.push_str(&arg.to_string());
-    }
-    Ok(Value::String(result))
+    pure_eval_string_concat(args, "str+")
 };
 
 // ============================================================================

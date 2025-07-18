@@ -13,6 +13,7 @@
 use crate::ast::value::Value;
 use crate::ast::{AstNode, Expr, Span, Spanned};
 use crate::atoms::{AtomRegistry, SpecialFormAtomFn};
+use crate::atoms::helpers::validate_special_form_arity;
 use crate::runtime::eval::{evaluate_ast_node, EvaluationContext};
 use crate::runtime::world::World;
 use crate::{err_src, SutraError};
@@ -365,16 +366,9 @@ pub fn register_test_atoms(registry: &mut AtomRegistry) {
 fn assert_atom(
     args: &[AstNode],
     ctx: &mut EvaluationContext,
-    span: &Span,
+    _span: &Span,
 ) -> Result<(Value, World), SutraError> {
-    if args.len() != 1 {
-        return Err(err_src!(
-            Validation,
-            "Expected exactly 1 argument",
-            &ctx.source,
-            *span
-        ));
-    }
+    validate_special_form_arity(args, 1, "assert")?;
 
     let (value, world) = evaluate_ast_node(&args[0], ctx)?;
     let is_truthy = match value {
@@ -413,14 +407,7 @@ fn assert_eq_atom(
     ctx: &mut EvaluationContext,
     span: &Span,
 ) -> Result<(Value, World), SutraError> {
-    if args.len() != 2 {
-        return Err(err_src!(
-            Validation,
-            "Expected exactly 2 arguments",
-            &ctx.source,
-            *span
-        ));
-    }
+    validate_special_form_arity(args, 2, "assert-eq")?;
 
     let (expected, world1) = evaluate_ast_node(&args[0], ctx)?;
     let mut sub_context = sub_eval_context!(ctx, &world1);

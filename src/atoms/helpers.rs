@@ -12,10 +12,10 @@
 
 use crate::ast::value::Value;
 use crate::ast::AstNode;
-use crate::ast::{Expr, Spanned};
+use crate::ast::{Expr, Span, Spanned};
+use crate::err_msg;
 use crate::runtime::eval::{evaluate_ast_node, EvaluationContext};
 use crate::SutraError;
-use crate::err_msg;
 
 // ============================================================================
 // TYPE ALIASES AND CORE TYPES
@@ -163,10 +163,7 @@ pub fn eval_binary_args(
 // ============================================================================
 
 /// Extracts two numbers from values with type checking using the trait
-pub fn extract_numbers(
-    val1: &Value,
-    val2: &Value,
-) -> Result<(f64, f64), SutraError> {
+pub fn extract_numbers(val1: &Value, val2: &Value) -> Result<(f64, f64), SutraError> {
     let n1 = val1.extract()?;
     let n2 = val2.extract()?;
     Ok((n1, n2))
@@ -185,6 +182,245 @@ pub fn extract_bool(val: &Value) -> Result<bool, SutraError> {
 /// Extracts a path from a value with type checking using the trait
 pub fn extract_path(val: &Value) -> Result<crate::runtime::world::Path, SutraError> {
     val.extract()
+}
+
+// ============================================================================
+// ARITY VALIDATION HELPERS
+// ============================================================================
+
+/// Validates that the number of arguments matches the expected count.
+/// Provides consistent error messages for arity validation across all atoms.
+///
+/// # Arguments
+/// * `args` - The arguments to validate
+/// * `expected` - The expected number of arguments
+/// * `atom_name` - The name of the atom for error messages
+///
+/// # Returns
+/// * `Ok(())` if arity matches
+/// * `Err(SutraError)` with descriptive error message if mismatch
+///
+/// # Example
+/// ```ignore
+/// validate_arity(args, 2, "eq?")?;
+/// ```
+pub fn validate_arity(args: &[Value], expected: usize, atom_name: &str) -> Result<(), SutraError> {
+    if args.len() != expected {
+        let msg = format!(
+            "{} expects {} arguments, got {}",
+            atom_name,
+            expected,
+            args.len()
+        );
+        return Err(err_msg!(Eval, msg));
+    }
+    Ok(())
+}
+
+/// Validates that the number of arguments is at least the minimum required.
+/// Useful for atoms that accept variable numbers of arguments with a minimum.
+///
+/// # Arguments
+/// * `args` - The arguments to validate
+/// * `min_expected` - The minimum number of arguments required
+/// * `atom_name` - The name of the atom for error messages
+///
+/// # Returns
+/// * `Ok(())` if arity meets minimum requirement
+/// * `Err(SutraError)` with descriptive error message if too few arguments
+///
+/// # Example
+/// ```ignore
+/// validate_min_arity(args, 1, "min")?;
+/// ```
+pub fn validate_min_arity(
+    args: &[Value],
+    min_expected: usize,
+    atom_name: &str,
+) -> Result<(), SutraError> {
+    if args.len() < min_expected {
+        let msg = format!(
+            "{} expects at least {} arguments, got {}",
+            atom_name,
+            min_expected,
+            args.len()
+        );
+        return Err(err_msg!(Eval, msg));
+    }
+    Ok(())
+}
+
+/// Validates that the number of arguments is exactly one.
+/// Common case optimization for unary operations.
+///
+/// # Arguments
+/// * `args` - The arguments to validate
+/// * `atom_name` - The name of the atom for error messages
+///
+/// # Returns
+/// * `Ok(())` if exactly one argument
+/// * `Err(SutraError)` with descriptive error message if not
+///
+/// # Example
+/// ```ignore
+/// validate_unary_arity(args, "abs")?;
+/// ```
+pub fn validate_unary_arity(args: &[Value], atom_name: &str) -> Result<(), SutraError> {
+    validate_arity(args, 1, atom_name)
+}
+
+/// Validates that the number of arguments is exactly two.
+/// Common case optimization for binary operations.
+///
+/// # Arguments
+/// * `args` - The arguments to validate
+/// * `atom_name` - The name of the atom for error messages
+///
+/// # Returns
+/// * `Ok(())` if exactly two arguments
+/// * `Err(SutraError)` with descriptive error message if not
+///
+/// # Example
+/// ```ignore
+/// validate_binary_arity(args, "eq?")?;
+/// ```
+pub fn validate_binary_arity(args: &[Value], atom_name: &str) -> Result<(), SutraError> {
+    validate_arity(args, 2, atom_name)
+}
+
+/// Validates that the number of arguments is at least two.
+/// Common case for comparison operations that work on sequences.
+///
+/// # Arguments
+/// * `args` - The arguments to validate
+/// * `atom_name` - The name of the atom for error messages
+///
+/// # Returns
+/// * `Ok(())` if at least two arguments
+/// * `Err(SutraError)` with descriptive error message if fewer than two
+///
+/// # Example
+/// ```ignore
+/// validate_sequence_arity(args, "eq?")?;
+/// ```
+pub fn validate_sequence_arity(args: &[Value], atom_name: &str) -> Result<(), SutraError> {
+    validate_min_arity(args, 2, atom_name)
+}
+
+/// Validates that the number of arguments is even.
+/// Useful for map construction and similar operations.
+///
+/// # Arguments
+/// * `args` - The arguments to validate
+/// * `atom_name` - The name of the atom for error messages
+///
+/// # Returns
+/// * `Ok(())` if even number of arguments
+/// * `Err(SutraError)` with descriptive error message if odd
+///
+/// # Example
+/// ```ignore
+/// validate_even_arity(args, "core/map")?;
+/// ```
+pub fn validate_even_arity(args: &[Value], atom_name: &str) -> Result<(), SutraError> {
+    if args.len() % 2 != 0 {
+        let msg = format!(
+            "{} expects an even number of arguments, got {}",
+            atom_name,
+            args.len()
+        );
+        return Err(err_msg!(Eval, msg));
+    }
+    Ok(())
+}
+
+/// Validates that the number of arguments is exactly zero.
+/// Useful for atoms that take no arguments.
+///
+/// # Arguments
+/// * `args` - The arguments to validate
+/// * `atom_name` - The name of the atom for error messages
+///
+/// # Returns
+/// * `Ok(())` if no arguments
+/// * `Err(SutraError)` with descriptive error message if any arguments provided
+///
+/// # Example
+/// ```ignore
+/// validate_zero_arity(args, "rand")?;
+/// ```
+pub fn validate_zero_arity(args: &[Value], atom_name: &str) -> Result<(), SutraError> {
+    if !args.is_empty() {
+        let msg = format!("{} expects 0 arguments, got {}", atom_name, args.len());
+        return Err(err_msg!(Eval, msg));
+    }
+    Ok(())
+}
+
+/// Validates that the number of AstNode arguments matches the expected count.
+/// Provides consistent error messages for special form arity validation.
+///
+/// # Arguments
+/// * `args` - The AstNode arguments to validate
+/// * `expected` - The expected number of arguments
+/// * `atom_name` - The name of the atom for error messages
+///
+/// # Returns
+/// * `Ok(())` if arity matches
+/// * `Err(SutraError)` with descriptive error message if mismatch
+///
+/// # Example
+/// ```ignore
+/// validate_special_form_arity(args, 3, "if")?;
+/// ```
+pub fn validate_special_form_arity(
+    args: &[AstNode],
+    expected: usize,
+    atom_name: &str,
+) -> Result<(), SutraError> {
+    if args.len() != expected {
+        let msg = format!(
+            "{} expects exactly {} arguments, got {}",
+            atom_name,
+            expected,
+            args.len()
+        );
+        return Err(err_msg!(Eval, msg));
+    }
+    Ok(())
+}
+
+/// Validates that the number of AstNode arguments is at least the minimum required.
+/// Useful for special forms that accept variable numbers of arguments with a minimum.
+///
+/// # Arguments
+/// * `args` - The AstNode arguments to validate
+/// * `min_expected` - The minimum number of arguments required
+/// * `atom_name` - The name of the atom for error messages
+///
+/// # Returns
+/// * `Ok(())` if arity meets minimum requirement
+/// * `Err(SutraError)` with descriptive error message if too few arguments
+///
+/// # Example
+/// ```ignore
+/// validate_special_form_min_arity(args, 2, "lambda")?;
+/// ```
+pub fn validate_special_form_min_arity(
+    args: &[AstNode],
+    min_expected: usize,
+    atom_name: &str,
+) -> Result<(), SutraError> {
+    if args.len() < min_expected {
+        let msg = format!(
+            "{} expects at least {} arguments, got {}",
+            atom_name,
+            min_expected,
+            args.len()
+        );
+        return Err(err_msg!(Eval, msg));
+    }
+    Ok(())
 }
 
 // ============================================================================
@@ -207,8 +443,7 @@ where
     let (n1, n2) = extract_numbers(&val1, &val2)?;
 
     if let Some(validate) = validator {
-        validate(n1, n2)
-            .map_err(|msg| err_msg!(Validation, msg))?;
+        validate(n1, n2).map_err(|msg| err_msg!(Validation, msg))?;
     }
 
     Ok((op(n1, n2), world))
@@ -233,8 +468,7 @@ where
     let mut acc = init;
 
     for v in values.iter() {
-        let n = extract_number(v)
-            .map_err(|_| err_msg!(TypeError, "Type error"))?;
+        let n = extract_number(v).map_err(|_| err_msg!(TypeError, "Type error"))?;
         acc = fold(acc, n);
     }
 
@@ -311,6 +545,257 @@ where
     op(val, world, context)
 }
 
+/// Evaluates a sequence comparison operation on numbers.
+/// Handles arity validation, type checking, and the common comparison pattern.
+///
+/// # Arguments
+/// * `args` - The arguments to evaluate
+/// * `context` - The evaluation context
+/// * `comparison` - The comparison function (e.g., |a, b| a <= b)
+/// * `atom_name` - The name of the atom for error messages
+///
+/// # Returns
+/// * `Ok((Value::Bool, World))` if comparison succeeds
+/// * `Err(SutraError)` if validation fails
+///
+/// # Example
+/// ```ignore
+/// let result = eval_numeric_sequence_comparison(
+///     args, context, |a, b| a <= b, "gt?"
+/// )?;
+/// ```
+pub fn eval_numeric_sequence_comparison<F>(
+    args: &[AstNode],
+    context: &mut EvaluationContext<'_>,
+    comparison: F,
+    _atom_name: &str,
+) -> Result<(Value, crate::runtime::world::World), SutraError>
+where
+    F: Fn(f64, f64) -> bool,
+{
+    let (values, world) = eval_args(args, context)?;
+    validate_sequence_arity(&values, _atom_name)?;
+
+    for i in 0..values.len() - 1 {
+        let a = extract_number(&values[i])?;
+        let b = extract_number(&values[i + 1])?;
+        if comparison(a, b) {
+            return Ok((Value::Bool(false), world));
+        }
+    }
+    Ok((Value::Bool(true), world))
+}
+
+/// Evaluates an n-ary numeric operation with a custom initial value and fold function.
+/// Handles arity validation, type checking, and the common fold pattern.
+///
+/// # Arguments
+/// * `args` - The arguments to evaluate
+/// * `context` - The evaluation context
+/// * `init` - The initial value for the fold
+/// * `fold` - The fold function (e.g., |acc, n| acc + n)
+/// * `atom_name` - The name of the atom for error messages
+///
+/// # Returns
+/// * `Ok((Value::Number, World))` if operation succeeds
+/// * `Err(SutraError)` if validation fails
+///
+/// # Example
+/// ```ignore
+/// let result = eval_nary_numeric_op_custom(
+///     args, context, 0.0, |acc, n| acc + n, "sum"
+/// )?;
+/// ```
+pub fn eval_nary_numeric_op_custom<F>(
+    args: &[AstNode],
+    context: &mut EvaluationContext<'_>,
+    init: f64,
+    fold: F,
+    _atom_name: &str,
+) -> Result<(Value, crate::runtime::world::World), SutraError>
+where
+    F: Fn(f64, f64) -> f64,
+{
+    let (values, world) = eval_args(args, context)?;
+    validate_min_arity(&values, 1, _atom_name)?;
+
+    let mut result = init;
+    for v in values.iter() {
+        let n = extract_number(v)?;
+        result = fold(result, n);
+    }
+    Ok((Value::Number(result), world))
+}
+
+/// Evaluates a unary operation with type checking using the ExtractValue trait.
+/// Handles arity validation and provides consistent error messages.
+///
+/// # Arguments
+/// * `args` - The arguments to evaluate
+/// * `context` - The evaluation context
+/// * `op` - The operation function
+/// * `atom_name` - The name of the atom for error messages
+///
+/// # Returns
+/// * `Ok((Value, World))` if operation succeeds
+/// * `Err(SutraError)` if validation fails
+///
+/// # Example
+/// ```ignore
+/// let result = eval_unary_typed_op(
+///     args, context, |b| Value::Bool(!b), "not"
+/// )?;
+/// ```
+pub fn eval_unary_typed_op<T, F>(
+    args: &[AstNode],
+    context: &mut EvaluationContext<'_>,
+    op: F,
+    _atom_name: &str,
+) -> Result<(Value, crate::runtime::world::World), SutraError>
+where
+    Value: ExtractValue<T>,
+    F: Fn(T) -> Value,
+{
+    let (val, world) = eval_single_arg(args, context)?;
+    let extracted = val.extract()?;
+    Ok((op(extracted), world))
+}
+
+// ============================================================================
+// PURE FUNCTION HELPERS (for PureAtomFn)
+// ============================================================================
+
+/// Evaluates a sequence comparison operation on numbers for pure functions.
+/// Handles arity validation, type checking, and the common comparison pattern.
+///
+/// # Arguments
+/// * `args` - The arguments to validate and process
+/// * `comparison` - The comparison function (e.g., |a, b| a <= b)
+/// * `atom_name` - The name of the atom for error messages
+///
+/// # Returns
+/// * `Ok(Value::Bool)` if comparison succeeds
+/// * `Err(SutraError)` if validation fails
+///
+/// # Example
+/// ```ignore
+/// let result = pure_eval_numeric_sequence_comparison(
+///     args, |a, b| a <= b, "gt?"
+/// )?;
+/// ```
+pub fn pure_eval_numeric_sequence_comparison<F>(
+    args: &[Value],
+    comparison: F,
+    atom_name: &str,
+) -> Result<Value, SutraError>
+where
+    F: Fn(f64, f64) -> bool,
+{
+    validate_sequence_arity(args, atom_name)?;
+
+    for i in 0..args.len() - 1 {
+        let a = extract_number(&args[i])?;
+        let b = extract_number(&args[i + 1])?;
+        if comparison(a, b) {
+            return Ok(Value::Bool(false));
+        }
+    }
+    Ok(Value::Bool(true))
+}
+
+/// Evaluates an n-ary numeric operation with a custom initial value and fold function for pure functions.
+/// Handles arity validation, type checking, and the common fold pattern.
+///
+/// # Arguments
+/// * `args` - The arguments to validate and process
+/// * `init` - The initial value for the fold
+/// * `fold` - The fold function (e.g., |acc, n| acc + n)
+/// * `atom_name` - The name of the atom for error messages
+///
+/// # Returns
+/// * `Ok(Value::Number)` if operation succeeds
+/// * `Err(SutraError)` if validation fails
+///
+/// # Example
+/// ```ignore
+/// let result = pure_eval_nary_numeric_op_custom(
+///     args, 0.0, |acc, n| acc + n, "sum"
+/// )?;
+/// ```
+pub fn pure_eval_nary_numeric_op_custom<F>(
+    args: &[Value],
+    init: f64,
+    fold: F,
+    atom_name: &str,
+) -> Result<Value, SutraError>
+where
+    F: Fn(f64, f64) -> f64,
+{
+    validate_min_arity(args, 1, atom_name)?;
+
+    let mut result = init;
+    for v in args.iter() {
+        let n = extract_number(v)?;
+        result = fold(result, n);
+    }
+    Ok(Value::Number(result))
+}
+
+/// Evaluates a unary operation with type checking using the ExtractValue trait for pure functions.
+/// Handles arity validation and provides consistent error messages.
+///
+/// # Arguments
+/// * `args` - The arguments to validate and process
+/// * `op` - The operation function
+/// * `atom_name` - The name of the atom for error messages
+///
+/// # Returns
+/// * `Ok(Value)` if operation succeeds
+/// * `Err(SutraError)` if validation fails
+///
+/// # Example
+/// ```ignore
+/// let result = pure_eval_unary_typed_op(
+///     args, |b| Value::Bool(!b), "not"
+/// )?;
+/// ```
+pub fn pure_eval_unary_typed_op<T, F>(
+    args: &[Value],
+    op: F,
+    atom_name: &str,
+) -> Result<Value, SutraError>
+where
+    Value: ExtractValue<T>,
+    F: Fn(T) -> Value,
+{
+    validate_unary_arity(args, atom_name)?;
+    let extracted = args[0].extract()?;
+    Ok(op(extracted))
+}
+
+/// Evaluates a string concatenation operation for pure functions.
+/// Handles the common pattern of concatenating multiple values into a string.
+///
+/// # Arguments
+/// * `args` - The arguments to concatenate
+/// * `atom_name` - The name of the atom for error messages
+///
+/// # Returns
+/// * `Ok(Value::String)` if operation succeeds
+/// * `Err(SutraError)` if validation fails
+///
+/// # Example
+/// ```ignore
+/// let result = pure_eval_string_concat(args, "str+")?;
+/// ```
+pub fn pure_eval_string_concat(args: &[Value], _atom_name: &str) -> Result<Value, SutraError> {
+    let mut result = String::new();
+    for arg in args {
+        result.push_str(&arg.to_string());
+    }
+    Ok(Value::String(result))
+}
+
 // ============================================================================
 // APPLY ATOM HELPERS
 // ============================================================================
@@ -340,7 +825,7 @@ pub fn eval_apply_normal_args(
 pub fn eval_apply_list_arg(
     arg: &AstNode,
     context: &mut EvaluationContext<'_>,
-    parent_span: &crate::ast::Span,
+    parent_span: &Span,
 ) -> Result<(Vec<AstNode>, crate::runtime::world::World), SutraError> {
     let mut sub_context = sub_eval_context!(context, context.world);
     let (list_val, world) = evaluate_ast_node(arg, &mut sub_context)?;
@@ -362,7 +847,7 @@ pub fn build_apply_call_expr(
     func_expr: &AstNode,
     normal_args: Vec<AstNode>,
     list_args: Vec<AstNode>,
-    parent_span: &crate::ast::Span,
+    parent_span: &Span,
 ) -> AstNode {
     let mut call_items = Vec::with_capacity(1 + normal_args.len() + list_args.len());
     call_items.push(func_expr.clone());
@@ -371,5 +856,175 @@ pub fn build_apply_call_expr(
     Spanned {
         value: Expr::List(call_items, *parent_span).into(), // FIX: wrap Expr in Arc via .into()
         span: *parent_span,
+    }
+}
+
+// ============================================================================
+// TESTS
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_arity() {
+        let args = vec![Value::Number(1.0), Value::Number(2.0)];
+
+        // Should succeed with correct arity
+        assert!(validate_arity(&args, 2, "test").is_ok());
+
+        // Should fail with wrong arity
+        assert!(validate_arity(&args, 1, "test").is_err());
+        assert!(validate_arity(&args, 3, "test").is_err());
+    }
+
+    #[test]
+    fn test_validate_unary_arity() {
+        let args = vec![Value::Number(1.0)];
+
+        // Should succeed with exactly one argument
+        assert!(validate_unary_arity(&args, "test").is_ok());
+
+        // Should fail with wrong arity
+        assert!(validate_unary_arity(&[], "test").is_err());
+        assert!(validate_unary_arity(&[Value::Number(1.0), Value::Number(2.0)], "test").is_err());
+    }
+
+    #[test]
+    fn test_validate_binary_arity() {
+        let args = vec![Value::Number(1.0), Value::Number(2.0)];
+
+        // Should succeed with exactly two arguments
+        assert!(validate_binary_arity(&args, "test").is_ok());
+
+        // Should fail with wrong arity
+        assert!(validate_binary_arity(&[Value::Number(1.0)], "test").is_err());
+        assert!(validate_binary_arity(
+            &[Value::Number(1.0), Value::Number(2.0), Value::Number(3.0)],
+            "test"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn test_validate_min_arity() {
+        let args = vec![Value::Number(1.0), Value::Number(2.0)];
+
+        // Should succeed with sufficient arguments
+        assert!(validate_min_arity(&args, 1, "test").is_ok());
+        assert!(validate_min_arity(&args, 2, "test").is_ok());
+
+        // Should fail with insufficient arguments
+        assert!(validate_min_arity(&args, 3, "test").is_err());
+    }
+
+    #[test]
+    fn test_validate_sequence_arity() {
+        let args = vec![Value::Number(1.0), Value::Number(2.0)];
+
+        // Should succeed with at least two arguments
+        assert!(validate_sequence_arity(&args, "test").is_ok());
+        assert!(validate_sequence_arity(
+            &[Value::Number(1.0), Value::Number(2.0), Value::Number(3.0)],
+            "test"
+        )
+        .is_ok());
+
+        // Should fail with fewer than two arguments
+        assert!(validate_sequence_arity(&[], "test").is_err());
+        assert!(validate_sequence_arity(&[Value::Number(1.0)], "test").is_err());
+    }
+
+    #[test]
+    fn test_validate_even_arity() {
+        let args = vec![Value::Number(1.0), Value::Number(2.0)];
+
+        // Should succeed with even number of arguments (including 0)
+        assert!(validate_even_arity(&[], "test").is_ok());
+        assert!(validate_even_arity(&args, "test").is_ok());
+        assert!(validate_even_arity(
+            &[
+                Value::Number(1.0),
+                Value::Number(2.0),
+                Value::Number(3.0),
+                Value::Number(4.0)
+            ],
+            "test"
+        )
+        .is_ok());
+
+        // Should fail with odd number of arguments
+        assert!(validate_even_arity(&[Value::Number(1.0)], "test").is_err());
+        assert!(validate_even_arity(
+            &[Value::Number(1.0), Value::Number(2.0), Value::Number(3.0)],
+            "test"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn test_error_messages() {
+        let args = vec![Value::Number(1.0)];
+
+        // Test that error messages are descriptive
+        let err = validate_arity(&args, 2, "my_atom").unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("my_atom expects 2 arguments, got 1"));
+
+        let err = validate_min_arity(&args, 3, "my_atom").unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("my_atom expects at least 3 arguments, got 1"));
+
+        let err = validate_even_arity(&args, "my_atom").unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("my_atom expects an even number of arguments, got 1"));
+    }
+
+    #[test]
+    fn test_validate_zero_arity() {
+        let args = vec![Value::Number(1.0)];
+
+        // Should fail with any arguments
+        assert!(validate_zero_arity(&args, "test").is_err());
+        assert!(validate_zero_arity(&[Value::Number(1.0), Value::Number(2.0)], "test").is_err());
+
+        // Should succeed with no arguments
+        assert!(validate_zero_arity(&[], "test").is_ok());
+    }
+
+    #[test]
+    fn test_validate_special_form_arity() {
+        let span = Span { start: 0, end: 1 };
+        let args = vec![AstNode {
+            value: std::sync::Arc::new(Expr::Number(1.0, span)),
+            span,
+        }];
+
+        // Should succeed with correct arity
+        assert!(validate_special_form_arity(&args, 1, "test").is_ok());
+
+        // Should fail with wrong arity
+        assert!(validate_special_form_arity(&args, 2, "test").is_err());
+        assert!(validate_special_form_arity(&[], 1, "test").is_err());
+    }
+
+    #[test]
+    fn test_validate_special_form_min_arity() {
+        let span = Span { start: 0, end: 1 };
+        let args = vec![AstNode {
+            value: std::sync::Arc::new(Expr::Number(1.0, span)),
+            span,
+        }];
+
+        // Should succeed with sufficient arguments
+        assert!(validate_special_form_min_arity(&args, 1, "test").is_ok());
+        assert!(validate_special_form_min_arity(&args, 0, "test").is_ok());
+
+        // Should fail with insufficient arguments
+        assert!(validate_special_form_min_arity(&args, 2, "test").is_err());
     }
 }

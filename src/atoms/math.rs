@@ -15,7 +15,7 @@
 
 use crate::ast::value::Value;
 use crate::atoms::PureAtomFn;
-use crate::atoms::helpers::extract_number;
+use crate::atoms::helpers::{extract_number, validate_binary_arity, validate_min_arity, pure_eval_nary_numeric_op_custom, pure_eval_unary_typed_op};
 use crate::err_msg;
 
 // ============================================================================
@@ -32,11 +32,7 @@ use crate::err_msg;
 /// Example:
 ///   (+ 1 2 3) ; => 6
 pub const ATOM_ADD: PureAtomFn = |args| {
-    let mut sum = 0.0;
-    for arg in args.iter() {
-        sum += extract_number(arg)?;
-    }
-    Ok(Value::Number(sum))
+    pure_eval_nary_numeric_op_custom(args, 0.0, |acc, n| acc + n, "+")
 };
 
 /// Subtracts two numbers.
@@ -49,9 +45,7 @@ pub const ATOM_ADD: PureAtomFn = |args| {
 /// Example:
 ///   (- 5 2) ; => 3
 pub const ATOM_SUB: PureAtomFn = |args| {
-    if args.is_empty() {
-        return Err(err_msg!(Eval, "- expects at least 1 argument, got 0"));
-    }
+    validate_min_arity(args, 1, "-")?;
 
     let first = extract_number(&args[0])?;
     if args.len() == 1 {
@@ -75,11 +69,7 @@ pub const ATOM_SUB: PureAtomFn = |args| {
 /// Example:
 ///   (* 2 3 4) ; => 24
 pub const ATOM_MUL: PureAtomFn = |args| {
-    let mut product = 1.0;
-    for arg in args.iter() {
-        product *= extract_number(arg)?;
-    }
-    Ok(Value::Number(product))
+    pure_eval_nary_numeric_op_custom(args, 1.0, |acc, n| acc * n, "*")
 };
 
 /// Divides two numbers.
@@ -93,9 +83,7 @@ pub const ATOM_MUL: PureAtomFn = |args| {
 ///   (/ 6 2) ; => 3
 /// Note: Errors on division by zero.
 pub const ATOM_DIV: PureAtomFn = |args| {
-    if args.is_empty() {
-        return Err(err_msg!(Eval, "/ expects at least 1 argument, got 0"));
-    }
+    validate_min_arity(args, 1, "/")?;
 
     let first = extract_number(&args[0])?;
     if args.len() == 1 {
@@ -128,9 +116,7 @@ pub const ATOM_DIV: PureAtomFn = |args| {
 ///
 /// Note: Errors on division by zero or non-integer input.
 pub const ATOM_MOD: PureAtomFn = |args| {
-    if args.len() != 2 {
-        return Err(err_msg!(Eval, "mod expects 2 arguments, got {}", args.len()));
-    }
+    validate_binary_arity(args, "mod")?;
     let a = extract_number(&args[0])?;
     let b = extract_number(&args[1])?;
 
@@ -156,11 +142,7 @@ pub const ATOM_MOD: PureAtomFn = |args| {
 ///   (abs -5) ; => 5
 ///   (abs 3.14) ; => 3.14
 pub const ATOM_ABS: PureAtomFn = |args| {
-    if args.len() != 1 {
-        return Err(err_msg!(Eval, "abs expects 1 argument, got {}", args.len()));
-    }
-    let n = extract_number(&args[0])?;
-    Ok(Value::Number(n.abs()))
+    pure_eval_unary_typed_op::<f64, _>(args, |n| Value::Number(n.abs()), "abs")
 };
 
 /// Minimum of multiple numbers.
@@ -173,19 +155,7 @@ pub const ATOM_ABS: PureAtomFn = |args| {
 /// Example:
 ///   (min 3 1 4) ; => 1
 pub const ATOM_MIN: PureAtomFn = |args| {
-    if args.is_empty() {
-        return Err(err_msg!(
-            Eval,
-            "min expects at least 1 argument, got 0"
-        ));
-    }
-
-    let mut result = f64::INFINITY;
-    for arg in args.iter() {
-        let n = extract_number(arg)?;
-        result = result.min(n);
-    }
-    Ok(Value::Number(result))
+    pure_eval_nary_numeric_op_custom(args, f64::INFINITY, |acc, n| acc.min(n), "min")
 };
 
 /// Maximum of multiple numbers.
@@ -198,19 +168,7 @@ pub const ATOM_MIN: PureAtomFn = |args| {
 /// Example:
 ///   (max 3 1 4) ; => 4
 pub const ATOM_MAX: PureAtomFn = |args| {
-    if args.is_empty() {
-        return Err(err_msg!(
-            Eval,
-            "max expects at least 1 argument, got 0"
-        ));
-    }
-
-    let mut result = f64::NEG_INFINITY;
-    for arg in args.iter() {
-        let n = extract_number(arg)?;
-        result = result.max(n);
-    }
-    Ok(Value::Number(result))
+    pure_eval_nary_numeric_op_custom(args, f64::NEG_INFINITY, |acc, n| acc.max(n), "max")
 };
 
 // ============================================================================

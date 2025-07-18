@@ -15,8 +15,7 @@
 
 use crate::ast::value::Value;
 use crate::atoms::PureAtomFn;
-use crate::atoms::helpers::extract_number;
-use crate::err_msg;
+use crate::atoms::helpers::{validate_sequence_arity, pure_eval_numeric_sequence_comparison, pure_eval_unary_typed_op};
 
 // ============================================================================
 // COMPARISON OPERATIONS
@@ -37,9 +36,7 @@ use crate::err_msg;
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_EQ: PureAtomFn = |args| {
-    if args.len() < 2 {
-        return Err(err_msg!(Eval, "eq? expects at least 2 arguments, got {}", args.len()));
-    }
+    validate_sequence_arity(args, "eq?")?;
     for window in args.windows(2) {
         if window[0] != window[1] {
             return Ok(Value::Bool(false));
@@ -62,17 +59,7 @@ pub const ATOM_EQ: PureAtomFn = |args| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_GT: PureAtomFn = |args| {
-    if args.len() < 2 {
-        return Err(err_msg!(Eval, "gt? expects at least 2 arguments, got {}", args.len()));
-    }
-    for i in 0..args.len() - 1 {
-        let a = extract_number(&args[i])?;
-        let b = extract_number(&args[i + 1])?;
-        if a <= b {
-            return Ok(Value::Bool(false));
-        }
-    }
-    Ok(Value::Bool(true))
+    pure_eval_numeric_sequence_comparison(args, |a, b| a <= b, "gt?")
 };
 
 /// Returns true if a < b.
@@ -89,17 +76,7 @@ pub const ATOM_GT: PureAtomFn = |args| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_LT: PureAtomFn = |args| {
-    if args.len() < 2 {
-        return Err(err_msg!(Eval, "lt? expects at least 2 arguments, got {}", args.len()));
-    }
-    for i in 0..args.len() - 1 {
-        let a = extract_number(&args[i])?;
-        let b = extract_number(&args[i + 1])?;
-        if a >= b {
-            return Ok(Value::Bool(false));
-        }
-    }
-    Ok(Value::Bool(true))
+    pure_eval_numeric_sequence_comparison(args, |a, b| a >= b, "lt?")
 };
 
 /// Returns true if a >= b.
@@ -116,17 +93,7 @@ pub const ATOM_LT: PureAtomFn = |args| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_GTE: PureAtomFn = |args| {
-    if args.len() < 2 {
-        return Err(err_msg!(Eval, "gte? expects at least 2 arguments, got {}", args.len()));
-    }
-    for i in 0..args.len() - 1 {
-        let a = extract_number(&args[i])?;
-        let b = extract_number(&args[i + 1])?;
-        if a < b {
-            return Ok(Value::Bool(false));
-        }
-    }
-    Ok(Value::Bool(true))
+    pure_eval_numeric_sequence_comparison(args, |a, b| a < b, "gte?")
 };
 
 /// Returns true if a <= b.
@@ -143,17 +110,7 @@ pub const ATOM_GTE: PureAtomFn = |args| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_LTE: PureAtomFn = |args| {
-    if args.len() < 2 {
-        return Err(err_msg!(Eval, "lte? expects at least 2 arguments, got {}", args.len()));
-    }
-    for i in 0..args.len() - 1 {
-        let a = extract_number(&args[i])?;
-        let b = extract_number(&args[i + 1])?;
-        if a > b {
-            return Ok(Value::Bool(false));
-        }
-    }
-    Ok(Value::Bool(true))
+    pure_eval_numeric_sequence_comparison(args, |a, b| a > b, "lte?")
 };
 
 // ============================================================================
@@ -173,13 +130,7 @@ pub const ATOM_LTE: PureAtomFn = |args| {
 /// # Safety
 /// Pure, does not mutate state.
 pub const ATOM_NOT: PureAtomFn = |args| {
-    if args.len() != 1 {
-        return Err(err_msg!(Eval, "not expects 1 argument, got {}", args.len()));
-    }
-    match &args[0] {
-        Value::Bool(b) => Ok(Value::Bool(!b)),
-        _ => Err(err_msg!(Eval, "not expects a Bool, found {}", args[0].to_string())),
-    }
+    pure_eval_unary_typed_op::<bool, _>(args, |b| Value::Bool(!b), "not")
 };
 
 // ============================================================================

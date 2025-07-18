@@ -1,6 +1,7 @@
 use crate::ast::{AstNode, Expr};
 use crate::ast::value::{Value, Lambda};
 use crate::atoms::{SpecialFormAtomFn};
+use crate::atoms::helpers::{validate_special_form_arity, validate_special_form_min_arity};
 use crate::runtime::eval::{evaluate_ast_node, evaluate_condition_as_bool};
 use crate::runtime::world::World;
 use crate::SutraError;
@@ -9,9 +10,7 @@ use std::rc::Rc;
 
 /// Implements the (if ...) special form with lazy evaluation.
 pub const ATOM_IF: SpecialFormAtomFn = |args, context, _span| {
-    if args.len() != 3 {
-        return Err(err_msg!(Eval, "if expects exactly 3 arguments (condition then else), got {}", args.len()));
-    }
+    validate_special_form_arity(args, 3, "if")?;
     let condition = &args[0];
     let then_branch = &args[1];
     let else_branch = &args[2];
@@ -26,9 +25,7 @@ pub const ATOM_IF: SpecialFormAtomFn = |args, context, _span| {
 
 /// Implements the (lambda ...) special form.
 pub const ATOM_LAMBDA: SpecialFormAtomFn = |args, _context, span| {
-    if args.len() < 2 {
-        return Err(err_msg!(Eval, "lambda expects a parameter list and at least one body expression"));
-    }
+    validate_special_form_min_arity(args, 2, "lambda")?;
     // Parse parameter list
     let param_list = match &*args[0].value {
         Expr::ParamList(pl) => pl.clone(),
@@ -70,9 +67,7 @@ pub const ATOM_LAMBDA: SpecialFormAtomFn = |args, _context, span| {
 
 /// Implements the (let ...) special form.
 pub const ATOM_LET: SpecialFormAtomFn = |args, context, span| {
-    if args.len() < 2 {
-        return Err(err_msg!(Eval, "let expects a bindings list and at least one body expression"));
-    }
+    validate_special_form_min_arity(args, 2, "let")?;
     // Parse bindings
     let bindings = match &*args[0].value {
         Expr::List(pairs, _) => pairs,
