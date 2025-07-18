@@ -21,10 +21,10 @@
 
 use crate::ast::{AstNode, Expr, ParamList, Span, Spanned};
 use crate::err_src;
-use crate::macros::types::{
+use crate::macros::{
     MacroDefinition, MacroExpansionContext, MacroExpansionStep, MacroOrigin, MacroTemplate,
+    MAX_MACRO_RECURSION_DEPTH,
 };
-use crate::macros::MAX_MACRO_RECURSION_DEPTH;
 use crate::SutraError;
 use std::collections::HashMap;
 

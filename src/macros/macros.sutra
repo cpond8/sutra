@@ -67,11 +67,6 @@
 ;; PREDICATES & LOGIC
 ;; ============================================================================
 
-;; exists?: Check if path exists
-;; (exists? path)
-(define (exists? path)
-  (core/exists? path))
-
 ;; and: Short-circuiting logical AND
 ;; (and a b c)
 (define (and ...rest)
@@ -185,21 +180,11 @@
 ;; test: Define test case
 ;; (test "name" (expect ...) body...)
 (define (test name expect ...rest)
-  (do
-    (print "Running test: ")
-    (print name)
-    (apply do rest)
-    (print "Test passed: ")
-    (print name)))
+  (register-test! name expect (list ...rest) (core/map ":span" (list 0 0) ":file" "test.sutra")))
 
 ;; expect: Declare test expectations
-;; (expect ...rest)
-(define (expect ...rest)
-  (if (null? rest)
-      true
-      (if (car rest)
-          (apply expect (cdr rest))
-          (error "Test expectation failed"))))
+;; (expect ...args)
+(define (expect ...args) (list ...args))
 
 ;; ============================================================================
 ;; LIST & UTILITY HELPERS

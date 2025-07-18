@@ -5,7 +5,7 @@
 //! `Nil` represents the absence of a value and is the default for all uninitialized slots.
 //! `Path` is a first-class value, enabling explicit reference to locations in the world state.
 
-use crate::runtime::path::Path;
+use crate::runtime::world::Path;
 use im::HashMap;
 use serde::{Deserialize, Serialize};
 use std::fmt;

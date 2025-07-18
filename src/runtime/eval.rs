@@ -35,13 +35,11 @@ use crate::ast::value::Value;
 use crate::ast::{AstNode, Expr, Spanned};
 use crate::atoms::AtomRegistry;
 use crate::diagnostics::SutraError;
-use crate::runtime::context::AtomExecutionContext;
-use crate::runtime::world::World;
+use crate::runtime::world::{AtomExecutionContext, World};
 use crate::err_ctx;
 use crate::err_src;
 use miette::NamedSource;
 use std::sync::Arc;
-use crate::macros::expand_macro_call;
 use std::collections::HashMap;
 use crate::atoms::SharedOutput;
 
@@ -102,7 +100,8 @@ impl<'a> EvaluationContext<'a> {
 
 impl<'a> EvaluationContext<'a> {
     /// Looks up and invokes an atom by name, handling errors for missing atoms.
-    /// Also checks for macros first before checking atoms.
+    /// **CRITICAL**: This function does NOT handle macro expansion. Macros must be
+    /// expanded before evaluation according to the strict layering principle.
     pub fn call_atom(
         &mut self,
         symbol_name: &str,
@@ -110,30 +109,7 @@ impl<'a> EvaluationContext<'a> {
         args: &[AstNode],
         span: &crate::ast::Span,
     ) -> Result<(Value, World), SutraError> {
-        // First, try to resolve as a macro
-        if let Some((_, macro_def)) = self.world.macros.lookup_macro(symbol_name) {
-            // Handle macro expansion
-            // Create the full call AST node
-            let call_node = Spanned {
-                value: std::sync::Arc::new(Expr::List(
-                    {
-                        let mut items = vec![head.clone()];
-                        items.extend_from_slice(args);
-                        items
-                    },
-                    *span,
-                )),
-                span: *span,
-            };
-
-            // Expand macro using the centralized expand_macro function
-            let expanded = expand_macro_call(macro_def, &call_node, &self.world.macros, self.depth)?;
-
-            // Evaluate the expanded expression using the standard evaluation function
-            return evaluate_ast_node(&expanded, self);
-        }
-
-        // If not a macro, try to resolve as an atom
+        // Look up atom in registry
         let Some(atom) = self.atom_registry.get(symbol_name).cloned() else {
             return Err(crate::err_src!(
                 Eval,
@@ -142,6 +118,7 @@ impl<'a> EvaluationContext<'a> {
                 head.span
             ));
         };
+
         // --- SAFETY VALIDATION (DEBUG ONLY) ---
         // This assertion prevents special form atoms, which have a unique calling
         // convention (lazy evaluation), from being misclassified as Pure or Stateful
@@ -168,7 +145,6 @@ impl<'a> EvaluationContext<'a> {
                 );
             }
         }
-
 
         // Dispatch to the correct atom type.
         match atom {
@@ -238,7 +214,7 @@ fn wrap_value_with_world_state(value: Value, world: &World) -> Result<(Value, Wo
 }
 
 /// Helper to evaluate a conditional expression and return a boolean result.
-fn evaluate_condition_as_bool(
+pub fn evaluate_condition_as_bool(
     condition: &AstNode,
     context: &mut EvaluationContext,
 ) -> Result<(bool, World), SutraError> {
@@ -294,16 +270,24 @@ fn evaluate_invalid_expr(
             if let Some(val) = context.get_lexical_var(s) {
                 return wrap_value_with_world_state(val.clone(), context.world);
             }
-            // Attempt to resolve the symbol as a path in the world state.
-            let path = crate::runtime::path::Path(vec![s.clone()]);
-            if let Some(value) = context.world.state.get(&path) {
-                return wrap_value_with_world_state(value.clone(), context.world);
+            // Check if it's an atom in the registry
+            if context.atom_registry.has(s) {
+                (
+                    "atoms cannot be evaluated directly - they must be called",
+                    *span,
+                )
+            } else {
+                // Attempt to resolve the symbol as a path in the world state.
+                let path = crate::runtime::world::Path(vec![s.clone()]);
+                if let Some(value) = context.world.state.get(&path) {
+                    return wrap_value_with_world_state(value.clone(), context.world);
+                }
+                // If the symbol is not found anywhere, it's an undefined symbol.
+                (
+                    "undefined symbol",
+                    *span,
+                )
             }
-            // If the symbol is not found in the world state, it's an undefined symbol.
-            (
-                "explicit (get ...) call required for symbol evaluation",
-                *span,
-            )
         }
         Expr::Spread(_) => (
             "Spread argument not allowed outside of call position (list context)",
@@ -327,6 +311,8 @@ fn evaluate_invalid_expr(
 ///
 /// # Note
 /// This is a low-level, internal function. Most users should use the higher-level `eval` API.
+/// **CRITICAL**: This function assumes all macros have been expanded before evaluation.
+/// Macro expansion must happen in a separate phase according to the strict layering principle.
 pub fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext) -> Result<(Value, World), SutraError> {
     if context.depth > context.max_depth {
         return Err(err_src!(
@@ -341,12 +327,16 @@ pub fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext) -> Res
         // Complex expression types with dedicated handlers
         Expr::List(items, span) => evaluate_list(items, span, context),
         Expr::Quote(inner, _) => evaluate_quote(inner, context),
-        Expr::If {
-            condition,
-            then_branch,
-            else_branch,
-            ..
-        } => evaluate_if(condition, then_branch, else_branch, context),
+        Expr::If { .. } => {
+            // If expressions should be handled as special forms, not as AST nodes
+            // This should not be reached in normal evaluation
+            Err(err_src!(
+                Eval,
+                "If expressions should be evaluated as special forms, not as AST nodes",
+                &context.source,
+                expr.span
+            ))
+        },
         Expr::Define {
             name, params, body, ..
         } => {
@@ -362,7 +352,7 @@ pub fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext) -> Res
                 // It's a variable definition.
                 let (value, world) = evaluate_ast_node(body, context)?;
                 let new_world = world;
-                let path = crate::runtime::path::Path(vec![name.clone()]);
+                let path = crate::runtime::world::Path(vec![name.clone()]);
                 new_world.state.set(&path, value.clone());
                 Ok((value, new_world))
             }
@@ -379,6 +369,8 @@ pub fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext) -> Res
 }
 
 /// Public API: evaluates an expression with the given world, output, atom registry, and max depth.
+/// **CRITICAL**: This function assumes all macros have been expanded before evaluation.
+/// Macro expansion must happen in a separate phase according to the strict layering principle.
 pub fn evaluate(
     expr: &AstNode,
     world: &World,
@@ -427,7 +419,7 @@ fn evaluate_list(
         ));
     };
 
-    // Use direct atom resolution
+    // Use direct atom resolution for all symbols
     let flat_tail = flatten_spread_args(tail, context)?;
     // If the symbol is not an atom, check if it's a lambda in the lexical environment
     if let Some(val) = context.get_lexical_var(symbol_name) {
@@ -488,28 +480,6 @@ fn evaluate_quote(
             inner.span
         )),
     }
-}
-
-/// Helper for evaluating Expr::If arms.
-fn evaluate_if(
-    condition: &AstNode,
-    then_branch: &AstNode,
-    else_branch: &AstNode,
-    context: &mut EvaluationContext,
-) -> Result<(Value, World), SutraError> {
-    let (is_true, next_world) = evaluate_condition_as_bool(condition, context)?;
-    let mut sub_context = EvaluationContext {
-        world: &next_world,
-        output: context.output.clone(),
-        atom_registry: context.atom_registry,
-        source: context.source.clone(),
-        max_depth: context.max_depth,
-        depth: context.depth + 1,
-        lexical_env: context.lexical_env.clone(),
-    };
-
-    let branch = if is_true { then_branch } else { else_branch };
-    evaluate_ast_node(branch, &mut sub_context)
 }
 
 // --- Quote Expression Helpers ---

@@ -46,6 +46,31 @@ pub const ATOM_PRINT: StatefulAtomFn = |args, context| {
     Ok(Value::Nil)
 };
 
+/// Emits output to the output sink (alias for print).
+///
+/// Usage: (output <value>)
+///   - <value>: Any value
+///
+///   Returns: Nil. Emits output.
+///
+/// Example:
+///   (output "hello")
+///
+/// # Safety
+/// Emits output, does not mutate world state.
+pub const ATOM_OUTPUT: StatefulAtomFn = |args, context| {
+    if args.len() != 1 {
+        return Err(err_msg!(
+            Eval,
+            "output expects 1 argument, got {}",
+            args.len()
+        ));
+    }
+
+    context.output.borrow_mut().emit(&args[0].to_string(), None);
+    Ok(Value::Nil)
+};
+
 // ============================================================================
 // RANDOMNESS OPERATIONS
 // ============================================================================
@@ -86,6 +111,7 @@ pub fn register_external_atoms(registry: &mut crate::atoms::AtomRegistry) {
     // I/O operations
     registry.register("print", crate::atoms::Atom::Stateful(ATOM_PRINT));
     registry.register("core/print", crate::atoms::Atom::Stateful(ATOM_PRINT));
+    registry.register("output", crate::atoms::Atom::Stateful(ATOM_OUTPUT));
 
     // Randomness
     registry.register("rand", crate::atoms::Atom::Stateful(ATOM_RAND));

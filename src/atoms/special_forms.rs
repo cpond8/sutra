@@ -1,11 +1,28 @@
 use crate::ast::{AstNode, Expr};
 use crate::ast::value::{Value, Lambda};
 use crate::atoms::{SpecialFormAtomFn};
-use crate::runtime::eval::evaluate_ast_node;
+use crate::runtime::eval::{evaluate_ast_node, evaluate_condition_as_bool};
 use crate::runtime::world::World;
 use crate::SutraError;
 use crate::err_msg;
 use std::rc::Rc;
+
+/// Implements the (if ...) special form with lazy evaluation.
+pub const ATOM_IF: SpecialFormAtomFn = |args, context, _span| {
+    if args.len() != 3 {
+        return Err(err_msg!(Eval, "if expects exactly 3 arguments (condition then else), got {}", args.len()));
+    }
+    let condition = &args[0];
+    let then_branch = &args[1];
+    let else_branch = &args[2];
+
+    let (is_true, next_world) = evaluate_condition_as_bool(condition, context)?;
+    let mut sub_context = context.clone_with_new_lexical_frame();
+    sub_context.world = &next_world;
+
+    let branch = if is_true { then_branch } else { else_branch };
+    evaluate_ast_node(branch, &mut sub_context)
+};
 
 /// Implements the (lambda ...) special form.
 pub const ATOM_LAMBDA: SpecialFormAtomFn = |args, _context, span| {

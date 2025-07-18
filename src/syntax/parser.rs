@@ -412,7 +412,7 @@ fn build_symbol(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
         }
 
         Ok(Spanned {
-            value: Expr::Path(crate::runtime::path::Path(components), span).into(),
+            value: Expr::Path(crate::runtime::world::Path(components), span).into(),
             span,
         })
     } else {

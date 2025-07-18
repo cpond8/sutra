@@ -53,8 +53,8 @@ impl ExtractValue<bool> for Value {
     }
 }
 
-impl ExtractValue<crate::runtime::path::Path> for Value {
-    fn extract(&self) -> Result<crate::runtime::path::Path, SutraError> {
+impl ExtractValue<crate::runtime::world::Path> for Value {
+    fn extract(&self) -> Result<crate::runtime::world::Path, SutraError> {
         match self {
             Value::Path(path) => Ok(path.clone()),
             _ => Err(err_msg!(TypeError, "Type error")),
@@ -183,7 +183,7 @@ pub fn extract_bool(val: &Value) -> Result<bool, SutraError> {
 }
 
 /// Extracts a path from a value with type checking using the trait
-pub fn extract_path(val: &Value) -> Result<crate::runtime::path::Path, SutraError> {
+pub fn extract_path(val: &Value) -> Result<crate::runtime::world::Path, SutraError> {
     val.extract()
 }
 
@@ -265,7 +265,7 @@ pub fn eval_unary_path_op<F>(
 ) -> Result<(Value, crate::runtime::world::World), SutraError>
 where
     F: Fn(
-        crate::runtime::path::Path,
+        crate::runtime::world::Path,
         crate::runtime::world::World,
     ) -> Result<(Value, crate::runtime::world::World), SutraError>,
 {
@@ -283,7 +283,7 @@ pub fn eval_binary_path_op<F>(
 ) -> Result<(Value, crate::runtime::world::World), SutraError>
 where
     F: Fn(
-        crate::runtime::path::Path,
+        crate::runtime::world::Path,
         Value,
         crate::runtime::world::World,
     ) -> Result<(Value, crate::runtime::world::World), SutraError>,

@@ -40,7 +40,7 @@ use crate::ast::value::Value;
 use crate::ast::AstNode;
 use crate::ast::Span;
 use crate::runtime::eval::EvaluationContext;
-use crate::runtime::context::AtomExecutionContext;
+use crate::runtime::world::AtomExecutionContext;
 use crate::runtime::world::World;
 use im::HashMap;
 use crate::SutraError;
@@ -79,10 +79,10 @@ pub enum Atom {
 
 /// Minimal state interface for stateful atoms
 pub trait StateContext {
-    fn get(&self, path: &crate::runtime::path::Path) -> Option<&Value>;
-    fn set(&mut self, path: &crate::runtime::path::Path, value: Value);
-    fn del(&mut self, path: &crate::runtime::path::Path);
-    fn exists(&self, path: &crate::runtime::path::Path) -> bool;
+    fn get(&self, path: &crate::runtime::world::Path) -> Option<&Value>;
+    fn set(&mut self, path: &crate::runtime::world::Path, value: Value);
+    fn del(&mut self, path: &crate::runtime::world::Path);
+    fn exists(&self, path: &crate::runtime::world::Path) -> bool;
 }
 
 /// Polymorphic invocation interface for all callable entities
@@ -234,10 +234,11 @@ pub fn register_collection_atoms(registry: &mut AtomRegistry) {
     registry.register("core/str+", Atom::Pure(collections::ATOM_CORE_STR_PLUS));
 }
 
-/// Registers all special form atoms (lambda, let, etc.) with the given registry.
+/// Registers all special form atoms (lambda, let, if, etc.) with the given registry.
 pub fn register_special_forms(registry: &mut AtomRegistry) {
     registry.register("lambda", Atom::SpecialForm(special_forms::ATOM_LAMBDA));
     registry.register("let", Atom::SpecialForm(special_forms::ATOM_LET));
+    registry.register("if", Atom::SpecialForm(special_forms::ATOM_IF));
 }
 
 // ============================================================================

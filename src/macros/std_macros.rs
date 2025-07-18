@@ -10,7 +10,7 @@
 
 use crate::ast::{AstNode, Expr, Spanned};
 use crate::macros::MacroRegistry;
-use crate::runtime::path::Path;
+use crate::runtime::world::Path;
 use crate::SutraError;
 use crate::err_msg;
 
@@ -29,8 +29,7 @@ pub fn register_std_macros(registry: &mut MacroRegistry) {
     registry.register("get", expand_get);
     registry.register("set!", expand_set);
 
-    // Control flow
-    registry.register("if", expand_if);
+    // Control flow - if is implemented as a special form, not a macro
 
     // Compound assignments (building on core/get and core/set! - alphabetical)
     registry.register("add!", expand_add);
@@ -90,25 +89,7 @@ fn wrap_in_get(expr: &AstNode) -> AstNode {
 // INTERNAL HELPERS: Macro Construction Utilities
 // ===================================================================================================
 
-// -----------------------------------------------
-// Validation Helpers
-// -----------------------------------------------
 
-/// Validates that the given expression is a list with the expected number of arguments.
-/// Returns the items and span if valid, or a SutraError otherwise.
-fn expect_args(
-    n: usize,
-    expr: &AstNode,
-) -> Result<(&[AstNode], &crate::ast::Span), SutraError> {
-    match &*expr.value {
-        Expr::List(items, span) if items.len() == n => Ok((items, span)),
-        Expr::List(items, _span) => {
-            let msg = format!("Expected {} arguments, but got {}", n, items.len());
-            Err(err_msg!(Validation, msg))
-        },
-        _ => Err(err_msg!(Validation, "Expected a list form for this macro")),
-    }
-}
 
 // -----------------------------------------------
 // AST Construction Helpers
@@ -220,13 +201,20 @@ fn create_unary_assignment_macro(expr: &AstNode, op_symbol: &str) -> Result<AstN
     match &*expr.value {
         Expr::List(items, span) if items.len() >= 2 => {
             let set_symbol = create_symbol("core/set!", &items[0].span);
-            let canonical_path = create_canonical_path(&items[1])?;
-            let op_symbol_expr = create_symbol(op_symbol, &items[0].span);
+            // Use the original path argument directly instead of trying to convert it
+            let path_arg = items[1].clone();
+            // Use the correct atom name based on the macro name
+            let atom_name = match op_symbol {
+                "inc!" => "+",
+                "dec!" => "-",
+                _ => op_symbol,
+            };
+            let op_symbol_expr = create_symbol(atom_name, &items[0].span);
             let one = create_number(1.0, &items[0].span);
             // Create the get call directly without any path conversion to avoid issues
             let get_symbol = create_symbol("core/get", &items[0].span);
             let get_call = Spanned {
-                value: Expr::List(vec![get_symbol, items[1].clone()], *span).into(),
+                value: Expr::List(vec![get_symbol, path_arg.clone()], *span).into(),
                 span: *span,
             };
             let inner_expr = Spanned {
@@ -238,7 +226,7 @@ fn create_unary_assignment_macro(expr: &AstNode, op_symbol: &str) -> Result<AstN
                 span: *span,
             };
             Ok(Spanned {
-                value: Expr::List(vec![set_symbol, canonical_path, inner_expr], *span).into(),
+                value: Expr::List(vec![set_symbol, path_arg, inner_expr], *span).into(),
                 span: *span,
             })
         }
@@ -303,22 +291,8 @@ pub fn expand_dec(expr: &AstNode) -> Result<AstNode, SutraError> {
 // Control Flow
 // -----------------------------------------------
 
-/// Expands `(if cond then else)` to a canonical conditional form.
-///
-/// (if (eq? x 1) (print "yes") (print "no"))
-pub fn expand_if(expr: &AstNode) -> Result<AstNode, SutraError> {
-    let (items, span) = expect_args(4, expr)?;
-    Ok(Spanned {
-        value: Expr::If {
-            condition: Box::new(items[1].clone()),
-            then_branch: Box::new(items[2].clone()),
-            else_branch: Box::new(items[3].clone()),
-            span: *span,
-        }
-        .into(),
-        span: *span,
-    })
-}
+// Note: if is implemented as a special form in the evaluator, not as a macro
+// This ensures proper lazy evaluation of branches
 
 // -----------------------------------------------
 // I/O Operations

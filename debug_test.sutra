@@ -1,2 +1,0 @@
-(set! player.health 100)
-(get player.health)

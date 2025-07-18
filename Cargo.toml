@@ -24,6 +24,7 @@ atty = "0.2.14"
 unicode-segmentation = "1.10.0"
 chumsky = "1.0.0-alpha.7"
 regex = "1.11.1"
+lazy_static = "1.4"
 
 [features]
 default = []

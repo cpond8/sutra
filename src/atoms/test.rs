@@ -119,6 +119,56 @@ fn register_test_atom(
 }
 
 
+/// Value atom for test assertions.
+///
+/// Usage: (value <expected-value>)
+/// - <expected-value>: The expected value for the test assertion
+///     Returns: The expected value
+///
+/// Example:
+///   (value "sword") ; => "sword"
+///
+/// This atom is used in test expectations to specify the expected return value.
+fn value_atom(
+    args: &[AstNode],
+    _ctx: &mut EvaluationContext,
+    _span: &Span,
+) -> Result<(Value, World), SutraError> {
+    let Some(first) = args.first() else {
+        return Ok((Value::Nil, _ctx.world.clone()));
+    };
+
+    // Evaluate the argument to get the actual value
+    let (val, world) = evaluate_ast_node(first, _ctx)?;
+    Ok((val, world))
+}
+
+/// Tags atom for test assertions.
+///
+/// Usage: (tags <tag1> <tag2> ...)
+/// - <tag1>, <tag2>, ...: Tags to associate with the test
+///     Returns: A list of tags
+///
+/// Example:
+///   (tags "assignment" "core") ; => ["assignment" "core"]
+///
+/// This atom is used in test expectations to specify test tags.
+fn tags_atom(
+    args: &[AstNode],
+    _ctx: &mut EvaluationContext,
+    _span: &Span,
+) -> Result<(Value, World), SutraError> {
+    let mut tags = Vec::new();
+    for arg in args {
+        let (val, _) = evaluate_ast_node(arg, _ctx)?;
+        match val {
+            Value::String(s) => tags.push(Value::String(s)),
+            _ => tags.push(val),
+        }
+    }
+    Ok((Value::List(tags), _ctx.world.clone()))
+}
+
 /// Simple echo atom that outputs its first argument.
 ///
 /// Usage: (test/echo <value>)
@@ -286,6 +336,16 @@ pub fn register_test_atoms(registry: &mut AtomRegistry) {
     registry.register(
         "register-test!",
         crate::atoms::Atom::SpecialForm(register_test_atom),
+    );
+
+    // Register test assertion atoms
+    registry.register(
+        "value",
+        crate::atoms::Atom::SpecialForm(value_atom),
+    );
+    registry.register(
+        "tags",
+        crate::atoms::Atom::SpecialForm(tags_atom),
     );
 
     // Register assertion atoms for testing

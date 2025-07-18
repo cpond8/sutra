@@ -195,6 +195,18 @@ pub fn register_logic_atoms(registry: &mut crate::atoms::AtomRegistry) {
     registry.register("gte?", crate::atoms::Atom::Pure(ATOM_GTE));
     registry.register("lte?", crate::atoms::Atom::Pure(ATOM_LTE));
 
+    // Comparison aliases
+    registry.register("=", crate::atoms::Atom::Pure(ATOM_EQ));
+    registry.register(">", crate::atoms::Atom::Pure(ATOM_GT));
+    registry.register("<", crate::atoms::Atom::Pure(ATOM_LT));
+    registry.register(">=", crate::atoms::Atom::Pure(ATOM_GTE));
+    registry.register("<=", crate::atoms::Atom::Pure(ATOM_LTE));
+    registry.register("is?", crate::atoms::Atom::Pure(ATOM_EQ));
+    registry.register("over?", crate::atoms::Atom::Pure(ATOM_GT));
+    registry.register("under?", crate::atoms::Atom::Pure(ATOM_LT));
+    registry.register("at-least?", crate::atoms::Atom::Pure(ATOM_GTE));
+    registry.register("at-most?", crate::atoms::Atom::Pure(ATOM_LTE));
+
     // Logic operations
     registry.register("not", crate::atoms::Atom::Pure(ATOM_NOT));
 }

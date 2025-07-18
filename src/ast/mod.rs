@@ -3,7 +3,7 @@
 //! This module provides the core Abstract Syntax Tree types for representing Sutra expressions with source location tracking.
 
 use serde::{Deserialize, Serialize};
-use crate::runtime::path::Path;
+use crate::runtime::world::Path;
 use std::sync::Arc;
 
 /// Represents a span in the source code.

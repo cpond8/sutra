@@ -332,6 +332,37 @@ pub const ATOM_CONS: PureAtomFn = |args| {
     }
 };
 
+/// Creates a map from alternating key-value pairs.
+///
+/// Usage: (core/map <key1> <value1> <key2> <value2> ...)
+///   - <key1>, <key2>, ...: String keys
+///   - <value1>, <value2>, ...: Values to associate with keys
+///
+///   Returns: Map with the specified key-value pairs
+///
+/// Example:
+///   (core/map ":span" (list 0 0) ":file" "test.sutra") ; => {:span (0 0), :file "test.sutra"}
+///
+/// # Errors
+/// Returns an error if the number of arguments is odd or if any key is not a string.
+pub const ATOM_CORE_MAP: PureAtomFn = |args| {
+        if args.len() % 2 != 0 {
+        return Err(err_msg!(Eval, "core/map expects an even number of arguments, got {}", args.len()));
+    }
+
+    let mut map = im::HashMap::new();
+    for chunk in args.chunks(2) {
+        let key = match &chunk[0] {
+            Value::String(s) => s.clone(),
+            _ => return Err(err_msg!(Eval, "core/map expects string keys, found {}", chunk[0].to_string())),
+        };
+        let value = chunk[1].clone();
+        map.insert(key, value);
+    }
+
+    Ok(Value::Map(map))
+};
+
 // ============================================================================
 // REGISTRATION FUNCTION
 // ============================================================================
@@ -350,4 +381,7 @@ pub fn register_collection_atoms(registry: &mut crate::atoms::AtomRegistry) {
     registry.register("car", crate::atoms::Atom::Pure(ATOM_CAR));
     registry.register("cdr", crate::atoms::Atom::Pure(ATOM_CDR));
     registry.register("cons", crate::atoms::Atom::Pure(ATOM_CONS));
+
+    // Map operations
+    registry.register("core/map", crate::atoms::Atom::Pure(ATOM_CORE_MAP));
 }

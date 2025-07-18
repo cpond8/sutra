@@ -83,6 +83,25 @@ pub const ATOM_EXISTS: StatefulAtomFn = |args, context| {
     Ok(Value::Bool(exists))
 };
 
+/// Creates a path from a string.
+/// `(path <string>)`
+pub const ATOM_PATH: StatefulAtomFn = |args, _context| {
+    if args.len() != 1 {
+        return Err(err_msg!(
+            Eval,
+            "path expects 1 argument, got {}",
+            args.len()
+        ));
+    }
+    match &args[0] {
+        Value::String(s) => {
+            let path = crate::runtime::world::Path(vec![s.clone()]);
+            Ok(Value::Path(path))
+        }
+        _ => Err(err_msg!(TypeError, "path expects a String, found {}", args[0].to_string())),
+    }
+};
+
 // ============================================================================
 // REGISTRATION FUNCTION
 // ============================================================================
@@ -93,4 +112,5 @@ pub fn register_world_atoms(registry: &mut crate::atoms::AtomRegistry) {
     registry.register("core/get", crate::atoms::Atom::Stateful(ATOM_CORE_GET));
     registry.register("core/del!", crate::atoms::Atom::Stateful(ATOM_CORE_DEL));
     registry.register("core/exists?", crate::atoms::Atom::Stateful(ATOM_EXISTS));
+    registry.register("path", crate::atoms::Atom::Stateful(ATOM_PATH));
 }
