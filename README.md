@@ -1,30 +1,35 @@
 # Sutra Engine
 
-Sutra is a compositional, emergent, and narrative-rich game engine implemented in Rust. It provides a minimal, extensible core for authoring interactive fiction, simulations, and system-driven narratives using the Verse language.
+**Sutra is an emergent narrative engine and language designed to empower the creation of deeply modular, emergent, and replayable interactive stories.**
+Its core aim is to enable authors and designers to build games where narrative is not a fixed branching tree, but a living system: stories are composed from small, self-contained units (storylets, threads) that become available, interact and recombine dynamically based on the evolving state of the world and its characters to create emergent stories.
+
+Sutra is inspired by the best practices of quality-based narrative (QBN), storylet-driven design, and salience/waypoint-based progression. It provides a foundation for games where:
+- **Player choices and world state drive the unfolding of narrative,** not pre-scripted paths.
+- **Content is modular and extensible:** new storylets, events, and systems can be added without rewriting or breaking existing stories.
+- **Emergence and replayability are first-class goals:** each playthrough can yield a unique, coherent story arc, shaped by the interplay of player actions, system-driven events and authorial design.
+- **Authors can express complex, interlocking systems of narrative logic, resources, relationships, and pacing**, without sacrificing clarity or maintainability.
+
+Sutra achieves this by:
+- Providing a minimal, compositional language (Verse) that unifies s-expression and block syntax for both authors and the engine.
+- Enforcing a strict separation of concerns: parsing, macro-expansion, validation, evaluation, and presentation are all modular and inspectable.
+- Making all computation, macro expansion, and world state changes transparent and debuggable.
+- Supporting canonical patterns for modular content (storylets), flexible narrative flows (threads), and dynamic, state-driven event selection (pools, salience, history).
+- Enabling both menu-driven and system-driven (AI director, salience) narrative progression, supporting a wide range of game genres, from interactive fiction to simulation-heavy emergent worlds.
+
+**In short:**
+Sutra is a toolkit for building games where narrative is systemic, modular and alive, where every playthrough can be different, and where authors can focus on designing meaningful, interconnected story systems rather than wrestling with branching complexity.
 
 ---
 
-## Design Philosophy and Purpose
+## Philosophy
 
-Sutra is designed to provide a minimal, compositional, and extensible foundation for building interactive fiction, simulations, and system-driven narratives.
-The engine aims to resolve the following problems, as evidenced by code and documentation:
+Sutra is designed for:
+- **Compositionality:** All computation is built from a minimal set of irreducible "atoms" and a macro system, enabling maximal extensibility.
+- **Transparency:** All computation, macro expansion, and world state changes are inspectable and debuggable.
+- **Separation of Concerns:** Parsing, macro-expansion, validation, evaluation, and presentation are strictly separated for maintainability and testability.
+- **Single Source of Truth:** Eliminates documentation and implementation drift by enforcing a single source of truth for all concepts and patterns.
 
-- **Fragmentation and Redundancy**:
-  By enforcing a single source of truth for all concepts and patterns, Sutra eliminates documentation and implementation drift.
-
-- **Complexity and Inflexibility**:
-  The engine is built around a minimal set of irreducible "atoms" and a macro system, enabling maximal compositionality and extensibility without feature bloat.
-
-- **Opaque or Rigid Authoring**:
-  Sutra's uniform syntax (s-expressions and brace-blocks) and macro system empower authors to define new patterns and abstractions without modifying the engine core.
-
-- **Separation of Concerns**:
-  The architecture strictly separates parsing, macro-expansion, validation, evaluation, and presentation, supporting maintainability and testability.
-
-- **Transparency and Traceability**:
-  All computation, macro expansion, and world state changes are inspectable and debuggable.
-
-For a detailed statement of philosophy and guiding principles, see [`docs/philosophy/philosophy.md`](docs/philosophy/philosophy.md).
+For a detailed statement of philosophy and guiding principles, see [`docs/philosophy.md`](docs/philosophy/philosophy.md).
 
 ---
 
@@ -32,104 +37,162 @@ For a detailed statement of philosophy and guiding principles, see [`docs/philos
 
 ```
 .
-├── src/                # Main implementation: engine, CLI, and modules
-│   ├── cli/            # Command-line interface (CLI) implementation
-│   └── ...             # Core modules: ast, atom, macros, parser, eval, etc.
-├── tests/              # Test suite: evaluation, parser, macro expansion
-├── docs/               # Modular documentation system (see below)
-├── memory-bank/        # Project and system context (not code)
-├── Cargo.toml          # Rust package manifest
-├── Cargo.lock          # Cargo dependency lockfile
-├── test.sutra          # Example/test script
-└── ...                 # Standard project/config files and build artifacts
+├── src/
+│   ├── ast.rs, ast/           # Core AST types and value representations
+│   ├── atoms.rs, atoms/       # Atom system: primitive operations, domain modules
+│   ├── cli.rs, cli/           # Command-line interface and subcommands
+│   ├── diagnostics.rs         # Error types, diagnostics, and reporting
+│   ├── engine.rs              # High-level orchestration and pipeline
+│   ├── lib.rs                 # Library entry point, module exports
+│   ├── macros.rs, macros/     # Macro system: expansion, registry, std macros
+│   ├── main.rs                # Binary entry point (CLI launcher)
+│   ├── runtime.rs, runtime/   # Evaluation and world state management
+│   ├── syntax.rs, syntax/     # Parsing and grammar
+│   ├── testing.rs, testing/   # Test discovery and harness
+│   ├── validation.rs, validation/ # Grammar and semantic validation
+│   └── ...
+├── tests/                     # Test suite: atoms, macros, runtime, syntax, io
+│   ├── atoms/
+│   ├── macros/
+│   ├── runtime/
+│   ├── syntax/
+│   ├── io/
+│   └── ...
+├── docs/                      # Canonical documentation
+│   ├── canonical-language-reference.md
+│   ├── philosophy.md
+│   └── references/
+├── scripts/                   # Utility scripts (e.g., grammar checks)
+├── Cargo.toml                 # Rust package manifest
+├── Cargo.lock                 # Cargo dependency lockfile
+└── ...
 ```
 
 ---
 
-## Build and Setup
+## Core Architecture
+
+### 1. **AST Layer (`src/ast.rs`, `src/ast/`)**
+Defines the core data structures for representing Sutra expressions, including:
+- `Expr`, `AstNode`, `Span`, `ParamList`
+- Value representations (`value.rs`)
+
+### 2. **Atoms System (`src/atoms.rs`, `src/atoms/`)**
+Atoms are the primitive operations of the engine, organized into domain modules:
+- `math.rs`, `logic.rs`, `collections.rs`, `execution.rs`, `external.rs`, `string.rs`, `world.rs`, `special_forms.rs`
+- `helpers.rs` provides shared infrastructure
+- Atoms are registered and managed via the `AtomRegistry`
+
+### 3. **Macro System (`src/macros.rs`, `src/macros/`)**
+- Purely syntactic transformation of the AST before evaluation
+- Supports both native Rust macro functions and declarative macro templates
+- Modularized into `expander.rs`, `loader.rs`, `std_macros.rs`
+- User and standard macros loaded from `macros.sutra`
+
+### 4. **Parsing & Syntax (`src/syntax.rs`, `src/syntax/`)**
+- PEG grammar (`grammar.pest`)
+- Parser implementation (`parser.rs`)
+- Supports both s-expression and brace-block syntax
+
+### 5. **Validation (`src/validation.rs`, `src/validation/`)**
+- Grammar validation (`grammar/`)
+- Semantic validation (`semantic/`)
+- Ensures scripts are well-formed and semantically correct
+
+### 6. **Runtime & Evaluation (`src/runtime.rs`, `src/runtime/`)**
+- Evaluation engine (`eval.rs`)
+- World state management (`world.rs`)
+
+### 7. **CLI (`src/cli.rs`, `src/cli/`)**
+- Command-line interface and subcommands
+- Argument parsing (`args.rs`)
+- Output formatting (`output.rs`)
+
+### 8. **Testing (`src/testing.rs`, `src/testing/`)**
+- Test discovery and harness (`discovery.rs`)
+
+### 9. **Diagnostics (`src/diagnostics.rs`)**
+- Error types, context, and reporting
+
+---
+
+## Building and Running
 
 This project uses [Cargo](https://doc.rust-lang.org/cargo/) for building and testing.
 
-To build the project:
+**Build:**
 ```sh
 cargo build
 ```
 
-To run the test suite:
-```sh
-cargo test
-```
-
-To validate the grammar:
-```sh
-cargo run -- validate
-```
-
-This will check the PEG grammar for errors and is enforced as a quality gate.
-
----
-
-## Codebase Overview
-
-- **Library Entry Point:**
-  `src/lib.rs` re-exports all main modules.
-
-- **CLI Entry Point:**
-  `src/main.rs` launches the command-line interface via `sutra::cli::run()`.
-
-- **Main Modules:**
-  - `ast.rs`, `atom.rs`, `atoms_std.rs`, `macros.rs`, `macros_std.rs`, `parser.rs`, `eval.rs`, `error.rs`, `value.rs`, `world.rs`, `registry.rs`, `path.rs`, `sutra.pest`
-  - `cli/` submodule: `mod.rs`, `args.rs`, `output.rs`
-
-- **Parser:**
-  Uses a PEG grammar (`sutra.pest`) to support both s-expression and brace-block syntax.
-
----
-
-## Test Suite
-
-- `core_eval_tests.rs` — Core evaluation and integration tests
-- `parser_tests.rs` — Parser tests (s-expr, brace-block, error handling)
-- `macro_expansion_tests.rs` — Macro system expansion and error tests
-
----
-
-## Documentation
-
-Canonical documentation is maintained in the `docs/` directory.
-See `docs/README.md` for structure, status, and navigation.
-
----
-
-## Usage
-
-The Sutra engine is primarily used via its command-line interface.
-
-To run the CLI:
+**Run the CLI:**
 ```sh
 cargo run -- <command> [args]
 ```
 
-Available commands (see `src/cli/args.rs` for full details):
+**Run the test suite:**
+```sh
+cargo test
+```
+
+**Validate the grammar:**
+```sh
+cargo run -- validate
+```
+
+---
+
+## CLI Commands
+
+See `src/cli/args.rs` for full details. Key commands:
 
 - `run <file>`: Full pipeline (parse, expand, validate, eval, output)
 - `macroexpand <file>`: Print fully macro-expanded code
 - `macrotrace <file>`: Show stepwise macro expansion trace with diffs
 - `validate <file>`: Validate a script and show errors/warnings
+- `validate-grammar`: Validate the PEG grammar for errors
 - `format <file>`: Pretty-print and normalize a script
 - `test [path]`: Discover and run all test scripts in a directory (default: `tests`)
 - `listmacros`: List all available macros with documentation
 - `listatoms`: List all available atoms with documentation
 
-### Generate Expected Output
+---
 
-Regenerate `.expected` files for a `.sutra` script or all scripts in a directory:
+## Test Suite
 
-```sh
-sutra gen-expected path/to/file.sutra
-sutra gen-expected path/to/directory/
-```
+Tests are organized by domain:
 
-**Safety:** This command will overwrite existing `.expected` files.
+- `tests/atoms/`: Atom operation tests (math, logic, list, string, etc.)
+- `tests/macros/`: Macro expansion and assignment tests
+- `tests/runtime/`: Runtime consistency and control flow
+- `tests/syntax/`: Parsing and security
+- `tests/io/`: Output and IO
+- Each `.sutra` file is a test script; see `tests/README.md` for details.
 
 ---
+
+## Documentation
+
+Canonical documentation is maintained in the `docs/` directory:
+- Language reference
+- Philosophy and design principles
+- Narrative and storylet system references
+- Threading and execution model
+
+---
+
+## Contributing
+
+- All code must pass formatting, linting (`clippy`), and tests.
+- Public APIs must be documented with clear examples and rationale.
+- See `clippy.toml` and project memories for code style and review rules.
+
+---
+
+## License
+
+Sutra is released under the MIT License.
+
+---
+
+If you need further details on any subsystem, see the in-code documentation or the `docs/` directory.

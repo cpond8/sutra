@@ -14,7 +14,7 @@
 //! unevaluated `AstNode`s to manage their own evaluation.
 //!
 //! **It is a critical safety violation to misclassify an atom.** See the
-//! documentation in `src/atoms/mod.rs` for a detailed explanation of the
+//! documentation in `src/atoms.rs` for a detailed explanation of the
 //! dual-convention architecture.
 //!
 //! ## Error Handling
