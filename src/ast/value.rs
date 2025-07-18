@@ -5,13 +5,12 @@
 //! `Nil` represents the absence of a value and is the default for all uninitialized slots.
 //! `Path` is a first-class value, enabling explicit reference to locations in the world state.
 
-use crate::AstNode;
-use crate::ParamList;
-use crate::Path;
+use std::{fmt, rc::Rc};
+
 use im::HashMap;
 use serde::{Deserialize, Serialize};
-use std::fmt;
-use std::rc::Rc;
+
+use crate::{AstNode, ParamList, Path};
 
 /// Canonical runtime value for Sutra evaluation and macro expansion.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]

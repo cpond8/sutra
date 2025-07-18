@@ -1,18 +1,16 @@
-use crate::err_ctx;
-use crate::err_msg;
-use crate::macros::{
-    expand_macros_recursively, is_macro_definition, parse_macro_definition, MacroDefinition,
-};
-use crate::runtime::eval::evaluate;
-use crate::runtime::world::build_canonical_macro_env;
-use crate::syntax::parser::wrap_in_do;
-use crate::OutputBuffer;
-use crate::SutraError;
-use crate::{to_error_source, AstNode, MacroRegistry, SharedOutput, Value, World};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
+
 use miette::NamedSource;
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::sync::Arc;
+
+use crate::{
+    err_ctx, err_msg,
+    macros::{
+        expand_macros_recursively, is_macro_definition, parse_macro_definition, MacroDefinition,
+    },
+    runtime::{eval::evaluate, world::build_canonical_macro_env},
+    syntax::parser::wrap_in_do,
+    to_error_source, AstNode, MacroRegistry, OutputBuffer, SharedOutput, SutraError, Value, World,
+};
 
 /// Unified execution pipeline that enforces strict layering: Parse → Expand → Validate → Evaluate
 /// This is the single source of truth for all Sutra execution paths, including tests and production.

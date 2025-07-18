@@ -13,11 +13,16 @@
 //! - **Boolean Results**: All operations return `Value::Bool`
 //! - **Numeric Comparison**: Comparison operations work with `Value::Number`
 
-use crate::atoms::helpers::{
-    pure_eval_numeric_sequence_comparison, pure_eval_unary_typed_op, validate_sequence_arity,
+use crate::{
+    atoms::{
+        helpers::{
+            pure_eval_numeric_sequence_comparison, pure_eval_unary_typed_op,
+            validate_sequence_arity,
+        },
+        PureAtomFn,
+    },
+    AtomRegistry, Value,
 };
-use crate::atoms::PureAtomFn;
-use crate::{AtomRegistry, Value};
 
 // ============================================================================
 // COMPARISON OPERATIONS

@@ -1,18 +1,16 @@
-use crate::atoms::{self, AtomRegistry};
-use crate::atoms::{SharedOutput, StateContext};
-use crate::err_ctx;
-use crate::macros::{self, MacroRegistry};
-use crate::macros::{load_macros_from_file, MacroDefinition, MacroExpansionContext};
-use crate::to_error_source;
-use crate::Span;
-use crate::SutraError;
-use crate::Value;
+use std::{collections::HashMap as StdHashMap, fmt};
+
 use im::HashMap;
 use rand::{RngCore, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap as StdHashMap;
-use std::fmt;
+
+use crate::{
+    atoms::{self, AtomRegistry, SharedOutput, StateContext},
+    err_ctx,
+    macros::{self, load_macros_from_file, MacroDefinition, MacroExpansionContext, MacroRegistry},
+    to_error_source, Span, SutraError, Value,
+};
 
 // Using a concrete, seedable PRNG for determinism.
 type SmallRng = Xoshiro256StarStar;

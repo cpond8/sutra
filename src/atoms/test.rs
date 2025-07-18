@@ -10,19 +10,23 @@
 //! - May stress-test internal systems (borrowing, recursion, etc.)
 //! - May have non-standard return values for testing edge cases
 
-use crate::ast::{AstNode, Expr, Span, Spanned};
-use crate::atoms::helpers::validate_special_form_arity;
-use crate::atoms::{AtomRegistry, SpecialFormAtomFn};
-use crate::runtime::eval::{evaluate_ast_node, EvaluationContext};
-use crate::{err_ctx, err_src, SutraError};
-use crate::{to_error_source, Value, World};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
+
+use miette::NamedSource;
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 
 // Use the public context helper macro
 use crate::sub_eval_context;
-use miette::NamedSource;
+use crate::{
+    ast::{AstNode, Expr, Span, Spanned},
+    atoms::{helpers::validate_special_form_arity, AtomRegistry, SpecialFormAtomFn},
+    err_ctx, err_src,
+    runtime::eval::{evaluate_ast_node, EvaluationContext},
+    to_error_source, SutraError, Value, World,
+};
 
 /// Represents a single test case definition with source context for diagnostics.
 #[derive(Debug, Clone)]

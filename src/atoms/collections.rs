@@ -13,10 +13,13 @@
 //! - **Immutable Operations**: Pure functions where possible
 //! - **Mutable Operations**: World-state operations for list manipulation
 
-use crate::atoms::helpers::{validate_binary_arity, validate_even_arity, validate_unary_arity};
-use crate::atoms::{PureAtomFn, StatefulAtomFn};
-use crate::err_msg;
-use crate::{AtomRegistry, Value};
+use crate::{
+    atoms::{
+        helpers::{validate_binary_arity, validate_even_arity, validate_unary_arity},
+        PureAtomFn, StatefulAtomFn,
+    },
+    err_msg, AtomRegistry, Value,
+};
 
 // ============================================================================
 // LIST OPERATIONS

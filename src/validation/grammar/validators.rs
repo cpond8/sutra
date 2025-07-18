@@ -1,5 +1,6 @@
-use crate::validation::grammar::{Rule, ValidationReporter, ValidationResult, GRAMMAR_CONSTANTS};
 use std::collections::{HashMap, HashSet};
+
+use crate::validation::grammar::{Rule, ValidationReporter, ValidationResult, GRAMMAR_CONSTANTS};
 
 /// Validates grammar rules for various correctness issues
 /// Each validator focuses on a single validation concern

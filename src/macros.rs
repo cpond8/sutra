@@ -51,16 +51,17 @@
 //! - **Maintainability**: Changes are isolated to appropriate modules
 //! - **Token Efficiency**: Only load relevant modules for AI context
 
-use crate::ast::{AstNode, ParamList};
-use crate::err_ctx;
-use crate::err_msg;
-use crate::AtomExecutionContext;
-use crate::Span;
-use crate::{to_error_source, Value, World};
-use ::std::collections::{HashMap, HashSet};
-use ::std::sync::Arc;
+use ::std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use miette::NamedSource;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::{
+    ast::{AstNode, ParamList},
+    err_ctx, err_msg, to_error_source, AtomExecutionContext, Span, Value, World,
+};
 
 // ============================================================================
 // MODULE DECLARATIONS
@@ -88,12 +89,18 @@ pub const MAX_MACRO_RECURSION_DEPTH: usize = 128;
 /// # Examples
 ///
 /// ```rust
-/// use sutra::macros::MacroFunction;
-/// use sutra::ast::{AstNode, Spanned};
 /// use std::sync::Arc;
+///
+/// use sutra::{
+///     ast::{AstNode, Spanned},
+///     macros::MacroFunction,
+/// };
 /// // A macro that clones its input node
 /// let my_macro: MacroFunction = |node| {
-///     Ok(Spanned { value: Arc::clone(&node.value), span: node.span })
+///     Ok(Spanned {
+///         value: Arc::clone(&node.value),
+///         span: node.span,
+///     })
 /// };
 /// ```
 pub type MacroFunction = fn(&AstNode) -> Result<AstNode, crate::SutraError>;
@@ -113,16 +120,22 @@ pub type MacroFunction = fn(&AstNode) -> Result<AstNode, crate::SutraError>;
 /// # Examples
 ///
 /// ```rust
-/// use sutra::macros::MacroTemplate;
-/// use sutra::ast::{ParamList, Spanned};
 /// use std::sync::Arc;
+///
+/// use sutra::{
+///     ast::{ParamList, Spanned},
+///     macros::MacroTemplate,
+/// };
 /// // A simple macro template: (define (double x) (* x 2))
 /// let params = ParamList {
 ///     required: vec!["x".to_string()],
 ///     rest: None,
 ///     span: Default::default(),
 /// };
-/// let body = Box::new(Spanned { value: Arc::new(sutra::ast::Expr::Number(0.0, sutra::ast::Span::default())), span: sutra::ast::Span::default() });
+/// let body = Box::new(Spanned {
+///     value: Arc::new(sutra::ast::Expr::Number(0.0, sutra::ast::Span::default())),
+///     span: sutra::ast::Span::default(),
+/// });
 /// let template = MacroTemplate::new(params, body).unwrap();
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -200,8 +213,9 @@ pub struct MacroExpansionStep {
 /// # Examples
 ///
 /// ```rust
-/// use sutra::macros::MacroExpansionContext;
 /// use std::sync::Arc;
+///
+/// use sutra::macros::MacroExpansionContext;
 /// let source = Arc::new(miette::NamedSource::new("test", String::new()));
 /// let env = MacroExpansionContext::new(source);
 /// assert!(env.user_macros.is_empty());
@@ -233,14 +247,24 @@ pub struct MacroExpansionContext {
 ///
 /// # Example
 /// ```rust
-/// use sutra::macros::{MacroRegistry, MacroFunction, MacroTemplate};
-/// use sutra::ast::{Spanned, Expr, Span};
 /// use std::sync::Arc;
+///
+/// use sutra::{
+///     ast::{Expr, Span, Spanned},
+///     macros::{MacroFunction, MacroRegistry, MacroTemplate},
+/// };
 /// let mut reg = MacroRegistry::new();
 /// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
 /// reg.register("foo", my_macro_fn);
-/// let params = sutra::ast::ParamList { required: vec![], rest: None, span: Span::default() };
-/// let body = Box::new(Spanned { value: Arc::new(Expr::Number(0.0, Span::default())), span: Span::default() });
+/// let params = sutra::ast::ParamList {
+///     required: vec![],
+///     rest: None,
+///     span: Span::default(),
+/// };
+/// let body = Box::new(Spanned {
+///     value: Arc::new(Expr::Number(0.0, Span::default())),
+///     span: Span::default(),
+/// });
 /// let template = MacroTemplate::new(params, body).unwrap();
 /// reg.register_template("bar", template);
 /// ```
@@ -271,15 +295,21 @@ impl MacroTemplate {
     /// # Examples
     ///
     /// ```rust
-    /// use sutra::macros::MacroTemplate;
-    /// use sutra::ast::{ParamList, Spanned};
     /// use std::sync::Arc;
+    ///
+    /// use sutra::{
+    ///     ast::{ParamList, Spanned},
+    ///     macros::MacroTemplate,
+    /// };
     /// let params = ParamList {
     ///     required: vec!["x".to_string(), "y".to_string()],
     ///     rest: Some("rest".to_string()),
     ///     span: Default::default(),
     /// };
-    /// let body = Box::new(Spanned { value: Arc::new(sutra::ast::Expr::Number(0.0, sutra::ast::Span::default())), span: sutra::ast::Span::default() });
+    /// let body = Box::new(Spanned {
+    ///     value: Arc::new(sutra::ast::Expr::Number(0.0, sutra::ast::Span::default())),
+    ///     span: sutra::ast::Span::default(),
+    /// });
     /// let template = MacroTemplate::new(params, body).unwrap();
     /// ```
     pub fn new(params: ParamList, body: Box<AstNode>) -> Result<Self, crate::SutraError> {
@@ -307,8 +337,9 @@ impl MacroExpansionContext {
     /// # Examples
     ///
     /// ```rust
-    /// use sutra::macros::MacroExpansionContext;
     /// use std::sync::Arc;
+    ///
+    /// use sutra::macros::MacroExpansionContext;
     /// let source = Arc::new(miette::NamedSource::new("test", String::new()));
     /// let env = MacroExpansionContext::new(source);
     /// assert!(env.user_macros.is_empty());
@@ -343,8 +374,9 @@ impl MacroExpansionContext {
     /// # Examples
     ///
     /// ```rust
-    /// use sutra::macros::{MacroExpansionContext, MacroOrigin};
     /// use std::sync::Arc;
+    ///
+    /// use sutra::macros::{MacroExpansionContext, MacroOrigin};
     /// let source = Arc::new(miette::NamedSource::new("test", String::new()));
     /// let env = MacroExpansionContext::new(source);
     /// match env.lookup_macro("my-macro") {
@@ -373,8 +405,9 @@ impl MacroExpansionContext {
     /// # Examples
     ///
     /// ```rust
-    /// use sutra::macros::MacroExpansionContext;
     /// use std::sync::Arc;
+    ///
+    /// use sutra::macros::MacroExpansionContext;
     /// let source = Arc::new(miette::NamedSource::new("test", String::new()));
     /// let env = MacroExpansionContext::new(source);
     /// let trace = env.trace();
@@ -423,7 +456,7 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroFunction};
+    /// use sutra::macros::{MacroFunction, MacroRegistry};
     /// let mut reg = MacroRegistry::new();
     /// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
     /// let old = reg.register("foo", my_macro_fn).unwrap();
@@ -456,7 +489,7 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroFunction};
+    /// use sutra::macros::{MacroFunction, MacroRegistry};
     /// let mut reg = MacroRegistry::new();
     /// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
     /// reg.register_or_error("foo", my_macro_fn).unwrap();
@@ -496,12 +529,22 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroTemplate};
-    /// use sutra::ast::{Spanned, Expr, Span};
     /// use std::sync::Arc;
+    ///
+    /// use sutra::{
+    ///     ast::{Expr, Span, Spanned},
+    ///     macros::{MacroRegistry, MacroTemplate},
+    /// };
     /// let mut reg = MacroRegistry::new();
-    /// let params = sutra::ast::ParamList { required: vec![], rest: None, span: Span::default() };
-    /// let body = Box::new(Spanned { value: Arc::new(Expr::Number(0.0, Span::default())), span: Span::default() });
+    /// let params = sutra::ast::ParamList {
+    ///     required: vec![],
+    ///     rest: None,
+    ///     span: Span::default(),
+    /// };
+    /// let body = Box::new(Spanned {
+    ///     value: Arc::new(Expr::Number(0.0, Span::default())),
+    ///     span: Span::default(),
+    /// });
     /// let template = MacroTemplate::new(params, body).unwrap();
     /// let old = reg.register_template("foo", template.clone()).unwrap();
     /// assert!(old.is_none());
@@ -533,14 +576,25 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroTemplate};
-    /// use sutra::ast::{Spanned, Expr, Span};
     /// use std::sync::Arc;
+    ///
+    /// use sutra::{
+    ///     ast::{Expr, Span, Spanned},
+    ///     macros::{MacroRegistry, MacroTemplate},
+    /// };
     /// let mut reg = MacroRegistry::new();
-    /// let params = sutra::ast::ParamList { required: vec![], rest: None, span: Span::default() };
-    /// let body = Box::new(Spanned { value: Arc::new(Expr::Number(0.0, Span::default())), span: Span::default() });
+    /// let params = sutra::ast::ParamList {
+    ///     required: vec![],
+    ///     rest: None,
+    ///     span: Span::default(),
+    /// };
+    /// let body = Box::new(Spanned {
+    ///     value: Arc::new(Expr::Number(0.0, Span::default())),
+    ///     span: Span::default(),
+    /// });
     /// let template = MacroTemplate::new(params, body).unwrap();
-    /// reg.register_template_or_error("foo", template.clone()).unwrap();
+    /// reg.register_template_or_error("foo", template.clone())
+    ///     .unwrap();
     /// assert!(reg.register_template_or_error("foo", template).is_err());
     /// ```
     pub fn register_template_or_error(
@@ -571,7 +625,7 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroFunction};
+    /// use sutra::macros::{MacroFunction, MacroRegistry};
     /// let mut reg = MacroRegistry::new();
     /// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
     /// reg.register("foo", my_macro_fn);
@@ -590,7 +644,7 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroFunction};
+    /// use sutra::macros::{MacroFunction, MacroRegistry};
     /// let mut reg = MacroRegistry::new();
     /// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
     /// reg.register("foo", my_macro_fn);
@@ -609,7 +663,7 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroFunction};
+    /// use sutra::macros::{MacroFunction, MacroRegistry};
     /// let mut reg = MacroRegistry::new();
     /// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
     /// reg.register("foo", my_macro_fn);
@@ -624,7 +678,7 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroFunction};
+    /// use sutra::macros::{MacroFunction, MacroRegistry};
     /// let mut reg = MacroRegistry::new();
     /// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
     /// assert_eq!(reg.len(), 0);
@@ -651,7 +705,7 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroFunction};
+    /// use sutra::macros::{MacroFunction, MacroRegistry};
     /// let mut reg = MacroRegistry::new();
     /// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
     /// reg.register("macro1", my_macro_fn);
@@ -667,7 +721,7 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroFunction};
+    /// use sutra::macros::{MacroFunction, MacroRegistry};
     /// let mut reg = MacroRegistry::new();
     /// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
     /// reg.register("foo", my_macro_fn);
@@ -683,7 +737,7 @@ impl MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroFunction};
+    /// use sutra::macros::{MacroFunction, MacroRegistry};
     /// let mut reg = MacroRegistry::new();
     /// let my_macro_fn: MacroFunction = |node| Ok(node.clone());
     /// reg.register("foo", my_macro_fn);
@@ -708,12 +762,22 @@ impl Serialize for MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroTemplate};
-    /// use sutra::ast::{Spanned, Expr, Span};
     /// use std::sync::Arc;
+    ///
+    /// use sutra::{
+    ///     ast::{Expr, Span, Spanned},
+    ///     macros::{MacroRegistry, MacroTemplate},
+    /// };
     /// let mut reg = MacroRegistry::new();
-    /// let params = sutra::ast::ParamList { required: vec![], rest: None, span: Span::default() };
-    /// let body = Box::new(Spanned { value: Arc::new(Expr::Number(0.0, Span::default())), span: Span::default() });
+    /// let params = sutra::ast::ParamList {
+    ///     required: vec![],
+    ///     rest: None,
+    ///     span: Span::default(),
+    /// };
+    /// let body = Box::new(Spanned {
+    ///     value: Arc::new(Expr::Number(0.0, Span::default())),
+    ///     span: Span::default(),
+    /// });
     /// let template = MacroTemplate::new(params, body).unwrap();
     /// reg.register_template("foo", template);
     /// let json = serde_json::to_string(&reg).unwrap();
@@ -750,12 +814,22 @@ impl<'de> Deserialize<'de> for MacroRegistry {
     ///
     /// # Example
     /// ```rust
-    /// use sutra::macros::{MacroRegistry, MacroTemplate};
-    /// use sutra::ast::{Spanned, Expr, Span, ParamList};
     /// use std::sync::Arc;
+    ///
+    /// use sutra::{
+    ///     ast::{Expr, ParamList, Span, Spanned},
+    ///     macros::{MacroRegistry, MacroTemplate},
+    /// };
     /// // Construct a MacroTemplate and serialize it to JSON
-    /// let params = ParamList { required: vec![], rest: None, span: Span::default() };
-    /// let body = Box::new(Spanned { value: Arc::new(Expr::Number(0.0, Span::default())), span: Span::default() });
+    /// let params = ParamList {
+    ///     required: vec![],
+    ///     rest: None,
+    ///     span: Span::default(),
+    /// };
+    /// let body = Box::new(Spanned {
+    ///     value: Arc::new(Expr::Number(0.0, Span::default())),
+    ///     span: Span::default(),
+    /// });
     /// let template = MacroTemplate::new(params, body).unwrap();
     /// let mut reg = MacroRegistry::new();
     /// reg.register_template("foo", template);
@@ -881,18 +955,16 @@ impl crate::atoms::Callable for MacroDefinition {
 // ============================================================================
 
 // Loading operations - re-exported from loader module
-pub use loader::{
-    check_arity, is_macro_definition, load_macros_from_file, parse_macro_definition,
-    parse_macros_from_source,
-};
-
+use ::std::sync;
 // Expansion operations - re-exported from expander module
 pub use expander::{
     bind_macro_params, expand_macro_call, expand_macros_recursively, expand_template,
     substitute_template,
 };
-
-use ::std::sync;
+pub use loader::{
+    check_arity, is_macro_definition, load_macros_from_file, parse_macro_definition,
+    parse_macros_from_source,
+};
 
 // ============================================================================
 // CONVENIENCE FUNCTIONS
@@ -906,9 +978,10 @@ use ::std::sync;
 /// # Examples
 ///
 /// ```rust
-/// use sutra::macros::create_macro_env;
 /// use std::sync::Arc;
+///
 /// use miette::NamedSource;
+/// use sutra::macros::create_macro_env;
 ///
 /// let source = Arc::new(NamedSource::new("test", "".to_string()));
 /// let env = create_macro_env(source);

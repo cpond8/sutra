@@ -1,13 +1,17 @@
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use miette::NamedSource;
 use walkdir::WalkDir;
 
-use crate::ast::{AstNode, Expr, Span};
-use crate::syntax::parser;
-use crate::SutraError;
-use crate::{err_msg, err_src};
+use crate::{
+    ast::{AstNode, Expr, Span},
+    err_msg, err_src,
+    syntax::parser,
+    SutraError,
+};
 
 /// AST representation of a test definition extracted from a `.sutra` file.
 /// Stores the test in AST form to avoid redundant parsing and preserve original

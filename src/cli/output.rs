@@ -4,11 +4,10 @@
 //! formatting errors, and generating JSON. By centralizing output logic here,
 //! we ensure a consistent user experience across all commands.
 
-use crate::atoms::OutputSink;
-use crate::macros::MacroExpansionStep;
-use crate::Span;
 use difference::Changeset;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
+
+use crate::{atoms::OutputSink, macros::MacroExpansionStep, Span};
 
 /// OutputBuffer: collects output into a String for testing or programmatic capture.
 pub struct OutputBuffer {

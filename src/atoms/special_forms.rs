@@ -1,12 +1,18 @@
-use crate::ast::value::{Lambda, Value};
-use crate::ast::{AstNode, Expr};
-use crate::atoms::helpers::{validate_special_form_arity, validate_special_form_min_arity};
-use crate::atoms::SpecialFormAtomFn;
-use crate::err_msg;
-use crate::runtime::eval::{evaluate_ast_node, evaluate_condition_as_bool};
-use crate::SutraError;
-use crate::World;
 use std::rc::Rc;
+
+use crate::{
+    ast::{
+        value::{Lambda, Value},
+        AstNode, Expr,
+    },
+    atoms::{
+        helpers::{validate_special_form_arity, validate_special_form_min_arity},
+        SpecialFormAtomFn,
+    },
+    err_msg,
+    runtime::eval::{evaluate_ast_node, evaluate_condition_as_bool},
+    SutraError, World,
+};
 
 /// Implements the (if ...) special form with lazy evaluation.
 pub const ATOM_IF: SpecialFormAtomFn = |args, context, _span| {

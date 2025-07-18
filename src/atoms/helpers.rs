@@ -10,9 +10,11 @@
 //! - **Consistency**: Standardized error messages and evaluation patterns
 //! - **Safety**: All functions handle ownership and borrowing correctly
 
-use crate::err_msg;
-use crate::runtime::eval::{evaluate_ast_node, EvaluationContext};
-use crate::{AstNode, Expr, Path, Span, Spanned, SutraError, Value, World};
+use crate::{
+    err_msg,
+    runtime::eval::{evaluate_ast_node, EvaluationContext},
+    AstNode, Expr, Path, Span, Spanned, SutraError, Value, World,
+};
 
 // ============================================================================
 // TYPE ALIASES AND CORE TYPES

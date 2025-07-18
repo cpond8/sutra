@@ -40,17 +40,16 @@
 //! - Internally, `build_program` returns an `Expr::List` for uniformity, but this is unwrapped by `parse`.
 //! - If a canonical program node is ever needed, document and update accordingly.
 
-use crate::ast::{AstNode, Expr, Span, Spanned};
-use crate::ParamList;
-use crate::SutraError;
-use crate::{err_ctx, err_msg};
-use crate::{to_error_source, Path};
-use once_cell::sync::Lazy;
-use pest::error::InputLocation;
-use pest::iterators::Pair;
-use pest::Parser;
-use pest_derive::Parser;
 use std::collections::HashMap;
+
+use once_cell::sync::Lazy;
+use pest::{error::InputLocation, iterators::Pair, Parser};
+use pest_derive::Parser;
+
+use crate::{
+    ast::{AstNode, Expr, Span, Spanned},
+    err_ctx, err_msg, to_error_source, ParamList, Path, SutraError,
+};
 
 // This derive macro generates the parser implementation from our grammar file.
 #[derive(Parser)]

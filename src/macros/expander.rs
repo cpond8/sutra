@@ -19,14 +19,17 @@
 //!
 //! This module provides the core expansion engine, including recursion depth checks and trace recording. All errors related to recursion limits or invalid macro forms are reported using the canonical error system.
 
-use crate::ast::{AstNode, Expr, ParamList, Span, Spanned};
-use crate::err_src;
-use crate::macros::{
-    MacroDefinition, MacroExpansionContext, MacroExpansionStep, MacroOrigin, MacroTemplate,
-    MAX_MACRO_RECURSION_DEPTH,
-};
-use crate::SutraError;
 use std::collections::HashMap;
+
+use crate::{
+    ast::{AstNode, Expr, ParamList, Span, Spanned},
+    err_src,
+    macros::{
+        MacroDefinition, MacroExpansionContext, MacroExpansionStep, MacroOrigin, MacroTemplate,
+        MAX_MACRO_RECURSION_DEPTH,
+    },
+    SutraError,
+};
 
 // =============================
 // Type definitions for parameter grouping

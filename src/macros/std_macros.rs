@@ -8,11 +8,10 @@
 //! (e.g., `player.score` or `(player score)`) into a canonical `Expr::Path`
 //! node. This is the only place in the entire engine where path syntax is parsed.
 
-use crate::ast::{AstNode, Expr, Spanned};
-use crate::err_msg;
-use crate::Span;
-use crate::SutraError;
-use crate::{MacroRegistry, Path};
+use crate::{
+    ast::{AstNode, Expr, Spanned},
+    err_msg, MacroRegistry, Path, Span, SutraError,
+};
 
 // ===================================================================================================
 // REGISTRY: Standard Macro Registration

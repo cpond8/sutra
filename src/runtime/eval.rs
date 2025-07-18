@@ -31,17 +31,16 @@
 //! All evaluation, type, and recursion errors use this system.
 
 // The atom registry is a single source of truth and must be passed by reference to all validation and evaluation code. Never construct a local/hidden registry.
-use crate::ast::{AstNode, Expr, Spanned};
-use crate::err_ctx;
-use crate::err_src;
-use crate::runtime::world::{AtomExecutionContext, World};
-use crate::ParamList;
-use crate::{AtomRegistry, SharedOutput, SutraError};
-use crate::{Path, Span, Value};
+use std::{collections::HashMap, rc::Rc, sync::Arc};
+
 use miette::NamedSource;
-use std::collections::HashMap;
-use std::rc::Rc;
-use std::sync::Arc;
+
+use crate::{
+    ast::{AstNode, Expr, Spanned},
+    err_ctx, err_src,
+    runtime::world::{AtomExecutionContext, World},
+    AtomRegistry, ParamList, Path, SharedOutput, Span, SutraError, Value,
+};
 
 // ===================================================================================================
 // CORE DATA STRUCTURES: Evaluation Context

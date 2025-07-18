@@ -13,10 +13,13 @@
 //! - **Immutable World**: World state is copied and modified, never mutated in place
 //! - **Safe Defaults**: Missing values return `Value::Nil` rather than errors
 
-use crate::atoms::helpers::{validate_binary_arity, validate_unary_arity, ExtractValue};
-use crate::atoms::StatefulAtomFn;
-use crate::err_msg;
-use crate::{AtomRegistry, Path, Value};
+use crate::{
+    atoms::{
+        helpers::{validate_binary_arity, validate_unary_arity, ExtractValue},
+        StatefulAtomFn,
+    },
+    err_msg, AtomRegistry, Path, Value,
+};
 
 // ============================================================================
 // WORLD STATE OPERATIONS

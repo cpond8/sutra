@@ -1,6 +1,8 @@
-use crate::validation::grammar::{CollectionState, Rule};
-use regex::Regex;
 use std::collections::HashMap;
+
+use regex::Regex;
+
+use crate::validation::grammar::{CollectionState, Rule};
 
 /// Parser for grammar rule definitions
 /// Handles the complex state machine logic for collecting multi-line rule definitions

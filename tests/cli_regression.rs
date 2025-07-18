@@ -1,10 +1,10 @@
 // Regression test: Ensure CLI errors are rendered with miette diagnostics
 // Requires: assert_cmd, predicates crates in [dev-dependencies]
 
-use assert_cmd::Command;
-use predicates::prelude::PredicateBooleanExt;
-use predicates::str::contains;
 use std::fs;
+
+use assert_cmd::Command;
+use predicates::{prelude::PredicateBooleanExt, str::contains};
 
 #[test]
 fn cli_reports_miette_diagnostics_on_error() {

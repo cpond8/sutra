@@ -3,8 +3,9 @@
 //! This module uses the `clap` crate with its "derive" feature to create a
 //! declarative and type-safe argument parsing structure.
 
-use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+
+use clap::{Parser, Subcommand};
 
 /// The main CLI argument structure.
 #[derive(Debug, Parser)]

@@ -1,17 +1,13 @@
 //!
 //! Parses macro definitions from source code and files, including validation
 //! and duplicate checking for robust macro loading.
-//!
 
-use crate::ast::{AstNode, Expr, ParamList, Span};
-use crate::err_ctx;
-use crate::err_msg;
-use crate::to_error_source;
-use crate::MacroTemplate;
-use crate::SutraError;
-use std::collections::HashSet;
-use std::fs;
-use std::path::Path;
+use std::{collections::HashSet, fs, path::Path};
+
+use crate::{
+    ast::{AstNode, Expr, ParamList, Span},
+    err_ctx, err_msg, to_error_source, MacroTemplate, SutraError,
+};
 
 // =============================
 // Public API for macro loading
@@ -183,8 +179,9 @@ pub fn parse_macro_definition(expr: &AstNode) -> Result<(String, MacroTemplate),
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use Span;
+
+    use super::*;
 
     #[test]
     fn test_parse_simple_macro() {

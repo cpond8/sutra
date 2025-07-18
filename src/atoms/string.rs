@@ -7,9 +7,13 @@
 //! - **`str`**: Converts any value to its string representation.
 //! - **`str+`**: Concatenates multiple values into a single string.
 
-use crate::atoms::helpers::{pure_eval_string_concat, validate_unary_arity};
-use crate::atoms::PureAtomFn;
-use crate::{AtomRegistry, Value};
+use crate::{
+    atoms::{
+        helpers::{pure_eval_string_concat, validate_unary_arity},
+        PureAtomFn,
+    },
+    AtomRegistry, Value,
+};
 
 // ============================================================================
 // STRING OPERATIONS

@@ -1,7 +1,8 @@
-use crate::ast::{AstNode, Expr};
-use crate::validation::grammar::{ValidationReporter, ValidationResult};
-use crate::MacroTemplate;
-use crate::{AtomRegistry, MacroDefinition, MacroRegistry};
+use crate::{
+    ast::{AstNode, Expr},
+    validation::grammar::{ValidationReporter, ValidationResult},
+    AtomRegistry, MacroDefinition, MacroRegistry, MacroTemplate,
+};
 
 /// Validates AST nodes for semantic correctness
 /// Focuses on macro/atom existence and argument validation

@@ -2,23 +2,24 @@
 //! This module is the main entry point for all CLI commands and orchestrates
 //! the core library functions.
 
-use crate::cli::args::{Command, SutraArgs};
-use crate::cli::output::StdoutSink;
-use crate::engine::ExecutionPipeline;
-use crate::err_ctx;
-use crate::err_msg;
-use crate::err_src;
-use crate::macros::{is_macro_definition, parse_macro_definition};
-use crate::runtime::world::build_canonical_macro_env;
-use crate::testing::discovery::TestDiscoverer;
-use crate::to_error_source;
-use crate::{
-    expand_macros_recursively, AstNode, Expr, MacroDefinition, MacroRegistry, SharedOutput, Span,
-    Spanned, SutraError,
-};
-use clap::Parser;
 use std::io::Write;
+
+use clap::Parser;
 use termcolor::WriteColor;
+
+use crate::{
+    cli::{
+        args::{Command, SutraArgs},
+        output::StdoutSink,
+    },
+    engine::ExecutionPipeline,
+    err_ctx, err_msg, err_src, expand_macros_recursively,
+    macros::{is_macro_definition, parse_macro_definition},
+    runtime::world::build_canonical_macro_env,
+    testing::discovery::TestDiscoverer,
+    to_error_source, AstNode, Expr, MacroDefinition, MacroRegistry, SharedOutput, Span, Spanned,
+    SutraError,
+};
 
 pub mod args;
 pub mod output;
@@ -721,8 +722,7 @@ fn handle_list_macros() -> Result<(), SutraError> {
 
 /// Handles the `list-atoms` subcommand.
 fn handle_list_atoms() -> Result<(), SutraError> {
-    use crate::atoms::Atom;
-    use crate::runtime::world::build_default_atom_registry;
+    use crate::{atoms::Atom, runtime::world::build_default_atom_registry};
 
     let registry = build_default_atom_registry();
     let mut pure_atoms = Vec::new();

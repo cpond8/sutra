@@ -13,13 +13,16 @@
 //! - **Numeric Focus**: All operations work with `Value::Number` (f64)
 //! - **Error Handling**: Proper validation for edge cases (division by zero, etc.)
 
-use crate::atoms::helpers::{
-    pure_eval_nary_numeric_op_custom, pure_eval_unary_typed_op, validate_binary_arity,
-    validate_min_arity, ExtractValue,
+use crate::{
+    atoms::{
+        helpers::{
+            pure_eval_nary_numeric_op_custom, pure_eval_unary_typed_op, validate_binary_arity,
+            validate_min_arity, ExtractValue,
+        },
+        PureAtomFn,
+    },
+    err_msg, AtomRegistry, Value,
 };
-use crate::atoms::PureAtomFn;
-use crate::err_msg;
-use crate::{AtomRegistry, Value};
 
 // ============================================================================
 // ARITHMETIC OPERATIONS

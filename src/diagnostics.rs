@@ -51,12 +51,13 @@
 //!   Only do this for rare, advanced scenarios (e.g., custom help, no source, or nonstandard context).
 //!
 //! ****************************************************************************************
-//!
+
+use std::sync::Arc;
+
+use miette::{Diagnostic, LabeledSpan, NamedSource, SourceCode};
+use thiserror::Error;
 
 use crate::Span;
-use miette::{Diagnostic, LabeledSpan, NamedSource, SourceCode};
-use std::sync::Arc;
-use thiserror::Error;
 
 // Type aliases for clarity and brevity
 pub type SourceArc = Arc<NamedSource<String>>;
@@ -279,7 +280,6 @@ pub fn to_error_source<S: AsRef<str>>(source: S) -> SourceArc {
 /// Constructs a SutraError variant with a formatted message and no context.
 ///
 /// Use this macro for errors that do not require source, span, or help context. Supports formatting with multiple arguments.
-///
 #[macro_export]
 macro_rules! err_msg {
     // Message with 3+ format arguments
@@ -322,7 +322,6 @@ macro_rules! err_msg {
 ///
 /// Example with related labels:
 ///   err_ctx!(Validation, "Invalid input", src, span, help, related_labels)
-///
 #[macro_export]
 macro_rules! err_ctx {
     // Message, src, span, help, related
@@ -425,9 +424,10 @@ macro_rules! err_src {
 
 #[cfg(test)]
 mod diagnostics_tests {
-    use super::*;
     use miette::{NamedSource, Report};
     use Arc;
+
+    use super::*;
 
     #[test]
     fn test_multilabel_diagnostics() {
