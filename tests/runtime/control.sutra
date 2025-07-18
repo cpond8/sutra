@@ -7,85 +7,101 @@
 ;;;
 
 (test "control: if - then branch"
-      (expect (value "then") (tags "control"))
-      (if true "then" "else"))
+      (expect (value "then")
+              (tags "control"))
+      (if true "then" "else"))  ; => "then"
 
 (test "control: if - else branch"
-      (expect (value "else") (tags "control"))
-      (if false "then" "else"))
+      (expect (value "else")
+              (tags "control"))
+      (if false "then" "else"))  ; => "else"
 
 (test "control: if - truthy condition"
-      (expect (value "taken") (tags "control"))
-      (if 1 "taken" "not-taken"))
+      (expect (value "taken")
+              (tags "control"))
+      (if 1 "taken" "not-taken"))  ; => "taken"
 
 (test "control: if - falsy condition (nil)"
-      (expect (value "not-taken") (tags "control"))
-      (if nil "taken" "not-taken"))
+      (expect (value "not-taken")
+              (tags "control"))
+      (if nil "taken" "not-taken"))  ; => "not-taken"
 
 (test "control: if - arity error (too few)"
-      (expect (error ArityError) (tags "control"))
-      (if true "then"))
+      (expect (error ArityError)
+              (tags "control"))
+      (if true "then"))  ; => arity error
 
 (test "control: if - arity error (too many)"
-      (expect (error ArityError) (tags "control") (timeout 500))
-      (if true "then" "else" "extra"))
+      (expect (error ArityError)
+              (tags "control"))
+      (if true "then" "else" "extra"))  ; => arity error
 
 ;;;
 ;;; 2. Do
 ;;;
 
 (test "control: do - sequence"
-      (expect (value 3) (tags "control"))
+      (expect (value 3)
+              (tags "control"))
       (do
         (set! x 1)
         (set! x 2)
-        (set! x 3)))
+        (set! x 3)))  ; => 3
 
 (test "control: do - returns last expression"
-      (expect (value "last") (tags "control"))
-      (do "first" "second" "last"))
+      (expect (value "last")
+              (tags "control"))
+      (do "first" "second" "last"))  ; => "last"
 
 (test "control: do - empty"
-      (expect (value nil) (tags "control"))
-      (do))
+      (expect (value nil)
+              (tags "control"))
+      (do))  ; => nil
 
 ;;;
 ;;; 3. Cond
 ;;;
 
 (test "control: cond - first clause matches"
-      (expect (value "first") (tags "control"))
+      (expect (value "first")
+              (tags "control"))
       (cond
         ((gt? 5 3) "first")
-        (else "second")))
+        (else "second")))  ; => "first"
 
 (test "control: cond - second clause matches"
-      (expect (value "second") (tags "control"))
+      (expect (value "second")
+              (tags "control"))
       (cond
         ((lt? 5 3) "first")
-        ((gt? 5 3) "second")))
+        ((gt? 5 3) "second")))  ; => "second"
 
 (test "control: cond - no match"
-      (expect (value nil) (tags "control"))
+      (expect (value nil)
+              (tags "control"))
       (cond
         (false "first")
-        (false "second")))
+        (false "second")))  ; => nil
 
 (test "control: cond - else clause"
-      (expect (value "else") (tags "control"))
+      (expect (value "else")
+              (tags "control"))
       (cond
         (false "first")
-        (else "else")))
+        (else "else")))  ; => "else"
 
 (test "control: cond - only first match evaluated"
-      (expect (value "third") (tags "control") (skip "Demonstration of skip feature for test harness."))
+      (expect (value "third")
+              (tags "control"))
       (cond
         (false "first")
         (false "second")
         (true "third")
         (true "fourth")
-        (else "else")))
+        (else "else")))  ; => "third"
 
 (test "control: if - type error on non-boolean condition"
-      (expect (error TypeError) (tags "control" "type-safety"))
-      (if "not-a-boolean" "then" "else"))
+      (expect (error TypeError)
+              (tags "control"))
+      (if "not-a-boolean" "then" "else"))  ; => type error
+

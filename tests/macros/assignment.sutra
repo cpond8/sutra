@@ -8,86 +8,96 @@
 ;;;
 
 (test "assignment: set! and get"
-      (expect (value 100) (tags "assignment"))
+      (expect (value 100)
+              (tags "assignment"))
       (do
         (set! player.health 100)
-        (get player.health)))
+        (get player.health)))  ; => 100
 
 (test "assignment: set! nested path"
       (expect (value "sword") (tags "assignment"))
       (do
         (set! player.inventory.weapon "sword")
-        (get player.inventory.weapon)))
+        (get player.inventory.weapon)))  ; => "sword"
 
 (test "assignment: get non-existent path"
       (expect (value nil) (tags "assignment"))
-      (get non.existent.path))
+      (get non.existent.path))  ; => nil
 
 (test "assignment: set! arity error"
       (expect (error ArityError) (tags "assignment"))
-      (set! player.score))
+      (set! player.score))  ; => arity error
 
 (test "assignment: get arity error"
-      (expect (error ArityError) (tags "assignment") (timeout 500))
-      (get))
+      (expect (error ArityError)
+              (tags "assignment"))
+      (get))  ; => arity error
 
 ;;;
 ;;; 2. Delete (del!)
 ;;;
 
 (test "assignment: del! success"
-      (expect (value nil) (tags "assignment"))
+      (expect (value nil)
+              (tags "assignment"))
       (do
         (set! temp.value 42)
         (del! temp.value)
-        (get temp.value)))
+        (get temp.value)))  ; => nil
 
 (test "assignment: del! arity error"
-      (expect (error ArityError) (tags "assignment") (skip "Demonstration of skip feature for test harness."))
-      (del!))
+      (expect (error ArityError)
+              (tags "assignment"))
+      (del!))  ; => arity error
 
 ;;;
 ;;; 3. Add and Subtract (add, sub)
 ;;;
 
 (test "assignment: add success"
-      (expect (value 125) (tags "assignment"))
+      (expect (value 125)
+              (tags "assignment"))
       (do
         (set! player.mana 100)
         (add player.mana 25)
-        (get player.mana)))
+        (get player.mana)))  ; => 125
 
 (test "assignment: sub success"
-      (expect (value 75) (tags "assignment"))
+      (expect (value 75)
+              (tags "assignment"))
       (do
         (set! player.mana 100)
         (sub player.mana 25)
-        (get player.mana)))
+        (get player.mana)))  ; => 75
 
 (test "assignment: add type error"
-      (expect (error TypeError) (tags "assignment"))
+      (expect (error TypeError)
+              (tags "assignment"))
       (do
         (set! player.name "Roo")
-        (add player.name 10)))
+        (add player.name 10)))  ; => type error
 
 ;;;
 ;;; 4. Increment and Decrement (inc!, dec!)
 ;;;
 
 (test "assignment: inc! success"
-      (expect (value 11) (tags "assignment"))
+      (expect (value 11)
+              (tags "assignment"))
       (do
         (set! counter 10)
         (inc! counter)
-        (get counter)))
+        (get counter)))  ; => 11
 
 (test "assignment: dec! success"
-      (expect (value 9) (tags "assignment"))
+      (expect (value 9)
+              (tags "assignment"))
       (do
         (set! counter 10)
         (dec! counter)
-        (get counter)))
+        (get counter)))  ; => 9
 
 (test "assignment: inc! arity error"
-      (expect (error ArityError) (tags "assignment") (skip "Skipping invalid inc! test."))
-      (inc! counter 2))
+      (expect (error ArityError)
+              (tags "assignment"))
+      (inc! counter 2))  ; => arity error

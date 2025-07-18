@@ -9,109 +9,132 @@
 ;;;
 
 (test "math: + success"
-      (expect (value 10) (tags "math"))
-      (+ 1 2 3 4))
+      (expect (value 10)
+              (tags "math"))
+      (+ 1 2 3 4))  ; 1 + 2 + 3 + 4 ? => 10
 
 (test "math: + identity"
-      (expect (value 0) (tags "math"))
-      (+))
+      (expect (value 0)
+              (tags "math"))
+      (+))  ; + ? => 0 (identity)
 
 (test "math: + with negatives"
-      (expect (value -2) (tags "math"))
-      (+ 1 -3))
+      (expect (value -2)
+              (tags "math"))
+      (+ 1 -3))  ; 1 + (-3) ? => -2
 
 (test "math: + type error"
-      (expect (error TypeError) (tags "math"))
-      (+ 1 "two"))
+      (expect (error TypeError)
+              (tags "math"))
+      (+ 1 "two"))  ; 1 + "two" ? => type error
 
 (test "math: + arity error (zero args is identity)"
-      (expect (error ArityError) (tags "math") (skip "Demonstration of skip feature for test harness."))
-      (+ 1))
+      (expect (error ArityError)
+              (tags "math"))
+      (+ 1))  ; + expects 2 or more arguments, got 1
 
 ;;;
 ;;; 2. Subtraction (-)
 ;;;
 
 (test "math: - success"
-      (expect (value 1) (tags "math"))
-      (- 10 5 4))
+      (expect (value 1)
+              (tags "math"))
+      (- 10 5 4))  ; 10 - 5 - 4 ? => 1
 
 (test "math: - unary negation"
-      (expect (value -5) (tags "math"))
-      (- 5))
+      (expect (value -5)
+              (tags "math"))
+      (- 5))  ; -5 ? => -5
 
 (test "math: - arity error"
-      (expect (error ArityError) (tags "math"))
-      (-))
+      (expect (error ArityError)
+              (tags "math"))
+      (-))  ; - expects 2 or more arguments, got 0
 
 (test "math: - type error"
-      (expect (error TypeError) (tags "math"))
-      (- 10 "five"))
+      (expect (error TypeError)
+              (tags "math"))
+      (- 10 "five"))  ; 10 - "five" ? => type error
 
 ;;;
 ;;; 3. Multiplication (*)
 ;;;
 
 (test "math: * success"
-      (expect (value 24) (tags "math"))
-      (* 2 3 4))
+      (expect (value 24)
+              (tags "math"))
+      (* 2 3 4))  ; 2 * 3 * 4 ? => 24
 
 (test "math: * identity"
-      (expect (value 1) (tags "math"))
-      (*))
+      (expect (value 1)
+              (tags "math"))
+      (*))  ; * ? => 1 (identity)
 
 (test "math: * with zero"
-      (expect (value 0) (tags "math"))
-      (* 10 20 0))
+      (expect (value 0)
+              (tags "math"))
+      (* 10 20 0))  ; 10 * 20 * 0 ? => 0
 
 (test "math: * type error"
-      (expect (error TypeError) (tags "math"))
-      (* 2 "three"))
+      (expect (error TypeError)
+              (tags "math"))
+      (* 2 "three"))  ; 2 * "three" ? => type error
 
 (test "math: * arity error (zero args is identity)"
-      (expect (error ArityError) (tags "math"))
-      (* 5))
+      (expect (error ArityError)
+              (tags "math"))
+      (* 5))  ; * expects 2 or more arguments, got 1
 
 ;;;
 ;;; 4. Division (/)
 ;;;
 
 (test "math: / success"
-      (expect (value 2.5) (tags "math") (timeout 1000))
-      (/ 10 4))
+      (expect (value 2.5)
+              (tags "math"))
+      (/ 10 4))  ; 10 / 4 ? => 2.5
 
 (test "math: / unary reciprocal"
-      (expect (value 0.25) (tags "math"))
-      (/ 4))
+      (expect (value 0.25)
+              (tags "math"))
+      (/ 4))  ; / 4 ? => (1/4) = 0.25
 
 (test "math: / division by zero"
-      (expect (error DivisionByZero) (tags "math"))
-      (/ 10 0))
+      (expect (error DivisionByZero)
+              (tags "math"))
+      (/ 10 0))  ; 10 / 0 ? => division by zero error
 
 (test "math: / arity error"
-      (expect (error ArityError) (tags "math"))
-      (/))
+      (expect (error ArityError)
+              (tags "math"))
+      (/))  ; / expects 2 or more arguments, got 0
 
 (test "math: / type error"
-      (expect (error TypeError) (tags "math"))
-      (/ 10 "two"))
+      (expect (error TypeError)
+              (tags "math"))
+      (/ 10 "two"))  ; 10 / "two" ? => type error
 
 ;;;
 ;;; 5. Modulo (mod)
 ;;;
 
 (test "math: mod success"
-      (expect (value 1) (tags "math"))
-      (mod 10 3))
+      (expect (value 1)
+              (tags "math"))
+      (mod 10 3))  ; 10 % 3 ? => 1
 
 (test "math: mod arity error - too few"
-      (expect (error ArityError) (tags "math"))
-      (mod 10))
+      (expect (error ArityError)
+              (tags "math"))
+      (mod 10))  ; mod expects 2 or more arguments, got 1
 
 (test "math: mod arity error - too many"
-      (expect (error ArityError) (tags "math"))
-      (mod 10 3 1))
+      (expect (error ArityError)
+              (tags "math"))
+      (mod 10 3 1))  ; mod expects 2 or more arguments, got 3
 
 (test "math: mod type error"
-      (expect (error TypeError) (tags "math"))
-      (mod 10 "three"))
+            (expect (error TypeError)
+              (tags "math"))
+      (mod 10 "three"))  ; 10 % "three" ? => type error

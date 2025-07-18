@@ -2,60 +2,80 @@
 
 (test "lambda: basic invocation"
   (expect (value 7))
-  ((lambda (x y) (+ x y)) 3 4))
+  ((lambda (x y)
+     (+ x y))
+   3 4))  ; => 7
 
 (test "lambda: closure captures lexical environment"
   (expect (value 15))
   (let ((n 10))
-    (let ((f (lambda (x) (+ x n))))
-      (f 5))))
+    (let ((f (lambda (x)
+               (+ x n))))
+      (f 5))))  ; => 15
 
 (test "lambda: variadic arguments"
   (expect (value 6))
-  ((lambda (x y ...rest) (+ x y (car rest))) 1 2 3))
+  ((lambda (x y ...rest)
+     (+ x y (car rest)))
+   1 2 3))  ; => 6
 
 (test "lambda: arity error (too few)"
-  (expect (error Eval))
-  ((lambda (x y) (+ x y)) 1))
+  (expect (error ArityError))
+  ((lambda (x y) (+ x y))
+   1))  ; => arity error
 
 (test "lambda: arity error (too many)"
-  (expect (error Eval))
-  ((lambda (x y) (+ x y)) 1 2 3))
+  (expect (error ArityError))
+  ((lambda (x y) (+ x y))
+   1 2 3))  ; => arity error
 
 (test "let: basic bindings"
   (expect (value 12))
-  (let ((a 5) (b 7)) (+ a b)))
+  (let ((a 5)
+        (b 7))
+    (+ a b)))  ; => 12
 
 (test "let: sequential binding and shadowing"
   (expect (value 3))
   (let ((x 1))
-    (let ((x 2) (y x))
-      (+ x y))))
+    (let ((x 2)
+          (y x))
+      (+ x y))))  ; => 3
 
 (test "let: bindings visible in later bindings"
   (expect (value 6))
-  (let ((a 2) (b (+ a 4))) b))
+  (let ((a 2)
+        (b (+ a 4)))
+    b))  ; => 6
 
 (test "let: shadowing outer lexical variable"
   (expect (value 20))
   (let ((x 10))
-    (let ((x 20)) x)))
+    (let ((x 20))
+      x)))  ; => 20
 
 (test "lambda: higher-order (returns lambda)"
   (expect (value 8))
-  (let ((make-adder (lambda (n) (lambda (x) (+ x n)))))
+  (let ((make-adder (lambda (n)
+                      (lambda (x)
+                        (+ x n)))))
     (let ((add3 (make-adder 3)))
-      (add3 5))))
+      (add3 5))))  ; => 8
 
 (test "lambda: used as argument"
   (expect (value 9))
-  (let ((apply-twice (lambda (f x) (f (f x)))))
-    (apply-twice (lambda (y) (+ y 3)) 3)))
+  (let ((apply-twice (lambda (f x)
+                       (f (f x)))))
+    (apply-twice (lambda (y)
+                   (+ y 3))
+                 3)))  ; => 9
 
 (test "let: error on non-pair binding"
-  (expect (error Eval))
-  (let (x 1) x))
+  (expect (error TypeError))
+  (let ((x 1))
+    x))  ; => error
 
 (test "lambda: error on non-list parameter"
-  (expect (error Eval))
-  ((lambda x x) 1))
+  (expect (error TypeError))
+  ((lambda x x)
+    1))  ; => error

@@ -9,85 +9,104 @@
 ;;;
 
 (test "parsing: number - integer"
-      (expect (value 42) (tags "parsing"))
-      42)
+      (expect (value 42)
+              (tags "parsing"))
+      42)  ; => 42
 
 (test "parsing: number - negative integer"
-      (expect (value -100) (tags "parsing"))
-      -100)
+      (expect (value -100)
+              (tags "parsing"))
+      -100)  ; => -100
 
 (test "parsing: number - float"
-      (expect (value 3.14) (tags "parsing"))
-      3.14)
+      (expect (value 3.14)
+              (tags "parsing"))
+      3.14)  ; => 3.14
 
 (test "parsing: boolean - true"
-      (expect (value true) (tags "parsing"))
-      true)
+      (expect (value true)
+              (tags "parsing"))
+      true)  ; => true
 
 (test "parsing: boolean - false"
-      (expect (value false) (tags "parsing"))
-      false)
+      (expect (value false)
+              (tags "parsing"))
+      false)  ; => false
 
 (test "parsing: nil"
-      (expect (value nil) (tags "parsing"))
-      nil)
+      (expect (value nil)
+              (tags "parsing"))
+      nil)  ; => nil
 
 (test "parsing: string - simple"
-      (expect (value "hello") (tags "parsing"))
-      "hello")
+      (expect (value "hello")
+              (tags "parsing"))
+      "hello")  ; => "hello"
 
 (test "parsing: string - with escapes"
-      (expect (value "a\nb\"c\\d") (tags "parsing"))
-      "a\nb\"c\\d")
+      (expect (value "a\nb\"c\\d")
+              (tags "parsing"))
+      "a\nb\"c\\d")  ; => "a\nb\"c\\d"
 
 (test "parsing: string - empty"
-      (expect (value "") (tags "parsing"))
-      "")
+      (expect (value "")
+              (tags "parsing"))
+      "")  ; => ""
 
 (test "parsing: quote - symbol"
-      (expect (value 'foo) (tags "parsing"))
-      ''foo)
+      (expect (value 'foo)
+              (tags "parsing"))
+      'foo)  ; => 'foo
 
 ;;;
 ;;; 2. Collection Parsing
 ;;;
 
 (test "parsing: list - quoted"
-      (expect (value '(1 "two" true)) (tags "parsing"))
-      ''(1 "two" true))
+      (expect (value '(1 "two" true))
+              (tags "parsing"))
+      '(1 "two" true))  ; => '(1 "two" true)
 
 (test "parsing: list - nested quoted"
-      (expect (value '(1 (2 (3)))) (tags "parsing"))
-      ''(1 (2 (3))))
+      (expect (value '(1 (2 (3))))
+              (tags "parsing"))
+      '(1 (2 (3))))  ; => '(1 (2 (3)))
 
 (test "parsing: block - quoted"
-      (expect (value '(+ 1 2)) (tags "parsing"))
-      ''{ (+ 1 2) })
+      (expect (value '(+ 1 2))
+              (tags "parsing"))
+      '{ (+ 1 2) })  ; => '(+ 1 2)
 
 ;;;
 ;;; 3. Grammar Error Cases
 ;;;
 
 (test "parsing: error - unclosed list"
-      (expect (error ParseError) (tags "parsing"))
-      "(+ 1 2")
+      (expect (error ParseError)
+              (tags "parsing"))
+      "(+ 1 2")  ; => parse error
 
 (test "parsing: error - unclosed block"
-      (expect (error ParseError) (tags "parsing"))
-      "{ (get foo) ")
+      (expect (error ParseError)
+              (tags "parsing"))
+      "{ (get foo) ")  ; => parse error
 
 (test "parsing: error - unclosed string"
-      (expect (error ParseError) (tags "parsing") (timeout 500))
-      "\"not closed")
+      (expect (error ParseError)
+              (tags "parsing"))
+      "\"not closed")  ; => parse error
 
 (test "parsing: error - invalid escape"
-      (expect (error ParseError) (tags "parsing"))
-      "\"bad\\escape\"")
+      (expect (error ParseError)
+              (tags "parsing"))
+      "\"bad\\escape\"")  ; => parse error
 
 (test "parsing: error - extra closing paren"
-      (expect (error ParseError) (tags "parsing"))
-      "(+ 1 2))")
+      (expect (error ParseError)
+              (tags "parsing"))
+      "(+ 1 2))")  ; => parse error
 
 (test "parsing: error - spread outside list"
-      (expect (error ParseError) (tags "parsing") (skip "Demonstration of skip feature for test harness."))
-      "...oops")
+      (expect (error ParseError)
+              (tags "parsing"))
+      "...oops")  ; => parse error

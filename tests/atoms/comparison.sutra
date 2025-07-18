@@ -8,165 +8,202 @@
 ;;;
 
 (test "comparison: eq? - success true"
-      (expect (value true) (tags "comparison"))
-      (eq? 5 5 5))
+      (expect (value true)
+              (tags "comparison"))
+      (eq? 5 5 5))  ; 5 = 5 = 5 ? => true
 
 (test "comparison: eq? - success false"
-      (expect (value false) (tags "comparison"))
-      (eq? 5 5 6))
+      (expect (value false)
+              (tags "comparison"))
+      (eq? 5 5 6))  ; 5 = 5 = 6 ? => false
 
 (test "comparison: eq? - different types"
-      (expect (value false) (tags "comparison"))
-      (eq? 1 "1"))
+      (expect (value false)
+              (tags "comparison"))
+      (eq? 1 "1"))  ; 1 = "1" ? => false
 
-(test "comparison: eq? - trivial truth (1 arg)"
-      (expect (value true) (tags "comparison"))
-      (eq? 10))
+(test "comparison: eq? - arity error (1 arg)"
+      (expect (error ArityError)
+              (tags "comparison"))
+      (eq? 10))  ; eq? expects 2 or more arguments, got 1
 
-(test "comparison: eq? - trivial truth (0 args)"
-      (expect (value true) (tags "comparison"))
-      (eq?))
+(test "comparison: eq? - arity error (0 args)"
+      (expect (error ArityError)
+              (tags "comparison"))
+      (eq?))  ; eq? expects 2 or more arguments, got 0
 
-(test "comparison: = alias"
-      (expect (value true) (tags "comparison"))
-      (= 1 1))
+(test "comparison: = alias of eq?"
+      (expect (value true)
+              (tags "comparison"))
+      (= 1 1))  ; 1 = 1 ? => true
 
-(test "comparison: is? alias"
-      (expect (value true) (tags "comparison"))
-      (is? "hello" "hello"))
+(test "comparison: is? alias of eq?"
+      (expect (value true)
+              (tags "comparison"))
+      (is? "hello" "hello"))  ; "hello" = "hello" ? => true
 
 ;;;
 ;;; 2. Greater Than (gt?, >, over?)
 ;;;
 
 (test "comparison: gt? - success true"
-      (expect (value true) (tags "comparison"))
-      (gt? 10 5 1))
+      (expect (value true)
+              (tags "comparison"))
+      (gt? 10 5 1))  ; 10 > 5 > 1 ? => true
 
 (test "comparison: gt? - success false"
-      (expect (value false) (tags "comparison"))
-      (gt? 10 5 5))
+      (expect (value false)
+              (tags "comparison"))
+      (gt? 10 5 5))  ; 10 > 5 > 5 ? => false
 
-(test "comparison: gt? - trivial truth (1 arg)"
-      (expect (value true) (tags "comparison"))
-      (gt? 10))
+(test "comparison: gt? - arity error (1 arg)"
+      (expect (error ArityError)
+              (tags "comparison"))
+      (gt? 10))  ; gt? expects 2 or more arguments, got 1
 
-(test "comparison: gt? - trivial truth (0 args)"
-      (expect (value true) (tags "comparison"))
-      (gt?))
+(test "comparison: gt? - arity error (0 args)"
+      (expect (error ArityError)
+              (tags "comparison"))
+      (gt?))  ; gt? expects 2 or more arguments, got 0
 
 (test "comparison: gt? - type error"
-      (expect (error TypeError) (tags "comparison"))
-      (gt? 10 "one"))
+      (expect (error TypeError)
+              (tags "comparison"))
+      (gt? 10 "one"))  ; 10 > "one" ? => type error
 
-(test "comparison: > alias"
-      (expect (value true) (tags "comparison"))
-      (> 2 1))
+(test "comparison: > alias of gt?"
+      (expect (value true)
+              (tags "comparison"))
+      (> 2 1))  ; 2 > 1 ? => true
 
-(test "comparison: over? alias"
-      (expect (value true) (tags "comparison") (timeout 500))
-      (over? 10 0))
+(test "comparison: over? alias of gt?"
+      (expect (value true)
+              (tags "comparison"))
+      (over? 10 0))  ; 10 > 0 ? => true
 
 ;;;
 ;;; 3. Less Than (lt?, <, under?)
 ;;;
 
 (test "comparison: lt? - success true"
-      (expect (value true) (tags "comparison"))
-      (lt? 1 5 10))
+      (expect (value true)
+              (tags "comparison"))
+      (lt? 1 5 10))  ; 1 < 5 < 10 ? => true
 
 (test "comparison: lt? - success false"
-      (expect (value false) (tags "comparison"))
-      (lt? 1 5 5))
+      (expect (value false)
+              (tags "comparison"))
+      (lt? 1 5 5))  ; 1 < 5 < 5 ? => false
 
-(test "comparison: lt? - trivial truth (1 arg)"
-      (expect (value true) (tags "comparison"))
-      (lt? 10))
+(test "comparison: lt? - arity error (1 arg)"
+      (expect (error ArityError)
+              (tags "comparison"))
+      (lt? 10))  ; lt? expects 2 or more arguments, got 1
 
-(test "comparison: lt? - trivial truth (0 args)"
-      (expect (value true) (tags "comparison"))
-      (lt?))
+(test "comparison: lt? - arity error (0 args)"
+      (expect (error ArityError)
+              (tags "comparison"))
+      (lt?))  ; lt? expects 2 or more arguments, got 0
 
 (test "comparison: lt? - type error"
-      (expect (error TypeError) (tags "comparison"))
-      (lt? 1 "ten"))
+      (expect (error TypeError)
+              (tags "comparison"))
+      (lt? 1 "ten"))  ; 1 < "ten" ? => type error
 
-(test "comparison: < alias"
-      (expect (value true) (tags "comparison"))
-      (< 1 2))
+(test "comparison: < alias of lt?"
+      (expect (value true)
+              (tags "comparison"))
+      (< 1 2))  ; 1 < 2 ? => true
 
-(test "comparison: under? alias"
-      (expect (value true) (tags "comparison"))
-      (under? 0 10))
+(test "comparison: under? alias of lt?"
+      (expect (value true)
+              (tags "comparison"))
+      (under? 0 10))  ; 0 < 10 ? => true
 
 ;;;
 ;;; 4. Greater Than or Equal (gte?, >=, at-least?)
 ;;;
 
 (test "comparison: gte? - success true (greater)"
-      (expect (value true) (tags "comparison"))
-      (gte? 10 5 1))
+      (expect (value true)
+              (tags "comparison"))
+      (gte? 10 5 1))  ; 10 >= 5 >= 1 ? => true
 
 (test "comparison: gte? - success true (equal)"
-      (expect (value true) (tags "comparison"))
-      (gte? 10 5 5))
+      (expect (value true)
+              (tags "comparison"))
+      (gte? 10 5 5))  ; 10 >= 5 >= 5 ? => true
 
 (test "comparison: gte? - success false"
-      (expect (value false) (tags "comparison"))
-      (gte? 10 5 4))
+      (expect (value false)
+              (tags "comparison"))
+      (gte? 10 5 6))  ; 10 >= 5 >= 6 ? => false
 
-(test "comparison: gte? - trivial truth (1 arg)"
-      (expect (value true) (tags "comparison"))
-      (gte? 10))
+(test "comparison: gte? - arity error (1 arg)"
+      (expect (error ArityError)
+              (tags "comparison"))
+      (gte? 10))  ; gte? expects 2 or more arguments, got 1
 
-(test "comparison: gte? - trivial truth (0 args)"
-      (expect (value true) (tags "comparison"))
-      (gte?))
+(test "comparison: gte? - arity error (0 args)"
+      (expect (error ArityError)
+              (tags "comparison"))
+      (gte?))  ; gte? expects 2 or more arguments, got 0
 
 (test "comparison: gte? - type error"
-      (expect (error TypeError) (tags "comparison"))
-      (gte? 10 "one"))
+      (expect (error TypeError)
+              (tags "comparison"))
+      (gte? 10 "one"))  ; 10 >= "one" ? => type error
 
-(test "comparison: >= alias"
-      (expect (value true) (tags "comparison"))
-      (>= 2 2))
+(test "comparison: >= alias of gte?"
+      (expect (value true)
+              (tags "comparison"))
+      (>= 2 2))  ; 2 >= 2 ? => true
 
-(test "comparison: at-least? alias"
-      (expect (value true) (tags "comparison"))
-      (at-least? 10 10))
+(test "comparison: at-least? alias of gte?"
+      (expect (value true)
+              (tags "comparison"))
+      (at-least? 10 10))  ; 10 >= 10 ? => true
 
 ;;;
 ;;; 5. Less Than or Equal (lte?, <=, at-most?)
 ;;;
 
 (test "comparison: lte? - success true (less)"
-      (expect (value true) (tags "comparison"))
-      (lte? 1 5 10))
+      (expect (value true)
+              (tags "comparison"))
+      (lte? 1 5 10))  ; 1 <= 5 <= 10 ? => true
 
 (test "comparison: lte? - success true (equal)"
-      (expect (value true) (tags "comparison"))
-      (lte? 1 5 5))
+      (expect (value true)
+              (tags "comparison"))
+      (lte? 1 5 5))  ; 1 <= 5 <= 5 ? => true
 
 (test "comparison: lte? - success false"
-      (expect (value false) (tags "comparison"))
-      (lte? 1 6 5))
+      (expect (value false)
+              (tags "comparison"))
+      (lte? 1 6 5))  ; 1 <= 6 <= 5 ? => false
 
-(test "comparison: lte? - trivial truth (1 arg)"
-      (expect (value true) (tags "comparison"))
-      (lte? 10))
+(test "comparison: lte? - arity error (1 arg)"
+      (expect (error ArityError)
+              (tags "comparison"))
+      (lte? 10))  ; lte? expects 2 or more arguments, got 1
 
-(test "comparison: lte? - trivial truth (0 args)"
-      (expect (value true) (tags "comparison"))
-      (lte?))
+(test "comparison: lte? - arity error (0 args)"
+      (expect (error ArityError)
+              (tags "comparison"))
+      (lte?))  ; lte? expects 2 or more arguments, got 0
 
 (test "comparison: lte? - type error"
-      (expect (error TypeError) (tags "comparison"))
-      (lte? 1 "ten"))
+      (expect (error TypeError)
+              (tags "comparison"))
+      (lte? 1 "ten"))  ; 1 <= "ten" ? => type error
 
-(test "comparison: <= alias"
-      (expect (value true) (tags "comparison"))
-      (<= 2 2))
+(test "comparison: <= alias of lte?"
+      (expect (value true)
+              (tags "comparison"))
+      (<= 2 2))  ; 2 <= 2 ? => true
 
-(test "comparison: at-most? alias"
-      (expect (value true) (tags "comparison") (skip "Demonstration of skip feature for test harness."))
-      (at-most? 10 10))
+(test "comparison: at-most? alias of lte?"
+      (expect (value true)
+              (tags "comparison"))
+      (at-most? 10 10))  ; 10 <= 10 ? => true

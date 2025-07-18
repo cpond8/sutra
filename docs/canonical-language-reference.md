@@ -298,10 +298,10 @@ This section highlights specific behaviors and design choices in Sutra that migh
   - `(- x)` returns the negation of `x`.
   - `(/ x)` returns the reciprocal `1/x`.
 
-- **Trivial Truth for Comparison Atoms:** Comparison atoms (`eq?`, `gt?`, `lt?`, `gte?`, `lte?`) return `true` when given zero or one argument. The logic is that any sequence with one or zero elements is trivially ordered or equal.
+- **Comparison Atom Arity:** Comparison atoms (`eq?`, `gt?`, `lt?`, `gte?`, `lte?`) require at least 2 arguments. Providing fewer arguments will raise an arity error.
 
-  - `(gt? 5)` => `true`
-  - `(lt?)` => `true`
+  - `(gt? 5 3)` => `true`
+  - `(gt? 5)` => error: gt? expects at least 2 arguments, got 1
 
 - **`print` Arity:** The `print` atom strictly requires one argument. Providing a different number of arguments will raise an arity mismatch error. For multi-argument printing, use the `display` macro.
 
@@ -317,8 +317,8 @@ This section highlights specific behaviors and design choices in Sutra that migh
 | `sub!`  | 2     | `(core/set! (path ...) (- (get ...) value))` | Macro, Atom | impl.             |
 | `inc!`  | 1     | `(core/set! (path ...) (+ (get ...) 1))`     | Macro, Atom | impl.             |
 | `dec!`  | 1     | `(core/set! (path ...) (- (get ...) 1))`     | Macro, Atom | impl.             |
-| `mul!`  | 2     | `(core/set! (path ...) (* (get ...) value))` | Macro, Atom | planned           |
-| `div!`  | 2     | `(core/set! (path ...) (/ (get ...) value))` | Macro, Atom | planned           |
+| `mul!`  | 2     | `(core/set! (path ...) (* (get ...) value))` | Macro, Atom | impl.             |
+| `div!`  | 2     | `(core/set! (path ...) (/ (get ...) value))` | Macro, Atom | impl.             |
 | `push!` | 1..   | `(core/push! (path ...) value ...)`          | Macro, Atom | impl. via core/\* |
 | `pull!` | 1..   | `(core/pull! (path ...) value ...)`          | Macro, Atom | impl. via core/\* |
 
@@ -328,17 +328,17 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 | Macro     | Arity | Expands to     | Purpose                  | Impl. | Status  | Macro Aliases     |
 | :-------- | :---- | :------------- | :----------------------- | :---- | :------ | :---------------- |
-| `eq?`     | 0..   | —              | Equality                 | Atom  | impl.   | `=`, `is?`        |
-| `gt?`     | 0..   | —              | Greater than             | Atom  | impl.   | `>`, `over?`      |
-| `lt?`     | 0..   | —              | Less than                | Atom  | impl.   | `<`, `under?`     |
-| `gte?`    | 0..   | —              | Greater/equal            | Atom  | impl.   | `>=`, `at-least?` |
-| `lte?`    | 0..   | —              | Less/equal               | Atom  | impl.   | `<=`, `at-most?`  |
+| `eq?`     | 2..   | —              | Equality                 | Atom  | impl.   | `=`, `is?`        |
+| `gt?`     | 2..   | —              | Greater than             | Atom  | impl.   | `>`, `over?`      |
+| `lt?`     | 2..   | —              | Less than                | Atom  | impl.   | `<`, `under?`     |
+| `gte?`    | 2..   | —              | Greater/equal            | Atom  | impl.   | `>=`, `at-least?` |
+| `lte?`    | 2..   | —              | Less/equal               | Atom  | impl.   | `<=`, `at-most?`  |
 | `not`     | 1     | —              | Negation                 | Atom  | impl.   | —                 |
 | `has?`    | 2..   | —              | Membership in collection | Atom  | impl.   | —                 |
-| `exists?` | 1     | `core/exists?` | Path/value existence     | Macro | planned | —                 |
-| `and`     | 0..   | `(if ...)`     | Logical AND              | Macro | planned | —                 |
-| `or`      | 0..   | `(if ...)`     | Logical OR               | Macro | planned | —                 |
-| `empty?`  | 1     | `eq?` + `len`  | Collection is empty      | Macro | planned | —                 |
+| `exists?` | 1     | `core/exists?` | Path/value existence     | Macro | impl.   | —                 |
+| `and`     | 0..   | `(if ...)`     | Logical AND              | Macro | impl.   | —                 |
+| `or`      | 0..   | `(if ...)`     | Logical OR               | Macro | impl.   | —                 |
+| `empty?`  | 1     | `eq?` + `len`  | Collection is empty      | Macro | impl.   | —                 |
 
 ---
 
@@ -405,11 +405,26 @@ This section highlights specific behaviors and design choices in Sutra that migh
 | `display`   | 0..   | `(display a b ...)`       | Print multiple values         | Macro | impl.   |
 | `str`       | 1     | `(str x)`                 | Typecast to string            | Atom  | impl.   |
 | `str+`      | 0..   | `(str+ a b ...)`          | Concatenate strings           | Atom  | impl.   |
-| `join-str+` | 2..   | `(join-str+ sep a b ...)` | Join strings with a separator | Macro | planned |
+| `join-str+` | 2..   | `(join-str+ sep a b ...)` | Join strings with a separator | Macro | impl.   |
 
 ---
 
-## 10. World Interaction
+## 10. Additional Utility Macros
+
+| Macro     | Arity | Purpose                           | Usage Example                    | Status |
+| :-------- | :---- | :-------------------------------- | :------------------------------- | :----- |
+| `when`    | 2..   | Execute body when condition true  | `(when cond ...body)`           | impl.  |
+| `test`    | 3..   | Define test case                  | `(test "name" expect body...)`  | impl.  |
+| `expect`  | 0..   | Declare test expectations         | `(expect ...conditions)`        | impl.  |
+| `cadr`    | 1     | Second element of list            | `(cadr (list 1 2 3))`          | impl.  |
+| `null?`   | 1     | Check if list is empty           | `(null? (list))`               | impl.  |
+| `append`  | 2     | Append two lists                 | `(append l1 l2)`               | impl.  |
+| `map`     | 2     | Map function over list           | `(map f lst)`                  | impl.  |
+| `for-each`| 3..   | Loop over collection             | `(for-each var coll ...body)`  | impl.  |
+
+---
+
+## 11. World Interaction
 
 | Atom           | Arity | Purpose              | Impl. |
 | :------------- | :---- | :------------------- | :---- |
@@ -420,7 +435,7 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 11. I/O & Random
+## 12. I/O & Random
 
 | Atom/Macro | Arity | Purpose                    | Impl. | Status  |
 | :--------- | :---- | :------------------------- | :---- | :------ |
@@ -431,7 +446,7 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 12. Error Handling
+## 13. Error Handling
 
 - **Parse-time:** Invalid tokens, unmatched delimiters, bad escapes.
 - **Validation:** Unknown macros/atoms, arity/type errors, invalid paths.
@@ -439,13 +454,13 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 13. Comments
+## 14. Comments
 
 - Start with `;` and continue to end of line.
 
 ---
 
-## 14. Example Program
+## 15. Example Program
 
 ```sutra
 ; Factorial function
@@ -458,14 +473,14 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 15. Grammar Summary
+## 16. Grammar Summary
 
 - See `src/syntax/grammar.pest` for the full PEG grammar.
 - All syntax is formally specified and enforced by the parser.
 
 ---
 
-## 16. Macro System
+## 17. Macro System
 
 - All author-facing macros are defined in `src/macros/macros.sutra` and registered at startup.
 - Macro expansion is canonical and deterministic.
@@ -473,7 +488,7 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 17. Validation & Evaluation
+## 18. Validation & Evaluation
 
 - All code is parsed, macroexpanded, validated, and then evaluated.
 - Validation checks for unknown macros/atoms, arity, and type errors.
@@ -481,7 +496,7 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 18. Value Types
+## 19. Value Types
 
 | Type   | Example         | Description            |
 | :----- | :-------------- | :--------------------- |
@@ -495,21 +510,21 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 19. CLI & Tooling
+## 20. CLI & Tooling
 
 - CLI supports: run, macroexpand, macrotrace, validate, format, test, list-macros, list-atoms, ast, gen-expected.
 - Output is pretty-printed and colorized.
 
 ---
 
-## 20. Extensibility
+## 21. Extensibility
 
 - New atoms/macros can be added via Rust or Sutra macro files.
 - All macro and atom registration is centralized and canonical.
 
 ---
 
-## 21. Not Yet impl. (Planned)
+## 22. Not Yet impl. (Planned)
 
 - Tier 2+ high-level macros (e.g., `requires`, `threshold`, `hub`, `select`).
 - Map literals and advanced collection utilities.
@@ -517,7 +532,7 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-## 22. References
+## 23. References
 
 - Macro library: `src/macros/macros.sutra`
 - Grammar: `src/syntax/grammar.pest`
@@ -527,4 +542,4 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-This document is fully synchronized with the codebase and spec as of 14 July 2025. For any ambiguity or missing feature, consult the canonical spec and the relevant module in the codebase.
+This document is fully synchronized with the codebase and spec as of **17 July 2025**. For any ambiguity or missing feature, consult the canonical spec and the relevant module in the codebase.

@@ -19,7 +19,7 @@
       (not 1))
 
 (test "logic: not - truthy value (string)"
-      (expect (value false) (tags "logic") (timeout 500))
+      (expect (value false) (tags "logic"))
       (not "hello"))
 
 (test "logic: not - falsy value (nil)"
@@ -27,7 +27,7 @@
       (not nil))
 
 (test "logic: not - arity error (too few)"
-      (expect (error ArityError) (tags "logic") (skip "Demonstration of skip feature for test harness."))
+      (expect (error ArityError) (tags "logic"))
       (not))
 
 (test "logic: not - arity error (too many)"

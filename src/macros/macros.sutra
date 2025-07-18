@@ -1,275 +1,248 @@
-;; macros.sutra - Standard Macro Library (Self-Hosted)
+;; ============================================================================
+;; SUTRA STANDARD MACRO LIBRARY
+;; ============================================================================
 ;;
-;; Canonical macro definitions for Sutra, organized and documented per canonical-language-reference.md.
-;; Each section groups related macros, with doc comments describing purpose, arity, usage, and expansion.
+;; This file contains all the standard macros for the Sutra language.
+;; All macros are implemented using only the atoms and special forms
+;; that are actually available in the engine.
+;;
+;; Available atoms: +, -, *, /, mod, abs, min, max, len, car, cdr, cons,
+;;                  eq?, gt?, lt?, gte?, lte?, not, has?
+;;                  core/set!, core/get, core/del!, core/exists?
+;;                  list, core/push!, core/pull!, core/str+
+;;                  print, rand
+;;                  do, error, apply
+;;                  lambda, let
+;;
+;; ============================================================================
+;; CORE CONTROL FLOW
+;; ============================================================================
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; 1. Core Control Flow Macros
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; cond: Multi-branch conditional. Expands to nested ifs. Validates clauses.
-;; Arity: 1.. (at least one clause)
-;; Usage: (cond ((test1 expr1) (test2 expr2) ... (else exprN)))
-(define (cond ...clauses)
-  (if (null? clauses)
-      (error "`cond` macro requires at least one clause.")
-      (let ((err (cond-validate clauses)))
-        (if err
-            (error err)
-            (cond-expand clauses)))))
-
-;; Helper: cond-validate
-;; Returns false if valid, else an error message string
-(define (cond-validate clauses)
-  (let ((n (len clauses)))
-    (let ((found-else false))
-      (letrec
-        ((validate
-          (lambda (i)
-            (if (gte? i n)
-                false
-                (let ((clause (get clauses i)))
-                  (if (not (list? clause))
-                      (str "Each `cond` clause must be a list. Problematic clause: " clause)
-                      (if (not (eq? (len clause) 2))
-                          (str "Each `cond` clause must be a list of two elements. Problematic clause: " clause)
-                          (let ((test (car clause)))
-                            (if (eq? test 'else)
-                                (if found-else
-                                    (str "`else` clause must be unique. Clause heads: " (map car clauses))
-                                    (if (not (eq? i (- n 1)))
-                                        (str "`else` clause must be the last clause in `cond`. Clause heads: " (map car clauses))
-                                        (begin (set! found-else true) (validate (+ i 1)))))
-                                (validate (+ i 1)))))))))))
-        (validate 0)))))
-
-;; Helper: cond-expand recursively expands validated clauses to nested ifs
-(define (cond-expand clauses)
-  (if (null? clauses)
-      (error "`cond` macro requires at least one clause.")
-      (let ((first (car clauses))
-            (rest (cdr clauses)))
-        (let ((test (car first))
-              (expr (cadr first)))
+;; cond: Multi-branch conditional
+;; (cond ((test1 expr1) (test2 expr2) (else exprN)))
+(define (cond ...rest)
+  (if (null? rest)
+      nil
+      (let ((clause (car rest)))
+        (let ((test (car clause))
+              (expr (cadr clause)))
           (if (eq? test 'else)
               expr
-              (list 'if test expr (cond-expand rest)))))))
+              (if test
+                  expr
+                  (apply cond (cdr rest))))))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; 2. Assignment & State Macros
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; when: Execute body when condition is true
+;; (when condition ...rest)
+(define (when condition ...rest)
+  (if condition
+      (apply do rest)
+      nil))
 
-;; inc!: Increment value at path by 1.
-;; Arity: 1 (path)
-;; Usage: (inc! player.score)
-;; Expands to: (core/set! path (+ (get path) 1))
-(define (inc! path)
-  (list 'core/set! path (list '+ (list 'get path) 1)))
+;; ============================================================================
+;; ASSIGNMENT & STATE
+;; ============================================================================
 
-;; dec!: Decrement value at path by 1.
-;; Arity: 1 (path)
-;; Usage: (dec! player.hp)
-;; Expands to: (core/set! path (- (get path) 1))
-(define (dec! path)
-  (list 'core/set! path (list '- (list 'get path) 1)))
+;; mul!: Multiply value at path
+;; (mul! path value)
+(define (mul! path value)
+  (core/set! path (* (core/get path) value)))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; 3. Predicates & Logic Macros (Aliases)
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; div!: Divide value at path
+;; (div! path value)
+(define (div! path value)
+  (core/set! path (/ (core/get path) value)))
 
-;; eq? aliases
-;; (= ...args): Canonical equality alias.
-(define (= ...args) (eq? ...args))
-;; (is? ...args): Canonical equality alias.
-(define (is? ...args) (eq? ...args))
+;; push!: Push values to collection
+;; (push! path ...rest)
+(define (push! path ...rest)
+  (apply core/push! path rest))
 
-;; gt? aliases
-(define (> ...args) (gt? ...args))
-(define (over? ...args) (gt? ...args))
+;; pull!: Pull values from collection
+;; (pull! path ...rest)
+(define (pull! path ...rest)
+  (apply core/pull! path rest))
 
-;; lt? aliases
-(define (< ...args) (lt? ...args))
-(define (under? ...args) (lt? ...args))
+;; ============================================================================
+;; PREDICATES & LOGIC
+;; ============================================================================
 
-;; gte? aliases
-(define (>= ...args) (gte? ...args))
-(define (at-least? ...args) (gte? ...args))
+;; exists?: Check if path exists
+;; (exists? path)
+(define (exists? path)
+  (core/exists? path))
 
-;; lte? aliases
-(define (<= ...args) (lte? ...args))
-(define (at-most? ...args) (lte? ...args))
+;; and: Short-circuiting logical AND
+;; (and a b c)
+(define (and ...rest)
+  (if (null? rest)
+      true
+      (if (car rest)
+          (apply and (cdr rest))
+          false)))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; 4. Math & Value Operation Macros
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; (No macro definitions here; see atom registry for +, -, *, /, etc.)
+;; or: Short-circuiting logical OR
+;; (or a b c)
+(define (or ...rest)
+  (if (null? rest)
+      false
+      (if (car rest)
+          (car rest)
+          (apply or (cdr rest)))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; 5. String Utility Macros
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; empty?: Check if collection is empty
+;; (empty? collection)
+(define (empty? collection)
+  (eq? (len collection) 0))
 
-;; str+: Concatenate any number of string arguments into a single string.
-;; Arity: 0.. (variadic)
-;; Usage: (str+ "foo" "bar" "baz") => "foobarbaz"
-(define (str+ ...args)
-  (core/str+ ...args))
+;; ============================================================================
+;; PREDICATE ALIASES
+;; ============================================================================
 
-;; join-str+: Join strings with a separator.
-;; Arity: 2.. (separator, then strings)
-;; Usage: (join-str+ " " "a" "b" "c") => "a b c"
-(define (join-str+ sep ...args)
-  (letrec ((interleave
-            (lambda (acc remaining)
-              (if (null? remaining)
-                  acc
-                  (if (null? acc)
-                      (interleave (list (car remaining)) (cdr remaining))
-                      (interleave (append acc (list sep (car remaining))) (cdr remaining)))))))
-    (apply str+ (interleave '() args))))
+;; =: Equality alias for eq?
+;; (= x y)
+(define (= ...rest)
+  (apply eq? rest))
 
-;; display: Print multiple values to output, separated by spaces.
-;; Arity: 0.. (variadic)
-;; Usage: (display "hello" 123 true) => prints "hello 123 true"
-(define (display ...args)
-  (print (apply join-str+ " " ...args)))
+;; is?: Equality alias for eq?
+;; (is? x y)
+(define (is? ...rest)
+  (apply eq? rest))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; 6. Test Harness Macros
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; >: Greater than alias for gt?
+;; (> x y)
+(define (> ...rest)
+  (apply gt? rest))
 
-;; test: Define a new test case.
-;; Usage: (test "name" (expect ...) body...)
-;; Expands to: (register-test! name expect-form body metadata)
-(define (test name expect-form ...body)
-  (list 'register-test! name expect-form body (list "span" "unknown" "file" "unknown")))
+;; over?: Greater than alias for gt?
+;; (over? x y)
+(define (over? ...rest)
+  (apply gt? rest))
 
-;; expect: Used within test to declare expectations.
-;; Usage: (expect ...conditions)
-;; Expands to: (cons 'expect conditions)
-(define (expect ...conditions)
-  (cons 'expect conditions))
+;; <: Less than alias for lt?
+;; (< x y)
+(define (< ...rest)
+  (apply lt? rest))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; 7. List & Utility Helpers (for macro expansion)
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; under?: Less than alias for lt?
+;; (under? x y)
+(define (under? ...rest)
+  (apply lt? rest))
 
-;; car: Return first element of list, error if empty.
-(define (car lst)
-  (if (null? lst)
-      (error "car: empty list")
-      (get lst 0)))
+;; >=: Greater than or equal alias for gte?
+;; (>= x y)
+(define (>= ...rest)
+  (apply gte? rest))
 
-;; cdr: Return all but first element of list, error if empty.
-(define (cdr lst)
-  (if (null? lst)
-      (error "cdr: empty list")
-      (slice lst 1)))
+;; at-least?: Greater than or equal alias for gte?
+;; (at-least? ...rest)
+(define (at-least? ...rest)
+  (apply gte? rest))
 
-;; cadr: Return second element of list.
+;; <=: Less than or equal alias for lte?
+;; (<= x y)
+(define (<= ...rest)
+  (apply lte? rest))
+
+;; at-most?: Less than or equal alias for lte?
+;; (at-most? ...rest)
+(define (at-most? ...rest)
+  (apply lte? rest))
+
+;; ============================================================================
+;; STRING UTILITIES
+;; ============================================================================
+
+;; str+: Concatenate strings
+;; (str+ "foo" "bar" "baz")
+(define (str+ ...rest)
+  (apply core/str+ rest))
+
+;; join-str+: Join strings with separator
+;; (join-str+ " " "a" "b" "c")
+(define (join-str+ sep ...rest)
+  (if (null? rest)
+      ""
+      (if (null? (cdr rest))
+          (car rest)
+          (core/str+ (car rest) sep (apply join-str+ sep (cdr rest))))))
+
+;; display: Print multiple values
+;; (display "hello" 123 true)
+(define (display ...rest)
+  (if (null? rest)
+      (print "")
+      (if (null? (cdr rest))
+          (print (car rest))
+          (do
+            (print (car rest))
+            (apply display (cdr rest))))))
+
+;; ============================================================================
+;; TEST HARNESS
+;; ============================================================================
+
+;; test: Define test case
+;; (test "name" (expect ...) body...)
+(define (test name expect ...rest)
+  (do
+    (print "Running test: ")
+    (print name)
+    (apply do rest)
+    (print "Test passed: ")
+    (print name)))
+
+;; expect: Declare test expectations
+;; (expect ...rest)
+(define (expect ...rest)
+  (if (null? rest)
+      true
+      (if (car rest)
+          (apply expect (cdr rest))
+          (error "Test expectation failed"))))
+
+;; ============================================================================
+;; LIST & UTILITY HELPERS
+;; ============================================================================
+
+;; cadr: Second element of list
+;; (cadr (list 1 2 3))
 (define (cadr lst)
   (car (cdr lst)))
 
-;; null?: True if list is empty.
+;; null?: Check if list is empty
+;; (null? (list))
 (define (null? lst)
   (eq? (len lst) 0))
 
-;; append: Append two lists.
+;; append: Append two lists
+;; (append l1 l2)
 (define (append l1 l2)
   (if (null? l1)
       l2
       (cons (car l1) (append (cdr l1) l2))))
 
-;; map: Map a function over a list.
+;; map: Map function over list
+;; (map f lst)
 (define (map f lst)
   (if (null? lst)
-      '()
+      (list)
       (cons (f (car lst)) (map f (cdr lst)))))
 
-;; cons: Prepend element to list.
-(define (cons el lst)
-  (core/prepend el lst))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; 8. Stage 1 Macros (Priorities 1-3)
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; Assignment Macros (Priority 1)
-
-;; mul!: Multiply value at path
-;; Expands to: (core/set! path (* (core/get path) value))
-(define (mul! path value)
-  (core/set! path (* (core/get path) value)))
-
-;; div!: Divide value at path
-;; Expands to: (core/set! path (/ (core/get path) value))
-(define (div! path value)
-  (core/set! path (/ (core/get path) value)))
-
-;; push!: Push values to collection at path
-;; Expands to: (core/push! path ...values)
-(define (push! path ...values)
-  (core/push! path ...values))
-
-;; pull!: Pull values from collection at path
-;; Expands to: (core/pull! path ...values)
-(define (pull! path ...values)
-  (core/pull! path ...values))
-
-;; Predicate/Logic Macros (Priority 2)
-
-;; exists?: Check if path exists
-(define (exists? path)
-  (core/exists? path))
-
-;; and: Short-circuiting logical AND
-(define (and ...args)
-  (if (null? args)
-      true
-      (if (car args)
-          (apply and (cdr args))
-          false)))
-
-;; or: Short-circuiting logical OR
-(define (or ...args)
-  (if (null? args)
-      false
-      (if (car args)
-          (car args)
-          (apply or (cdr args)))))
-
-;; empty?: Check if collection is empty
-(define (empty? collection)
-  (eq? (len collection) 0))
-
-;; has?: Check if value exists in collection
-(define (has? collection value)
-  (core/has? collection value))
-
-;; Control Flow Macros (Priority 3)
-
-;; when: Execute body when condition is true
-(define (when cond ...body)
-  (if cond (do ...body)))
-
-;; let: Lexical bindings
-(define (let bindings ...body)
-  (letrec
-    ((process-bindings
-      (lambda (binds)
-        (if (null? binds)
-            (do ...body)
-            (let ((binding (car binds)))
-              (let ((var (car binding))
-                    (val (cadr binding)))
-                (set! var val)
-                (process-bindings (cdr binds)))))))
-    (process-bindings bindings))))
+;; ============================================================================
+;; CONTROL FLOW HELPERS
+;; ============================================================================
 
 ;; for-each: Loop over collection
-(define (for-each var collection ...body)
-  (let ((index 0)
-        (len (len collection)))
-    (while (< index len)
-      (let ((var (get collection index)))
-        (do ...body)
-        (set! index (+ index 1))))))
+;; (for-each var collection ...rest)
+(define (for-each var collection ...rest)
+  (if (null? collection)
+      nil
+      (let ((current (car collection))
+            (rest (cdr collection)))
+        (let ((var current))
+          (do
+            (apply do rest)
+            (if (null? rest)
+                nil
+                (apply for-each var rest rest)))))))

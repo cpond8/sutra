@@ -48,13 +48,15 @@ pub fn register_std_macros(registry: &mut MacroRegistry) {
 // PATH CANONICALIZATION: The Single Source of Truth
 // ===================================================================================================
 
-/// Converts a user-facing expression (`Symbol` or `List`) into a canonical `Path`.
+/// Converts a user-facing expression (`Symbol`, `List`, or `Path`) into a canonical `Path`.
 /// This is the only function in the engine that understands path syntax.
 fn expr_to_path(expr: &AstNode) -> Result<Path, SutraError> {
     // Match on the inner expression by dereferencing the Arc
     match &*expr.value {
-        // Dotted symbol syntax: `player.score`
+        // Dotted symbol syntax: `player.score` or plain symbol: `player`
         Expr::Symbol(s, _) => Ok(Path(s.split('.').map(String::from).collect())),
+        // Already parsed path: `player.health` (from parser)
+        Expr::Path(path, _) => Ok(path.clone()),
         // List syntax: `(path player score)`
         Expr::List(items, _) => {
             let parts = items
@@ -70,10 +72,14 @@ fn expr_to_path(expr: &AstNode) -> Result<Path, SutraError> {
     }
 }
 
-/// Wraps an expression in a `(get ...)` call.
+/// Wraps an expression in a `(core/get ...)` call with proper path conversion.
 fn wrap_in_get(expr: &AstNode) -> AstNode {
-    let get_symbol = create_symbol("get", &expr.span);
-    let path_expr = expr.clone();
+    let get_symbol = create_symbol("core/get", &expr.span);
+    // Convert the expression to a canonical path, but handle errors gracefully
+    let path_expr = match create_canonical_path(expr) {
+        Ok(canonical_path) => canonical_path,
+        Err(_) => expr.clone(), // Fall back to original expression if path conversion fails
+    };
     Spanned {
         value: Expr::List(vec![get_symbol, path_expr], expr.span).into(),
         span: expr.span,
@@ -217,9 +223,15 @@ fn create_unary_assignment_macro(expr: &AstNode, op_symbol: &str) -> Result<AstN
             let canonical_path = create_canonical_path(&items[1])?;
             let op_symbol_expr = create_symbol(op_symbol, &items[0].span);
             let one = create_number(1.0, &items[0].span);
+            // Create the get call directly without any path conversion to avoid issues
+            let get_symbol = create_symbol("core/get", &items[0].span);
+            let get_call = Spanned {
+                value: Expr::List(vec![get_symbol, items[1].clone()], *span).into(),
+                span: *span,
+            };
             let inner_expr = Spanned {
                 value: Expr::List(
-                    vec![op_symbol_expr, wrap_in_get(&items[1]), one],
+                    vec![op_symbol_expr, get_call, one],
                     *span,
                 )
                 .into(),

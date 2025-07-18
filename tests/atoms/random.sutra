@@ -7,11 +7,12 @@
 ;;;
 
 (test "random: rand - success"
-      (expect (value true) (tags "random") (timeout 1000))
-      ;; We can't test for a specific value, but we can assert it's a number
-      ;; within the expected range [0, 1).
-      (and (gte? (rand) 0) (lt? (rand) 1)))
+      (expect (value true)
+              (tags "random"))
+      (and (gte? (rand) 0)
+           (lt? (rand) 1)))  ; rand is a number in [0, 1)
 
 (test "random: rand - arity error"
-      (expect (error ArityError) (tags "random") (skip "Demonstration of skip feature for test harness."))
-      (rand 123))
+      (expect (error ArityError)
+              (tags "random"))
+      (rand 123))  ; rand expects 0 or 1 argument, got 1

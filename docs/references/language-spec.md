@@ -190,9 +190,9 @@ This section highlights specific behaviors and design choices in Verse that migh
   - `(- x)` returns the negation of `x`.
   - `(/ x)` returns the reciprocal `1/x`.
 
-- **Trivial Truth for Comparison Atoms:** Comparison atoms (`eq?`, `gt?`, `lt?`, `gte?`, `lte?`) return `true` when given zero or one argument. The logic is that any sequence with one or zero elements is trivially ordered or equal.
-  - `(gt? 5)` => `true`
-  - `(lt?)` => `true`
+- **Comparison Atom Arity:** Comparison atoms (`eq?`, `gt?`, `lt?`, `gte?`, `lte?`) require at least 2 arguments. Providing fewer arguments will raise an arity error.
+  - `(gt? 5 3)` => `true`
+  - `(gt? 5)` => error: gt? expects at least 2 arguments, got 1
 
 # Verse Value Types — Canonical Reference
 

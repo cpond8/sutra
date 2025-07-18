@@ -7,19 +7,23 @@
 ;;;
 
 (test "output: print - simple string"
-      (expect (output "hello\n") (tags "output"))
-      (print "hello"))
+      (expect (output "hello\n")
+              (tags "output"))
+      (print "hello"))  ; prints "hello" to stdout
 
 (test "output: print - with number"
-      (expect (output "123\n") (tags "output") (timeout 500))
-      (print 123))
+      (expect (output "123\n")
+              (tags "output"))
+      (print 123))  ; prints "123" to stdout
 
 (test "output: print - arity error (too few)"
-      (expect (error ArityError) (tags "output"))
+      (expect (error ArityError)
+              (tags "output"))
       (print))
 
 (test "output: print - arity error (too many)"
-      (expect (error ArityError) (tags "output") (skip "Demonstration of skip feature for test harness."))
+      (expect (error ArityError)
+              (tags "output"))
       (print "one" "two"))
 
 ;;;
@@ -27,13 +31,16 @@
 ;;;
 
 (test "output: display - multiple args"
-      (expect (output "hello 123 true\n") (tags "output"))
-      (display "hello" 123 true))
+      (expect (output "hello 123 true\n")
+              (tags "output"))
+      (display "hello" 123 true))  ; prints "hello 123 true" to stdout
 
 (test "output: display - single arg"
-      (expect (output "single\n") (tags "output"))
-      (display "single"))
+      (expect (output "single\n")
+              (tags "output"))
+      (display "single"))  ; prints "single" to stdout
 
 (test "output: display - no args"
-      (expect (output "\n") (tags "output"))
-      (display))
+      (expect (output "\n")
+              (tags "output"))
+      (display))  ; prints "\n" to stdout
