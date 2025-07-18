@@ -13,7 +13,7 @@
 //! - **Meta-Programming**: Function application with argument flattening
 //! - **State Threading**: Proper world state propagation through execution
 
-use crate::ast::value::Value;
+use crate::{Value, AtomRegistry};
 use crate::atoms::helpers::{
     build_apply_call_expr, eval_apply_list_arg, eval_apply_normal_args, eval_single_arg,
     sub_eval_context, validate_special_form_min_arity,
@@ -120,7 +120,7 @@ pub const ATOM_APPLY: SpecialFormAtomFn = |args, context, parent_span| {
 // ============================================================================
 
 /// Registers all execution control atoms with the given registry.
-pub fn register_execution_atoms(registry: &mut crate::atoms::AtomRegistry) {
+pub fn register_execution_atoms(registry: &mut AtomRegistry) {
     // Control flow
     registry.register("do", crate::atoms::Atom::SpecialForm(ATOM_DO));
     registry.register("error", crate::atoms::Atom::SpecialForm(ATOM_ERROR));

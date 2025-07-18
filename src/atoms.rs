@@ -36,12 +36,9 @@
 // and likely panic. Debug assertions have been added to `eval::call_atom` to
 // catch such misclassifications for known special forms.
 
-use crate::ast::value::Value;
-use crate::ast::AstNode;
-use crate::ast::Span;
+use crate::{Path, World, Value, AstNode, Span};
 use crate::runtime::eval::EvaluationContext;
-use crate::runtime::world::AtomExecutionContext;
-use crate::runtime::world::World;
+use crate::AtomExecutionContext;
 use im::HashMap;
 use crate::SutraError;
 use crate::err_msg;
@@ -79,10 +76,10 @@ pub enum Atom {
 
 /// Minimal state interface for stateful atoms
 pub trait StateContext {
-    fn get(&self, path: &crate::runtime::world::Path) -> Option<&Value>;
-    fn set(&mut self, path: &crate::runtime::world::Path, value: Value);
-    fn del(&mut self, path: &crate::runtime::world::Path);
-    fn exists(&self, path: &crate::runtime::world::Path) -> bool;
+    fn get(&self, path: &Path) -> Option<&Value>;
+    fn set(&mut self, path: &Path, value: Value);
+    fn del(&mut self, path: &Path);
+    fn exists(&self, path: &Path) -> bool;
 }
 
 /// Polymorphic invocation interface for all callable entities
@@ -117,7 +114,7 @@ impl SharedOutput {
         SharedOutput(Rc::new(RefCell::new(sink)))
     }
     /// Emit output via the sink.
-    pub fn emit(&self, text: &str, span: Option<&crate::ast::Span>) {
+    pub fn emit(&self, text: &str, span: Option<&Span>) {
         self.0.borrow_mut().emit(text, span);
     }
     /// Borrow the sink mutably (for advanced use).

@@ -9,10 +9,10 @@
 //! node. This is the only place in the entire engine where path syntax is parsed.
 
 use crate::ast::{AstNode, Expr, Spanned};
-use crate::macros::MacroRegistry;
-use crate::runtime::world::Path;
+use crate::{MacroRegistry, Path};
 use crate::SutraError;
 use crate::err_msg;
+use crate::Span;
 
 // ===================================================================================================
 // REGISTRY: Standard Macro Registration
@@ -96,7 +96,7 @@ fn wrap_in_get(expr: &AstNode) -> AstNode {
 // -----------------------------------------------
 
 /// Creates a `AstNode` containing a symbol with the given name and span.
-fn create_symbol(name: &str, span: &crate::ast::Span) -> AstNode {
+fn create_symbol(name: &str, span: &Span) -> AstNode {
     Spanned {
         value: Expr::Symbol(name.to_string(), *span).into(),
         span: *span,
@@ -104,7 +104,7 @@ fn create_symbol(name: &str, span: &crate::ast::Span) -> AstNode {
 }
 
 /// Creates a `AstNode` containing a number literal with the given value and span.
-fn create_number(value: f64, span: &crate::ast::Span) -> AstNode {
+fn create_number(value: f64, span: &Span) -> AstNode {
     Spanned {
         value: Expr::Number(value, *span).into(),
         span: *span,

@@ -10,7 +10,7 @@
 //! - **Consistency**: Standardized error messages and evaluation patterns
 //! - **Safety**: All functions handle ownership and borrowing correctly
 
-use crate::{AstNode, Path, Expr, Span, Spanned, SutraError, Value};
+use crate::{AstNode, Path, Expr, Span, Spanned, SutraError, Value, World};
 use crate::err_msg;
 use crate::runtime::eval::{evaluate_ast_node, EvaluationContext};
 
@@ -19,7 +19,7 @@ use crate::runtime::eval::{evaluate_ast_node, EvaluationContext};
 // ============================================================================
 
 /// Convenient type alias for atom return values - modern Rust idiom
-pub type AtomResult = Result<(Value, crate::runtime::world::World), SutraError>;
+pub type AtomResult = Result<(Value, World), SutraError>;
 
 // ============================================================================
 // TRAIT-BASED TYPE EXTRACTION
@@ -98,7 +98,7 @@ pub use sub_eval_context;
 pub fn eval_args(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
-) -> Result<(Vec<Value>, crate::runtime::world::World), SutraError> {
+) -> Result<(Vec<Value>, World), SutraError> {
     args.iter().try_fold(
         (Vec::with_capacity(args.len()), context.world.clone()),
         |(mut values, world), arg| {
@@ -114,7 +114,7 @@ pub fn eval_args(
 pub fn eval_n_args<const N: usize>(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
-) -> Result<([Value; N], crate::runtime::world::World), SutraError> {
+) -> Result<([Value; N], World), SutraError> {
     if args.len() != N {
         return Err(err_msg!(Eval, "Arity error"));
     }
@@ -142,7 +142,7 @@ pub fn eval_n_args<const N: usize>(
 pub fn eval_single_arg(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
-) -> Result<(Value, crate::runtime::world::World), SutraError> {
+) -> Result<(Value, World), SutraError> {
     let ([val], world) = eval_n_args::<1>(args, context)?;
     Ok((val, world))
 }
@@ -151,7 +151,7 @@ pub fn eval_single_arg(
 pub fn eval_binary_args(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
-) -> Result<(Value, Value, crate::runtime::world::World), SutraError> {
+) -> Result<(Value, Value, World), SutraError> {
     let ([val1, val2], world) = eval_n_args::<2>(args, context)?;
     Ok((val1, val2, world))
 }
@@ -414,7 +414,7 @@ pub fn eval_binary_numeric_template<F, V>(
     context: &mut EvaluationContext<'_>,
     op: F,
     validator: Option<V>,
-) -> Result<(Value, crate::runtime::world::World), SutraError>
+) -> Result<(Value, World), SutraError>
 where
     F: Fn(f64, f64) -> Value,
     V: Fn(f64, f64) -> Result<(), &'static str>,
@@ -436,7 +436,7 @@ pub fn eval_nary_numeric_template<F>(
     context: &mut EvaluationContext<'_>,
     init: f64,
     fold: F,
-) -> Result<(Value, crate::runtime::world::World), SutraError>
+) -> Result<(Value, World), SutraError>
 where
     F: Fn(f64, f64) -> f64,
 {
@@ -461,7 +461,7 @@ pub fn eval_unary_bool_template<F>(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
     op: F,
-) -> Result<(Value, crate::runtime::world::World), SutraError>
+) -> Result<(Value, World), SutraError>
 where
     F: Fn(bool) -> Value,
 {
@@ -476,12 +476,12 @@ pub fn eval_unary_path_template<F>(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
     op: F,
-) -> Result<(Value, crate::runtime::world::World), SutraError>
+) -> Result<(Value, World), SutraError>
 where
     F: Fn(
-        crate::runtime::world::Path,
-        crate::runtime::world::World,
-    ) -> Result<(Value, crate::runtime::world::World), SutraError>,
+        Path,
+        World,
+    ) -> Result<(Value, World), SutraError>,
 {
     let (val, world) = eval_single_arg(args, context)?;
     let path = val.extract()?;
@@ -494,13 +494,13 @@ pub fn eval_binary_path_template<F>(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
     op: F,
-) -> Result<(Value, crate::runtime::world::World), SutraError>
+) -> Result<(Value, World), SutraError>
 where
     F: Fn(
-        crate::runtime::world::Path,
+        Path,
         Value,
-        crate::runtime::world::World,
-    ) -> Result<(Value, crate::runtime::world::World), SutraError>,
+        World,
+    ) -> Result<(Value, World), SutraError>,
 {
     let (path_val, value, world) = eval_binary_args(args, context)?;
     let path = path_val.extract()?;
@@ -513,13 +513,13 @@ pub fn eval_unary_value_template<F>(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
     op: F,
-) -> Result<(Value, crate::runtime::world::World), SutraError>
+) -> Result<(Value, World), SutraError>
 where
     F: Fn(
         Value,
-        crate::runtime::world::World,
+        World,
         &mut EvaluationContext<'_>,
-    ) -> Result<(Value, crate::runtime::world::World), SutraError>,
+    ) -> Result<(Value, World), SutraError>,
 {
     let (val, world) = eval_single_arg(args, context)?;
     op(val, world, context)
@@ -549,7 +549,7 @@ pub fn eval_numeric_sequence_comparison_template<F>(
     context: &mut EvaluationContext<'_>,
     comparison: F,
     atom_name: &str,
-) -> Result<(Value, crate::runtime::world::World), SutraError>
+) -> Result<(Value, World), SutraError>
 where
     F: Fn(f64, f64) -> bool,
 {
@@ -592,7 +592,7 @@ pub fn eval_nary_numeric_op_custom_template<F>(
     init: f64,
     fold: F,
     atom_name: &str,
-) -> Result<(Value, crate::runtime::world::World), SutraError>
+) -> Result<(Value, World), SutraError>
 where
     F: Fn(f64, f64) -> f64,
 {
@@ -631,7 +631,7 @@ pub fn eval_unary_typed_template<T, F>(
     context: &mut EvaluationContext<'_>,
     op: F,
     _atom_name: &str,
-) -> Result<(Value, crate::runtime::world::World), SutraError>
+) -> Result<(Value, World), SutraError>
 where
     Value: ExtractValue<T>,
     F: Fn(T) -> Value,
@@ -785,7 +785,7 @@ pub fn pure_eval_string_concat(args: &[Value], _atom_name: &str) -> Result<Value
 pub fn eval_apply_normal_args(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
-) -> Result<(Vec<AstNode>, crate::runtime::world::World), SutraError> {
+) -> Result<(Vec<AstNode>, World), SutraError> {
     let mut evald_args = Vec::with_capacity(args.len());
     let mut world = context.world.clone();
     for arg in args {
@@ -806,7 +806,7 @@ pub fn eval_apply_list_arg(
     arg: &AstNode,
     context: &mut EvaluationContext<'_>,
     parent_span: &Span,
-) -> Result<(Vec<AstNode>, crate::runtime::world::World), SutraError> {
+) -> Result<(Vec<AstNode>, World), SutraError> {
     let mut sub_context = sub_eval_context!(context, context.world);
     let (list_val, world) = evaluate_ast_node(arg, &mut sub_context)?;
     let Value::List(items) = list_val else {

@@ -4,10 +4,7 @@
 //! formatting errors, and generating JSON. By centralizing output logic here,
 //! we ensure a consistent user experience across all commands.
 
-// ============================================================================
-// OUTPUT SINKS: OutputBuffer and StdoutSink implementations
-// ============================================================================
-
+use crate::Span;
 use crate::atoms::OutputSink;
 use crate::macros::MacroExpansionStep;
 use difference::Changeset;
@@ -36,7 +33,7 @@ impl Default for OutputBuffer {
 }
 
 impl OutputSink for OutputBuffer {
-    fn emit(&mut self, text: &str, _span: Option<&crate::ast::Span>) {
+    fn emit(&mut self, text: &str, _span: Option<&Span>) {
         if !self.buffer.is_empty() {
             self.buffer.push('\n');
         }
@@ -48,7 +45,7 @@ impl OutputSink for OutputBuffer {
 pub struct StdoutSink;
 
 impl OutputSink for StdoutSink {
-    fn emit(&mut self, text: &str, _span: Option<&crate::ast::Span>) {
+    fn emit(&mut self, text: &str, _span: Option<&Span>) {
         println!("{text}");
     }
 }

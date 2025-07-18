@@ -54,9 +54,9 @@
 //!
 
 use std::sync::Arc;
-use miette::{Diagnostic, NamedSource};
+use miette::{Diagnostic, NamedSource, LabeledSpan, SourceCode};
 use thiserror::Error;
-use crate::ast::Span;
+use crate::Span;
 
 // Type aliases for clarity and brevity
 pub type SourceArc = Arc<NamedSource<String>>;
@@ -194,11 +194,11 @@ impl Diagnostic for SutraError {
         self.get_ctx().help.as_ref().map(|h| Box::new(h) as Box<dyn std::fmt::Display + 'a>)
     }
 
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        self.get_ctx().source.as_ref().map(|s| s.as_ref() as &dyn miette::SourceCode)
+    fn source_code(&self) -> Option<&dyn SourceCode> {
+        self.get_ctx().source.as_ref().map(|s| s.as_ref() as &dyn SourceCode)
     }
 
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = LabeledSpan> + '_>> {
         let ctx = self.get_ctx();
         let mut labels = Vec::new();
         // Primary label
@@ -213,12 +213,12 @@ impl Diagnostic for SutraError {
                 SutraError::TestFailure { message, .. } => Some(message.clone()),
             };
             let len = if span.end > span.start { span.end - span.start } else { 1 };
-            labels.push(miette::LabeledSpan::new(text, span.start, len));
+            labels.push(LabeledSpan::new(text, span.start, len));
         }
         // Related labels
         for rel in &ctx.related {
             let len = if rel.span.end > rel.span.start { rel.span.end - rel.span.start } else { 1 };
-            labels.push(miette::LabeledSpan::new(Some(rel.label.clone()), rel.span.start, len));
+            labels.push(LabeledSpan::new(Some(rel.label.clone()), rel.span.start, len));
         }
         if labels.is_empty() {
             None
@@ -243,7 +243,7 @@ macro_rules! err_msg {
     ($variant:ident, $msg:expr, $arg1:expr, $arg2:expr, $arg3:expr, $($arg:expr),*) => {
         $crate::SutraError::$variant {
             message: format!($msg, $arg1, $arg2, $arg3, $($arg),*),
-            ctx: $crate::diagnostics::ErrorContext { source: None, span: None, help: None, related: vec![] },
+            ctx: $crate::ErrorContext { source: None, span: None, help: None, related: vec![] },
             source: None,
         }
     };
@@ -251,7 +251,7 @@ macro_rules! err_msg {
     ($variant:ident, $msg:expr, $arg1:expr, $arg2:expr) => {
         $crate::SutraError::$variant {
             message: format!($msg, $arg1, $arg2),
-            ctx: $crate::diagnostics::ErrorContext { source: None, span: None, help: None, related: vec![] },
+            ctx: $crate::ErrorContext { source: None, span: None, help: None, related: vec![] },
             source: None,
         }
     };
@@ -259,7 +259,7 @@ macro_rules! err_msg {
     ($variant:ident, $msg:expr, $arg:expr) => {
         $crate::SutraError::$variant {
             message: format!($msg, $arg),
-            ctx: $crate::diagnostics::ErrorContext { source: None, span: None, help: None, related: vec![] },
+            ctx: $crate::ErrorContext { source: None, span: None, help: None, related: vec![] },
             source: None,
         }
     };
@@ -267,7 +267,7 @@ macro_rules! err_msg {
     ($variant:ident, $msg:expr) => {
         $crate::SutraError::$variant {
             message: format!("{}", $msg),
-            ctx: $crate::diagnostics::ErrorContext { source: None, span: None, help: None, related: vec![] },
+            ctx: $crate::ErrorContext { source: None, span: None, help: None, related: vec![] },
             source: None,
         }
     };
@@ -286,7 +286,7 @@ macro_rules! err_ctx {
     ($variant:ident, $msg:expr, $src:expr, $span:expr, $help:expr, $related:expr) => {
         $crate::SutraError::$variant {
             message: $msg.to_string(),
-            ctx: $crate::diagnostics::ErrorContext {
+            ctx: $crate::ErrorContext {
                 source: Some($crate::diagnostics::SourceArc::clone($src)),
                 span: Some($span),
                 help: Some(format!("{}", $help)),
@@ -299,7 +299,7 @@ macro_rules! err_ctx {
     ($variant:ident, $msg:expr, $src:expr, $span:expr, $help:expr) => {
         $crate::SutraError::$variant {
             message: $msg.to_string(),
-            ctx: $crate::diagnostics::ErrorContext {
+            ctx: $crate::ErrorContext {
                 source: Some($crate::diagnostics::SourceArc::clone($src)),
                 span: Some($span),
                 help: Some(format!("{}", $help)),
@@ -312,7 +312,7 @@ macro_rules! err_ctx {
     ($variant:ident, $msg:expr, $src:expr, $span:expr) => {
         $crate::SutraError::$variant {
             message: $msg.to_string(),
-            ctx: $crate::diagnostics::ErrorContext {
+            ctx: $crate::ErrorContext {
                 source: Some($crate::diagnostics::SourceArc::clone($src)),
                 span: Some($span),
                 help: None,
@@ -325,9 +325,9 @@ macro_rules! err_ctx {
     ($variant:ident, $msg:expr, $src:expr, $help:expr) => {
         $crate::SutraError::$variant {
             message: $msg.to_string(),
-            ctx: $crate::diagnostics::ErrorContext {
+            ctx: $crate::ErrorContext {
                 source: Some($crate::diagnostics::SourceArc::clone($src)),
-                span: Some($crate::ast::Span::default()),
+                span: Some($Span::default()),
                 help: Some(format!("{}", $help)),
                 related: vec![],
             },
@@ -338,7 +338,7 @@ macro_rules! err_ctx {
     ($variant:ident, $msg:expr, $src:expr) => {
         $crate::SutraError::$variant {
             message: $msg.to_string(),
-            ctx: $crate::diagnostics::ErrorContext {
+            ctx: $crate::ErrorContext {
                 source: Some($crate::diagnostics::SourceArc::clone($src)),
                 span: None,
                 help: None,
@@ -356,7 +356,7 @@ macro_rules! err_src {
     ($variant:ident, $msg:expr, $source:expr, $span:expr, $related:expr) => {
         $crate::SutraError::$variant {
             message: $msg.to_string(),
-            ctx: $crate::diagnostics::ErrorContext {
+            ctx: $crate::ErrorContext {
                 source: Some(std::sync::Arc::clone($source)),
                 span: Some($span),
                 help: None,
@@ -369,7 +369,7 @@ macro_rules! err_src {
     ($variant:ident, $msg:expr, $source:expr, $span:expr) => {
         $crate::SutraError::$variant {
             message: $msg.to_string(),
-            ctx: $crate::diagnostics::ErrorContext {
+            ctx: $crate::ErrorContext {
                 source: Some(std::sync::Arc::clone($source)),
                 span: Some($span),
                 help: None,
@@ -383,8 +383,8 @@ macro_rules! err_src {
 #[cfg(test)]
 mod diagnostics_tests {
     use super::*;
-    use miette::{Report, NamedSource, Diagnostic};
-    use std::sync::Arc;
+    use miette::{NamedSource, Report};
+    use Arc;
 
     #[test]
     fn test_multilabel_diagnostics() {

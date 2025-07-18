@@ -3,15 +3,14 @@ use crate::err_msg;
 use crate::macros::{parse_macro_definition, expand_macros_recursively, MacroDefinition, is_macro_definition};
 use crate::runtime::eval::evaluate;
 use crate::runtime::world::build_canonical_macro_env;
-use crate::runtime::world::World;
+use crate::{World, SharedOutput, AstNode, MacroRegistry, to_error_source, Value};
 use crate::syntax::parser::wrap_in_do;
 use crate::SutraError;
-use crate::atoms::SharedOutput;
-use crate::ast::AstNode;
 use miette::NamedSource;
 use std::sync::Arc;
 use std::rc::Rc;
 use std::cell::RefCell;
+use crate::OutputBuffer;
 
 /// Unified execution pipeline that enforces strict layering: Parse → Expand → Validate → Evaluate
 /// This is the single source of truth for all Sutra execution paths, including tests and production.
@@ -40,7 +39,7 @@ impl ExecutionPipeline {
         source: &str,
         output: SharedOutput,
     ) -> Result<(), SutraError> {
-        let src_arc = crate::diagnostics::to_error_source(source);
+        let src_arc = to_error_source(source);
         // Phase 1: Parse the source into AST nodes
         let ast_nodes = crate::syntax::parser::parse(source)?;
 
@@ -73,7 +72,7 @@ impl ExecutionPipeline {
             let atom_registry = crate::runtime::world::build_default_atom_registry();
             let mut combined_macros = env.core_macros.clone();
             combined_macros.extend(env.user_macros.clone());
-            let macro_registry_for_validation = crate::macros::MacroRegistry {
+            let macro_registry_for_validation = MacroRegistry {
                 macros: combined_macros,
             };
             let validation_result = crate::validation::semantic::validate_expanded_ast(
@@ -114,11 +113,11 @@ impl ExecutionPipeline {
     /// has already been performed.
     pub fn execute_expanded_ast(
         &self,
-        expanded_ast: &crate::ast::AstNode,
+        expanded_ast: &AstNode,
         world: &World,
         output: SharedOutput,
         source: Arc<NamedSource<String>>,
-    ) -> Result<(crate::ast::value::Value, World), SutraError> {
+    ) -> Result<(Value, World), SutraError> {
         let atom_registry = crate::runtime::world::build_default_atom_registry();
         evaluate(expanded_ast, world, output, &atom_registry, source, self.max_depth)
     }
@@ -128,7 +127,7 @@ impl ExecutionPipeline {
     /// both macro expansion and special form evaluation work correctly.
     pub fn execute_test(
         &self,
-        test_body: &crate::ast::AstNode,
+        test_body: &AstNode,
         output: SharedOutput,
     ) -> Result<(), SutraError> {
         // Phase 1: Build canonical macro environment (includes null?, etc.)
@@ -154,7 +153,7 @@ impl ExecutionPipeline {
 
     /// Executes AST nodes directly without parsing, avoiding double execution.
     /// This is optimized for test execution where AST is already available.
-    pub fn execute_ast(&self, nodes: &[AstNode]) -> Result<crate::ast::value::Value, SutraError> {
+    pub fn execute_ast(&self, nodes: &[AstNode]) -> Result<Value, SutraError> {
         // Partition AST nodes: macro definitions vs user code
         let (macro_defs, user_code) = nodes.iter().cloned().partition(is_macro_definition);
 
@@ -181,7 +180,7 @@ impl ExecutionPipeline {
             let atom_registry = crate::runtime::world::build_default_atom_registry();
             let mut combined_macros = env.core_macros.clone();
             combined_macros.extend(env.user_macros.clone());
-            let macro_registry = crate::macros::MacroRegistry {
+            let macro_registry = MacroRegistry {
                 macros: combined_macros,
             };
 
@@ -193,7 +192,7 @@ impl ExecutionPipeline {
 
             if !validation_result.is_valid() {
                 let errors = validation_result.errors.join("\n");
-                let src_arc = crate::diagnostics::to_error_source("");
+                let src_arc = to_error_source("");
                 return Err(err_ctx!(
                     Validation,
                     format!("Semantic validation failed:\n{}", errors),
@@ -208,7 +207,7 @@ impl ExecutionPipeline {
         let world = World::default();
         let source = Arc::new(NamedSource::new("ast_execution", "".to_string()));
         let atom_registry = crate::runtime::world::build_default_atom_registry();
-        let output = SharedOutput(Rc::new(RefCell::new(crate::cli::output::OutputBuffer::new())));
+        let output = SharedOutput(Rc::new(RefCell::new(OutputBuffer::new())));
 
         let (result, _) = evaluate(
             &expanded,

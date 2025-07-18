@@ -1,8 +1,6 @@
 pub mod ast_validator;
 
-use crate::ast::AstNode;
-use crate::macros::MacroRegistry;
-use crate::atoms::AtomRegistry;
+use crate::{AstNode, MacroRegistry, AtomRegistry};
 use crate::validation::grammar::ValidationResult;
 
 /// Validates an expanded AST for macro and atom correctness.

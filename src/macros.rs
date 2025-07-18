@@ -58,6 +58,9 @@ use ::std::sync::Arc;
 use crate::err_msg;
 use crate::err_ctx;
 use miette::NamedSource;
+use crate::{to_error_source, Value, World};
+use crate::Span;
+use crate::AtomExecutionContext;
 
 // ============================================================================
 // MODULE DECLARATIONS
@@ -458,8 +461,8 @@ impl MacroRegistry {
     /// ```
     pub fn register_or_error(&mut self, name: &str, func: MacroFunction) -> Result<(), crate::SutraError> {
         if self.macros.contains_key(name) {
-            let src_arc = crate::diagnostics::to_error_source(name);
-            return Err(err_ctx!(Validation, format!("Macro '{}' is already registered", name), &src_arc, crate::ast::Span::default(), "Macro already registered"));
+            let src_arc = to_error_source(name);
+            return Err(err_ctx!(Validation, format!("Macro '{}' is already registered", name), &src_arc, Span::default(), "Macro already registered"));
         }
         self.macros.insert(name.to_string(), MacroDefinition::Fn(func));
         Ok(())
@@ -527,8 +530,8 @@ impl MacroRegistry {
         template: MacroTemplate,
     ) -> Result<(), crate::SutraError> {
         if self.macros.contains_key(name) {
-            let src_arc = crate::diagnostics::to_error_source(name);
-            return Err(err_ctx!(Validation, format!("Macro '{}' is already registered", name), &src_arc, crate::ast::Span::default(), "Macro already registered"));
+            let src_arc = to_error_source(name);
+            return Err(err_ctx!(Validation, format!("Macro '{}' is already registered", name), &src_arc, Span::default(), "Macro already registered"));
         }
         self.macros
             .insert(name.to_string(), MacroDefinition::Template(template));
@@ -838,7 +841,7 @@ fn check_no_duplicate_params(
 // ============================================================================
 
 impl crate::atoms::Callable for MacroDefinition {
-    fn call(&self, _args: &[crate::ast::value::Value], _context: &mut crate::runtime::world::AtomExecutionContext, _current_world: &crate::runtime::world::World) -> Result<(crate::ast::value::Value, crate::runtime::world::World), crate::SutraError> {
+    fn call(&self, _args: &[Value], _context: &mut AtomExecutionContext, _current_world: &World) -> Result<(Value, World), crate::SutraError> {
         // Macros operate on AST nodes, not Values, so they cannot be called through the Callable interface
         // This is a design limitation - macros need syntax transformation, not evaluation
         Err(err_msg!(Validation, "Macros cannot be called through Callable interface - they require AST transformation, not evaluation"))

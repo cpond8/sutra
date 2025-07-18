@@ -6,8 +6,9 @@
 use crate::ast::{AstNode, Expr, ParamList, Span};
 use crate::err_ctx;
 use crate::err_msg;
-use crate::macros::MacroTemplate;
+use crate::MacroTemplate;
 use crate::SutraError;
+use crate::to_error_source;
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
@@ -36,9 +37,9 @@ pub fn load_macros_from_file<P: AsRef<Path>>(
     path: P,
 ) -> Result<Vec<(String, MacroTemplate)>, SutraError> {
     let path_str = path.as_ref().to_string_lossy();
-    let src_arc = crate::diagnostics::to_error_source(&*path_str);
+    let src_arc = to_error_source(&*path_str);
     let source = fs::read_to_string(&path)
-        .map_err(|e| err_ctx!(Internal, format!("Failed to read file: {}", e.to_string()), &src_arc, crate::ast::Span::default(), "Check that the macro file exists and is readable."))?;
+        .map_err(|e| err_ctx!(Internal, format!("Failed to read file: {}", e.to_string()), &src_arc, Span::default(), "Check that the macro file exists and is readable."))?;
     parse_macros_from_source(&source)
 }
 
@@ -52,7 +53,7 @@ pub fn check_arity(
 ) -> Result<(), SutraError> {
     let required_len = params.required.len();
     let has_variadic = params.rest.is_some();
-    let src_arc = crate::diagnostics::to_error_source(macro_name);
+    let src_arc = to_error_source(macro_name);
     // Too few arguments
     if args_len < required_len {
         return Err(err_ctx!(
@@ -101,7 +102,7 @@ fn try_parse_macro_form(
     else {
         return Ok(None);
     };
-    let src_arc = crate::diagnostics::to_error_source(name);
+    let src_arc = to_error_source(name);
     // Check for duplicate macro names
     if !names_seen.insert(name.clone()) {
         return Err(err_ctx!(
@@ -173,7 +174,7 @@ pub fn parse_macro_definition(expr: &AstNode) -> Result<(String, MacroTemplate),
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::Span;
+    use Span;
 
     #[test]
     fn test_parse_simple_macro() {

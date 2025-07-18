@@ -13,7 +13,7 @@
 //! - **Boolean Results**: All operations return `Value::Bool`
 //! - **Numeric Comparison**: Comparison operations work with `Value::Number`
 
-use crate::ast::value::Value;
+use crate::{Value, AtomRegistry};
 use crate::atoms::PureAtomFn;
 use crate::atoms::helpers::{validate_sequence_arity, pure_eval_numeric_sequence_comparison, pure_eval_unary_typed_op};
 
@@ -138,7 +138,7 @@ pub const ATOM_NOT: PureAtomFn = |args| {
 // ============================================================================
 
 /// Registers all logic and comparison atoms with the given registry.
-pub fn register_logic_atoms(registry: &mut crate::atoms::AtomRegistry) {
+pub fn register_logic_atoms(registry: &mut AtomRegistry) {
     // Comparison operations
     registry.register("eq?", crate::atoms::Atom::Pure(ATOM_EQ));
     registry.register("gt?", crate::atoms::Atom::Pure(ATOM_GT));

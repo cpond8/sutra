@@ -13,7 +13,7 @@
 //! - **Deterministic Where Possible**: Consistent behavior within constraints
 //! - **Minimal External Dependencies**: Simple implementations
 
-use crate::ast::value::Value;
+use crate::{Value, AtomRegistry};
 use crate::atoms::StatefulAtomFn;
 use crate::atoms::helpers::{validate_unary_arity, validate_zero_arity};
 
@@ -89,7 +89,7 @@ pub const ATOM_RAND: StatefulAtomFn = |args, context| {
 // ============================================================================
 
 /// Registers all external interface atoms with the given registry.
-pub fn register_external_atoms(registry: &mut crate::atoms::AtomRegistry) {
+pub fn register_external_atoms(registry: &mut AtomRegistry) {
     // I/O operations
     registry.register("print", crate::atoms::Atom::Stateful(ATOM_PRINT));
     registry.register("core/print", crate::atoms::Atom::Stateful(ATOM_PRINT));

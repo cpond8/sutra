@@ -31,10 +31,9 @@
 //! All evaluation, type, and recursion errors use this system.
 
 // The atom registry is a single source of truth and must be passed by reference to all validation and evaluation code. Never construct a local/hidden registry.
-use crate::ast::value::Value;
+use crate::{AtomRegistry, SutraError, SharedOutput};
+use crate::{Value, Path, Span};
 use crate::ast::{AstNode, Expr, Spanned};
-use crate::atoms::AtomRegistry;
-use crate::diagnostics::SutraError;
 use crate::runtime::world::{AtomExecutionContext, World};
 use crate::err_ctx;
 use crate::err_src;
@@ -42,7 +41,7 @@ use miette::NamedSource;
 use std::sync::Arc;
 use std::collections::HashMap;
 use std::rc::Rc;
-use crate::atoms::SharedOutput;
+use crate::ParamList;
 
 // ===================================================================================================
 // CORE DATA STRUCTURES: Evaluation Context
@@ -57,7 +56,7 @@ pub struct EvaluationContext<'a> {
     pub max_depth: usize,
     pub depth: usize,
     /// Stack of lexical environments (for let/lambda scoping)
-    pub lexical_env: Vec<HashMap<String, crate::ast::value::Value>>,
+    pub lexical_env: Vec<HashMap<String, Value>>,
 }
 
 impl<'a> EvaluationContext<'a> {
@@ -82,14 +81,14 @@ impl<'a> EvaluationContext<'a> {
     }
 
     /// Set a variable in the current lexical frame
-    pub fn set_lexical_var(&mut self, name: &str, value: crate::ast::value::Value) {
+    pub fn set_lexical_var(&mut self, name: &str, value: Value) {
         if let Some(frame) = self.lexical_env.last_mut() {
             frame.insert(name.to_string(), value);
         }
     }
 
     /// Get a variable from the lexical environment stack (innermost to outermost)
-    pub fn get_lexical_var(&self, name: &str) -> Option<&crate::ast::value::Value> {
+    pub fn get_lexical_var(&self, name: &str) -> Option<&Value> {
         for frame in self.lexical_env.iter().rev() {
             if let Some(val) = frame.get(name) {
                 return Some(val);
@@ -108,7 +107,7 @@ impl<'a> EvaluationContext<'a> {
         symbol_name: &str,
         head: &AstNode,
         args: &[AstNode],
-        span: &crate::ast::Span,
+        span: &Span,
     ) -> Result<(Value, World), SutraError> {
         // Look up atom in registry
         let Some(atom) = self.atom_registry.get(symbol_name).cloned() else {
@@ -302,7 +301,7 @@ fn evaluate_invalid_expr(
                 )
             } else {
                 // Attempt to resolve the symbol as a path in the world state.
-                let path = crate::runtime::world::Path(vec![s.clone()]);
+                let path = Path(vec![s.clone()]);
                 if let Some(value) = context.world.state.get(&path) {
                     return wrap_value_with_world_state(value.clone(), context.world);
                 }
@@ -327,7 +326,7 @@ fn evaluate_invalid_expr(
     ))
 }
 
-fn capture_lexical_env(lexical_env: &[HashMap<String, crate::ast::value::Value>]) -> HashMap<String, crate::ast::value::Value> {
+fn capture_lexical_env(lexical_env: &[HashMap<String, Value>]) -> HashMap<String, Value> {
     let mut captured_env = std::collections::HashMap::new();
     for frame in lexical_env {
         for (key, value) in frame {
@@ -339,7 +338,7 @@ fn capture_lexical_env(lexical_env: &[HashMap<String, crate::ast::value::Value>]
 
 fn handle_define_special_form(
     flat_tail: &[AstNode],
-    span: &crate::ast::Span,
+    span: &Span,
     context: &mut EvaluationContext,
     head: &AstNode,
 ) -> Result<(Value, World), SutraError> {
@@ -363,7 +362,7 @@ fn handle_define_special_form(
                 name_expr.span
             )
         })?;
-        let actual_params = crate::ast::ParamList {
+        let actual_params = ParamList {
             required: param_list.required[1..].to_vec(),
             rest: param_list.rest.clone(),
             span: param_list.span,
@@ -394,7 +393,7 @@ fn handle_define_special_form(
     let define_expr = AstNode {
         value: std::sync::Arc::new(Expr::Define {
             name,
-            params: crate::ast::ParamList {
+            params: ParamList {
                 required: vec![],
                 rest: None,
                 span: *span,
@@ -446,12 +445,12 @@ pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext)
                     body: body.clone(),
                     captured_env,
                 }));
-                let path = crate::runtime::world::Path(vec![name.clone()]);
+                let path = Path(vec![name.clone()]);
                 let new_world = context.world.set(&path, lambda);
                 Ok((Value::Nil, new_world))
             } else {
                 let (value, world) = evaluate_ast_node(body, context)?;
-                let path = crate::runtime::world::Path(vec![name.clone()]);
+                let path = Path(vec![name.clone()]);
                 let new_world = world.set(&path, value.clone());
                 Ok((value, new_world))
             }
@@ -507,7 +506,7 @@ pub fn evaluate(
 /// Helper for evaluating Expr::List arms.
 fn evaluate_list(
     items: &[AstNode],
-    span: &crate::ast::Span,
+    span: &Span,
     context: &mut EvaluationContext,
 ) -> Result<(Value, World), SutraError> {
     if items.is_empty() {
@@ -541,7 +540,7 @@ fn evaluate_list(
         };
         return crate::atoms::special_forms::call_lambda(&lambda, &arg_values, &mut lambda_context);
     }
-    let world_path = crate::runtime::world::Path(vec![symbol_name.clone()]);
+    let world_path = Path(vec![symbol_name.clone()]);
     if let Some(Value::Lambda(lambda)) = context.world.state.get(&world_path) {
         let (arg_values, world_after_args) = evaluate_eager_args(&flat_tail, context)?;
         let mut lambda_context = EvaluationContext {

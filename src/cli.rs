@@ -15,6 +15,7 @@ use clap::Parser;
 use termcolor::WriteColor;
 use std::io::Write;
 use crate::err_src;
+use crate::to_error_source;
 
 pub mod args;
 pub mod output;
@@ -78,9 +79,9 @@ fn safe_path_display(path: &std::path::Path) -> &str {
 /// Reads a file to a String, given a path.
 fn read_file_to_string(path: &std::path::Path) -> Result<String, SutraError> {
     let filename = path_to_str(path)?;
-    let src_arc = crate::diagnostics::to_error_source(filename);
+    let src_arc = to_error_source(filename);
     std::fs::read_to_string(filename)
-        .map_err(|e| err_ctx!(Internal, format!("Failed to read file: {}", e.to_string()), &src_arc, crate::ast::Span::default(), "Check that the file exists and is readable."))
+        .map_err(|e| err_ctx!(Internal, format!("Failed to read file: {}", e.to_string()), &src_arc, Span::default(), "Check that the file exists and is readable."))
 }
 
 // ============================================================================
@@ -512,9 +513,9 @@ fn handle_validate() -> Result<(), SutraError> {
     use crate::validation::grammar::validate_grammar;
 
     let grammar_path = "src/syntax/grammar.pest";
-    let src_arc = crate::diagnostics::to_error_source(grammar_path);
+    let src_arc = to_error_source(grammar_path);
     let validation_result = validate_grammar(grammar_path)
-        .map_err(|e| err_ctx!(Internal, format!("Failed to validate grammar: {}", e.to_string()), &src_arc, crate::ast::Span::default(), "Check the grammar file for syntax errors or missing rules."))?;
+        .map_err(|e| err_ctx!(Internal, format!("Failed to validate grammar: {}", e.to_string()), &src_arc, Span::default(), "Check the grammar file for syntax errors or missing rules."))?;
 
     // Early return on validation failure
     if !validation_result.is_valid() {
@@ -534,9 +535,9 @@ fn handle_validate_grammar() -> Result<(), SutraError> {
     use crate::validation::grammar::validate_grammar;
 
     let grammar_path = "src/syntax/grammar.pest";
-    let src_arc = crate::diagnostics::to_error_source(grammar_path);
+    let src_arc = to_error_source(grammar_path);
     let validation_result = validate_grammar(grammar_path)
-        .map_err(|e| err_ctx!(Internal, format!("Failed to validate grammar: {}", e.to_string()), &src_arc, crate::ast::Span::default(), "Check the grammar file for syntax errors or missing rules."))?;
+        .map_err(|e| err_ctx!(Internal, format!("Failed to validate grammar: {}", e.to_string()), &src_arc, Span::default(), "Check the grammar file for syntax errors or missing rules."))?;
 
     // Early return on validation failure
     if !validation_result.is_valid() {
@@ -553,11 +554,8 @@ fn handle_validate_grammar() -> Result<(), SutraError> {
 
 /// Handles validation failure by printing errors and exiting.
 fn handle_validation_failure(grammar_path: &str, validation_result: &crate::validation::grammar::ValidationResult) -> Result<(), SutraError> {
-    use std::fs;
-
-    let grammar_source = fs::read_to_string(grammar_path).unwrap_or_default();
-    let src_arc = crate::diagnostics::to_error_source(grammar_path);
-    let mut error = err_ctx!(Validation, "Grammar validation failed", &src_arc, crate::ast::Span::default(), "Check the grammar file for syntax errors or missing rules.");
+    let src_arc = to_error_source(grammar_path);
+    let mut error = err_ctx!(Validation, "Grammar validation failed", &src_arc, Span::default(), "Check the grammar file for syntax errors or missing rules.");
     for err in &validation_result.errors {
         // Attach each error as help (miette will show all help messages)
         error = match error {

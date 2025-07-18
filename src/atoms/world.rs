@@ -13,7 +13,7 @@
 //! - **Immutable World**: World state is copied and modified, never mutated in place
 //! - **Safe Defaults**: Missing values return `Value::Nil` rather than errors
 
-use crate::ast::value::Value;
+use crate::{Value, Path, AtomRegistry};
 use crate::atoms::StatefulAtomFn;
 use crate::atoms::helpers::{validate_binary_arity, validate_unary_arity, ExtractValue};
 use crate::err_msg;
@@ -65,7 +65,7 @@ pub const ATOM_PATH: StatefulAtomFn = |args, _context| {
     validate_unary_arity(args, "path")?;
     match &args[0] {
         Value::String(s) => {
-            let path = crate::runtime::world::Path(vec![s.clone()]);
+            let path = Path(vec![s.clone()]);
             Ok(Value::Path(path))
         }
         _ => Err(err_msg!(TypeError, "path expects a String, found {}", args[0].to_string())),
@@ -77,7 +77,7 @@ pub const ATOM_PATH: StatefulAtomFn = |args, _context| {
 // ============================================================================
 
 /// Registers all world state atoms with the given registry.
-pub fn register_world_atoms(registry: &mut crate::atoms::AtomRegistry) {
+pub fn register_world_atoms(registry: &mut AtomRegistry) {
     registry.register("core/set!", crate::atoms::Atom::Stateful(ATOM_CORE_SET));
     registry.register("core/get", crate::atoms::Atom::Stateful(ATOM_CORE_GET));
     registry.register("core/del!", crate::atoms::Atom::Stateful(ATOM_CORE_DEL));

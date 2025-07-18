@@ -13,7 +13,7 @@
 //! - **Numeric Focus**: All operations work with `Value::Number` (f64)
 //! - **Error Handling**: Proper validation for edge cases (division by zero, etc.)
 
-use crate::ast::value::Value;
+use crate::{Value, AtomRegistry};
 use crate::atoms::PureAtomFn;
 use crate::atoms::helpers::{validate_binary_arity, validate_min_arity, pure_eval_nary_numeric_op_custom, pure_eval_unary_typed_op, ExtractValue};
 use crate::err_msg;
@@ -177,7 +177,7 @@ pub const ATOM_MAX: PureAtomFn = |args| {
 // ============================================================================
 
 /// Registers all mathematical atoms with the given registry.
-pub fn register_math_atoms(registry: &mut crate::atoms::AtomRegistry) {
+pub fn register_math_atoms(registry: &mut AtomRegistry) {
     // Arithmetic operations
     registry.register("+", crate::atoms::Atom::Pure(ATOM_ADD));
     registry.register("-", crate::atoms::Atom::Pure(ATOM_SUB));

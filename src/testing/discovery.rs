@@ -5,7 +5,7 @@ use miette::NamedSource;
 use walkdir::WalkDir;
 
 use crate::ast::{AstNode, Expr, Span};
-use crate::diagnostics::SutraError;
+use crate::SutraError;
 use crate::syntax::parser;
 use crate::{err_msg, err_src};
 

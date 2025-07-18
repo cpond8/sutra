@@ -1,4 +1,5 @@
-use crate::ast::value::Value;
+use crate::Value;
+use crate::Span;
 use im::HashMap;
 use rand::{RngCore, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
@@ -8,6 +9,7 @@ use crate::macros::{self, MacroRegistry};
 use crate::macros::{load_macros_from_file, MacroDefinition, MacroExpansionContext};
 use crate::SutraError;
 use crate::err_ctx;
+use crate::to_error_source;
 use std::collections::HashMap as StdHashMap;
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -98,7 +100,7 @@ impl Default for WorldState {
 pub struct World {
     pub state: WorldState,
     pub prng: SmallRng,
-    pub macros: crate::macros::MacroExpansionContext,
+    pub macros: MacroExpansionContext,
 }
 
 impl World {
@@ -107,7 +109,7 @@ impl World {
         Self {
             state: WorldState::new(),
             prng: SmallRng::from_entropy(),
-            macros: macros::MacroExpansionContext::new(source),
+            macros: MacroExpansionContext::new(source),
         }
     }
 
@@ -116,7 +118,7 @@ impl World {
         Self {
             state: WorldState::new(),
             prng: SmallRng::from_seed(seed),
-            macros: macros::MacroExpansionContext::new(source),
+            macros: MacroExpansionContext::new(source),
         }
     }
 
@@ -142,7 +144,7 @@ impl World {
         self.prng.next_u32()
     }
 
-    pub fn with_macros(self, macros: crate::macros::MacroExpansionContext) -> Self {
+    pub fn with_macros(self, macros: MacroExpansionContext) -> Self {
         Self { macros, ..self }
     }
 }
@@ -281,8 +283,8 @@ fn load_and_process_user_macros(path: &str) -> Result<StdHashMap<String, MacroDe
     let mut user_macros = StdHashMap::new();
     for (name, template) in macros {
         if user_macros.contains_key(&name) {
-            let src_arc = crate::diagnostics::to_error_source(&name);
-            return Err(err_ctx!(Validation, format!("Duplicate macro name '{}' in standard macro library.", name), &src_arc, crate::ast::Span::default(), "Duplicate macro name in standard macro library."));
+            let src_arc = to_error_source(&name);
+            return Err(err_ctx!(Validation, format!("Duplicate macro name '{}' in standard macro library.", name), &src_arc, Span::default(), "Duplicate macro name in standard macro library."));
         }
         user_macros.insert(name, MacroDefinition::Template(template));
     }
@@ -351,12 +353,12 @@ fn del_recursive(current: &Value, path_segments: &[String]) -> Value {
 // STATE CONTEXT IMPLEMENTATION
 // ============================================================================
 
-impl crate::atoms::StateContext for WorldState {
-    fn get(&self, path: &Path) -> Option<&crate::ast::value::Value> {
+impl StateContext for WorldState {
+    fn get(&self, path: &Path) -> Option<&Value> {
         self.get(path)
     }
 
-    fn set(&mut self, path: &Path, value: crate::ast::value::Value) {
+    fn set(&mut self, path: &Path, value: Value) {
         if path.0.is_empty() {
             return;
         }

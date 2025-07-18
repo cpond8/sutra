@@ -43,6 +43,8 @@
 use crate::ast::{AstNode, Expr, Span, Spanned};
 use crate::SutraError;
 use crate::{err_ctx, err_msg};
+use crate::{to_error_source, Path};
+use crate::ParamList;
 use once_cell::sync::Lazy;
 use pest::error::InputLocation;
 use pest::iterators::Pair;
@@ -85,7 +87,7 @@ fn improve_parse_error_message(msg: &str) -> (String, Option<String>) {
 /// * `Ok(Vec<Expr>)` - A vector of expressions found at the top level of the source.
 /// * `Err(SutraError)` - If parsing fails.
 pub fn parse(source: &str) -> Result<Vec<AstNode>, SutraError> {
-    let src_arc = crate::diagnostics::to_error_source(source);
+    let src_arc = to_error_source(source);
     // `SutraParser::parse` attempts to match the `program` rule from the grammar.
     // If it fails, it returns a `pest` error, which we map to our `SutraError`.
     let pairs = SutraParser::parse(Rule::program, source).map_err(|e| {
@@ -187,7 +189,7 @@ pub static AST_BUILDERS: Lazy<HashMap<Rule, AstBuilderFn>> = Lazy::new(|| {
 
 // Dispatcher: looks up the handler in the map and calls it
 fn build_ast_from_pair(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
-    let src_arc = crate::diagnostics::to_error_source(source);
+    let src_arc = to_error_source(source);
     AST_BUILDERS
         .get(&pair.as_rule())
         .ok_or_else(|| {
@@ -220,7 +222,6 @@ fn map_children_to_list<'a>(
 /// Note: Returns an `Expr::List` for internal uniformity, but the public `parse` API collects top-level forms as a `Vec<Expr>`.
 /// If a canonical program node is ever needed, update this convention and document accordingly.
 fn build_program(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
-    let src_arc = crate::diagnostics::to_error_source(source);
     let span = get_span(&pair);
     map_children_to_list(
         Box::new(
@@ -235,7 +236,7 @@ fn build_program(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> 
 
 /// Handles expr rule (delegates to subrules).
 fn build_expr(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
-    let src_arc = crate::diagnostics::to_error_source(source);
+    let src_arc = to_error_source(source);
     let mut inner = pair.clone().into_inner();
     let sub = inner.next().ok_or_else(|| {
         err_ctx!(
@@ -250,7 +251,6 @@ fn build_expr(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
 
 /// Handles list rule (proper lists only).
 fn build_list(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
-    let src_arc = crate::diagnostics::to_error_source(source);
     let span = get_span(&pair);
     map_children_to_list(Box::new(pair.clone().into_inner()), span, source)
 }
@@ -291,7 +291,7 @@ fn extract_spread_symbol(item: &Pair<Rule>, src_arc: &crate::diagnostics::Source
 }
 
 fn build_param_list(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
-    let src_arc = crate::diagnostics::to_error_source(source);
+    let src_arc = to_error_source(source);
     let span = get_span(&pair);
     let mut inner = pair.clone().into_inner();
 
@@ -338,7 +338,7 @@ fn build_param_list(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErro
     }
 
     Ok(Spanned {
-        value: Expr::ParamList(crate::ast::ParamList {
+        value: Expr::ParamList(ParamList {
             required: required_params,
             rest: rest_param,
             span,
@@ -357,13 +357,12 @@ fn as_symbol(pair: &Pair<Rule>) -> Result<String, SutraError> {
 
 /// Handles brace-block rule (which is just a list).
 fn build_block(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
-    let src_arc = crate::diagnostics::to_error_source(source);
     let span = get_span(&pair);
     map_children_to_list(Box::new(pair.clone().into_inner()), span, source)
 }
 
 fn build_atom(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
-    let src_arc = crate::diagnostics::to_error_source(source);
+    let src_arc = to_error_source(source);
     let inner = pair.clone().into_inner().next().ok_or_else(|| {
         err_ctx!(
             Internal,
@@ -376,7 +375,7 @@ fn build_atom(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
 }
 
 fn build_number(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
-    let src_arc = crate::diagnostics::to_error_source(source);
+    let src_arc = to_error_source(source);
     let span = get_span(&pair);
     let n = pair
         .as_str()
@@ -389,7 +388,7 @@ fn build_number(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
 }
 
 fn build_boolean(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
-    let src_arc = crate::diagnostics::to_error_source(source);
+    let src_arc = to_error_source(source);
     let span = get_span(&pair);
     match pair.as_str() {
         "true" => Ok(Spanned {
@@ -410,7 +409,6 @@ fn build_boolean(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> 
 }
 
 fn build_string(pair: Pair<Rule>, _source: &str) -> Result<AstNode, SutraError> {
-    let src_arc = crate::diagnostics::to_error_source(_source);
     let span = get_span(&pair);
     Ok(Spanned {
         value: Expr::String(unescape_string(pair.clone())?, span).into(),
@@ -419,7 +417,7 @@ fn build_string(pair: Pair<Rule>, _source: &str) -> Result<AstNode, SutraError> 
 }
 
 fn build_symbol(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
-    let src_arc = crate::diagnostics::to_error_source(source);
+    let src_arc = to_error_source(source);
     let span = get_span(&pair);
     let s = pair.as_str();
 
@@ -450,7 +448,7 @@ fn build_symbol(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
         }
 
         Ok(Spanned {
-            value: Expr::Path(crate::runtime::world::Path(components), span).into(),
+            value: Expr::Path(Path(components), span).into(),
             span,
         })
     } else {
@@ -507,18 +505,18 @@ fn unescape_string(pair: Pair<Rule>) -> Result<String, SutraError> {
 pub struct SutraCstNode {
     pub rule: String, // Use String for rule name for now; can be enum if desired
     pub children: Vec<SutraCstNode>,
-    pub span: crate::ast::Span,
+    pub span: Span,
     // Optionally: text, parent, etc.
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SutraCstParseError {
     Syntax {
-        span: crate::ast::Span,
+        span: Span,
         message: String,
     },
     Incomplete {
-        span: crate::ast::Span,
+        span: Span,
         message: String,
     },
     // ...
@@ -553,14 +551,13 @@ pub struct PestCstParser;
 
 impl SutraCstParser for PestCstParser {
     fn parse(&self, input: &str) -> Result<SutraCstNode, SutraCstParseError> {
-        let src_arc = crate::diagnostics::to_error_source(input);
         let pairs = SutraParser::parse(Rule::program, input).map_err(|e| {
             let span = match e.location {
-                InputLocation::Pos(pos) => crate::ast::Span {
+                InputLocation::Pos(pos) => Span {
                     start: pos,
                     end: pos,
                 },
-                InputLocation::Span((start, end)) => crate::ast::Span { start, end },
+                InputLocation::Span((start, end)) => Span { start, end },
             };
             SutraCstParseError::Syntax {
                 span,
@@ -568,7 +565,7 @@ impl SutraCstParser for PestCstParser {
             }
         })?;
         let root_pair = pairs.peek().ok_or_else(|| SutraCstParseError::Incomplete {
-            span: crate::ast::Span {
+            span: Span {
                 start: 0,
                 end: input.len(),
             },
@@ -592,7 +589,7 @@ impl SutraCstParser for PestCstParser {
 }
 
 fn build_cst_from_pair(pair: Pair<Rule>) -> SutraCstNode {
-    let span = crate::ast::Span {
+    let span = Span {
         start: pair.as_span().start(),
         end: pair.as_span().end(),
     };
@@ -606,7 +603,7 @@ fn build_cst_from_pair(pair: Pair<Rule>) -> SutraCstNode {
 }
 
 fn build_quote(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
-    let src_arc = crate::diagnostics::to_error_source(source);
+    let src_arc = to_error_source(source);
     let span = get_span(&pair);
     let quoted_expr = build_expr(
         pair.clone().into_inner().next().ok_or_else(|| {
@@ -621,7 +618,7 @@ fn build_quote(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
 }
 
 fn build_define_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
-    let src_arc = crate::diagnostics::to_error_source(source);
+    let src_arc = to_error_source(source);
     let span = get_span(&pair);
     let mut inner = pair.clone().into_inner();
     let param_list = inner.next().ok_or_else(|| {
@@ -662,7 +659,7 @@ fn build_define_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErr
             span
         )
     })?.clone();
-    let actual_params = crate::ast::ParamList {
+    let actual_params = ParamList {
         required: required[1..].to_vec(),
         rest,
         span: param_span,
@@ -689,7 +686,7 @@ fn build_define_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErr
 }
 
 fn build_lambda_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
-    let src_arc = crate::diagnostics::to_error_source(source);
+    let src_arc = to_error_source(source);
     let span = get_span(&pair);
     let mut inner = pair.clone().into_inner();
     let param_list = inner.next().ok_or_else(|| {
@@ -732,13 +729,13 @@ fn build_lambda_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErr
     })?;
     let body = build_expr(body, source)?;
     Ok(Spanned {
-        value: crate::ast::Expr::List(vec![
+        value: Expr::List(vec![
             Spanned {
                 value: Expr::Symbol("lambda".to_string(), span).into(),
                 span,
             },
             Spanned {
-                value: Expr::ParamList(crate::ast::ParamList {
+                value: Expr::ParamList(ParamList {
                     required,
                     rest,
                     span: param_span,
@@ -754,7 +751,7 @@ fn build_lambda_form(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErr
 }
 
 fn build_spread_arg(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
-    let src_arc = crate::diagnostics::to_error_source(source);
+    let src_arc = to_error_source(source);
     let span = get_span(&pair);
     let symbol_expr = build_symbol(
         pair.clone().into_inner().next().ok_or_else(|| {
@@ -769,7 +766,6 @@ fn build_spread_arg(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraErro
 }
 
 fn build_list_elem(pair: Pair<Rule>, source: &str) -> Result<AstNode, SutraError> {
-    let src_arc = crate::diagnostics::to_error_source(source);
     build_expr(pair, source)
 }
 

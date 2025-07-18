@@ -3,7 +3,7 @@ use crate::ast::value::{Value, Lambda};
 use crate::atoms::{SpecialFormAtomFn};
 use crate::atoms::helpers::{validate_special_form_arity, validate_special_form_min_arity};
 use crate::runtime::eval::{evaluate_ast_node, evaluate_condition_as_bool};
-use crate::runtime::world::World;
+use crate::World;
 use crate::SutraError;
 use crate::err_msg;
 use std::rc::Rc;

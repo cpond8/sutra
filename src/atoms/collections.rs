@@ -13,7 +13,7 @@
 //! - **Immutable Operations**: Pure functions where possible
 //! - **Mutable Operations**: World-state operations for list manipulation
 
-use crate::ast::value::Value;
+use crate::{Value, AtomRegistry};
 use crate::atoms::{PureAtomFn, StatefulAtomFn};
 use crate::atoms::helpers::{validate_unary_arity, validate_binary_arity, validate_even_arity};
 use crate::err_msg;
@@ -341,7 +341,7 @@ pub const ATOM_CORE_MAP: PureAtomFn = |args| {
 // ============================================================================
 
 /// Registers all collection atoms with the given registry.
-pub fn register_collection_atoms(registry: &mut crate::atoms::AtomRegistry) {
+pub fn register_collection_atoms(registry: &mut AtomRegistry) {
     // List operations
     registry.register("list", crate::atoms::Atom::Pure(ATOM_LIST));
     registry.register("len", crate::atoms::Atom::Pure(ATOM_LEN));

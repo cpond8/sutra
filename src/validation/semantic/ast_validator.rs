@@ -1,6 +1,6 @@
+use crate::{MacroRegistry, AtomRegistry, MacroDefinition};
+use crate::MacroTemplate;
 use crate::ast::{AstNode, Expr};
-use crate::macros::MacroRegistry;
-use crate::atoms::AtomRegistry;
 use crate::validation::grammar::{ValidationResult, ValidationReporter};
 
 /// Validates AST nodes for semantic correctness
@@ -77,7 +77,7 @@ impl AstValidator {
         }
 
         if let Some(macro_def) = macros.lookup(name) {
-            if let crate::macros::MacroDefinition::Template(template) = macro_def {
+            if let MacroDefinition::Template(template) = macro_def {
                 Self::validate_macro_args(name, template, nodes.len() - 1, result);
             }
         } else if !atoms.has(name) {
@@ -112,7 +112,7 @@ impl AstValidator {
 
     fn validate_macro_args(
         name: &str,
-        template: &crate::macros::MacroTemplate,
+        template: &MacroTemplate,
         actual_args: usize,
         result: &mut ValidationResult,
     ) {
