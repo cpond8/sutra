@@ -2,20 +2,17 @@
 //! This module is the main entry point for all CLI commands and orchestrates
 //! the core library functions.
 
-use crate::ast::AstNode;
+use crate::{AstNode, MacroDefinition, MacroRegistry, expand_macros_recursively, SharedOutput, SutraError, Expr, Span, Spanned};
 use crate::cli::args::{Command, SutraArgs};
 use crate::cli::output::StdoutSink;
 use crate::engine::ExecutionPipeline;
 use crate::err_ctx;
 use crate::err_msg;
-use crate::macros::{expand_macros_recursively, MacroDefinition, MacroRegistry};
 use crate::macros::{is_macro_definition, parse_macro_definition};
 use crate::runtime::world::build_canonical_macro_env;
 use crate::testing::discovery::TestDiscoverer;
-use crate::SutraError;
 use clap::Parser;
 use termcolor::WriteColor;
-use crate::atoms::SharedOutput;
 use std::io::Write;
 use crate::err_src;
 
@@ -63,8 +60,6 @@ pub fn run() {
 // DIAGNOSTICS
 // ============================================================================
 
-use crate::ast::{Expr, Span, Spanned};
-
 // ============================================================================
 // CORE UTILITIES - Fundamental operations used throughout the CLI
 // ============================================================================
@@ -83,8 +78,9 @@ fn safe_path_display(path: &std::path::Path) -> &str {
 /// Reads a file to a String, given a path.
 fn read_file_to_string(path: &std::path::Path) -> Result<String, SutraError> {
     let filename = path_to_str(path)?;
+    let src_arc = crate::diagnostics::to_error_source(filename);
     std::fs::read_to_string(filename)
-        .map_err(|e| err_ctx!(Internal, "Failed to read file: {}", e.to_string()))
+        .map_err(|e| err_ctx!(Internal, format!("Failed to read file: {}", e.to_string()), &src_arc, crate::ast::Span::default(), "Check that the file exists and is readable."))
 }
 
 // ============================================================================
@@ -255,9 +251,17 @@ fn register_tests_from_files(
 
     for file_path in test_files {
         let file_display = file_path.display().to_string();
-        let (registered, failed, errors) = register_tests_from_single_file(file_path, &file_display, &mut registration_errors);
+        let (registered, failed, errors) = register_tests_from_single_file(file_path, &file_display);
+        for (idx, e) in errors.into_iter().enumerate() {
+            let label = if idx == 0 {
+                format!("{file_display} (file-level)")
+            } else {
+                format!("{} (test #{} )", file_display, idx)
+            };
+            registration_errors.push((label, e));
+        }
         tests_per_file.insert(file_display.clone(), registered);
-        print_success_message(&file_display, registered, failed, &errors, error_log);
+        print_success_message(&file_display, registered, failed, &registration_errors, error_log);
         // Warn if no tests were registered from this file
         if registered == 0 {
             eprintln!("[Warning] No tests registered from file: {file_display}. This may indicate a parse error or invalid test forms.");
@@ -271,23 +275,20 @@ fn register_tests_from_files(
 fn register_tests_from_single_file(
     file_path: &std::path::Path,
     file_display: &str,
-    registration_errors: &mut Vec<(String, SutraError)>,
 ) -> (usize, usize, Vec<SutraError>) {
     let test_forms = match TestDiscoverer::extract_tests_from_file(file_path) {
         Ok(forms) => forms,
         Err(e) => {
-            registration_errors.push((format!("{file_display} (file-level)"), e.clone()));
             return (0, 0, vec![e]);
         }
     };
 
     let mut registered = 0;
     let mut failed_tests = Vec::new();
-    for (test_idx, test_form) in test_forms.iter().enumerate() {
-        match register_single_test(test_form, test_idx, file_display) {
+    for (test_idx, test_form) in test_forms.into_iter().enumerate() {
+        match register_single_test(&test_form, test_idx, file_display) {
             Ok(_) => registered += 1,
             Err(e) => {
-                registration_errors.push((format!("{} (test #{} )", file_display, test_idx + 1), e.clone()));
                 failed_tests.push(e);
             }
         }
@@ -421,15 +422,15 @@ fn print_test_summary(summary: &TestSummary) {
 }
 
 /// Prints a success message for test registration.
-fn print_success_message(file_display: &str, registered: usize, failed: usize, errors: &[SutraError], error_log: &mut Option<std::fs::File>) {
+fn print_success_message(file_display: &str, registered: usize, failed: usize, errors: &[RegistrationError], error_log: &mut Option<std::fs::File>) {
     use termcolor::{Color, ColorSpec, WriteColor};
 
     let mut stdout = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
     if failed > 0 {
         let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Yellow)).set_bold(true));
         let _ = writeln!(stdout, "[WARNING] Registered {registered} test(s), {failed} failed in file: {file_display}");
-        for error in errors {
-            let _ = writeln!(stdout, "[WARNING] Test registration error in {file_display}: {error}");
+        for (label, error) in errors {
+            let _ = writeln!(stdout, "[WARNING] Test registration error in {label}: {error}");
         }
         let _ = stdout.reset();
     } else if registered == 0 {
@@ -446,8 +447,8 @@ fn print_success_message(file_display: &str, registered: usize, failed: usize, e
     if let Some(log) = error_log.as_mut() {
         if failed > 0 {
             let _ = writeln!(log, "[WARNING] Registered {registered} test(s), {failed} failed in file: {file_display}");
-            for error in errors {
-                let _ = writeln!(log, "[WARNING] Test registration error in {file_display}: {error}");
+            for (label, error) in errors {
+                let _ = writeln!(log, "[WARNING] Test registration error in {label}: {error}");
             }
         } else if registered == 0 {
             let _ = writeln!(log, "[WARNING] Registered 0 test(s) from file: {file_display}");
@@ -511,8 +512,9 @@ fn handle_validate() -> Result<(), SutraError> {
     use crate::validation::grammar::validate_grammar;
 
     let grammar_path = "src/syntax/grammar.pest";
+    let src_arc = crate::diagnostics::to_error_source(grammar_path);
     let validation_result = validate_grammar(grammar_path)
-        .map_err(|e| err_ctx!(Internal, "Failed to validate grammar: {}", e.to_string()))?;
+        .map_err(|e| err_ctx!(Internal, format!("Failed to validate grammar: {}", e.to_string()), &src_arc, crate::ast::Span::default(), "Check the grammar file for syntax errors or missing rules."))?;
 
     // Early return on validation failure
     if !validation_result.is_valid() {
@@ -532,8 +534,9 @@ fn handle_validate_grammar() -> Result<(), SutraError> {
     use crate::validation::grammar::validate_grammar;
 
     let grammar_path = "src/syntax/grammar.pest";
+    let src_arc = crate::diagnostics::to_error_source(grammar_path);
     let validation_result = validate_grammar(grammar_path)
-        .map_err(|e| err_ctx!(Internal, "Failed to validate grammar: {}", e.to_string()))?;
+        .map_err(|e| err_ctx!(Internal, format!("Failed to validate grammar: {}", e.to_string()), &src_arc, crate::ast::Span::default(), "Check the grammar file for syntax errors or missing rules."))?;
 
     // Early return on validation failure
     if !validation_result.is_valid() {
@@ -553,17 +556,18 @@ fn handle_validation_failure(grammar_path: &str, validation_result: &crate::vali
     use std::fs;
 
     let grammar_source = fs::read_to_string(grammar_path).unwrap_or_default();
-    let mut error = err_ctx!(Validation, "Grammar validation failed", grammar_source);
+    let src_arc = crate::diagnostics::to_error_source(grammar_path);
+    let mut error = err_ctx!(Validation, "Grammar validation failed", &src_arc, crate::ast::Span::default(), "Check the grammar file for syntax errors or missing rules.");
     for err in &validation_result.errors {
         // Attach each error as help (miette will show all help messages)
         error = match error {
-            SutraError::Validation { message, mut ctx } => {
+            SutraError::Validation { message, mut ctx, source } => {
                 let help = ctx.help.get_or_insert(String::new());
                 if !help.is_empty() {
                     help.push('\n');
                 }
                 help.push_str(&format!("• {err}"));
-                SutraError::Validation { message, ctx }
+                SutraError::Validation { message, ctx, source }
             },
             _ => error,
         };

@@ -58,82 +58,107 @@ use miette::{Diagnostic, NamedSource};
 use thiserror::Error;
 use crate::ast::Span;
 
-/// Encapsulates all diagnostic context for a Sutra error, including optional source, span, and help message.
-#[derive(Debug, Clone, Default)]
+// Type aliases for clarity and brevity
+pub type SourceArc = Arc<NamedSource<String>>;
+
+/// A single additional label for multi-span diagnostics.
+#[derive(Debug)]
+pub struct RelatedLabel {
+    pub source: SourceArc,
+    pub span: Span,
+    pub label: String,
+}
+
+/// Minimal, composable error context for diagnostics.
+#[derive(Debug, Default)]
 pub struct ErrorContext {
-    /// Optional source code for error highlighting.
-    pub source: Option<Arc<NamedSource<String>>>,
-    /// Optional raw source text for direct access (for error reporting).
-    pub source_text: Option<Arc<String>>,
-    /// Optional span within the source for precise error location.
+    /// The primary source for this error (if any).
+    pub source: Option<SourceArc>,
+    /// The primary span for this error (if any).
     pub span: Option<Span>,
-    /// Optional help message for user guidance.
+    /// An optional help message.
     pub help: Option<String>,
+    /// Additional labeled spans for multi-label diagnostics.
+    pub related: Vec<RelatedLabel>,
 }
 
 impl ErrorContext {
     /// Returns an empty error context (no source, span, or help).
     pub fn none() -> Self {
-        Self::default()
+        Self { source: None, span: None, help: None, related: vec![] }
     }
 
     /// Creates a context with only a source.
-    pub fn with_source(source: Arc<NamedSource<String>>) -> Self {
-        Self { source: Some(source), source_text: None, ..Default::default() }
+    pub fn with_source(source: SourceArc) -> Self {
+        Self { source: Some(source), span: None, help: None, related: vec![] }
     }
 
     /// Creates a context with only a span.
     pub fn with_span(span: Span) -> Self {
-        Self { span: Some(span), source_text: None, ..Default::default() }
+        Self { source: None, span: Some(span), help: None, related: vec![] }
     }
 
     /// Creates a context with both source and span.
-    pub fn with_source_and_span(source: Arc<NamedSource<String>>, span: Span) -> Self {
-        Self { source: Some(source), span: Some(span), source_text: None, ..Default::default() }
+    pub fn with_source_and_span(source: SourceArc, span: Span) -> Self {
+        Self { source: Some(source), span: Some(span), help: None, related: vec![] }
     }
 
     /// Creates a context with source, span, and help message.
-    pub fn with_all(source: Arc<NamedSource<String>>, span: Span, help: String) -> Self {
-        Self { source: Some(source), span: Some(span), help: Some(help), source_text: None }
+    pub fn with_all(source: SourceArc, span: Span, help: String) -> Self {
+        Self { source: Some(source), span: Some(span), help: Some(help), related: vec![] }
     }
 }
 
-/// Unified error type for all Sutra engine failure modes.
-#[derive(Debug, Error, Clone)]
+/// Unified error type for all Sutra engine failure modes, supporting error chaining and multi-label diagnostics.
+#[derive(Debug, Error)]
 pub enum SutraError {
     #[error("Parse error: {message}")]
     Parse {
         message: String,
         ctx: ErrorContext,
+        #[source]
+        source: Option<Box<dyn std::error::Error + Send + Sync + 'static>>,
     },
     #[error("Validation error: {message}")]
     Validation {
         message: String,
         ctx: ErrorContext,
+        #[source]
+        source: Option<Box<dyn std::error::Error + Send + Sync + 'static>>,
     },
     #[error("Evaluation error: {message}")]
     Eval {
         message: String,
         ctx: ErrorContext,
+        #[source]
+        source: Option<Box<dyn std::error::Error + Send + Sync + 'static>>,
     },
     #[error("Type error: {message}")]
     TypeError {
         message: String,
         ctx: ErrorContext,
+        #[source]
+        source: Option<Box<dyn std::error::Error + Send + Sync + 'static>>,
     },
     #[error("Division by zero")]
     DivisionByZero {
         ctx: ErrorContext,
+        #[source]
+        source: Option<Box<dyn std::error::Error + Send + Sync + 'static>>,
     },
     #[error("Internal error: {message}")]
     Internal {
         message: String,
         ctx: ErrorContext,
+        #[source]
+        source: Option<Box<dyn std::error::Error + Send + Sync + 'static>>,
     },
     #[error("Test failure: {message}")]
     TestFailure {
         message: String,
         ctx: ErrorContext,
+        #[source]
+        source: Option<Box<dyn std::error::Error + Send + Sync + 'static>>,
     },
 }
 
@@ -144,7 +169,7 @@ impl SutraError {
             SutraError::Validation { ctx, .. } => ctx,
             SutraError::Eval { ctx, .. } => ctx,
             SutraError::TypeError { ctx, .. } => ctx,
-            SutraError::DivisionByZero { ctx } => ctx,
+            SutraError::DivisionByZero { ctx, .. } => ctx,
             SutraError::Internal { ctx, .. } => ctx,
             SutraError::TestFailure { ctx, .. } => ctx,
         }
@@ -175,6 +200,8 @@ impl Diagnostic for SutraError {
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
         let ctx = self.get_ctx();
+        let mut labels = Vec::new();
+        // Primary label
         if let Some(span) = ctx.span {
             let text = match self {
                 SutraError::Parse { message, .. } => Some(message.clone()),
@@ -186,15 +213,23 @@ impl Diagnostic for SutraError {
                 SutraError::TestFailure { message, .. } => Some(message.clone()),
             };
             let len = if span.end > span.start { span.end - span.start } else { 1 };
-            let labels = vec![miette::LabeledSpan::new(text, span.start, len)];
-            return Some(Box::new(labels.into_iter()));
+            labels.push(miette::LabeledSpan::new(text, span.start, len));
         }
-        None
+        // Related labels
+        for rel in &ctx.related {
+            let len = if rel.span.end > rel.span.start { rel.span.end - rel.span.start } else { 1 };
+            labels.push(miette::LabeledSpan::new(Some(rel.label.clone()), rel.span.start, len));
+        }
+        if labels.is_empty() {
+            None
+        } else {
+            Some(Box::new(labels.into_iter()))
+        }
     }
 }
 
 /// Converts a source string into an `Arc<NamedSource<String>>` for use in error contexts.
-pub fn to_error_source<S: AsRef<str>>(source: S) -> Arc<NamedSource<String>> {
+pub fn to_error_source<S: AsRef<str>>(source: S) -> SourceArc {
     Arc::new(NamedSource::new("source", source.as_ref().to_string()))
 }
 
@@ -208,48 +243,69 @@ macro_rules! err_msg {
     ($variant:ident, $msg:expr, $arg1:expr, $arg2:expr, $arg3:expr, $($arg:expr),*) => {
         $crate::SutraError::$variant {
             message: format!($msg, $arg1, $arg2, $arg3, $($arg),*),
-            ctx: $crate::diagnostics::ErrorContext::none(),
+            ctx: $crate::diagnostics::ErrorContext { source: None, span: None, help: None, related: vec![] },
+            source: None,
         }
     };
     // Message with exactly 2 format arguments
     ($variant:ident, $msg:expr, $arg1:expr, $arg2:expr) => {
         $crate::SutraError::$variant {
             message: format!($msg, $arg1, $arg2),
-            ctx: $crate::diagnostics::ErrorContext::none(),
+            ctx: $crate::diagnostics::ErrorContext { source: None, span: None, help: None, related: vec![] },
+            source: None,
         }
     };
     // Message with single format argument
     ($variant:ident, $msg:expr, $arg:expr) => {
         $crate::SutraError::$variant {
             message: format!($msg, $arg),
-            ctx: $crate::diagnostics::ErrorContext::none(),
+            ctx: $crate::diagnostics::ErrorContext { source: None, span: None, help: None, related: vec![] },
+            source: None,
         }
     };
     // Message only
     ($variant:ident, $msg:expr) => {
         $crate::SutraError::$variant {
             message: format!("{}", $msg),
-            ctx: $crate::diagnostics::ErrorContext::none(),
+            ctx: $crate::diagnostics::ErrorContext { source: None, span: None, help: None, related: vec![] },
+            source: None,
         }
     };
 }
 
-/// Constructs a SutraError variant with a formatted message and context (source, span, help, or context struct).
+/// Constructs a SutraError variant with a formatted message and context (source, span, help, related labels, or context struct).
 ///
-/// Use this macro for errors that require string-based source, span, and optional help context.
+/// Use this macro for errors that require string-based source, span, optional help context, and optional related labels.
+///
+/// Example with related labels:
+///   err_ctx!(Validation, "Invalid input", src, span, help, related_labels)
 ///
 #[macro_export]
 macro_rules! err_ctx {
+    // Message, src, span, help, related
+    ($variant:ident, $msg:expr, $src:expr, $span:expr, $help:expr, $related:expr) => {
+        $crate::SutraError::$variant {
+            message: $msg.to_string(),
+            ctx: $crate::diagnostics::ErrorContext {
+                source: Some($crate::diagnostics::SourceArc::clone($src)),
+                span: Some($span),
+                help: Some(format!("{}", $help)),
+                related: $related,
+            },
+            source: None,
+        }
+    };
     // Message, src, span, help
     ($variant:ident, $msg:expr, $src:expr, $span:expr, $help:expr) => {
         $crate::SutraError::$variant {
             message: $msg.to_string(),
             ctx: $crate::diagnostics::ErrorContext {
-                source: Some($crate::diagnostics::to_error_source($src)),
+                source: Some($crate::diagnostics::SourceArc::clone($src)),
                 span: Some($span),
                 help: Some(format!("{}", $help)),
-                source_text: None,
+                related: vec![],
             },
+            source: None,
         }
     };
     // Message, src, span
@@ -257,11 +313,12 @@ macro_rules! err_ctx {
         $crate::SutraError::$variant {
             message: $msg.to_string(),
             ctx: $crate::diagnostics::ErrorContext {
-                source: Some($crate::diagnostics::to_error_source($src)),
+                source: Some($crate::diagnostics::SourceArc::clone($src)),
                 span: Some($span),
                 help: None,
-                source_text: None,
+                related: vec![],
             },
+            source: None,
         }
     };
     // Message, src, help (uses Span::default())
@@ -269,11 +326,12 @@ macro_rules! err_ctx {
         $crate::SutraError::$variant {
             message: $msg.to_string(),
             ctx: $crate::diagnostics::ErrorContext {
-                source: Some($crate::diagnostics::to_error_source($src)),
+                source: Some($crate::diagnostics::SourceArc::clone($src)),
                 span: Some($crate::ast::Span::default()),
                 help: Some(format!("{}", $help)),
-                source_text: None,
+                related: vec![],
             },
+            source: None,
         }
     };
     // Message, src
@@ -281,18 +339,32 @@ macro_rules! err_ctx {
         $crate::SutraError::$variant {
             message: $msg.to_string(),
             ctx: $crate::diagnostics::ErrorContext {
-                source: Some($crate::diagnostics::to_error_source($src)),
+                source: Some($crate::diagnostics::SourceArc::clone($src)),
                 span: None,
                 help: None,
-                source_text: None,
+                related: vec![],
             },
+            source: None,
         }
     };
 }
 
-/// Constructs a SutraError variant with a pre-built `NamedSource`.
+/// Constructs a SutraError variant with a pre-built `NamedSource` and optional related labels.
 #[macro_export]
 macro_rules! err_src {
+    // Message, pre-built source, span, related
+    ($variant:ident, $msg:expr, $source:expr, $span:expr, $related:expr) => {
+        $crate::SutraError::$variant {
+            message: $msg.to_string(),
+            ctx: $crate::diagnostics::ErrorContext {
+                source: Some(std::sync::Arc::clone($source)),
+                span: Some($span),
+                help: None,
+                related: $related,
+            },
+            source: None,
+        }
+    };
     // Message, pre-built source, span
     ($variant:ident, $msg:expr, $source:expr, $span:expr) => {
         $crate::SutraError::$variant {
@@ -301,8 +373,80 @@ macro_rules! err_src {
                 source: Some(std::sync::Arc::clone($source)),
                 span: Some($span),
                 help: None,
-                source_text: None,
+                related: vec![],
             },
+            source: None,
         }
     };
+}
+
+#[cfg(test)]
+mod diagnostics_tests {
+    use super::*;
+    use miette::{Report, NamedSource, Diagnostic};
+    use std::sync::Arc;
+
+    #[test]
+    fn test_multilabel_diagnostics() {
+        let src1 = Arc::new(NamedSource::new("file1.sutra", "abc def ghi".to_string()));
+        let src2 = Arc::new(NamedSource::new("file2.sutra", "xyz 123 456".to_string()));
+        let span1 = Span { start: 0, end: 3 };
+        let span2 = Span { start: 4, end: 7 };
+        let related = vec![
+            RelatedLabel { source: src1.clone(), span: span1, label: "first label".to_string() },
+            RelatedLabel { source: src2.clone(), span: span2, label: "second label".to_string() },
+        ];
+        let ctx = ErrorContext {
+            source: Some(src1.clone()),
+            span: Some(span1),
+            help: Some("This is a help message.".to_string()),
+            related,
+        };
+        let err = SutraError::Validation { message: "Validation failed".to_string(), ctx, source: None };
+        let report = Report::new(err);
+        let output = format!("{report:?}");
+        assert!(output.contains("first label"));
+        assert!(output.contains("second label"));
+        assert!(output.contains("This is a help message."));
+    }
+
+    #[test]
+    fn test_error_chaining() {
+        let src = Arc::new(NamedSource::new("file.sutra", "abc def".to_string()));
+        let span = Span { start: 0, end: 3 };
+        let ctx1 = ErrorContext { source: Some(src.clone()), span: Some(span), help: None, related: vec![] };
+        let cause = SutraError::Parse { message: "Parse error".to_string(), ctx: ctx1, source: None };
+        let ctx2 = ErrorContext { source: Some(src.clone()), span: Some(span), help: Some("Top-level help".to_string()), related: vec![] };
+        let err = SutraError::Validation { message: "Validation failed".to_string(), ctx: ctx2, source: Some(Box::new(cause)) };
+        let report = Report::new(err);
+        let output = format!("{report:?}");
+        assert!(output.contains("Validation failed"));
+        assert!(output.contains("Parse error"));
+        assert!(output.contains("Top-level help"));
+    }
+
+    #[test]
+    fn test_edge_cases() {
+        // No help, no related, no cause
+        let src = Arc::new(NamedSource::new("file.sutra", "abc def".to_string()));
+        let span = Span { start: 0, end: 3 };
+        let ctx = ErrorContext { source: Some(src.clone()), span: Some(span), help: None, related: vec![] };
+        let err = SutraError::Eval { message: "Eval error".to_string(), ctx, source: None };
+        let report = Report::new(err);
+        let output = format!("{report:?}");
+        assert!(output.contains("Eval error"));
+        // With help, no related, no cause
+        let ctx = ErrorContext { source: Some(src.clone()), span: Some(span), help: Some("Help!".to_string()), related: vec![] };
+        let err = SutraError::Eval { message: "Eval error".to_string(), ctx, source: None };
+        let report = Report::new(err);
+        let output = format!("{report:?}");
+        assert!(output.contains("Help!"));
+        // With related, no help, no cause
+        let related = vec![RelatedLabel { source: src.clone(), span, label: "label".to_string() }];
+        let ctx = ErrorContext { source: Some(src.clone()), span: Some(span), help: None, related };
+        let err = SutraError::Eval { message: "Eval error".to_string(), ctx, source: None };
+        let report = Report::new(err);
+        let output = format!("{report:?}");
+        assert!(output.contains("label"));
+    }
 }

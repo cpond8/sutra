@@ -129,3 +129,18 @@ All errors use canonical codes (e.g., `ParseError`, `ValidationError`, `TypeErro
 Sutra includes an automated Rust regression test (`cli_regression.rs`) that ensures all CLI errors are rendered as miette diagnostics. This test runs the CLI with deliberately invalid input and asserts that the output contains miette-formatted diagnostics (error codes, labels, help, and source context). This serves as a quality gate, preventing regressions in user-facing error reporting and guaranteeing actionable, context-rich feedback for all CLI errors.
 
 ---
+
+## Advanced Diagnostics: Multi-Label and Error Chaining
+
+Sutra's error system now supports:
+- **Multi-label diagnostics:** Errors can highlight multiple locations (spans) across one or more source files, with custom labels for each.
+- **Error chaining:** Errors can wrap a cause (another error), and the full chain is rendered in diagnostics output.
+- **Actionable help:** Errors can include detailed help messages, and help is aggregated from all levels of the error chain.
+
+These features are tested in:
+- **Rust unit tests:** See `src/diagnostics.rs` for direct tests of multi-label, chaining, and help rendering using `miette::Report`.
+- **CLI regression test:** `tests/cli_regression.rs` ensures that all CLI errors are rendered as miette diagnostics, including error codes, labels, help, and source context.
+
+**Edge cases** (errors with/without help, with/without cause, with/without labels) are also covered in the diagnostics unit tests.
+
+---

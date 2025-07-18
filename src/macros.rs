@@ -458,7 +458,8 @@ impl MacroRegistry {
     /// ```
     pub fn register_or_error(&mut self, name: &str, func: MacroFunction) -> Result<(), crate::SutraError> {
         if self.macros.contains_key(name) {
-            return Err(err_ctx!(Validation, "Macro '{}' is already registered", name));
+            let src_arc = crate::diagnostics::to_error_source(name);
+            return Err(err_ctx!(Validation, format!("Macro '{}' is already registered", name), &src_arc, crate::ast::Span::default(), "Macro already registered"));
         }
         self.macros.insert(name.to_string(), MacroDefinition::Fn(func));
         Ok(())
@@ -526,7 +527,8 @@ impl MacroRegistry {
         template: MacroTemplate,
     ) -> Result<(), crate::SutraError> {
         if self.macros.contains_key(name) {
-            return Err(err_ctx!(Validation, "Macro '{}' is already registered", name));
+            let src_arc = crate::diagnostics::to_error_source(name);
+            return Err(err_ctx!(Validation, format!("Macro '{}' is already registered", name), &src_arc, crate::ast::Span::default(), "Macro already registered"));
         }
         self.macros
             .insert(name.to_string(), MacroDefinition::Template(template));

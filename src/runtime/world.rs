@@ -281,7 +281,8 @@ fn load_and_process_user_macros(path: &str) -> Result<StdHashMap<String, MacroDe
     let mut user_macros = StdHashMap::new();
     for (name, template) in macros {
         if user_macros.contains_key(&name) {
-            return Err(err_ctx!(Validation, "Duplicate macro name '{}' in standard macro library.", name));
+            let src_arc = crate::diagnostics::to_error_source(&name);
+            return Err(err_ctx!(Validation, format!("Duplicate macro name '{}' in standard macro library.", name), &src_arc, crate::ast::Span::default(), "Duplicate macro name in standard macro library."));
         }
         user_macros.insert(name, MacroDefinition::Template(template));
     }

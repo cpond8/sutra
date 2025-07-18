@@ -96,8 +96,9 @@ fn register_test_atom(
 
     let source_file = match metadata.get(":source-file") {
         Some(Value::String(file_path)) => {
+            let src_arc = crate::diagnostics::to_error_source(file_path);
             let source = std::fs::read_to_string(file_path)
-                .map_err(|e| err_ctx!(Internal, "Failed to read source file: {}", e.to_string()))?;
+                .map_err(|e| err_ctx!(Internal, format!("Failed to read source file: {}", e.to_string()), &src_arc, crate::ast::Span::default(), "Check that the test source file exists and is readable."))?;
             Arc::new(NamedSource::new(file_path.clone(), source))
         }
         _ => {

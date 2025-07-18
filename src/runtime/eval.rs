@@ -580,7 +580,7 @@ fn evaluate_quote(
         Expr::Define { .. } => Err(err_ctx!(
             Eval,
             "Cannot quote define expressions",
-            context.source.as_ref().name(),
+            &context.source,
             inner.span
         )),
         Expr::ParamList(_) => Err(err_src!(

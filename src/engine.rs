@@ -1,4 +1,5 @@
 use crate::err_ctx;
+use crate::err_msg;
 use crate::macros::{parse_macro_definition, expand_macros_recursively, MacroDefinition, is_macro_definition};
 use crate::runtime::eval::evaluate;
 use crate::runtime::world::build_canonical_macro_env;
@@ -39,6 +40,7 @@ impl ExecutionPipeline {
         source: &str,
         output: SharedOutput,
     ) -> Result<(), SutraError> {
+        let src_arc = crate::diagnostics::to_error_source(source);
         // Phase 1: Parse the source into AST nodes
         let ast_nodes = crate::syntax::parser::parse(source)?;
 
@@ -54,7 +56,7 @@ impl ExecutionPipeline {
         for macro_expr in macro_defs {
             let (name, template) = parse_macro_definition(&macro_expr)?;
             if env.user_macros.contains_key(&name) {
-                return Err(err_ctx!(Validation, "Duplicate macro name '{}'", name));
+                return Err(err_msg!(Validation, "Duplicate macro name '{}'", name));
             }
             env.user_macros
                 .insert(name.clone(), MacroDefinition::Template(template));
@@ -85,8 +87,9 @@ impl ExecutionPipeline {
                 return Err(err_ctx!(
                     Validation,
                     format!("Semantic validation failed:\n{}", error_message),
-                    source,
-                    expanded.span
+                    &src_arc,
+                    expanded.span,
+                    "Check for undefined symbols, type errors, or invalid macro usage in your code."
                 ));
             }
         }
@@ -162,7 +165,7 @@ impl ExecutionPipeline {
         for macro_expr in macro_defs {
             let (name, template) = parse_macro_definition(&macro_expr)?;
             if env.user_macros.contains_key(&name) {
-                return Err(err_ctx!(Validation, "Duplicate macro name '{}'", name));
+                return Err(err_msg!(Validation, "Duplicate macro name '{}'", name));
             }
             env.user_macros.insert(name.clone(), MacroDefinition::Template(template));
         }
@@ -190,11 +193,13 @@ impl ExecutionPipeline {
 
             if !validation_result.is_valid() {
                 let errors = validation_result.errors.join("\n");
+                let src_arc = crate::diagnostics::to_error_source("");
                 return Err(err_ctx!(
                     Validation,
                     format!("Semantic validation failed:\n{}", errors),
-                    "", // No source available for AST execution
-                    expanded.span
+                    &src_arc,
+                    expanded.span,
+                    "Check for undefined symbols, type errors, or invalid macro usage in your code."
                 ));
             }
         }

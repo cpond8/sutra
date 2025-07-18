@@ -35,8 +35,10 @@ pub fn parse_macros_from_source(source: &str) -> Result<Vec<(String, MacroTempla
 pub fn load_macros_from_file<P: AsRef<Path>>(
     path: P,
 ) -> Result<Vec<(String, MacroTemplate)>, SutraError> {
-    let source = fs::read_to_string(path)
-        .map_err(|e| err_ctx!(Internal, "Failed to read file: {}", e.to_string()))?;
+    let path_str = path.as_ref().to_string_lossy();
+    let src_arc = crate::diagnostics::to_error_source(&*path_str);
+    let source = fs::read_to_string(&path)
+        .map_err(|e| err_ctx!(Internal, format!("Failed to read file: {}", e.to_string()), &src_arc, crate::ast::Span::default(), "Check that the macro file exists and is readable."))?;
     parse_macros_from_source(&source)
 }
 
@@ -50,7 +52,7 @@ pub fn check_arity(
 ) -> Result<(), SutraError> {
     let required_len = params.required.len();
     let has_variadic = params.rest.is_some();
-
+    let src_arc = crate::diagnostics::to_error_source(macro_name);
     // Too few arguments
     if args_len < required_len {
         return Err(err_ctx!(
@@ -59,12 +61,11 @@ pub fn check_arity(
                 "Macro arity error: expected at least {} arguments, got {}",
                 required_len, args_len
             ),
-            macro_name,
+            &src_arc,
             *span,
             "Too few arguments for macro"
         ));
     }
-
     // Too many arguments for non-variadic macro
     if args_len > required_len && !has_variadic {
         return Err(err_ctx!(
@@ -73,13 +74,11 @@ pub fn check_arity(
                 "Macro arity error: expected exactly {} arguments, got {}",
                 required_len, args_len
             ),
-            macro_name,
+            &src_arc,
             *span,
             "Too many arguments for macro"
         ));
     }
-
-    // Arity is correct
     Ok(())
 }
 
@@ -102,18 +101,17 @@ fn try_parse_macro_form(
     else {
         return Ok(None);
     };
-
+    let src_arc = crate::diagnostics::to_error_source(name);
     // Check for duplicate macro names
     if !names_seen.insert(name.clone()) {
         return Err(err_ctx!(
             Validation,
             format!("Duplicate macro name '{}'", name),
-            name.clone(),
+            &src_arc,
             *span,
             "Duplicate macro name"
         ));
     }
-
     // Attempt to construct the macro template
     let template = MacroTemplate::new(params.clone(), body.clone())?;
     Ok(Some((name.clone(), template)))

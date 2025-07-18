@@ -10,12 +10,9 @@
 //! - **Consistency**: Standardized error messages and evaluation patterns
 //! - **Safety**: All functions handle ownership and borrowing correctly
 
-use crate::ast::value::Value;
-use crate::ast::AstNode;
-use crate::ast::{Expr, Span, Spanned};
+use crate::{AstNode, Path, Expr, Span, Spanned, SutraError, Value};
 use crate::err_msg;
 use crate::runtime::eval::{evaluate_ast_node, EvaluationContext};
-use crate::SutraError;
 
 // ============================================================================
 // TYPE ALIASES AND CORE TYPES
@@ -53,8 +50,8 @@ impl ExtractValue<bool> for Value {
     }
 }
 
-impl ExtractValue<crate::runtime::world::Path> for Value {
-    fn extract(&self) -> Result<crate::runtime::world::Path, SutraError> {
+impl ExtractValue<Path> for Value {
+    fn extract(&self) -> Result<Path, SutraError> {
         match self {
             Value::Path(path) => Ok(path.clone()),
             _ => Err(err_msg!(TypeError, "Expected path, got {}", self.type_name())),
