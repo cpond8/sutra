@@ -1,140 +1,88 @@
-# Sutra Test Harness
+# Sutra Test Suite & Harness
 
-A sophisticated, author-focused testing framework designed for narrative game engines, built on Sutra's core principles of minimalism, compositionality, and transparency. All tests are written in the Verse language.
-
-## Philosophy
-
-The Sutra test harness embodies the engine's core design philosophy:
-
-- **Minimal but Complete**: Essential testing capabilities with zero redundancy.
-- **Transparent**: Full visibility into the compilation pipeline and diagnostic output, now powered by miette for rich, actionable diagnostics at every stage.
-- **Composable**: An extensible, homoiconic system where tests are first-class code.
-- **Author-Ergonomic**: Simple syntax for common cases, powerful features for complex scenarios.
-
-## Homoiconic Test Architecture
-
-Sutra tests are defined directly in `.sutra` source files as first-class code, not as special comments. This homoiconic approach makes tests discoverable, extensible, and easy to manipulate with the same tools used for application code. The system is built on two primary macros and a single underlying atom.
-
-1.  **`(test ...)` Macro**: The main entry point for defining a test case. It provides a clean, declarative syntax for naming a test, specifying its expectation, and providing the body to execute.
-2.  **`(expect ...)` Macro**: A flexible, multivariadic macro used within `test` to define the expected outcome(s) and annotations. Each argument is a tagged form, and the order does not matter.
-3.  **`(register-test! ...)` Atom**: The low-level primitive that the `test` macro expands into. It registers the fully-formed test case with the test harness's central registry for execution.
-
-This design ensures that all test logic and metadata are valid, parsable Sutra code, aligning the testing framework perfectly with the language's philosophy.
-
-### Defining Tests
-
-Tests are written using a clear, Lisp-style syntax that keeps test logic and expectations tightly coupled.
-
-```lisp
-; Basic success test
-(test "addition works"
-      (expect (value 10))
-      (+ 7 3))
-
-; Error expectation test
-(test "division by zero fails"
-      (expect (error division-by-zero))
-      (/ 10 0))
-
-; A skipped test
-(test "complex feature"
-      (expect (skip "waiting for macro system improvements"))
-      (complex-operation))
-```
-
-## Test Syntax Reference
-
-### Core Macros
-
-| Macro                          | Syntax                                  | Purpose                                                                 |
-| ------------------------------ | --------------------------------------- | ----------------------------------------------------------------------- |
-| `(test name expect-form body)` | `(test "my test" (expect ...) (+ 1 2))` | Defines a test case with a name, expectation, and body.                 |
-| `(expect tagged [tagged...])`  | `(expect (value 42) (tags "math"))`     | Defines the expected outcome(s) and optional configuration annotations. |
-
-### Expectation Types
-
-The `(expect ...)` macro now supports a tagged, multivariadic, order-insensitive syntax. Each argument is a tagged form, and the order does not matter. You may specify as many as you want; the harness will interpret them all.
-
-| Tag      | Purpose                         | Example                      |
-| -------- | ------------------------------- | ---------------------------- |
-| value    | Expected value                  | `(value 42)`                 |
-| error    | Expected error (code, msg, ...) | `(error type-error "msg")`   |
-| output   | Expected output                 | `(output "foo\n")`           |
-| params   | Parameterization                | `(params ((1 2 3) ...))`     |
-| skip     | Skip with reason                | `(skip "wip")`               |
-| tags     | Tagging                         | `(tags "math" "regression")` |
-| timeout  | Timeout in ms                   | `(timeout 5000)`             |
-| fixture  | Fixture setup                   | `(fixture "player_setup")`   |
-| group    | Grouping                        | `(group "math/advanced")`    |
-| snapshot | Snapshot assertion              | `(snapshot "file.txt")`      |
-
-Legacy positional forms are still supported for compatibility, but new tests should use the tagged syntax for clarity and extensibility.
+A comprehensive, author-focused testing framework for the Sutra engine, designed for maximal transparency, compositionality, and reliability. All tests are written in the Verse language, except for Rust-based CLI/integration regression tests.
 
 ---
 
-## Assertion Examples
+## Test Suite Structure
 
-### Value with Params and Tags
+- **atoms/**: Primitive operations (math, logic, comparison, string, list, etc.)
+- **macros/**: Macro expansion, assignment, and world state macros
+- **runtime/**: Control flow, consistency, and world state
+- **syntax/**: Parsing, grammar, and security
+- **io/**: Output and display atoms/macros
+- **cli_regression.rs**: Rust integration test for CLI error diagnostics
 
-```lisp
-(test "addition cases"
-      (expect
-        (value (nth @params 2))
-        (params ((1 2 3) (5 5 10) (-1 1 0)))
-        (tags "math" "parametric"))
-      (+ (nth @params 0) (nth @params 1)))
-```
+Each `.sutra` file is a suite of Verse-language tests for a specific feature or domain. `cli_regression.rs` is a Rust test that ensures CLI errors are always rendered as miette diagnostics.
 
-### Error with Message and Skip
+---
 
-```lisp
-(test "error with message"
-      (expect
-        (error type-error "expected Number")
-        (skip "waiting for macro system improvements"))
-      (+ 1 @param))
-```
+## Test Types and Coverage
 
-### Output and Timeout
+### Atoms
+- **Purpose:** Validate all primitive operations (math, logic, comparison, string, list, etc.)
+- **Examples:**
+  - `math.sutra`: Tests for `+`, `-`, `*`, `/`, `mod`, including edge cases and error handling
+  - `logic.sutra`: Tests for `not`, truthiness, and arity errors
+  - `comparison.sutra`: Tests for `eq?`, `gt?`, `lt?`, and their aliases, including type and arity errors
+  - `define.sutra`: Tests for function/variable definition, closures, variadics, and error cases
 
-```lisp
-(test "print output with timeout"
-      (expect
-        (output "hello\n")
-        (timeout 1000))
-      (print "hello"))
-```
+### Macros
+- **Purpose:** Validate macro expansion, assignment, and world state manipulation
+- **Examples:**
+  - `assignment.sutra`: Tests for `set!`, `get`, `del!`, `add`, `sub`, `inc!`, `dec!`, including error handling
 
-### Snapshot Assertion
+### Runtime
+- **Purpose:** Validate control flow, consistency, and world state
+- **Examples:**
+  - `control.sutra`: Tests for `if`, `do`, `cond`, including arity and type errors
+  - `consistency.sutra`: Ensures test and production execution paths are identical
 
-```lisp
-(test "diagnostic snapshot"
-      (expect
-        (snapshot "snapshots/math_addition.txt"))
-      (+ 1 2 3 4))
-```
+### Syntax
+- **Purpose:** Validate parsing, grammar, and security
+- **Examples:**
+  - `parsing.sutra`: Tests for numbers, booleans, strings, lists, blocks, and error cases (unclosed, invalid, etc.)
+  - `security.sutra`: Tests for path traversal and invalid path handling
 
-## Parameterized Testing
+### IO
+- **Purpose:** Validate output atoms/macros
+- **Examples:**
+  - `output.sutra`: Tests for `print` and `display`, including arity errors and output matching
 
-Run the same test logic with multiple input sets using the `(params ...)` annotation. The special variables `@param` (for single-item lists) or `(nth @params N)` give access to the data.
+### CLI Regression
+- **Purpose:** Ensure all CLI errors are rendered as miette diagnostics
+- **Implementation:**
+  - `cli_regression.rs`: Runs the CLI with invalid input and asserts that the output contains miette-formatted diagnostics (error codes, labels, help, and source context)
 
-```lisp
-(test "addition cases"
-      (expect
-        (value (nth @params 2))
-        (params ((1 2 3) (5 5 10) (-1 1 0))))
-      (+ (nth @params 0) (nth @params 1)))
+---
 
-(test "error cases"
-      (expect
-        (error type-error)
-        (params ("string" true nil)))
-      (+ 1 @param))
-```
+## Test Philosophy and Features
+
+- **Homoiconic:** All tests are valid Sutra code, not comments or metadata
+- **Composable:** Tests use macros like `(test ...)` and `(expect ...)` for clarity and extensibility
+- **Transparent:** All errors are surfaced as miette diagnostics, with full context, code, and help
+- **Automated Quality Gate:** The Rust regression test ensures no regressions in CLI error reporting
+
+---
+
+## How to Run the Test Suite
+
+- **All Verse tests:**
+  ```sh
+  cargo test
+  ```
+  This runs all `.sutra` tests via the test harness and the Rust CLI regression test.
+
+- **CLI regression only:**
+  ```sh
+  cargo test --test cli_regression
+  ```
+
+---
 
 ## Canonical Error Codes
 
-The test harness uses Sutra's canonical error codes for stable test matching. All errors are surfaced as miette diagnostics, with code, message, span, and help text where available.
+All errors use canonical codes (e.g., `ParseError`, `ValidationError`, `TypeError`, `DivisionByZero`, etc.) for stable, meaningful diagnostics. See the table below for all codes and their meanings.
 
 | Error Code               | Description                                  | Typical Use Case                    |
 | ------------------------ | -------------------------------------------- | ----------------------------------- |
@@ -148,3 +96,36 @@ The test harness uses Sutra's canonical error codes for stable test matching. Al
 | `IoError`                | File or system I/O failures                  | File read/write errors              |
 | `MalformedAstError`      | Internal AST structure errors                | Parser or AST construction bugs     |
 | `InternalParseError`     | Internal parser state errors                 | Parser implementation bugs          |
+
+---
+
+## Example Test File Structure
+
+```lisp
+(test "feature description"
+      (expect (value 42) (tags "math"))
+      (+ 40 2))
+```
+
+---
+
+## Extending the Test Suite
+
+- Add new `.sutra` files in the appropriate subdirectory for new features or bug fixes
+- Use the tagged `(expect ...)` syntax for new tests
+- For CLI or integration-level checks, add Rust tests in the top-level `tests/` directory
+
+---
+
+## Cross-References
+
+- For CLI philosophy and user experience, see the main [`README.md`](../README.md)
+- For language reference and canonical patterns, see `docs/`
+
+---
+
+## Automated CLI Regression Test
+
+Sutra includes an automated Rust regression test (`cli_regression.rs`) that ensures all CLI errors are rendered as miette diagnostics. This test runs the CLI with deliberately invalid input and asserts that the output contains miette-formatted diagnostics (error codes, labels, help, and source context). This serves as a quality gate, preventing regressions in user-facing error reporting and guaranteeing actionable, context-rich feedback for all CLI errors.
+
+---

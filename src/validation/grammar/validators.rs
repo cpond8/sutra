@@ -24,16 +24,19 @@ impl GrammarValidators {
     /// Checks for undefined rule references in the grammar.
     pub fn check_rule_references(rules: &HashMap<String, Rule>, result: &mut ValidationResult) {
         let rule_names: HashSet<_> = rules.keys().collect();
-
         for rule in rules.values() {
-            for reference in &rule.references {
-                if !rule_names.contains(reference) && !GRAMMAR_CONSTANTS.built_ins.contains(&reference.as_str()) {
-                    result.report_error(format!(
-                        "Rule '{}' references undefined rule '{}'.",
-                        rule.name,
-                        reference
-                    ));
-                }
+            Self::report_undefined_references(rule, &rule_names, result);
+        }
+    }
+
+    fn report_undefined_references(rule: &Rule, rule_names: &HashSet<&String>, result: &mut ValidationResult) {
+        for reference in &rule.references {
+            if !rule_names.contains(reference) && !GRAMMAR_CONSTANTS.built_ins.contains(&reference.as_str()) {
+                result.report_error(format!(
+                    "Rule '{}' references undefined rule '{}'.",
+                    rule.name,
+                    reference
+                ));
             }
         }
     }
@@ -41,14 +44,18 @@ impl GrammarValidators {
     /// Checks for consistency between inline patterns and references.
     pub fn check_inline_vs_reference_consistency(rules: &HashMap<String, Rule>, result: &mut ValidationResult) {
         for rule in rules.values() {
-            for pattern in &rule.inline_patterns {
-                if rule.references.contains(pattern) {
-                    result.report_warning(format!(
-                        "Rule '{}' uses '{}' as both inline pattern and reference.",
-                        rule.name,
-                        pattern
-                    ));
-                }
+            Self::report_inline_reference_overlap(rule, result);
+        }
+    }
+
+    fn report_inline_reference_overlap(rule: &Rule, result: &mut ValidationResult) {
+        for pattern in &rule.inline_patterns {
+            if rule.references.contains(pattern) {
+                result.report_warning(format!(
+                    "Rule '{}' uses '{}' as both inline pattern and reference.",
+                    rule.name,
+                    pattern
+                ));
             }
         }
     }

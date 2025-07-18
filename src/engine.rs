@@ -153,7 +153,7 @@ impl ExecutionPipeline {
     /// This is optimized for test execution where AST is already available.
     pub fn execute_ast(&self, nodes: &[AstNode]) -> Result<crate::ast::value::Value, SutraError> {
         // Partition AST nodes: macro definitions vs user code
-        let (macro_defs, user_code) = nodes.iter().cloned().partition(|expr| is_macro_definition(expr));
+        let (macro_defs, user_code) = nodes.iter().cloned().partition(is_macro_definition);
 
         // Build canonical macro environment
         let mut env = build_canonical_macro_env()?;

@@ -21,7 +21,10 @@ mod sutra_harness {
         let result = handle_test(Path::new("tests"));
         match result {
             Ok(_) => println!("All Sutra tests passed."),
-            Err(e) => panic!("Sutra test harness failed: {e}"),
+            Err(e) => {
+                eprintln!("{e:?}");
+                panic!("Sutra test harness failed");
+            },
         }
         // Do not panic; always return so all output is visible
     }

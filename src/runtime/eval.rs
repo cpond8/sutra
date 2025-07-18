@@ -327,6 +327,86 @@ fn evaluate_invalid_expr(
     ))
 }
 
+fn capture_lexical_env(lexical_env: &[HashMap<String, crate::ast::value::Value>]) -> HashMap<String, crate::ast::value::Value> {
+    let mut captured_env = std::collections::HashMap::new();
+    for frame in lexical_env {
+        for (key, value) in frame {
+            captured_env.insert(key.clone(), value.clone());
+        }
+    }
+    captured_env
+}
+
+fn handle_define_special_form(
+    flat_tail: &[AstNode],
+    span: &crate::ast::Span,
+    context: &mut EvaluationContext,
+    head: &AstNode,
+) -> Result<(Value, World), SutraError> {
+    if flat_tail.len() != 2 {
+        return Err(err_src!(
+            Eval,
+            "define expects exactly 2 arguments: (define name value) or (define (name params...) body)",
+            &context.source,
+            head.span
+        ));
+    }
+    let name_expr = &flat_tail[0];
+    let value_expr = &flat_tail[1];
+    if let Expr::ParamList(param_list) = &*name_expr.value {
+        // Function definition
+        let name = param_list.required.first().cloned().ok_or_else(|| {
+            err_src!(
+                Eval,
+                "define: function name missing in parameter list",
+                &context.source,
+                name_expr.span
+            )
+        })?;
+        let actual_params = crate::ast::ParamList {
+            required: param_list.required[1..].to_vec(),
+            rest: param_list.rest.clone(),
+            span: param_list.span,
+        };
+        let define_expr = AstNode {
+            value: std::sync::Arc::new(Expr::Define {
+                name,
+                params: actual_params,
+                body: Box::new(value_expr.clone()),
+                span: *span,
+            }),
+            span: *span,
+        };
+        return evaluate_ast_node(&define_expr, context);
+    }
+    // Variable definition: (define name value)
+    let name = match &*name_expr.value {
+        Expr::Symbol(s, _) => s.clone(),
+        _ => {
+            return Err(err_src!(
+                Eval,
+                "define: first argument must be a symbol or parameter list",
+                &context.source,
+                name_expr.span
+            ));
+        }
+    };
+    let define_expr = AstNode {
+        value: std::sync::Arc::new(Expr::Define {
+            name,
+            params: crate::ast::ParamList {
+                required: vec![],
+                rest: None,
+                span: *span,
+            },
+            body: Box::new(value_expr.clone()),
+            span: *span,
+        }),
+        span: *span,
+    };
+    evaluate_ast_node(&define_expr, context)
+}
+
 // ===================================================================================================
 // PUBLIC API: Expression Evaluation Interface
 // ===================================================================================================
@@ -346,14 +426,11 @@ pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext)
             expr.span
         ));
     }
-
     match &*expr.value {
         // Complex expression types with dedicated handlers
         Expr::List(items, span) => evaluate_list(items, span, context),
         Expr::Quote(inner, _) => evaluate_quote(inner, context),
         Expr::If { .. } => {
-            // If expressions should be handled as special forms, not as AST nodes
-            // This should not be reached in normal evaluation
             Err(err_src!(
                 Eval,
                 "If expressions should be evaluated as special forms, not as AST nodes",
@@ -361,45 +438,27 @@ pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext)
                 expr.span
             ))
         },
-        Expr::Define {
-            name, params, body, ..
-        } => {
-                        // If params are not empty, it's a function definition.
+        Expr::Define { name, params, body, .. } => {
             if !params.required.is_empty() || params.rest.is_some() {
-                // Create a Lambda value for function definitions
-                // Capture the current lexical environment
-                let mut captured_env = std::collections::HashMap::new();
-                for frame in &context.lexical_env {
-                    for (key, value) in frame {
-                        captured_env.insert(key.clone(), value.clone());
-                    }
-                }
+                let captured_env = capture_lexical_env(&context.lexical_env);
                 let lambda = Value::Lambda(Rc::new(crate::ast::value::Lambda {
                     params: params.clone(),
                     body: body.clone(),
                     captured_env,
                 }));
-
-                // Store in world state for global access
                 let path = crate::runtime::world::Path(vec![name.clone()]);
                 let new_world = context.world.set(&path, lambda);
-
                 Ok((Value::Nil, new_world))
             } else {
-                // It's a variable definition.
                 let (value, world) = evaluate_ast_node(body, context)?;
                 let path = crate::runtime::world::Path(vec![name.clone()]);
                 let new_world = world.set(&path, value.clone());
                 Ok((value, new_world))
             }
         }
-
-        // Literal value types
         Expr::Path(..) | Expr::String(..) | Expr::Number(..) | Expr::Bool(..) => {
             evaluate_literal_value(expr, context)
         }
-
-        // Invalid expression types
         Expr::ParamList(..) | Expr::Symbol(..) | Expr::Spread(..) => evaluate_invalid_expr(expr, context),
     }
 }
@@ -454,8 +513,6 @@ fn evaluate_list(
     if items.is_empty() {
         return wrap_value_with_world_state(Value::List(vec![]), context.world);
     }
-
-    // Extract symbol name using guard clause pattern
     let head = &items[0];
     let tail = &items[1..];
     let Expr::Symbol(symbol_name, _) = &*head.value else {
@@ -466,90 +523,12 @@ fn evaluate_list(
             head.span
         ));
     };
-
-        // Use direct atom resolution for all symbols
     let flat_tail = flatten_spread_args(tail, context)?;
-
-    // Handle define as a special form
     if symbol_name == "define" {
-        // For define, we need to construct the proper Expr::Define structure
-        if flat_tail.len() != 2 {
-            return Err(err_src!(
-                Eval,
-                "define expects exactly 2 arguments: (define name value) or (define (name params...) body)",
-                &context.source,
-                head.span
-            ));
-        }
-
-        let name_expr = &flat_tail[0];
-        let value_expr = &flat_tail[1];
-
-        // Check if it's a function definition: (define (name params...) body)
-        if let Expr::ParamList(param_list) = &*name_expr.value {
-            // Function definition
-            let name = param_list.required.first().cloned().ok_or_else(|| {
-                err_src!(
-                    Eval,
-                    "define: function name missing in parameter list",
-                    &context.source,
-                    name_expr.span
-                )
-            })?;
-
-            let actual_params = crate::ast::ParamList {
-                required: param_list.required[1..].to_vec(),
-                rest: param_list.rest.clone(),
-                span: param_list.span,
-            };
-
-            let define_expr = AstNode {
-                value: std::sync::Arc::new(Expr::Define {
-                    name,
-                    params: actual_params,
-                    body: Box::new(value_expr.clone()),
-                    span: *span,
-                }),
-                span: *span,
-            };
-
-            return evaluate_ast_node(&define_expr, context);
-        } else {
-            // Variable definition: (define name value)
-            let name = match &*name_expr.value {
-                Expr::Symbol(s, _) => s.clone(),
-                _ => {
-                    return Err(err_src!(
-                        Eval,
-                        "define: first argument must be a symbol or parameter list",
-                        &context.source,
-                        name_expr.span
-                    ));
-                }
-            };
-
-            let define_expr = AstNode {
-                value: std::sync::Arc::new(Expr::Define {
-                    name,
-                    params: crate::ast::ParamList {
-                        required: vec![],
-                        rest: None,
-                        span: *span,
-                    },
-                    body: Box::new(value_expr.clone()),
-                    span: *span,
-                }),
-                span: *span,
-            };
-
-            return evaluate_ast_node(&define_expr, context);
-        }
+        return handle_define_special_form(&flat_tail, span, context, head);
     }
-
-    // Check if it's a lambda in the lexical environment
     if let Some(Value::Lambda(lambda_rc)) = context.get_lexical_var(symbol_name) {
         let lambda = lambda_rc.clone();
-        // Evaluate arguments eagerly
         let (arg_values, world_after_args) = evaluate_eager_args(&flat_tail, context)?;
         let mut lambda_context = EvaluationContext {
             world: &world_after_args,
@@ -562,11 +541,8 @@ fn evaluate_list(
         };
         return crate::atoms::special_forms::call_lambda(&lambda, &arg_values, &mut lambda_context);
     }
-
-    // Check if it's a function in world state
     let world_path = crate::runtime::world::Path(vec![symbol_name.clone()]);
     if let Some(Value::Lambda(lambda)) = context.world.state.get(&world_path) {
-        // Evaluate arguments eagerly
         let (arg_values, world_after_args) = evaluate_eager_args(&flat_tail, context)?;
         let mut lambda_context = EvaluationContext {
             world: &world_after_args,
@@ -579,7 +555,6 @@ fn evaluate_list(
         };
         return crate::atoms::special_forms::call_lambda(lambda, &arg_values, &mut lambda_context);
     }
-
     context.call_atom(symbol_name, head, &flat_tail, span)
 }
 

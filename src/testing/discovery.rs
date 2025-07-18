@@ -26,6 +26,11 @@ pub struct ASTDefinition {
 pub struct TestDiscoverer;
 
 impl TestDiscoverer {
+    /// Returns true if the given path has a .sutra extension.
+    fn is_sutra_file(path: &Path) -> bool {
+        path.extension().is_some_and(|ext| ext == "sutra")
+    }
+
     /// Recursively scans a directory for `.sutra` files.
     ///
     /// The returned list of files is sorted to ensure deterministic execution order.
@@ -38,13 +43,14 @@ impl TestDiscoverer {
                     format!("Failed to walk directory: {}", e)
                 )
             })?;
-            if entry.file_type().is_file() {
-                if let Some(ext) = entry.path().extension() {
-                    if ext == "sutra" {
-                        files.push(entry.path().to_path_buf());
-                    }
-                }
+            if !entry.file_type().is_file() {
+                continue;
             }
+            let path = entry.path();
+            if !Self::is_sutra_file(path) {
+                continue;
+            }
+            files.push(path.to_path_buf());
         }
         files.sort();
         Ok(files)

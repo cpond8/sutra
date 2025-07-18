@@ -5,6 +5,7 @@
     clippy::assigning_clones,
     clippy::branches_sharing_code,
     clippy::cloned_instead_of_copied,
+    clippy::cognitive_complexity,
     clippy::equatable_if_let,
     clippy::error_impl_error,
     clippy::explicit_iter_loop,
@@ -28,7 +29,7 @@
     clippy::macro_use_imports,
     clippy::manual_assert,
     clippy::manual_is_variant_and,
-    clippy::manual_if_let_else,
+    clippy::manual_let_else,
     clippy::manual_string_new,
     clippy::many_single_char_names,
     clippy::map_err_ignore,
@@ -87,7 +88,10 @@
     clippy::unnecessary_safety_doc,
     clippy::unnested_or_patterns,
 )]
+#![allow(clippy::multiple_crate_versions)] // Unavoidable due to transitive dependencies; does not affect correctness or safety. Remove if/when all upstream crates unify versions.
+
+use sutra::cli::run;
 
 fn main() {
-    sutra::cli::run();
+    run();
 }

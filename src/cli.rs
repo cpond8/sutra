@@ -54,11 +54,8 @@ pub fn run() {
     };
 
     if let Err(e) = result {
-        // Remove print_error_to_stderr and process::exit; propagate error via diagnostics only
-        // print_error_to_stderr(&e);
-        // process::exit(1);
-        // Instead, panic with diagnostics for now (or propagate up if possible)
-        panic!("{}", e);
+        eprintln!("{e:?}");
+        std::process::exit(1);
     }
 }
 
@@ -556,14 +553,22 @@ fn handle_validation_failure(grammar_path: &str, validation_result: &crate::vali
     use std::fs;
 
     let grammar_source = fs::read_to_string(grammar_path).unwrap_or_default();
-    let error = err_ctx!(Validation, "Grammar validation failed", grammar_source);
-    eprintln!("{error}");
-
+    let mut error = err_ctx!(Validation, "Grammar validation failed", grammar_source);
     for err in &validation_result.errors {
-        eprintln!("  • {err}");
+        // Attach each error as help (miette will show all help messages)
+        error = match error {
+            SutraError::Validation { message, mut ctx } => {
+                let help = ctx.help.get_or_insert(String::new());
+                if !help.is_empty() {
+                    help.push('\n');
+                }
+                help.push_str(&format!("• {err}"));
+                SutraError::Validation { message, ctx }
+            },
+            _ => error,
+        };
     }
-
-    std::process::exit(1);
+    Err(error)
 }
 
 /// Prints validation warnings.

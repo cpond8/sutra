@@ -96,22 +96,24 @@ impl GrammarParser {
     fn collect_lines_until_complete(&self, lines: &[&str], state: &mut CollectionState) {
         while state.current_index < lines.len() {
             let current_line = lines[state.current_index];
-            // Remove inline comments before adding to definition
             let cleaned_line = self.remove_inline_comment(current_line);
             state.definition.push_str(&cleaned_line);
             state.definition.push('\n');
-
-            if let Some((new_brace_count, rule_started)) = self.process_line_braces(&cleaned_line, state.brace_count, state.in_rule) {
-                state.brace_count = new_brace_count;
-                state.in_rule = rule_started;
-
-                if self.should_complete_collection(state.brace_count, state.in_rule) {
-                    state.current_index += 1;
-                    break;
-                }
+            if self.line_completes_rule(&cleaned_line, state) {
+                state.current_index += 1;
+                break;
             }
-
             state.current_index += 1;
+        }
+    }
+
+    fn line_completes_rule(&self, cleaned_line: &str, state: &mut CollectionState) -> bool {
+        if let Some((new_brace_count, rule_started)) = self.process_line_braces(cleaned_line, state.brace_count, state.in_rule) {
+            state.brace_count = new_brace_count;
+            state.in_rule = rule_started;
+            self.should_complete_collection(state.brace_count, state.in_rule)
+        } else {
+            false
         }
     }
 
@@ -182,18 +184,16 @@ impl GrammarParser {
     }
 
     fn extract_inline_patterns(&self, definition: &str) -> Vec<String> {
-        let mut patterns = Vec::new();
-        let re = Regex::new(r#""([^"]*)"|'([^']*)'|\{([^}]*)\}"#).unwrap();
+        let re = Regex::new(r#"([^"]*)"|'([^']*)'|\{([^}]*)\}"#).unwrap();
+        re.captures_iter(definition)
+            .flat_map(|cap| Self::extract_patterns_from_capture(&cap))
+            .collect()
+    }
 
-        for cap in re.captures_iter(definition) {
-            for i in 1..=3 {
-                if let Some(m) = cap.get(i) {
-                    patterns.push(m.as_str().to_string());
-                }
-            }
-        }
-
-        patterns
+    fn extract_patterns_from_capture(cap: &regex::Captures) -> Vec<String> {
+        (1..=3)
+            .filter_map(|i| cap.get(i).map(|m| m.as_str().to_string()))
+            .collect()
     }
 
     fn is_valid_identifier(&self, s: &str) -> bool {
