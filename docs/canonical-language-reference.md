@@ -26,20 +26,20 @@ Sutra is a minimal, homoiconic, expression-based language designed for composabl
 
 ### 2.1 Atoms (Primitives)
 
-| Type    | Example         | Description                                         | Impl.           |
-| :------ | :-------------- | :-------------------------------------------------- | :-------------- |
-| Number  | `42`, `-3.14`   | 64-bit float                                        | `Value::Number` |
-| Boolean | `true`, `false` | Boolean                                             | `Value::Bool`   |
-| String  | `"foo\nbar"`    | Double-quoted, escapes: `\\n`, `\\t`, `\\"`, `\\\\` | `Value::String` |
-| Symbol  | `foo`, `+`      | Variable/function names                             | `Value::Symbol` |
-| Nil     | `nil`           | Absence of value                                    | `Value::Nil`    |
+| Type    | Example         | Description                                  | Implementation  |
+| :------ | :-------------- | :------------------------------------------- | :-------------- |
+| Number  | `42`, `-3.14`   | 64-bit float                                 | `Value::Number` |
+| Boolean | `true`, `false` | Boolean                                      | `Value::Bool`   |
+| String  | `"foo\nbar"`    | String, escapes: `\\n`, `\\t`, `\\"`, `\\\\` | `Value::String` |
+| Symbol  | `foo`, `+`      | Variable/function names                      | `Value::Symbol` |
+| Nil     | `nil`           | Absence of value                             | `Value::Nil`    |
 
 ### 2.2 Collections
 
-| Type | Example            | Description            | Impl.         |
-| :--- | :----------------- | :--------------------- | :------------ |
-| List | `(1 2 "a" true)`   | Ordered, heterogeneous | `Value::List` |
-| Map  | `{foo: 1, bar: 2}` | Key-value, string keys | `Value::Map`  |
+| Type | Example            | Description            | Implementation |
+| :--- | :----------------- | :--------------------- | :------------- |
+| List | `(1 2 "a" true)`   | Ordered, heterogeneous | `Value::List`  |
+| Map  | `{foo: 1, bar: 2}` | Key-value, string keys | `Value::Map`   |
 
 ### 2.3 Symbol Resolution
 
@@ -96,15 +96,15 @@ undefined-var  ; Error: undefined symbol: 'undefined-var'
 
 ### 3.3 Control Flow
 
-| Construct  | Arity | Example                          | Description              | Impl.       | Status |
-| :--------- | :---- | :------------------------------- | :----------------------- | :---------- | :----- |
-| `if`       | 3     | `(if condition then else)`       | Conditional              | `Expr::If`  | impl.  |
-| `cond`     | 3..   | `(cond ((cond1) then) ...)`      | Branching Conditional    | Macro       | impl.  |
-| `do`       | 0..   | `(do expr1 expr2 ...)`           | Sequence, returns last   | Atom: `do`  | impl.  |
-| `when`     | 2..   | `(when condition ...)`           | Conditional `if` w/ `do` | Macro       | impl.  |
-| `let`      | 2     | `(let ((var val) ...) body ...)` | Lexical bindings         | SpecialForm | impl.  |
-| `lambda`   | 2..   | `(lambda (params) body ...)`     | Anonymous function       | SpecialForm | impl.  |
-| `for-each` | 3..   | `(for-each ...)`                 | Looping construct        | Macro       | impl.  |
+| Construct  | Arity | Purpose                  | Example                                           |
+| :--------- | :---- | :----------------------- | :------------------------------------------------ |
+| `if`       | 3     | Conditional evaluation   | `(if true "then" "else")`                         |
+| `cond`     | 3..   | Multi-branch conditional | `(cond ((gt? x 0) "positive") (else "negative"))` |
+| `do`       | 0..   | Sequential evaluation    | `(do (set! x 1) (set! y 2) (+ x y))`              |
+| `when`     | 2..   | Conditional with do      | `(when (gt? x 0) (print "positive"))`             |
+| `let`      | 2..   | Lexical bindings         | `(let ((x 1) (y 2)) (+ x y))`                     |
+| `lambda`   | 2..   | Anonymous function       | `(lambda (x y) (+ x y))`                          |
+| `for-each` | 3..   | Loop over collection     | `(for-each x (list 1 2 3) (print x))`             |
 
 ### 3.4 Arity (Function & Macro Arguments)
 
@@ -240,9 +240,41 @@ Newlines within blocks create separate s-expressions that are wrapped in an impl
 
 #### Rule 3: Conditional Block Transformation
 
-- `if condition { statements }` → `(if condition (do statements))`
-- `if condition { then-statements } else { else-statements }` → `(if condition (do then-statements) (do else-statements))`
-- `unless condition { statements }` → `(unless condition (do statements))`
+**Simple if statement:**
+
+```sutra
+if condition { statements }
+```
+
+↓ transforms to ↓
+
+```sutra
+(if condition (do statements))
+```
+
+**If-else statement:**
+
+```sutra
+if condition { then-statements } else { else-statements }
+```
+
+↓ transforms to ↓
+
+```sutra
+(if condition (do then-statements) (do else-statements))
+```
+
+**Unless statement:**
+
+```sutra
+unless condition { statements }
+```
+
+↓ transforms to ↓
+
+```sutra
+(unless condition (do statements))
+```
 
 #### Rule 4: Nested Block Recursion
 
@@ -360,58 +392,73 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ## 6. Assignment & State
 
-| Macro     | Arity | Expansion Pattern                            | Impl.       | Status            |
-| :-------- | :---- | :------------------------------------------- | :---------- | :---------------- |
-| `set!`    | 2     | `(core/set! (path ...) value)`               | Macro, Atom | impl.             |
-| `del!`    | 1     | `(core/del! (path ...))`                     | Macro, Atom | impl.             |
-| `add!`    | 2     | `(core/set! (path ...) (+ (get ...) value))` | Macro, Atom | impl.             |
-| `sub!`    | 2     | `(core/set! (path ...) (- (get ...) value))` | Macro, Atom | impl.             |
-| `inc!`    | 1     | `(core/set! (path ...) (+ (get ...) 1))`     | Macro, Atom | impl.             |
-| `dec!`    | 1     | `(core/set! (path ...) (- (get ...) 1))`     | Macro, Atom | impl.             |
-| `mul!`    | 2     | `(core/set! (path ...) (* (get ...) value))` | Macro, Atom | impl.             |
-| `div!`    | 2     | `(core/set! (path ...) (/ (get ...) value))` | Macro, Atom | impl.             |
-| `push!`   | 1..   | `(core/push! (path ...) value ...)`          | Macro, Atom | impl. via core/\* |
-| `pull!`   | 1..   | `(core/pull! (path ...) value ...)`          | Macro, Atom | impl. via core/\* |
-| `get`     | 1     | `(core/get (path ...))`                      | Macro, Atom | impl.             |
-| `exists?` | 1     | `(core/exists? (path ...))`                  | Macro, Atom | impl.             |
+| Macro     | Arity | Purpose                     | Example                    |
+| :-------- | :---- | :-------------------------- | :------------------------- |
+| `set!`    | 2     | Set value at path           | `(set! player.health 100)` |
+| `del!`    | 1     | Delete value at path        | `(del! temp.value)`        |
+| `add!`    | 2     | Add to value at path        | `(add! player.score 10)`   |
+| `sub!`    | 2     | Subtract from value at path | `(sub! player.mana 5)`     |
+| `inc!`    | 1     | Increment value at path     | `(inc! counter)`           |
+| `dec!`    | 1     | Decrement value at path     | `(dec! lives)`             |
+| `mul!`    | 2     | Multiply value at path      | `(mul! player.damage 2)`   |
+| `div!`    | 2     | Divide value at path        | `(div! player.health 2)`   |
+| `push!`   | 1..   | Push to list at path        | `(push! items "sword")`    |
+| `pull!`   | 1..   | Pull from list at path      | `(pull! items "sword")`    |
+| `get`     | 1     | Get value at path           | `(get player.health)`      |
+| `exists?` | 1     | Check path existence        | `(exists? player.health)`  |
 
 ---
 
 ## 7. Predicates & Logic
 
-| Macro     | Arity | Expands to     | Purpose                  | Impl. | Status | Macro Aliases     |
-| :-------- | :---- | :------------- | :----------------------- | :---- | :----- | :---------------- |
-| `eq?`     | 2..   | —              | Equality                 | Atom  | impl.  | `=`, `is?`        |
-| `gt?`     | 2..   | —              | Greater than             | Atom  | impl.  | `>`, `over?`      |
-| `lt?`     | 2..   | —              | Less than                | Atom  | impl.  | `<`, `under?`     |
-| `gte?`    | 2..   | —              | Greater/equal            | Atom  | impl.  | `>=`, `at-least?` |
-| `lte?`    | 2..   | —              | Less/equal               | Atom  | impl.  | `<=`, `at-most?`  |
-| `not`     | 1     | —              | Negation                 | Atom  | impl.  | —                 |
-| `has?`    | 2..   | —              | Membership in collection | Atom  | impl.  | —                 |
-| `exists?` | 1     | `core/exists?` | Path/value existence     | Macro | impl.  | —                 |
-| `and`     | 0..   | `(if ...)`     | Logical AND              | Macro | impl.  | —                 |
-| `or`      | 0..   | `(if ...)`     | Logical OR               | Macro | impl.  | —                 |
-| `empty?`  | 1     | `eq?` + `len`  | Collection is empty      | Macro | impl.  | —                 |
-| `null?`   | 1     | `eq?` + `len`  | List is empty            | Macro | impl.  | —                 |
+| Predicate | Arity | Purpose                  | Example                   |
+| :-------- | :---- | :----------------------- | :------------------------ |
+| `eq?`     | 2..   | Equality                 | `(eq? 1 1)`               |
+| `gt?`     | 2..   | Greater than             | `(gt? 5 3)`               |
+| `lt?`     | 2..   | Less than                | `(lt? 3 5)`               |
+| `gte?`    | 2..   | Greater/equal            | `(gte? 5 5)`              |
+| `lte?`    | 2..   | Less/equal               | `(lte? 3 5)`              |
+| `not`     | 1     | Negation                 | `(not false)`             |
+| `has?`    | 2..   | Membership in collection | `(has? (list 1 2 3) 2)`   |
+| `exists?` | 1     | Path/value existence     | `(exists? player.health)` |
+| `and`     | 0..   | Logical AND              | `(and true false)`        |
+| `or`      | 0..   | Logical OR               | `(or true false)`         |
+| `empty?`  | 1     | Collection is empty      | `(empty? (list))`         |
+| `null?`   | 1     | List is empty            | `(null? (list))`          |
+
+### Comparison Aliases
+
+| Alias       | Maps to | Example                 |
+| :---------- | :------ | :---------------------- |
+| `=`         | `eq?`   | `(= 1 1)`               |
+| `is?`       | `eq?`   | `(is? "hello" "hello")` |
+| `>`         | `gt?`   | `(> 2 1)`               |
+| `over?`     | `gt?`   | `(over? 10 0)`          |
+| `<`         | `lt?`   | `(< 1 2)`               |
+| `under?`    | `lt?`   | `(under? 0 10)`         |
+| `>=`        | `gte?`  | `(>= 2 2)`              |
+| `at-least?` | `gte?`  | `(at-least? 10 10)`     |
+| `<=`        | `lte?`  | `(<= 2 2)`              |
+| `at-most?`  | `lte?`  | `(at-most? 10 10)`      |
 
 ---
 
 ## 8. Math & Value Operations
 
-| Atom   | Arity | Purpose                      | Impl. | Status |
-| :----- | :---- | :--------------------------- | :---- | :----- |
-| `+`    | 0..   | Addition                     | Atom  | impl.  |
-| `-`    | 1..   | Subtraction/Negation         | Atom  | impl.  |
-| `*`    | 0..   | Multiplication               | Atom  | impl.  |
-| `/`    | 1..   | Division                     | Atom  | impl.  |
-| `mod`  | 2     | Modulo (int)                 | Atom  | impl.  |
-| `len`  | 1     | Length (list/string)         | Atom  | impl.  |
-| `car`  | 1     | First element of list        | Atom  | impl.  |
-| `cdr`  | 1     | Tail of list (all but first) | Atom  | impl.  |
-| `cons` | 2     | Prepend element to list      | Atom  | impl.  |
-| `min`  | 1..   | Minimum                      | Atom  | impl.  |
-| `max`  | 1..   | Maximum                      | Atom  | impl.  |
-| `abs`  | 1     | Absolute value               | Atom  | impl.  |
+| Operation | Arity | Purpose                      | Example               |
+| :-------- | :---- | :--------------------------- | :-------------------- |
+| `+`       | 0..   | Addition                     | `(+ 1 2 3)`           |
+| `-`       | 1..   | Subtraction/Negation         | `(- 10 5)`            |
+| `*`       | 0..   | Multiplication               | `(* 2 3 4)`           |
+| `/`       | 1..   | Division                     | `(/ 10 4)`            |
+| `mod`     | 2     | Modulo (int)                 | `(mod 10 3)`          |
+| `len`     | 1     | Length (list/string)         | `(len (list 1 2 3))`  |
+| `car`     | 1     | First element of list        | `(car (list 1 2 3))`  |
+| `cdr`     | 1     | Tail of list (all but first) | `(cdr (list 1 2 3))`  |
+| `cons`    | 2     | Prepend element to list      | `(cons 1 (list 2 3))` |
+| `min`     | 1..   | Minimum                      | `(min 1 2 3)`         |
+| `max`     | 1..   | Maximum                      | `(max 1 2 3)`         |
+| `abs`     | 1     | Absolute value               | `(abs -5)`            |
 
 ### List Operations: `car`, `cdr`, `cons`
 
@@ -454,81 +501,206 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ## 9. String Utilities
 
-| Macro/Atom  | Arity | Signature                 | Purpose                       | Impl. | Status |
-| :---------- | :---- | :------------------------ | :---------------------------- | :---- | :----- |
-| `display`   | 0..   | `(display a b ...)`       | Print multiple values         | Macro | impl.  |
-| `str`       | 1     | `(str x)`                 | Typecast to string            | Atom  | impl.  |
-| `str+`      | 0..   | `(str+ a b ...)`          | Concatenate strings           | Atom  | impl.  |
-| `core/str+` | 0..   | `(core/str+ a b ...)`     | Concatenate strings (core)    | Atom  | impl.  |
-| `join-str+` | 2..   | `(join-str+ sep a b ...)` | Join strings with a separator | Macro | impl.  |
+| Utility     | Arity | Purpose                     | Example                       |
+| :---------- | :---- | :-------------------------- | :---------------------------- |
+| `display`   | 0..   | Print multiple values       | `(display "hello" 123 true)`  |
+| `str`       | 1     | Typecast to string          | `(str 42)`                    |
+| `str+`      | 0..   | Concatenate strings         | `(str+ "hello" " " "world")`  |
+| `join-str+` | 2..   | Join strings with separator | `(join-str+ " " "a" "b" "c")` |
 
 ---
 
 ## 10. Additional Utility Macros
 
-| Macro      | Arity | Purpose                          | Usage Example                  | Status |
-| :--------- | :---- | :------------------------------- | :----------------------------- | :----- |
-| `when`     | 2..   | Execute body when condition true | `(when cond ...body)`          | impl.  |
-| `cond`     | 3..   | Multi-branch conditional         | `(cond ((test1) expr1) ...)`   | impl.  |
-| `test`     | 3..   | Define test case                 | `(test "name" expect body...)` | impl.  |
-| `expect`   | 0..   | Declare test expectations        | `(expect ...conditions)`       | impl.  |
-| `cadr`     | 1     | Second element of list           | `(cadr (list 1 2 3))`          | impl.  |
-| `null?`    | 1     | Check if list is empty           | `(null? (list))`               | impl.  |
-| `append`   | 2     | Append two lists                 | `(append l1 l2)`               | impl.  |
-| `map`      | 2     | Map function over list           | `(map f lst)`                  | impl.  |
-| `for-each` | 3..   | Loop over collection             | `(for-each var coll ...body)`  | impl.  |
+| Macro      | Arity | Purpose                          | Example                                           |
+| :--------- | :---- | :------------------------------- | :------------------------------------------------ |
+| `when`     | 2..   | Execute body when condition true | `(when (gt? x 0) (print "positive"))`             |
+| `cond`     | 3..   | Multi-branch conditional         | `(cond ((gt? x 0) "positive") (else "negative"))` |
+| `test`     | 3..   | Define test case                 | `(test "name" (expect (value 5)) (+ 2 3))`        |
+| `expect`   | 0..   | Declare test expectations        | `(expect (value 5) (tags "math"))`                |
+| `cadr`     | 1     | Second element of list           | `(cadr (list 1 2 3))`                             |
+| `null?`    | 1     | Check if list is empty           | `(null? (list))`                                  |
+| `append`   | 2     | Append two lists                 | `(append (list 1 2) (list 3 4))`                  |
+| `map`      | 2     | Map function over list           | `(map (lambda (x) (* x 2)) (list 1 2 3))`         |
+| `for-each` | 3..   | Loop over collection             | `(for-each x (list 1 2 3) (print x))`             |
 
 ---
 
 ## 11. World Interaction
 
-| Atom           | Arity | Purpose                         | Impl. |
-| :------------- | :---- | :------------------------------ | :---- |
-| `core/set!`    | 2     | Set value at path               | Atom  |
-| `core/get`     | 1     | Get value at path               | Atom  |
-| `core/del!`    | 1     | Delete value at path            | Atom  |
-| `core/exists?` | 1     | Path existence                  | Atom  |
-| `path`         | 1     | Create path from string         | Atom  |
-| `core/map`     | 0..   | Create map from key-value pairs | Atom  |
+| Macro     | Arity | Purpose                     | Example                    |
+| :-------- | :---- | :-------------------------- | :------------------------- |
+| `set!`    | 2     | Set value at path           | `(set! player.health 100)` |
+| `get`     | 1     | Get value at path           | `(get player.health)`      |
+| `del!`    | 1     | Delete value at path        | `(del! temp.value)`        |
+| `exists?` | 1     | Path existence              | `(exists? player.health)`  |
+| `path`    | 1     | Create path from string     | `(path "player" "health")` |
+| `add!`    | 2     | Add to value at path        | `(add! player.score 10)`   |
+| `sub!`    | 2     | Subtract from value at path | `(sub! player.mana 5)`     |
+| `inc!`    | 1     | Increment value at path     | `(inc! counter)`           |
+| `dec!`    | 1     | Decrement value at path     | `(dec! lives)`             |
+
+### Internal Atom Mappings
+
+The following table shows which internal `core/` atoms each macro expands to:
+
+| Macro     | Expands to                                      | Internal Atom           |
+| :-------- | :---------------------------------------------- | :---------------------- |
+| `set!`    | `(core/set! (path ...) ...)`                    | `core/set!`             |
+| `get`     | `(core/get (path ...))`                         | `core/get`              |
+| `del!`    | `(core/del! (path ...))`                        | `core/del!`             |
+| `exists?` | `(core/exists? (path ...))`                     | `core/exists?`          |
+| `add!`    | `(core/set! (path ...) (+ (core/get ...) ...))` | `core/set!`, `core/get` |
+| `sub!`    | `(core/set! (path ...) (- (core/get ...) ...))` | `core/set!`, `core/get` |
+| `inc!`    | `(core/set! (path ...) (+ (core/get ...) 1))`   | `core/set!`, `core/get` |
+| `dec!`    | `(core/set! (path ...) (- (core/get ...) 1))`   | `core/set!`, `core/get` |
+
+**Note:** The `core/` prefixed atoms are internal implementation details used by the macro system and should not be used directly in user code.
 
 ---
 
 ## 12. I/O & Random
 
-| Atom/Macro | Arity | Purpose                     | Impl. | Status  |
-| :--------- | :---- | :-------------------------- | :---- | :------ |
-| `print`    | 1     | Output single value         | Atom  | impl.   |
-| `output`   | 1     | Output single value (alias) | Atom  | impl.   |
-| `display`  | 0..   | Output multiple values      | Macro | impl.   |
-| `rand`     | 0     | Random float                | Atom  | impl.   |
-| `chance?`  | 1     | Macro: true with X% chance  | Macro | planned |
+| Operation | Arity | Purpose                     | Example                      |
+| :-------- | :---- | :-------------------------- | :--------------------------- |
+| `print`   | 1     | Output single value         | `(print "hello")`            |
+| `output`  | 1     | Output single value (alias) | `(output "hello")`           |
+| `display` | 0..   | Output multiple values      | `(display "hello" 123 true)` |
+| `rand`    | 0     | Random float                | `(rand)`                     |
 
 ---
 
 ## 13. Special Forms
 
-| Special Form | Arity | Purpose                             | Impl.       | Status |
-| :----------- | :---- | :---------------------------------- | :---------- | :----- |
-| `if`         | 3     | Conditional evaluation              | SpecialForm | impl.  |
-| `lambda`     | 2..   | Anonymous function                  | SpecialForm | impl.  |
-| `let`        | 2..   | Lexical bindings                    | SpecialForm | impl.  |
-| `do`         | 0..   | Sequential evaluation               | SpecialForm | impl.  |
-| `apply`      | 2..   | Function application with list args | SpecialForm | impl.  |
-| `error`      | 1     | Raise error with message            | SpecialForm | impl.  |
+| Special Form | Arity | Purpose                             | Example                              |
+| :----------- | :---- | :---------------------------------- | :----------------------------------- |
+| `if`         | 3     | Conditional evaluation              | `(if true "then" "else")`            |
+| `lambda`     | 2..   | Anonymous function                  | `(lambda (x y) (+ x y))`             |
+| `let`        | 2..   | Lexical bindings                    | `(let ((x 1) (y 2)) (+ x y))`        |
+| `do`         | 0..   | Sequential evaluation               | `(do (set! x 1) (set! y 2) (+ x y))` |
+| `apply`      | 2..   | Function application with list args | `(apply + (list 1 2 3))`             |
+| `error`      | 1     | Raise error with message            | `(error "Something went wrong")`     |
 
 ---
 
 ## 14. Test Atoms (Debug/Test Only)
 
-| Test Atom            | Arity | Purpose                    | Impl.       | Status |
-| :------------------- | :---- | :------------------------- | :---------- | :----- |
-| `register-test!`     | 4..   | Register test definition   | SpecialForm | impl.  |
-| `value`              | 1     | Test expected value        | SpecialForm | impl.  |
-| `tags`               | 0..   | Test tags                  | SpecialForm | impl.  |
-| `test/echo`          | 1     | Echo value for testing     | SpecialForm | impl.  |
-| `test/borrow_stress` | 2     | Stress test borrow checker | SpecialForm | impl.  |
-| `assert`             | 1     | Assert condition is true   | SpecialForm | impl.  |
-| `assert-eq`          | 2     | Assert two values equal    | SpecialForm | impl.  |
+Test atoms provide a comprehensive testing framework for Sutra code. These atoms are only available when compiled with debug assertions or the `test-atom` feature.
+
+### Core Test Framework
+
+| Test Atom        | Arity | Purpose                   | Usage                                        |
+| :--------------- | :---- | :------------------------ | :------------------------------------------- |
+| `register-test!` | 4..   | Register test definition  | `(register-test! name expect body metadata)` |
+| `test`           | 3..   | Define test case          | `(test "name" expect body...)`               |
+| `expect`         | 0..   | Declare test expectations | `(expect ...conditions)`                     |
+
+### Test Assertions
+
+| Test Atom   | Arity | Purpose                  | Usage                         |
+| :---------- | :---- | :----------------------- | :---------------------------- |
+| `value`     | 1     | Test expected value      | `(value expected-result)`     |
+| `tags`      | 0..   | Test tags                | `(tags "tag1" "tag2" ...)`    |
+| `assert`    | 1     | Assert condition is true | `(assert condition)`          |
+| `assert-eq` | 2     | Assert two values equal  | `(assert-eq expected actual)` |
+
+### Internal Test Atom Mappings
+
+The following table shows which internal test atoms are available in debug/test builds:
+
+| Public Atom | Internal Atom        | Purpose                    |
+| :---------- | :------------------- | :------------------------- |
+| `value`     | `value`              | Test expected value        |
+| `tags`      | `tags`               | Test tags                  |
+| `assert`    | `assert`             | Basic assertion            |
+| `assert-eq` | `assert-eq`          | Equality assertion         |
+| -           | `test/echo`          | Echo value for debugging   |
+| -           | `test/borrow_stress` | Stress test borrow checker |
+
+**Note:** The `test/` prefixed atoms (`test/echo`, `test/borrow_stress`) are internal debugging utilities only available in debug/test builds and should not be used in production code.
+
+### Test Structure
+
+A complete test follows this pattern:
+
+```sutra
+(test "test name"
+  (expect
+    (value expected-result)
+    (tags "tag1" "tag2"))
+  (do
+    ;; test body
+    (define (add x y) (+ x y))
+    (add 2 3)))
+```
+
+### Value Assertions
+
+The `value` atom expects a specific return value:
+
+```sutra
+(test "addition"
+  (expect (value 5))
+  (+ 2 3))
+```
+
+### Error Assertions
+
+Tests can expect specific error types:
+
+```sutra
+(test "division by zero"
+  (expect (error DivisionByZero))
+  (/ 10 0))
+
+(test "type error"
+  (expect (error TypeError))
+  (+ 1 "two"))
+
+(test "arity error"
+  (expect (error Eval))
+  (+ 1))
+```
+
+### Tag System
+
+Tests can be tagged for organization:
+
+```sutra
+(test "string concatenation"
+  (expect
+    (value "hello world")
+    (tags "string" "concatenation"))
+  (str+ "hello" " " "world"))
+```
+
+### Assertion Atoms
+
+Direct assertions for testing:
+
+```sutra
+(assert true)                   ; => nil (success)
+(assert (eq? 1 1))              ; => nil (success)
+(assert false)                  ; => TestFailure
+
+(assert-eq 1 1)                 ; => nil (success)
+(assert-eq "a" "a")             ; => nil (success)
+(assert-eq 1 2)                 ; => TestFailure
+```
+
+### Test Utilities
+
+Echo for debugging:
+
+```sutra
+(test/echo "hello")             ; => "hello" (also emits "hello")
+```
+
+Borrow checker stress testing:
+
+```sutra
+(test/borrow_stress 2 "test")   ; => "depth:2;msg:test"
+```
 
 **Note:** Test atoms are only available when compiled with debug assertions or the `test-atom` feature.
 
@@ -536,9 +708,51 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ## 15. Error Handling
 
-- **Parse-time:** Invalid tokens, unmatched delimiters, bad escapes.
-- **Validation:** Unknown macros/atoms, arity/type errors, invalid paths.
-- **Runtime:** Type errors, division by zero, invalid world access.
+Sutra uses a structured error system with specific error types for different failure modes:
+
+### Error Types
+
+| Error Type       | Description                                       | Usage                  |
+| :--------------- | :------------------------------------------------ | :--------------------- |
+| `Parse`          | Invalid syntax, unmatched delimiters, bad escapes | Parse-time errors      |
+| `Validation`     | Unknown macros/atoms, arity errors, invalid paths | Validation-time errors |
+| `Eval`           | Runtime evaluation errors, arity mismatches       | Runtime errors         |
+| `TypeError`      | Type mismatches (e.g., string + number)           | Runtime errors         |
+| `DivisionByZero` | Division by zero operations                       | Runtime errors         |
+| `Internal`       | Internal engine errors                            | System errors          |
+| `TestFailure`    | Test assertion failures                           | Test-time errors       |
+
+### Error Context
+
+All errors include context information:
+
+- **Source**: The source code that caused the error
+- **Span**: The exact location in the source code
+- **Help**: Optional help message
+- **Related**: Additional labeled spans for multi-label diagnostics
+
+### Error Examples
+
+```sutra
+(+ 1 "two")      ; => TypeError: Type error
+(/ 10 0)         ; => DivisionByZero: division by zero
+(undefined-func) ; => Eval: undefined symbol: 'undefined-func'
+(+ 1)            ; => Eval: Arity error
+```
+
+### Error Testing
+
+Test atoms can expect specific error types:
+
+```sutra
+(test "division by zero"
+  (expect (error DivisionByZero))
+  (/ 10 0))
+
+(test "type error"
+  (expect (error TypeError))
+  (+ 1 "two"))
+```
 
 ---
 
@@ -618,6 +832,49 @@ This section highlights specific behaviors and design choices in Sutra that migh
 - Map literals and advanced collection utilities.
 - Advanced error handling and debugging macros.
 
+### Non-Implemented Constructs
+
+The following constructs are **not implemented** in the current engine:
+
+#### Error Testing Constructs
+
+- `try` - No try/catch mechanism exists
+- `assert-error` - No direct error assertion atom
+
+#### Error Type Names
+
+- `ArityError` - Use `Eval` error type instead
+- `ParseError` - Use `Parse` error type instead
+
+#### Test Constructs
+
+- `assert-error` - Use `(expect (error ErrorType))` pattern instead
+
+#### Internal Constructs (Not Public API)
+
+- `core/*` atoms - Internal implementation details used by macros
+- `test/*` atoms - Internal debugging utilities only available in debug/test builds
+
+#### Examples of Correct Usage
+
+Instead of:
+
+```sutra
+(try (car (list)))  ; Not implemented
+(assert-error ...)  ; Not implemented
+(core/set! foo bar) ; Internal API
+```
+
+Use:
+
+```sutra
+(test "car empty list"
+  (expect (error Eval))
+  (car (list)))     ; Correct pattern
+
+(set! foo bar)      ; Public API
+```
+
 ---
 
 ## 25. References
@@ -630,4 +887,4 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ---
 
-This document is fully synchronized with the codebase and spec as of **17 July 2025**. For any ambiguity or missing feature, consult the canonical spec and the relevant module in the codebase.
+This document is fully synchronized with the codebase and spec as of **19 July 2025**. For any ambiguity or missing feature, consult the canonical spec and the relevant module in the codebase.

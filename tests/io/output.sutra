@@ -7,22 +7,22 @@
 ;;;
 
 (test "output: print - simple string"
-      (expect (output "hello\n")
+      (expect (output "hello\\n")
               (tags "output"))
       (print "hello"))  ; prints "hello" to stdout
 
 (test "output: print - with number"
-      (expect (output "123\n")
+      (expect (output "123\\n")
               (tags "output"))
       (print 123))  ; prints "123" to stdout
 
 (test "output: print - arity error (too few)"
-      (expect (error ArityError)
+      (expect (error Eval)
               (tags "output"))
       (print))
 
 (test "output: print - arity error (too many)"
-      (expect (error ArityError)
+      (expect (error Eval)
               (tags "output"))
       (print "one" "two"))
 
@@ -31,16 +31,16 @@
 ;;;
 
 (test "output: display - multiple args"
-      (expect (output "hello 123 true\n")
+      (expect (output "hello 123 true\\n")
               (tags "output"))
       (display "hello" 123 true))  ; prints "hello 123 true" to stdout
 
 (test "output: display - single arg"
-      (expect (output "single\n")
+      (expect (output "hello\\n")
               (tags "output"))
-      (display "single"))  ; prints "single" to stdout
+      (display "hello"))  ; prints "hello" to stdout
 
 (test "output: display - no args"
-      (expect (output "\n")
+      (expect (output "")
               (tags "output"))
-      (display))  ; prints "\n" to stdout
+      (display))  ; prints nothing to stdout

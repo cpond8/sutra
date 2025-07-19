@@ -67,27 +67,33 @@ pub fn expand_macro_call(
 
     match macro_def {
         MacroDefinition::Template(template) => {
-            // Early validation: extract macro name from call
-            let Expr::List(items, _) = &*call.value else {
-                return Err(err_src!(
-                    Eval,
-                    "Macro call must be a list expression",
-                    &env.source,
-                    call.span
-                ));
+            // Extract macro name from call node with guard clauses
+            let items = match &*call.value {
+                Expr::List(items, _) => items,
+                _ => {
+                    return Err(err_src!(
+                        Eval,
+                        "Macro call must be a list expression",
+                        &env.source,
+                        call.span
+                    ));
+                }
             };
 
             let first = items.first().ok_or_else(|| {
                 err_src!(Eval, "Macro call cannot be empty", &env.source, call.span)
             })?;
 
-            let Expr::Symbol(macro_name, _) = &*first.value else {
-                return Err(err_src!(
-                    Eval,
-                    "Macro call head must be a symbol",
-                    &env.source,
-                    first.span
-                ));
+            let macro_name = match &*first.value {
+                Expr::Symbol(s, _) => s,
+                _ => {
+                    return Err(err_src!(
+                        Eval,
+                        "Macro call head must be a symbol",
+                        &env.source,
+                        first.span
+                    ));
+                }
             };
 
             expand_template(template, call, macro_name, depth, env)
@@ -111,7 +117,6 @@ pub fn expand_template(
 ) -> MacroExpansionResult {
     check_recursion_depth(depth, macro_name, &call.span, env)?;
 
-    // Early validation: extract arguments
     let (args, span) = match &*call.value {
         Expr::List(items, span) if !items.is_empty() => (&items[1..], span),
         _ => {
@@ -180,45 +185,20 @@ pub fn substitute_template(
 ) -> MacroExpansionResult {
     check_recursion_depth(depth, macro_name, &expr.span, env)?;
 
-    let value = &*expr.value;
-
-    // Handle symbol substitution
-    if let Expr::Symbol(name, _) = value {
-        return bindings.get(name).map(|node| Ok(node.clone())).unwrap_or(Ok(expr.clone()));
-    }
-
-    // Handle list processing with spreads
-    if let Expr::List(items, _) = value {
-        let mut new_items = Vec::new();
-        for item in items {
-            match &*item.value {
-                Expr::Spread(inner) => {
-                    let substituted = substitute_template(inner, bindings, env, depth + 1, macro_name)?;
-                    let Expr::List(elements, _) = &*substituted.value else {
-                        return Err(err_src!(
-                            Internal,
-                            "Spread expression must evaluate to a list",
-                            &env.source,
-                            inner.span
-                        ));
-                    };
-                    new_items.extend_from_slice(elements);
-                }
-                _ => {
-                    let substituted = substitute_template(item, bindings, env, depth + 1, macro_name)?;
-                    new_items.push(substituted);
-                }
-            }
+    match &*expr.value {
+        Expr::Symbol(name, _) => {
+            bindings.get(name).map(|node| Ok(node.clone())).unwrap_or(Ok(expr.clone()))
         }
-        let span = items.first().unwrap().span;
-        return Ok(with_span(Expr::List(new_items, span), &span));
-    }
-
-    // Handle other expressions recursively
-    match value {
         Expr::Quote(inner, span) => {
-            // Don't substitute inside quotes - they should be literal
             Ok(with_span(Expr::Quote(inner.clone(), *span), &expr.span))
+        }
+        Expr::List(items, _) => {
+            let mut new_items = Vec::new();
+            for item in items {
+                process_list_item(item, &mut new_items, bindings, env, depth + 1, macro_name)?;
+            }
+            let span = items.first().unwrap().span;
+            Ok(with_span(Expr::List(new_items, span), &span))
         }
         Expr::If { condition, then_branch, else_branch, span } => {
             let new_condition = substitute_template(condition, bindings, env, depth + 1, macro_name)?;
@@ -233,6 +213,96 @@ pub fn substitute_template(
         }
         _ => Ok(expr.clone())
     }
+}
+
+/// Handles symbol substitution during template expansion, including variadic splicing.
+fn substitute_symbol(
+    name: &str,
+    bindings: &MacroBindings,
+) -> Option<MacroExpansionResult> {
+    // Get the bound value, return None if not found
+    bindings.get(name).map(|node| Ok(node.clone()))
+}
+
+/// Processes a single list item during template substitution.
+/// Context determines behavior: lists insert items, spreads splice elements.
+fn process_list_item(
+    item: &AstNode,
+    new_items: &mut Vec<AstNode>,
+    bindings: &MacroBindings,
+    env: &MacroExpansionContext,
+    depth: usize,
+    macro_name: &str,
+) -> Result<(), SutraError> {
+    match &*item.value {
+        Expr::Spread(inner) => {
+            // Substitute and splice - context determines behavior
+            let substituted = substitute_template(inner, bindings, env, depth + 1, macro_name)?;
+            let Expr::List(elements, _) = &*substituted.value else {
+                return Err(err_src!(
+                    Internal,
+                    "Spread expression must evaluate to a list",
+                    &env.source,
+                    inner.span
+                ));
+            };
+            for element in elements {
+                new_items.push(element.clone());
+            }
+            Ok(())
+        }
+        _ => {
+            // Substitute normally - context determines behavior
+            let substituted = substitute_template(item, bindings, env, depth + 1, macro_name)?;
+            new_items.push(substituted);
+            Ok(())
+        }
+    }
+}
+
+/// Substitutes parameters within an `If` expression's branches.
+fn substitute_if(
+    condition: &AstNode,
+    then_branch: &AstNode,
+    else_branch: &AstNode,
+    if_span: &Span,
+    original_span: &Span,
+    bindings: &MacroBindings,
+    env: &MacroExpansionContext,
+    depth: usize,
+    macro_name: &str,
+) -> MacroExpansionResult {
+    let new_condition = substitute_template(
+        condition,
+        bindings,
+        env,
+        depth + 1,
+        macro_name,
+    )?;
+    let new_then = substitute_template(
+        then_branch,
+        bindings,
+        env,
+        depth + 1,
+        macro_name,
+    )?;
+    let new_else = substitute_template(
+        else_branch,
+        bindings,
+        env,
+        depth + 1,
+        macro_name,
+    )?;
+
+    Ok(with_span(
+        Expr::If {
+            condition: Box::new(new_condition),
+            then_branch: Box::new(new_then),
+            else_branch: Box::new(new_else),
+            span: *if_span,
+        },
+        original_span,
+    ))
 }
 
 // =============================
@@ -270,7 +340,7 @@ fn expand_macro_once(
         None => return Ok(None),
     };
 
-    let expanded = expand_macro_definition(&macro_def, node, macro_name, depth, &mut *env, provenance)?;
+    let expanded = expand_macro_definition(&macro_def, node, macro_name, depth, env, provenance)?;
     Ok(Some((macro_name.to_string(), provenance, expanded)))
 }
 
@@ -297,16 +367,32 @@ fn expand_macro_definition(
     };
 
     if let Ok(expanded_node) = &result {
-        // Record expansion trace
-        env.trace.push(MacroExpansionStep {
+        record_macro_expansion(
+            &mut env.trace,
             macro_name,
             provenance,
-            input: original_node,
-            output: expanded_node.clone(),
-        });
+            original_node,
+            expanded_node.clone(),
+        );
     }
 
     result
+}
+
+/// Records a single macro expansion step in the trace.
+fn record_macro_expansion(
+    trace: &mut Vec<MacroExpansionStep>,
+    macro_name: String,
+    provenance: MacroOrigin,
+    input: AstNode,
+    output: AstNode,
+) {
+    trace.push(MacroExpansionStep {
+        macro_name,
+        provenance,
+        input,
+        output,
+    });
 }
 
 /// Extracts the macro name from a macro call AST node.

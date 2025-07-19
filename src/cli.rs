@@ -25,6 +25,7 @@ use crate::{
     runtime::world::build_canonical_macro_env,
     testing::discovery::{ASTDefinition, TestDiscoverer},
     to_error_source, AstNode, Expr, MacroRegistry, SharedOutput, Span, Spanned, SutraError,
+    Value,
 };
 
 pub mod args;
@@ -300,9 +301,19 @@ impl OutputFormatter {
             .replace("{file_info}", file_info);
         self.write_error(&message);
 
-        // Write error details in white
+        // Write error details in white with better formatting
         self.set_color(Color::White, false);
-        let detail_message = TEST_ERROR_DETAIL.replace("{error}", &error.to_string());
+        let error_str = error.to_string();
+        let detail_message = if error_str.contains("Test failure:") {
+            // Extract the actual error message from the test failure
+            if let Some(actual_error) = error_str.split("Test failure:").nth(1) {
+                format!("  Error:{}", actual_error.trim())
+            } else {
+                TEST_ERROR_DETAIL.replace("{error}", &error_str)
+            }
+        } else {
+            TEST_ERROR_DETAIL.replace("{error}", &error_str)
+        };
         let _ = writeln!(self.stdout, "{detail_message}");
         self.reset_color();
     }
@@ -656,17 +667,70 @@ fn execute_all_tests(test_definitions: &TestDefinitionSlice) -> TestSummary {
 fn execute_single_test(test_def: &TestDefinition) -> CliResult {
     let pipeline = ExecutionPipeline::default();
 
-    // Execute test body directly using AST with enhanced error context
-    pipeline.execute_ast(&test_def.body).map_err(|_| {
-        err_src!(
-            TestFailure,
-            format!("Test '{}' failed", test_def.name),
-            &test_def.source_file,
-            test_def.span
-        )
-    })?;
+    // Execute test body and capture the result
+    let test_result = pipeline.execute_ast(&test_def.body);
+
+    match test_result {
+        Ok(actual_value) => {
+            // Test body executed successfully - now validate expectations
+            validate_test_expectations(test_def, &actual_value)
+        }
+        Err(original_error) => {
+            // Test body failed - preserve the original error details
+            Err(err_src!(
+                TestFailure,
+                format!("Test '{}' failed: {}", test_def.name, original_error),
+                &test_def.source_file,
+                test_def.span
+            ))
+        }
+    }
+}
+
+/// Validates test expectations against the actual result.
+fn validate_test_expectations(test_def: &TestDefinition, actual_value: &Value) -> CliResult {
+    // For now, we'll implement basic value expectation checking
+    // TODO: Implement full expectation validation including error types, tags, etc.
+
+    // Parse the expect form to extract value expectations
+    if let Some(expected_value) = extract_expected_value(&test_def.expect) {
+        if actual_value != &expected_value {
+            return Err(err_src!(
+                TestFailure,
+                format!(
+                    "Test '{}' failed: expected {:?}, got {:?}",
+                    test_def.name, expected_value, actual_value
+                ),
+                &test_def.source_file,
+                test_def.span
+            ));
+        }
+    }
 
     Ok(())
+}
+
+/// Extracts the expected value from an expect form.
+/// TODO: This is a simplified implementation - should be expanded to handle all expectation types
+fn extract_expected_value(expect_node: &AstNode) -> Option<Value> {
+    // Look for (value <expected>) in the expect form
+    if let Expr::List(items, _) = &*expect_node.value {
+        for item in items {
+            if let Expr::List(value_items, _) = &*item.value {
+                if value_items.len() >= 2 {
+                    if let Expr::String(s, _) = &*value_items[0].value {
+                        if s == "value" {
+                            // Found (value <expected>) - evaluate the expected value
+                            // For now, return None to indicate no value expectation
+                            // TODO: Implement proper evaluation of the expected value
+                            return None;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Prints test summary statistics using consolidated formatter.

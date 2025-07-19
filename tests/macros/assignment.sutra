@@ -24,80 +24,89 @@
       (expect (value nil) (tags "assignment"))
       (get non.existent.path))  ; => nil
 
-(test "assignment: set! arity error"
-      (expect (error ArityError) (tags "assignment"))
-      (set! player.score))  ; => arity error
-
-(test "assignment: get arity error"
-      (expect (error ArityError)
+(test "assignment: set! arity error (too few)"
+      (expect (error Eval)
               (tags "assignment"))
-      (get))  ; => arity error
+      (set! player.health))  ; set! expects exactly 2 arguments, got 1
+
+(test "assignment: get arity error (zero args)"
+      (expect (error Eval)
+              (tags "assignment"))
+      (get))  ; get expects exactly 1 argument, got 0
 
 ;;;
-;;; 2. Delete (del!)
+;;; 2. Add and Subtract
+;;;
+
+(test "assignment: add! success"
+      (expect (value 15)
+              (tags "assignment"))
+      (do
+        (set! player.score 10)
+        (add! player.score 5)
+        (get player.score)))  ; => 15
+
+(test "assignment: sub! success"
+      (expect (value 5)
+              (tags "assignment"))
+      (do
+        (set! player.mana 10)
+        (sub! player.mana 5)
+        (get player.mana)))  ; => 5
+
+(test "assignment: add! type error"
+      (expect (error TypeError)
+              (tags "assignment"))
+      (add! player.score "five"))  ; add! expects number, got string
+
+(test "assignment: add! arity error (too few)"
+      (expect (error Eval)
+              (tags "assignment"))
+      (add! player.score))  ; add! expects exactly 2 arguments, got 1
+
+;;;
+;;; 3. Increment and Decrement
+;;;
+
+(test "assignment: inc! success"
+      (expect (value 6)
+              (tags "assignment"))
+      (do
+        (set! counter 5)
+        (inc! counter)
+        (get counter)))  ; => 6
+
+(test "assignment: dec! success"
+      (expect (value 4)
+              (tags "assignment"))
+      (do
+        (set! lives 5)
+        (dec! lives)
+        (get lives)))  ; => 4
+
+(test "assignment: inc! arity error (zero args)"
+      (expect (error Eval)
+              (tags "assignment"))
+      (inc!))  ; inc! expects exactly 1 argument, got 0
+
+(test "assignment: dec! arity error (zero args)"
+      (expect (error Eval)
+              (tags "assignment"))
+      (dec!))  ; dec! expects exactly 1 argument, got 0
+
+;;;
+;;; 4. Delete
 ;;;
 
 (test "assignment: del! success"
       (expect (value nil)
               (tags "assignment"))
       (do
-        (set! temp.value 42)
+        (set! temp.value "data")
         (del! temp.value)
         (get temp.value)))  ; => nil
 
-(test "assignment: del! arity error"
-      (expect (error ArityError)
+(test "assignment: del! arity error (zero args)"
+      (expect (error Eval)
               (tags "assignment"))
-      (del!))  ; => arity error
-
-;;;
-;;; 3. Add and Subtract (add, sub)
-;;;
-
-(test "assignment: add success"
-      (expect (value 125)
-              (tags "assignment"))
-      (do
-        (set! player.mana 100)
-        (add player.mana 25)
-        (get player.mana)))  ; => 125
-
-(test "assignment: sub success"
-      (expect (value 75)
-              (tags "assignment"))
-      (do
-        (set! player.mana 100)
-        (sub player.mana 25)
-        (get player.mana)))  ; => 75
-
-(test "assignment: add type error"
-      (expect (error TypeError)
-              (tags "assignment"))
-      (do
-        (set! player.name "Roo")
-        (add player.name 10)))  ; => type error
-
-;;;
-;;; 4. Increment and Decrement (inc!, dec!)
-;;;
-
-(test "assignment: inc! success"
-      (expect (value 11)
-              (tags "assignment"))
-      (do
-        (set! counter 10)
-        (inc! counter)
-        (get counter)))  ; => 11
-
-(test "assignment: dec! success"
-      (expect (value 9)
-              (tags "assignment"))
-      (do
-        (set! counter 10)
-        (dec! counter)
-        (get counter)))  ; => 9
-
-(test "assignment: inc! arity error"
-      (expect (error ArityError)
-              (tags "assignment"))
-      (inc! counter 2))  ; => arity error
+      (del!))  ; del! expects exactly 1 argument, got 0

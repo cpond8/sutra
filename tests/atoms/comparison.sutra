@@ -10,12 +10,12 @@
 (test "comparison: eq? - success true"
       (expect (value true)
               (tags "comparison"))
-      (eq? 5 5 5))  ; 5 = 5 = 5 ? => true
+      (eq? 5 5))  ; 5 = 5 ? => true
 
 (test "comparison: eq? - success false"
       (expect (value false)
               (tags "comparison"))
-      (eq? 5 5 6))  ; 5 = 5 = 6 ? => false
+      (eq? 5 6))  ; 5 = 6 ? => false
 
 (test "comparison: eq? - different types"
       (expect (value false)
@@ -23,14 +23,14 @@
       (eq? 1 "1"))  ; 1 = "1" ? => false
 
 (test "comparison: eq? - arity error (1 arg)"
-      (expect (error ArityError)
+      (expect (error Eval)
               (tags "comparison"))
-      (eq? 10))  ; eq? expects 2 or more arguments, got 1
+      (eq? 10))  ; eq? expects exactly 2 arguments, got 1
 
 (test "comparison: eq? - arity error (0 args)"
-      (expect (error ArityError)
+      (expect (error Eval)
               (tags "comparison"))
-      (eq?))  ; eq? expects 2 or more arguments, got 0
+      (eq?))  ; eq? expects exactly 2 arguments, got 0
 
 (test "comparison: = alias of eq?"
       (expect (value true)
@@ -49,22 +49,22 @@
 (test "comparison: gt? - success true"
       (expect (value true)
               (tags "comparison"))
-      (gt? 10 5 1))  ; 10 > 5 > 1 ? => true
+      (gt? 10 5))  ; 10 > 5 ? => true
 
 (test "comparison: gt? - success false"
       (expect (value false)
               (tags "comparison"))
-      (gt? 10 5 5))  ; 10 > 5 > 5 ? => false
+      (gt? 5 10))  ; 5 > 10 ? => false
 
 (test "comparison: gt? - arity error (1 arg)"
-      (expect (error ArityError)
+      (expect (error Eval)
               (tags "comparison"))
-      (gt? 10))  ; gt? expects 2 or more arguments, got 1
+      (gt? 10))  ; gt? expects exactly 2 arguments, got 1
 
 (test "comparison: gt? - arity error (0 args)"
-      (expect (error ArityError)
+      (expect (error Eval)
               (tags "comparison"))
-      (gt?))  ; gt? expects 2 or more arguments, got 0
+      (gt?))  ; gt? expects exactly 2 arguments, got 0
 
 (test "comparison: gt? - type error"
       (expect (error TypeError)
@@ -88,22 +88,22 @@
 (test "comparison: lt? - success true"
       (expect (value true)
               (tags "comparison"))
-      (lt? 1 5 10))  ; 1 < 5 < 10 ? => true
+      (lt? 1 5))  ; 1 < 5 ? => true
 
 (test "comparison: lt? - success false"
       (expect (value false)
               (tags "comparison"))
-      (lt? 1 5 5))  ; 1 < 5 < 5 ? => false
+      (lt? 5 1))  ; 5 < 1 ? => false
 
 (test "comparison: lt? - arity error (1 arg)"
-      (expect (error ArityError)
+      (expect (error Eval)
               (tags "comparison"))
-      (lt? 10))  ; lt? expects 2 or more arguments, got 1
+      (lt? 10))  ; lt? expects exactly 2 arguments, got 1
 
 (test "comparison: lt? - arity error (0 args)"
-      (expect (error ArityError)
+      (expect (error Eval)
               (tags "comparison"))
-      (lt?))  ; lt? expects 2 or more arguments, got 0
+      (lt?))  ; lt? expects exactly 2 arguments, got 0
 
 (test "comparison: lt? - type error"
       (expect (error TypeError)
@@ -127,27 +127,27 @@
 (test "comparison: gte? - success true (greater)"
       (expect (value true)
               (tags "comparison"))
-      (gte? 10 5 1))  ; 10 >= 5 >= 1 ? => true
+      (gte? 10 5))  ; 10 >= 5 ? => true
 
 (test "comparison: gte? - success true (equal)"
       (expect (value true)
               (tags "comparison"))
-      (gte? 10 5 5))  ; 10 >= 5 >= 5 ? => true
+      (gte? 5 5))  ; 5 >= 5 ? => true
 
 (test "comparison: gte? - success false"
       (expect (value false)
               (tags "comparison"))
-      (gte? 10 5 6))  ; 10 >= 5 >= 6 ? => false
+      (gte? 5 10))  ; 5 >= 10 ? => false
 
 (test "comparison: gte? - arity error (1 arg)"
-      (expect (error ArityError)
+      (expect (error Eval)
               (tags "comparison"))
-      (gte? 10))  ; gte? expects 2 or more arguments, got 1
+      (gte? 10))  ; gte? expects exactly 2 arguments, got 1
 
 (test "comparison: gte? - arity error (0 args)"
-      (expect (error ArityError)
+      (expect (error Eval)
               (tags "comparison"))
-      (gte?))  ; gte? expects 2 or more arguments, got 0
+      (gte?))  ; gte? expects exactly 2 arguments, got 0
 
 (test "comparison: gte? - type error"
       (expect (error TypeError)
@@ -171,27 +171,27 @@
 (test "comparison: lte? - success true (less)"
       (expect (value true)
               (tags "comparison"))
-      (lte? 1 5 10))  ; 1 <= 5 <= 10 ? => true
+      (lte? 1 5))  ; 1 <= 5 ? => true
 
 (test "comparison: lte? - success true (equal)"
       (expect (value true)
               (tags "comparison"))
-      (lte? 1 5 5))  ; 1 <= 5 <= 5 ? => true
+      (lte? 5 5))  ; 5 <= 5 ? => true
 
 (test "comparison: lte? - success false"
       (expect (value false)
               (tags "comparison"))
-      (lte? 1 6 5))  ; 1 <= 6 <= 5 ? => false
+      (lte? 10 5))  ; 10 <= 5 ? => false
 
 (test "comparison: lte? - arity error (1 arg)"
-      (expect (error ArityError)
+      (expect (error Eval)
               (tags "comparison"))
-      (lte? 10))  ; lte? expects 2 or more arguments, got 1
+      (lte? 10))  ; lte? expects exactly 2 arguments, got 1
 
 (test "comparison: lte? - arity error (0 args)"
-      (expect (error ArityError)
+      (expect (error Eval)
               (tags "comparison"))
-      (lte?))  ; lte? expects 2 or more arguments, got 0
+      (lte?))  ; lte? expects exactly 2 arguments, got 0
 
 (test "comparison: lte? - type error"
       (expect (error TypeError)

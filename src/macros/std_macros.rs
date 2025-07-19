@@ -309,16 +309,24 @@ pub fn expand_dec(expr: &AstNode) -> MacroExpansionResult {
 
 /// Expands `(print ...)` to `(core/print ...)`, letting the atom handle arity validation.
 pub fn expand_print(expr: &AstNode) -> MacroExpansionResult {
-    match &*expr.value {
-        Expr::List(items, span) if !items.is_empty() => {
-            let atom_symbol = create_symbol(CORE_PRINT, span);
-            let mut new_items = vec![atom_symbol];
-            // Add all arguments after the macro name
-            new_items.extend_from_slice(&items[1..]);
-            Ok(create_ast_list(new_items, *span))
-        }
-        _ => Err(err_msg!(Validation, ERROR_EXPECTED_LIST_FORM)),
+    // Extract list items and span
+    let Expr::List(items, span) = &*expr.value else {
+        return Err(err_msg!(Validation, ERROR_EXPECTED_LIST_FORM));
+    };
+
+    // Ensure we have at least the macro name
+    if items.is_empty() {
+        return Err(err_msg!(Validation, ERROR_EXPECTED_LIST_FORM));
     }
+
+    // Replace macro name with core/print
+    let atom_symbol = create_symbol(CORE_PRINT, span);
+    let mut new_items = vec![atom_symbol];
+
+    // Copy all arguments after the macro name
+    new_items.extend_from_slice(&items[1..]);
+
+    Ok(create_ast_list(new_items, *span))
 }
 
 // ===================================================================================================

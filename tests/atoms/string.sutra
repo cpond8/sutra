@@ -3,25 +3,25 @@
 ;; This suite validates the behavior of string manipulation atoms.
 
 ;;;
-;;; 1. Concatenation (str+)
+;;; 1. String Concatenation (str+)
 ;;;
 
 (test "string: str+ - success"
       (expect (value "hello world")
               (tags "string"))
-      (str+ "hello" " " "world"))  ; "hello" + " " + "world" ? => "hello world"
-
-(test "string: str+ - with non-string types"
-      (expect (value "number1stringtrue")
-              (tags "string"))
-      (str+ "number" 1 "string" true))  ; "number" + 1 + "string" + true ? => "number1stringtrue"
-
-(test "string: str+ - identity"
-      (expect (value "")
-              (tags "string"))
-      (str+))  ; str+ ? => "" (identity)
+      (str+ "hello" " " "world"))  ; => "hello world"
 
 (test "string: str+ - single argument"
-      (expect (value "single")
+      (expect (value "hello")
               (tags "string"))
-      (str+ "single"))  ; str+ "single" ? => "single"
+      (str+ "hello"))  ; => "hello"
+
+(test "string: str+ - identity (zero args)"
+      (expect (value "")
+              (tags "string"))
+      (str+))  ; => "" (empty string)
+
+(test "string: str+ - with non-string types"
+      (expect (value "hello123true")
+              (tags "string"))
+      (str+ "hello" 123 true))  ; => "hello123true"

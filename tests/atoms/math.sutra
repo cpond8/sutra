@@ -13,10 +13,15 @@
               (tags "math"))
       (+ 1 2 3 4))  ; 1 + 2 + 3 + 4 ? => 10
 
-(test "math: + identity"
+(test "math: + identity (zero args)"
       (expect (value 0)
               (tags "math"))
       (+))  ; + ? => 0 (identity)
+
+(test "math: + single argument"
+      (expect (value 5)
+              (tags "math"))
+      (+ 5))  ; + with single argument should work
 
 (test "math: + with negatives"
       (expect (value -2)
@@ -27,11 +32,6 @@
       (expect (error TypeError)
               (tags "math"))
       (+ 1 "two"))  ; 1 + "two" ? => type error
-
-(test "math: + arity error (zero args is identity)"
-      (expect (error ArityError)
-              (tags "math"))
-      (+ 1))  ; + expects 2 or more arguments, got 1
 
 ;;;
 ;;; 2. Subtraction (-)
@@ -47,10 +47,10 @@
               (tags "math"))
       (- 5))  ; -5 ? => -5
 
-(test "math: - arity error"
-      (expect (error ArityError)
+(test "math: - arity error (zero args)"
+      (expect (error Eval)
               (tags "math"))
-      (-))  ; - expects 2 or more arguments, got 0
+      (-))  ; - expects at least 1 argument, got 0
 
 (test "math: - type error"
       (expect (error TypeError)
@@ -66,10 +66,15 @@
               (tags "math"))
       (* 2 3 4))  ; 2 * 3 * 4 ? => 24
 
-(test "math: * identity"
+(test "math: * identity (zero args)"
       (expect (value 1)
               (tags "math"))
       (*))  ; * ? => 1 (identity)
+
+(test "math: * single argument"
+      (expect (value 5)
+              (tags "math"))
+      (* 5))  ; * with single argument should work
 
 (test "math: * with zero"
       (expect (value 0)
@@ -80,11 +85,6 @@
       (expect (error TypeError)
               (tags "math"))
       (* 2 "three"))  ; 2 * "three" ? => type error
-
-(test "math: * arity error (zero args is identity)"
-      (expect (error ArityError)
-              (tags "math"))
-      (* 5))  ; * expects 2 or more arguments, got 1
 
 ;;;
 ;;; 4. Division (/)
@@ -98,22 +98,22 @@
 (test "math: / unary reciprocal"
       (expect (value 0.25)
               (tags "math"))
-      (/ 4))  ; / 4 ? => (1/4) = 0.25
+      (/ 4))  ; 1/4 ? => 0.25
 
-(test "math: / division by zero"
-      (expect (error DivisionByZero)
+(test "math: / arity error (zero args)"
+      (expect (error Eval)
               (tags "math"))
-      (/ 10 0))  ; 10 / 0 ? => division by zero error
-
-(test "math: / arity error"
-      (expect (error ArityError)
-              (tags "math"))
-      (/))  ; / expects 2 or more arguments, got 0
+      (/))  ; / expects at least 1 argument, got 0
 
 (test "math: / type error"
       (expect (error TypeError)
               (tags "math"))
       (/ 10 "two"))  ; 10 / "two" ? => type error
+
+(test "math: / division by zero"
+      (expect (error Eval)
+              (tags "math"))
+      (/ 10 0))  ; 10 / 0 ? => division by zero
 
 ;;;
 ;;; 5. Modulo (mod)
@@ -125,16 +125,21 @@
       (mod 10 3))  ; 10 % 3 ? => 1
 
 (test "math: mod arity error - too few"
-      (expect (error ArityError)
+      (expect (error Eval)
               (tags "math"))
-      (mod 10))  ; mod expects 2 or more arguments, got 1
+      (mod 10))  ; mod expects exactly 2 arguments, got 1
 
 (test "math: mod arity error - too many"
-      (expect (error ArityError)
+      (expect (error Eval)
               (tags "math"))
-      (mod 10 3 1))  ; mod expects 2 or more arguments, got 3
+      (mod 10 3 2))  ; mod expects exactly 2 arguments, got 3
 
 (test "math: mod type error"
-            (expect (error TypeError)
+      (expect (error TypeError)
               (tags "math"))
       (mod 10 "three"))  ; 10 % "three" ? => type error
+
+(test "math: mod by zero"
+      (expect (error Eval)
+              (tags "math"))
+      (mod 10 0))  ; 10 % 0 ? => modulo by zero

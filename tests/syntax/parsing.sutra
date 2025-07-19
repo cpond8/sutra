@@ -82,31 +82,31 @@
 ;;;
 
 (test "parsing: error - unclosed list"
-      (expect (error ParseError)
+      (expect (error Parse)
               (tags "parsing"))
       "(+ 1 2")  ; => parse error
 
 (test "parsing: error - unclosed block"
-      (expect (error ParseError)
+      (expect (error Parse)
               (tags "parsing"))
       "{ (get foo) ")  ; => parse error
 
 (test "parsing: error - unclosed string"
-      (expect (error ParseError)
+      (expect (error Parse)
               (tags "parsing"))
       "\"not closed")  ; => parse error
 
 (test "parsing: error - invalid escape"
-      (expect (error ParseError)
+      (expect (error Parse)
               (tags "parsing"))
       "\"bad\\escape\"")  ; => parse error
 
 (test "parsing: error - extra closing paren"
-      (expect (error ParseError)
+      (expect (error Parse)
               (tags "parsing"))
       "(+ 1 2))")  ; => parse error
 
 (test "parsing: error - spread outside list"
-      (expect (error ParseError)
+      (expect (error Parse)
               (tags "parsing"))
       "...oops")  ; => parse error

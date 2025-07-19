@@ -12,7 +12,7 @@
       (and (gte? (rand) 0)
            (lt? (rand) 1)))  ; rand is a number in [0, 1)
 
-(test "random: rand - arity error"
-      (expect (error ArityError)
+(test "random: rand - arity error (too many)"
+      (expect (error Eval)
               (tags "random"))
-      (rand 123))  ; rand expects 0 or 1 argument, got 1
+      (rand 123))  ; rand expects 0 arguments, got 1

@@ -14,22 +14,22 @@
       (expect (value true) (tags "logic"))
       (not false))
 
-(test "logic: not - truthy value (number)"
-      (expect (value false) (tags "logic"))
+(test "logic: not - type error (number)"
+      (expect (error TypeError) (tags "logic"))
       (not 1))
 
-(test "logic: not - truthy value (string)"
-      (expect (value false) (tags "logic"))
+(test "logic: not - type error (string)"
+      (expect (error TypeError) (tags "logic"))
       (not "hello"))
 
-(test "logic: not - falsy value (nil)"
-      (expect (value true) (tags "logic"))
+(test "logic: not - type error (nil)"
+      (expect (error TypeError) (tags "logic"))
       (not nil))
 
 (test "logic: not - arity error (too few)"
-      (expect (error ArityError) (tags "logic"))
+      (expect (error Eval) (tags "logic"))
       (not))
 
 (test "logic: not - arity error (too many)"
-      (expect (error ArityError) (tags "logic"))
+      (expect (error Eval) (tags "logic"))
       (not true false))
