@@ -23,7 +23,7 @@ use crate::sub_eval_context;
 use crate::{
     ast::{AstNode, Expr, Span, Spanned},
     atoms::{helpers::validate_special_form_arity, AtomRegistry, SpecialFormAtomFn},
-    err_ctx, err_src,
+    err_ctx, err_msg, err_src,
     runtime::eval::{evaluate_ast_node, EvaluationContext},
     to_error_source, SutraError, Value, World,
 };
@@ -128,7 +128,9 @@ fn register_test_atom(
         source_file,
     };
 
-    let mut registry = TEST_REGISTRY.lock().unwrap();
+    let mut registry = TEST_REGISTRY
+        .lock()
+        .map_err(|_| err_msg!(Internal, "Test registry mutex poisoned"))?;
     registry.insert(name, test_def);
 
     Ok((Value::Nil, ctx.world.clone()))
@@ -340,23 +342,17 @@ fn test_borrow_stress_atom(
 /// # Safety
 /// Test atoms may have side effects (output, recursion) intended for testing.
 pub fn register_test_atoms(registry: &mut AtomRegistry) {
-    registry.register("test/echo", crate::atoms::Atom::SpecialForm(test_echo_atom));
-    registry.register(
-        "test/borrow_stress",
-        crate::atoms::Atom::SpecialForm(test_borrow_stress_atom),
-    );
-    registry.register(
-        "register-test!",
-        crate::atoms::Atom::SpecialForm(register_test_atom),
-    );
+    registry.register_special_form("test/echo", test_echo_atom);
+    registry.register_special_form("test/borrow_stress", test_borrow_stress_atom);
+    registry.register_special_form("register-test!", register_test_atom);
 
     // Register test assertion atoms
-    registry.register("value", crate::atoms::Atom::SpecialForm(value_atom));
-    registry.register("tags", crate::atoms::Atom::SpecialForm(tags_atom));
+    registry.register_special_form("value", value_atom);
+    registry.register_special_form("tags", tags_atom);
 
     // Register assertion atoms for testing
-    registry.register("assert", crate::atoms::Atom::SpecialForm(assert_atom));
-    registry.register("assert-eq", crate::atoms::Atom::SpecialForm(assert_eq_atom));
+    registry.register_special_form("assert", assert_atom);
+    registry.register_special_form("assert-eq", assert_eq_atom);
 }
 
 /// `assert` atom - basic assertion that fails if argument is false.

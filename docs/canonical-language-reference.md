@@ -570,7 +570,7 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ## 19. Macro System
 
-- All author-facing macros are defined in `src/macros/macros.sutra` and registered at startup.
+- All author-facing macros are defined in `src/macros/std_macros.sutra` and registered at startup.
 - Macro expansion is canonical and deterministic.
 - Macro environment is built by `build_canonical_macro_env()`.
 
@@ -622,7 +622,7 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 ## 25. References
 
-- Macro library: `src/macros/macros.sutra`
+- Macro library: `src/macros/std_macros.sutra`
 - Grammar: `src/syntax/grammar.pest`
 - Atoms: `src/atoms/`
 - AST: `src/ast/`

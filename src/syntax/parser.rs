@@ -14,88 +14,105 @@
 // 4.  **Error Reporting**: It translates `pest`'s detailed parsing errors into
 //     our project-specific `SutraError` type, preserving location information.
 //
-//!
-//! # Sutra Parser: Grammar-to-AST Mapping
-//!
-//! | PEG Rule      | AST Node         | Notes                         |
-//! |---------------|------------------|-------------------------------|
-//! | program       | Vec<Expr>        | Top-level expressions; see note below |
-//! | expr          | Expr             | Delegates to subrules         |
-//! | list          | Expr::List       | Regular list only             |
-//! | dotted_list   | (REMOVED)        | (REMOVED)                     |
-//! | block         | Expr::List       | Brace blocks                  |
-//! | atom          | Expr             | Number, Bool, String, Symbol  |
-//! | number        | Expr::Number     |                               |
-//! | boolean       | Expr::Bool       |                               |
-//! | string        | Expr::String     |                               |
-//! | symbol        | Expr::Symbol     |                               |
-//!
-//! **Span conventions:**
-//! - All AST nodes carry a span covering the full source range of the parsed form.
-//! - For dotted lists, the dot is represented as `Expr::Symbol(".")` with the span of the entire dotted list (not just the dot token).
-//! - This is intentional for simplicity and is documented for downstream consumers.
-//!
-//! **Program node representation:**
-//! - The public `parse` API returns a `Vec<Expr>` for top-level forms.
-//! - Internally, `build_program` returns an `Expr::List` for uniformity, but this is unwrapped by `parse`.
-//! - If a canonical program node is ever needed, document and update accordingly.
+// Architecture:
+// - **Public API**: `parse()` and `wrap_in_do()` are the only public functions
+// - **Grammar Rules**: Each grammar rule has a corresponding builder function
+// - **AST Builders**: Functions that construct specific AST node types
+// - **Utilities**: Common patterns and helper functions
+// - **Error Handling**: Centralized error message improvement
+//
+// Grammar Rule → AST Node Mapping:
+// | Grammar Rule    | Builder Function      | AST Node Type        | Notes                    |
+// |-----------------|----------------------|---------------------|--------------------------|
+// | program         | build_program_ast    | Vec<AstNode>        | Top-level expressions    |
+// | expr            | build_expression_ast | AstNode             | Delegates to subrules    |
+// | list            | build_list_ast       | Expr::List          | Regular lists            |
+// | block           | build_list_ast       | Expr::List          | Brace blocks (same as list) |
+// | param_list      | build_param_list_ast | Expr::ParamList     | Function parameters      |
+// | atom            | build_atom_ast       | AstNode             | Delegates to subrules    |
+// | number          | build_number_ast     | Expr::Number        | Numeric literals         |
+// | boolean         | build_boolean_ast    | Expr::Bool          | Boolean literals         |
+// | string          | build_string_ast     | Expr::String        | String literals          |
+// | symbol          | build_symbol_ast     | Expr::Symbol/Path   | Symbols or paths         |
+// | quote           | build_quote_ast      | Expr::Quote         | Quoted expressions       |
+// | define_form     | build_define_form_ast| Expr::Define        | Function definitions     |
+// | lambda_form     | build_lambda_form_ast| Expr::List          | Lambda expressions       |
+// | spread_arg      | build_spread_arg_ast | Expr::Spread        | Rest parameters          |
+// | list_elem       | build_expression_ast | AstNode             | Delegates to expression  |
 
-use std::collections::HashMap;
-
-use once_cell::sync::Lazy;
-use pest::{error::InputLocation, iterators::Pair, Parser};
+use pest::{
+    error::{Error, InputLocation},
+    iterators::Pair,
+    Parser,
+};
 use pest_derive::Parser;
 
 use crate::{
     ast::{AstNode, Expr, ParamList, Span, Spanned},
-    err_ctx, err_msg, to_error_source, Path, SutraError,
+    diagnostics::SourceArc,
+    err_ctx, err_msg,
+    error_messages::*,
+    to_error_source, Path, SutraError,
 };
 
 // ============================================================================
-// TYPE ALIASES - Reduce verbosity in parser functions
+// MACROS
 // ============================================================================
 
-/// Type alias for parser results
-type ParseResult = Result<Vec<AstNode>, SutraError>;
+/// Creates a spanned expression with the given value and span
+macro_rules! spanned_expr {
+    ($expr:expr, $span:expr) => {
+        Spanned {
+            value: $expr.into(),
+            span: $span,
+        }
+    };
+}
 
-/// Type alias for AST builder function results
-type AstBuilderResult = Result<AstNode, SutraError>;
+// ============================================================================
+// TYPE ALIASES
+// ============================================================================
 
-/// Type alias for text parsing results (symbols, strings, etc.)
-type TextParseResult = Result<String, SutraError>;
+/// Type alias for top-level program parsing results
+type ProgramParseResult = Result<Vec<AstNode>, SutraError>;
 
-// This derive macro generates the parser implementation from our grammar file.
+/// Type alias for individual expression parsing results
+type ExpressionParseResult = Result<AstNode, SutraError>;
+
+/// Type alias for symbol parsing results
+type SymbolParseResult = Result<String, SutraError>;
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+// Symbol constants
+const DO_SYMBOL: &str = "do";
+const LAMBDA_SYMBOL: &str = "lambda";
+
+// Span constants
+const EMPTY_SPAN: Span = Span { start: 0, end: 0 };
+
+// Error pattern constants
+const EXPECTED_LIST_ELEM: &str = "expected list_elem";
+const EXPECTED_CLOSING_PAREN: &str = "expected ')'";
+const EXPECTED_CLOSING_BRACE: &str = "expected '}'";
+const EXPECTED_BLOCK: &str = "expected block";
+const EXPECTED_STRING: &str = "expected string";
+const EXPECTED_QUOTE: &str = "expected '\"'";
+
+// ============================================================================
+// PEST PARSER DEFINITION
+// ============================================================================
+
+/// Pest-generated parser for the Sutra grammar
 #[derive(Parser)]
 #[grammar = "syntax/grammar.pest"]
 struct SutraParser;
 
-/// Convert pest parse errors to user-friendly SutraError messages
-fn improve_parse_error_message(msg: &str) -> (String, Option<String>) {
-    if msg.contains("expected list_elem") || msg.contains("expected ')'") {
-        (
-            "Unmatched or missing closing parenthesis ')'".to_string(),
-            Some("Check for missing or extra parentheses in your code.".to_string()),
-        )
-    } else if msg.contains("expected '}'")
-        || msg.contains("expected block")
-        || (msg.contains("expected expr") && msg.contains("{"))
-    {
-        (
-            "Unmatched or missing closing brace '}'".to_string(),
-            Some("Check for missing or extra braces in your code.".to_string()),
-        )
-    } else if msg.contains("expected string")
-        || msg.contains("expected '\"'")
-        || (msg.contains("expected program") && msg.contains("\""))
-    {
-        (
-            "Unmatched or missing closing quote '\"'".to_string(),
-            Some("Check for missing or extra quotes in your code.".to_string()),
-        )
-    } else {
-        (msg.to_string(), None)
-    }
-}
+// ============================================================================
+// PUBLIC API
+// ============================================================================
 
 /// Parses a source string into a vector of top-level Sutra `Expr` AST nodes.
 ///
@@ -108,33 +125,18 @@ fn improve_parse_error_message(msg: &str) -> (String, Option<String>) {
 /// # Returns
 /// * `Ok(Vec<Expr>)` - A vector of expressions found at the top level of the source.
 /// * `Err(SutraError)` - If parsing fails.
-pub fn parse(source: &str) -> ParseResult {
+pub fn parse(source: &str) -> ProgramParseResult {
     let src_arc = to_error_source(source);
-    // `SutraParser::parse` attempts to match the `program` rule from the grammar.
-    // If it fails, it returns a `pest` error, which we map to our `SutraError`.
-    let pairs = SutraParser::parse(Rule::program, source).map_err(|e| {
-        let span = match e.location {
-            pest::error::InputLocation::Pos(pos) => Span {
-                start: pos,
-                end: pos,
-            },
-            pest::error::InputLocation::Span((start, end)) => Span { start, end },
-        };
-        let msg = e.to_string();
-        let (custom_msg, help) = improve_parse_error_message(&msg);
-        // If there is a help message, use the new macro arm with help
-        if let Some(help_msg) = help {
-            err_ctx!(Parse, custom_msg, &src_arc, span, help_msg)
-        } else {
-            err_ctx!(Parse, custom_msg, &src_arc, span)
-        }
-    })?;
 
-    // The `program` rule is guaranteed to have one inner pair (itself) if parsing succeeds.
+    // Parse using the grammar's program rule
+    let pairs =
+        SutraParser::parse(Rule::program, source).map_err(|e| create_parse_error(e, &src_arc))?;
+
+    // Extract the root program node
     let root_pair = pairs.peek().ok_or_else(|| {
         err_ctx!(
             Parse,
-            "Parser generated an empty tree, this should not happen.",
+            ERROR_PARSER_EMPTY_TREE,
             &src_arc,
             Span {
                 start: 0,
@@ -143,249 +145,430 @@ pub fn parse(source: &str) -> ParseResult {
         )
     })?;
 
-    // We build the AST from all expressions found inside the `program` rule.
+    // Build AST from all expressions in the program
     root_pair
         .into_inner()
         .filter(|p| p.as_rule() != Rule::EOI)
-        .map(|p| build_ast_from_pair(p, source))
+        .map(|p| build_ast_from_rule(p, source))
         .collect()
 }
 
 /// Utility: Wraps a list of AST nodes in a (do ...) form if needed.
-pub fn wrap_in_do(exprs: Vec<AstNode>) -> AstNode {
-    use crate::ast::{Expr, Span, Spanned};
-    match exprs.len() {
-        0 => Spanned {
-            value: Expr::List(vec![], Span { start: 0, end: 0 }).into(),
-            span: Span { start: 0, end: 0 },
-        },
-        1 => exprs
+pub fn wrap_in_do(ast_nodes: Vec<AstNode>) -> AstNode {
+    match ast_nodes.len() {
+        0 => create_empty_list(),
+        1 => ast_nodes
             .into_iter()
             .next()
-            .expect("wrap_in_do: exprs should have at least one element"),
-        _ => {
-            let span = Span {
-                start: exprs.first().map(|n| n.span.start).unwrap_or(0),
-                end: exprs.last().map(|n| n.span.end).unwrap_or(0),
-            };
-            let do_symbol = Spanned {
-                value: Expr::Symbol("do".to_string(), span).into(),
-                span,
-            };
-            let mut items = Vec::with_capacity(exprs.len() + 1);
-            items.push(do_symbol);
-            items.extend(exprs);
-            Spanned {
-                value: Expr::List(items, span).into(),
-                span,
-            }
-        }
+            .expect("wrap_in_do: single node"),
+        _ => create_do_block(ast_nodes),
     }
 }
 
-// Utility function for consistent span extraction
-fn get_span(pair: &pest::iterators::Pair<Rule>) -> Span {
+// ============================================================================
+// GRAMMAR RULE BUILDERS
+// ============================================================================
+
+/// Main dispatcher that routes grammar rules to their corresponding AST builders
+fn build_ast_from_rule(pair: Pair<Rule>, source: &str) -> ExpressionParseResult {
+    let src_arc = to_error_source(source);
+    match pair.as_rule() {
+        // Top-level structure
+        Rule::program => build_program_ast(pair, source),
+        Rule::expr => build_expression_ast(pair, source),
+
+        // Container structures
+        Rule::list => build_list_ast(pair, source),
+        Rule::block => build_list_ast(pair, source), // Blocks are lists
+        Rule::param_list => build_param_list_ast(pair, source),
+
+        // Atomic values
+        Rule::atom => build_atom_ast(pair, source),
+        Rule::number => build_number_ast(pair, source),
+        Rule::boolean => build_boolean_ast(pair, source),
+        Rule::string => build_string_ast(pair, source),
+        Rule::symbol => build_symbol_ast(pair, source),
+
+        // Special forms
+        Rule::quote => build_quote_ast(pair, source),
+        Rule::define_form => build_define_form_ast(pair, source),
+        Rule::lambda_form => build_lambda_form_ast(pair, source),
+        Rule::spread_arg => build_spread_arg_ast(pair, source),
+
+        // List elements
+        Rule::list_elem => build_expression_ast(pair, source),
+
+        rule => Err(err_ctx!(
+            Internal,
+            format!(
+                "{}",
+                ERROR_NO_AST_BUILDER.replace("{:?}", &format!("{rule:?}"))
+            ),
+            &src_arc,
+            get_span(&pair)
+        )),
+    }
+}
+
+// ============================================================================
+// TOP-LEVEL STRUCTURE BUILDERS
+// ============================================================================
+
+/// Builds AST for the top-level program rule
+fn build_program_ast(pair: Pair<Rule>, source: &str) -> ExpressionParseResult {
+    let span = get_span(&pair);
+    build_list_from_children(
+        pair.into_inner()
+            .filter(|p| p.as_rule() != Rule::EOI)
+            .collect(),
+        span,
+        source,
+    )
+}
+
+/// Builds AST for individual expressions (delegates to subrules)
+fn build_expression_ast(pair: Pair<Rule>, source: &str) -> ExpressionParseResult {
+    let src_arc = to_error_source(source);
+    let mut inner_pairs = pair.clone().into_inner();
+    let sub_expression = inner_pairs.next().ok_or_else(|| {
+        err_ctx!(
+            Internal,
+            format!("{}", ERROR_EMPTY_EXPR_PAIR.replace("{}", pair.as_str())),
+            &src_arc,
+            get_span(&pair)
+        )
+    })?;
+    build_ast_from_rule(sub_expression, source)
+}
+
+// ============================================================================
+// CONTAINER STRUCTURE BUILDERS
+// ============================================================================
+
+/// Builds AST for list and block structures
+fn build_list_ast(pair: Pair<Rule>, source: &str) -> ExpressionParseResult {
+    let span = get_span(&pair);
+    build_list_from_children(pair.into_inner().collect(), span, source)
+}
+
+/// Builds AST for parameter lists with validation
+fn build_param_list_ast(pair: Pair<Rule>, source: &str) -> ExpressionParseResult {
+    let src_arc = to_error_source(source);
+    let span = get_span(&pair);
+
+    let param_items_container = pair
+        .into_inner()
+        .next()
+        .ok_or_else(|| err_ctx!(Internal, ERROR_MISSING_PARAM_LIST, &src_arc, span))?
+        .into_inner()
+        .collect::<Vec<_>>();
+
+    let mut required_params = Vec::new();
+    let mut rest_param = None;
+    let mut found_rest = false;
+
+    for param_item in param_items_container {
+        let (param_name, is_rest) =
+            validate_and_extract_parameter(&param_item, found_rest, &src_arc)?;
+        if is_rest {
+            found_rest = true;
+            rest_param = Some(param_name);
+        } else {
+            required_params.push(param_name);
+        }
+    }
+
+    Ok(spanned_expr!(
+        Expr::ParamList(ParamList {
+            required: required_params,
+            rest: rest_param,
+            span
+        }),
+        span
+    ))
+}
+
+// ============================================================================
+// ATOMIC VALUE BUILDERS
+// ============================================================================
+
+/// Builds AST for atom rule (delegates to subrules)
+fn build_atom_ast(pair: Pair<Rule>, source: &str) -> ExpressionParseResult {
+    let inner_expression = pair
+        .into_inner()
+        .next()
+        .ok_or_else(|| err_msg!(Internal, ERROR_EMPTY_ATOM_PAIR))?;
+    build_ast_from_rule(inner_expression, source)
+}
+
+/// Builds AST for numeric literals
+fn build_number_ast(pair: Pair<Rule>, source: &str) -> ExpressionParseResult {
+    let src_arc = to_error_source(source);
+    let span = get_span(&pair);
+    let number_text = pair.as_str();
+    let number_value = number_text.parse::<f64>().map_err(|e| {
+        err_ctx!(
+            Parse,
+            format!("{}", ERROR_NUMBER_PARSE.replace("{}", &e.to_string())),
+            &src_arc,
+            span
+        )
+    })?;
+    Ok(spanned_expr!(Expr::Number(number_value, span), span))
+}
+
+/// Builds AST for boolean literals
+fn build_boolean_ast(pair: Pair<Rule>, source: &str) -> ExpressionParseResult {
+    let src_arc = to_error_source(source);
+    let span = get_span(&pair);
+    let boolean_text = pair.as_str();
+    match boolean_text {
+        "true" => Ok(spanned_expr!(Expr::Bool(true, span), span)),
+        "false" => Ok(spanned_expr!(Expr::Bool(false, span), span)),
+        _ => Err(err_ctx!(
+            Internal,
+            format!("{}", ERROR_INVALID_BOOLEAN.replace("{}", boolean_text)),
+            &src_arc,
+            span
+        )),
+    }
+}
+
+/// Builds AST for string literals
+fn build_string_ast(pair: Pair<Rule>, _source: &str) -> ExpressionParseResult {
+    let span = get_span(&pair);
+    Ok(spanned_expr!(
+        Expr::String(unescape_string(pair.clone())?, span),
+        span
+    ))
+}
+
+/// Builds AST for symbols and paths
+fn build_symbol_ast(pair: Pair<Rule>, source: &str) -> ExpressionParseResult {
+    let src_arc = to_error_source(source);
+    let span = get_span(&pair);
+    let symbol_text = pair.as_str();
+
+    if symbol_text.contains('.') {
+        validate_and_build_path(symbol_text, span, &src_arc)
+    } else {
+        Ok(spanned_expr!(
+            Expr::Symbol(symbol_text.to_string(), span),
+            span
+        ))
+    }
+}
+
+// ============================================================================
+// SPECIAL FORM BUILDERS
+// ============================================================================
+
+/// Builds AST for quoted expressions
+fn build_quote_ast(pair: Pair<Rule>, source: &str) -> ExpressionParseResult {
+    let src_arc = to_error_source(source);
+    let span = get_span(&pair);
+    let quoted_expression = build_ast_from_rule(
+        pair.clone()
+            .into_inner()
+            .next()
+            .ok_or_else(|| err_ctx!(Parse, ERROR_MALFORMED_QUOTE, &src_arc, span))?,
+        source,
+    )?;
+    Ok(spanned_expr!(
+        Expr::Quote(Box::new(quoted_expression), span),
+        span
+    ))
+}
+
+/// Builds AST for define forms: (define (name params...) body)
+fn build_define_form_ast(pair: Pair<Rule>, source: &str) -> ExpressionParseResult {
+    let (param_list, body, span) = extract_form_parts(pair, source)?;
+    let src_arc = to_error_source(source);
+
+    let (required_params, rest_param, param_span) = match &*param_list.value {
+        Expr::ParamList(pl) => (pl.required.clone(), pl.rest.clone(), pl.span),
+        _ => {
+            return Err(err_ctx!(
+                Internal,
+                ERROR_DEFINE_MUST_HAVE_PARAMLIST,
+                &src_arc,
+                span
+            ))
+        }
+    };
+
+    let function_name = required_params
+        .first()
+        .ok_or_else(|| err_ctx!(Internal, ERROR_DEFINE_MUST_HAVE_NAME, &src_arc, span))?
+        .clone();
+
+    let actual_params = ParamList {
+        required: required_params[1..].to_vec(),
+        rest: rest_param,
+        span: param_span,
+    };
+
+    Ok(spanned_expr!(
+        Expr::Define {
+            name: function_name,
+            params: actual_params,
+            body: Box::new(body),
+            span
+        },
+        span
+    ))
+}
+
+/// Builds AST for lambda forms: (lambda (params...) body)
+fn build_lambda_form_ast(pair: Pair<Rule>, source: &str) -> ExpressionParseResult {
+    extract_form_parts(pair, source).map(|(param_list, body, span)| {
+        let lambda_symbol_expr = Expr::Symbol(LAMBDA_SYMBOL.to_string(), span);
+        let lambda_symbol_node = spanned_expr!(lambda_symbol_expr, span);
+        let list_items = vec![lambda_symbol_node, param_list, body];
+        let list_expr = Expr::List(list_items, span);
+        spanned_expr!(list_expr, span)
+    })
+}
+
+/// Builds AST for spread arguments: ...symbol
+fn build_spread_arg_ast(pair: Pair<Rule>, source: &str) -> ExpressionParseResult {
+    let src_arc = to_error_source(source);
+    let span = get_span(&pair);
+    let spread_symbol_node = build_symbol_ast(
+        pair.clone()
+            .into_inner()
+            .next()
+            .ok_or_else(|| err_ctx!(Parse, ERROR_MALFORMED_SPREAD, &src_arc, span))?,
+        source,
+    )?;
+    Ok(spanned_expr!(
+        Expr::Spread(Box::new(spread_symbol_node)),
+        span
+    ))
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+/// Extracts span from a pest pair
+fn get_span(pair: &Pair<Rule>) -> Span {
     Span {
         start: pair.as_span().start(),
         end: pair.as_span().end(),
     }
 }
 
-// Type alias for AST builder functions
-pub type AstBuilderFn = fn(Pair<Rule>, &str) -> AstBuilderResult;
-
-// Static map from Rule to handler function
-pub static AST_BUILDERS: Lazy<HashMap<Rule, AstBuilderFn>> = Lazy::new(|| {
-    let mut m = HashMap::new();
-    m.insert(Rule::program, build_program as AstBuilderFn);
-    m.insert(Rule::expr, build_expr as AstBuilderFn);
-    m.insert(Rule::list, build_list as AstBuilderFn);
-    m.insert(Rule::param_list, build_param_list as AstBuilderFn);
-    m.insert(Rule::block, build_block as AstBuilderFn);
-    m.insert(Rule::number, build_number as AstBuilderFn);
-    m.insert(Rule::boolean, build_boolean as AstBuilderFn);
-    m.insert(Rule::string, build_string as AstBuilderFn);
-    m.insert(Rule::symbol, build_symbol as AstBuilderFn);
-    m.insert(Rule::quote, build_quote as AstBuilderFn);
-    m.insert(Rule::define_form, build_define_form as AstBuilderFn);
-    m.insert(Rule::lambda_form, build_lambda_form as AstBuilderFn);
-    m.insert(Rule::atom, build_atom as AstBuilderFn);
-    m.insert(Rule::spread_arg, build_spread_arg as AstBuilderFn);
-    m.insert(Rule::list_elem, build_list_elem as AstBuilderFn);
-    m
-});
-
-// Dispatcher: looks up the handler in the map and calls it
-fn build_ast_from_pair(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
-    let src_arc = to_error_source(source);
-    AST_BUILDERS.get(&pair.as_rule()).ok_or_else(|| {
-        err_ctx!(
-            Internal,
-            format!("No AST builder for rule: {:?}", pair.as_rule()),
-            &src_arc,
-            get_span(&pair)
-        )
-    })?(pair, source)
+/// Converts pest location to our span format
+fn pest_location_to_span(location: InputLocation) -> Span {
+    match location {
+        InputLocation::Pos(pos) => Span {
+            start: pos,
+            end: pos,
+        },
+        InputLocation::Span((start, end)) => Span { start, end },
+    }
 }
 
-// Private combinator for mapping children to Expr::List
-fn map_children_to_list<'a>(
-    children: Box<dyn Iterator<Item = Pair<Rule>> + 'a>,
+/// Calculates span encompassing all AST nodes in a slice
+fn calculate_span(ast_nodes: &[AstNode]) -> Span {
+    Span {
+        start: ast_nodes
+            .first()
+            .map(|n| n.span.start)
+            .unwrap_or(EMPTY_SPAN.start),
+        end: ast_nodes
+            .last()
+            .map(|n| n.span.end)
+            .unwrap_or(EMPTY_SPAN.end),
+    }
+}
+
+/// Builds list AST from pest pairs
+fn build_list_from_children(
+    children: Vec<Pair<Rule>>,
     span: Span,
     source: &str,
-) -> AstBuilderResult {
-    let exprs = children
-        .map(|p| build_ast_from_pair(p, source))
+) -> ExpressionParseResult {
+    let ast_nodes = children
+        .into_iter()
+        .map(|p| build_ast_from_rule(p, source))
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(Spanned {
-        value: Expr::List(exprs, span).into(),
-        span,
-    })
+    Ok(spanned_expr!(Expr::List(ast_nodes, span), span))
 }
 
-/// Handles the top-level program rule.
-///
-/// Note: Returns an `Expr::List` for internal uniformity, but the public `parse` API collects top-level forms as a `Vec<Expr>`.
-/// If a canonical program node is ever needed, update this convention and document accordingly.
-fn build_program(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
-    let span = get_span(&pair);
-    map_children_to_list(
-        Box::new(
-            pair.clone()
-                .into_inner()
-                .filter(|p| p.as_rule() != Rule::EOI),
-        ),
-        span,
-        source,
-    )
+/// Creates an empty list AST node
+fn create_empty_list() -> AstNode {
+    spanned_expr!(Expr::List(vec![], EMPTY_SPAN), EMPTY_SPAN)
 }
 
-/// Handles expr rule (delegates to subrules).
-fn build_expr(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
-    let src_arc = to_error_source(source);
-    let mut inner = pair.clone().into_inner();
-    let sub = inner.next().ok_or_else(|| {
-        err_ctx!(
-            Internal,
-            format!("Empty expr pair: {}", pair.as_str()),
-            &src_arc,
-            get_span(&pair)
-        )
-    })?;
-    build_ast_from_pair(sub, source)
+/// Creates a do block AST node from multiple expressions
+fn create_do_block(ast_nodes: Vec<AstNode>) -> AstNode {
+    let span = calculate_span(&ast_nodes);
+    let do_symbol = spanned_expr!(Expr::Symbol(DO_SYMBOL.to_string(), span), span);
+    let mut list_items = Vec::with_capacity(ast_nodes.len() + 1);
+    list_items.push(do_symbol);
+    list_items.extend(ast_nodes);
+    spanned_expr!(Expr::List(list_items, span), span)
 }
 
-/// Handles list rule (proper lists only).
-fn build_list(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
-    let span = get_span(&pair);
-    map_children_to_list(Box::new(pair.clone().into_inner()), span, source)
-}
+// ============================================================================
+// VALIDATION FUNCTIONS
+// ============================================================================
 
-/// Parses a parameter list into an Expr::ParamList using a maximally functional, type-driven approach.
-///
-/// # Invariants
-/// - All required parameters (symbols) must come before any rest parameter ("... rest").
-/// - Only one rest parameter is allowed, and it must be the last.
-/// - Any violation results in a precise error.
-///
-/// # Errors
-/// - Required parameter after rest: error.
-/// - Multiple rest parameters: error.
-/// - Non-symbol after ...: error.
-/// - Invalid parameter type: error.
-///
-/// # Safety
-/// This function assumes the CST structure matches the grammar. If the grammar changes, review this logic.
-///
-/// # Example
-/// ```ignore
-/// let pair = SutraParser::parse(Rule::param_list, "x y ...rest").unwrap().next().unwrap();
-/// let result = build_param_list(pair).unwrap();
-/// assert!(matches!(result.value, Expr::ParamList(_)));
-/// ```
-// Helper: construct param_list errors
-fn param_list_error(
-    msg: impl Into<String>,
-    src_arc: &crate::diagnostics::SourceArc,
+/// Validates path components for correctness
+fn validate_path_components(
+    components: &[&str],
     span: Span,
-) -> SutraError {
-    err_ctx!(Internal, msg.into(), src_arc, span)
-}
-// Helper: handle spread_arg
-fn extract_spread_symbol(
-    item: &Pair<Rule>,
-    src_arc: &crate::diagnostics::SourceArc,
-) -> TextParseResult {
-    let mut spread_inner = item.clone().into_inner();
-    let symbol_pair = spread_inner.next().ok_or_else(|| {
-        param_list_error(
-            "spread_arg: missing symbol after '...'",
-            src_arc,
-            get_span(item),
-        )
-    })?;
-    as_symbol(&symbol_pair)
-}
+    src_arc: &SourceArc,
+) -> Result<(), SutraError> {
+    let has_invalid_component = components
+        .iter()
+        .any(|&component| component.is_empty() || component == "..");
 
-fn build_param_list(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
-    let src_arc = to_error_source(source);
-    let span = get_span(&pair);
-    let mut inner = pair.clone().into_inner();
-
-    // The param_list rule contains a single param_items rule
-    let param_items_pair = inner
-        .next()
-        .ok_or_else(|| param_list_error("param_list: Missing param_items", &src_arc, span))?;
-
-    let mut required_params = Vec::new();
-    let mut rest_param = None;
-    let mut found_rest = false;
-
-    for item in param_items_pair.into_inner() {
-        match item.as_rule() {
-            Rule::symbol if !found_rest => {
-                required_params.push(as_symbol(&item)?);
-            }
-            Rule::spread_arg => {
-                if found_rest {
-                    return Err(param_list_error(
-                        "param_list: Multiple rest parameters are not allowed",
-                        &src_arc,
-                        get_span(&item),
-                    ));
-                }
-                found_rest = true;
-                rest_param = Some(extract_spread_symbol(&item, &src_arc)?);
-            }
-            Rule::symbol if found_rest => {
-                return Err(param_list_error(
-                    "param_list: Required parameter after rest parameter",
-                    &src_arc,
-                    get_span(&item),
-                ));
-            }
-            _ => {
-                return Err(param_list_error(
-                    format!("param_list: Invalid element '{:?}'", item.as_rule()),
-                    &src_arc,
-                    get_span(&item),
-                ));
-            }
-        }
+    if has_invalid_component {
+        return Err(err_ctx!(Parse, "Invalid path", src_arc, span));
     }
 
-    Ok(Spanned {
-        value: Expr::ParamList(ParamList {
-            required: required_params,
-            rest: rest_param,
-            span,
-        })
-        .into(),
-        span,
-    })
+    Ok(())
 }
 
-fn as_symbol(pair: &Pair<Rule>) -> TextParseResult {
+/// Validates and extracts parameter information
+fn validate_and_extract_parameter(
+    param_item: &Pair<Rule>,
+    found_rest: bool,
+    src_arc: &SourceArc,
+) -> Result<(String, bool), SutraError> {
+    let span = get_span(param_item);
+    match param_item.as_rule() {
+        Rule::symbol if !found_rest => Ok((extract_symbol(param_item)?, false)),
+        Rule::spread_arg if !found_rest => {
+            let mut spread_inner = param_item.clone().into_inner();
+            let symbol_pair = spread_inner
+                .next()
+                .ok_or_else(|| err_ctx!(Internal, ERROR_SPREAD_MISSING_SYMBOL, src_arc, span))?;
+            Ok((extract_symbol(&symbol_pair)?, true))
+        }
+        Rule::symbol => Err(err_ctx!(
+            Internal,
+            ERROR_REQUIRED_PARAM_AFTER_REST,
+            src_arc,
+            span
+        )),
+        _ => Err(err_ctx!(
+            Internal,
+            format!(
+                "{}",
+                ERROR_INVALID_PARAM_ITEM.replace("{:?}", &format!("{:?}", param_item.as_rule()))
+            ),
+            src_arc,
+            span
+        )),
+    }
+}
+
+/// Extracts symbol string from a pest pair
+fn extract_symbol(pair: &Pair<Rule>) -> SymbolParseResult {
     if pair.as_rule() != Rule::symbol {
         return Err(err_msg!(
             Internal,
@@ -396,131 +579,27 @@ fn as_symbol(pair: &Pair<Rule>) -> TextParseResult {
     Ok(pair.as_str().to_string())
 }
 
-/// Handles brace-block rule (which is just a list).
-fn build_block(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
-    let span = get_span(&pair);
-    map_children_to_list(Box::new(pair.clone().into_inner()), span, source)
+/// Validates and builds path AST from symbol text
+fn validate_and_build_path(
+    symbol_text: &str,
+    span: Span,
+    src_arc: &SourceArc,
+) -> ExpressionParseResult {
+    let path_components: Vec<_> = symbol_text.split('.').collect();
+    validate_path_components(&path_components, span, src_arc)?;
+    let path = Path(path_components.into_iter().map(String::from).collect());
+    Ok(spanned_expr!(Expr::Path(path, span), span))
 }
 
-fn build_atom(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
-    let src_arc = to_error_source(source);
-    let inner = pair.clone().into_inner().next().ok_or_else(|| {
-        err_ctx!(
-            Internal,
-            format!("Empty atom pair: {}", pair.as_str()),
-            &src_arc,
-            get_span(&pair)
-        )
-    })?;
-    build_ast_from_pair(inner, source)
-}
-
-fn build_number(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
-    let src_arc = to_error_source(source);
-    let span = get_span(&pair);
-    let n = pair
-        .as_str()
-        .parse::<f64>()
-        .map_err(|e| err_ctx!(Parse, format!("Number parse error: {}", e), &src_arc, span))?;
-    Ok(Spanned {
-        value: Expr::Number(n, span).into(),
-        span,
-    })
-}
-
-fn build_boolean(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
-    let src_arc = to_error_source(source);
-    let span = get_span(&pair);
-    match pair.as_str() {
-        "true" => Ok(Spanned {
-            value: Expr::Bool(true, span).into(),
-            span,
-        }),
-        "false" => Ok(Spanned {
-            value: Expr::Bool(false, span).into(),
-            span,
-        }),
-        _ => Err(err_ctx!(
-            Internal,
-            format!("Invalid boolean literal: {}", pair.as_str()),
-            &src_arc,
-            span
-        )),
-    }
-}
-
-fn build_string(pair: Pair<Rule>, _source: &str) -> AstBuilderResult {
-    let span = get_span(&pair);
-    Ok(Spanned {
-        value: Expr::String(unescape_string(pair.clone())?, span).into(),
-        span,
-    })
-}
-
-fn build_symbol(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
-    let src_arc = to_error_source(source);
-    let span = get_span(&pair);
-    let s = pair.as_str();
-
-    // If a symbol contains a dot, we treat it as a path and parse it.
-    // Otherwise, it's a regular symbol. This is the point where we can
-    // enforce security validation on paths.
-    if s.contains('.') {
-        let components: Vec<_> = s.split('.').map(|s| s.to_string()).collect();
-
-        // SECURITY: Validate against path traversal and empty components.
-        for component in &components {
-            if component == ".." {
-                return Err(err_ctx!(
-                    Parse,
-                    "Path traversal using '..' is forbidden.",
-                    &src_arc,
-                    span
-                ));
-            }
-            if component.is_empty() {
-                return Err(err_ctx!(
-                    Parse,
-                    "Path cannot contain empty components (e.g., 'a..b').",
-                    &src_arc,
-                    span
-                ));
-            }
-        }
-
-        Ok(Spanned {
-            value: Expr::Path(Path(components), span).into(),
-            span,
-        })
-    } else {
-        Ok(Spanned {
-            value: Expr::Symbol(s.to_string(), span).into(),
-            span,
-        })
-    }
-}
-
-/// Pure helper function to unescape a string from a `pest` `Pair`.
-///
-/// Note: Only supports basic escapes (\n, \t, \\, \"). Unicode (\uXXXX) and hex/octal escapes are NOT supported.
-/// This is sufficient for current narrative scripting, but should be extended if such escapes are needed in the future.
-fn unescape_string(pair: Pair<Rule>) -> TextParseResult {
-    // The `string` rule in the grammar is `@{ "\"" ~ inner ~ "\"" }`.
-    // `pair.as_str()` gives us the full text, including the surrounding quotes.
-    let full_str = pair.as_str();
-
-    // We slice the string to remove the first and last characters (the quotes).
-    // This is simpler and more robust than traversing the CST, even if it's
-    // slightly less performant for very long strings. The correctness and
-    // simplicity trade-off is worth it here.
-    let inner_str = &full_str[1..full_str.len() - 1];
-
-    // Now, we manually unescape the recognized sequences.
+/// Unescapes string literal content
+fn unescape_string(pair: Pair<Rule>) -> SymbolParseResult {
+    let inner_str = &pair.as_str()[1..pair.as_str().len() - 1];
     let mut result = String::with_capacity(inner_str.len());
     let mut chars = inner_str.chars();
-    while let Some(c) = chars.next() {
-        if c != '\\' {
-            result.push(c);
+
+    while let Some(character) = chars.next() {
+        if character != '\\' {
+            result.push(character);
             continue;
         }
         match chars.next() {
@@ -528,310 +607,110 @@ fn unescape_string(pair: Pair<Rule>) -> TextParseResult {
             Some('t') => result.push('\t'),
             Some('\\') => result.push('\\'),
             Some('"') => result.push('"'),
-            // If we encounter an invalid escape, we just push the characters
-            // literally. The grammar should prevent this, but this is safer.
             Some(other) => {
                 result.push('\\');
                 result.push(other);
             }
-            // A dangling escape at the end of a string.
             None => result.push('\\'),
         }
     }
     Ok(result)
 }
 
-/// Canonical CST node for the parsing pipeline (modular, interface-driven).
-#[derive(Debug, Clone, PartialEq)]
-pub struct SutraCstNode {
-    pub rule: String, // Use String for rule name for now; can be enum if desired
-    pub children: Vec<SutraCstNode>,
-    pub span: Span,
-    // Optionally: text, parent, etc.
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum SutraCstParseError {
-    Syntax { span: Span, message: String },
-    Incomplete { span: Span, message: String },
-    // ...
-}
-
-/// Canonical trait for a CST parser (modular pipeline contract).
-pub trait SutraCstParser {
-    fn parse(&self, input: &str) -> Result<SutraCstNode, SutraCstParseError>;
-    fn traverse<'a>(&'a self, node: &'a SutraCstNode) -> SutraCstTraversal<'a>;
-    fn visit<'a, F: FnMut(&'a SutraCstNode)>(
-        &'a self,
-        node: &'a SutraCstNode,
-        visitor: F,
-        order: TraversalOrder,
-    );
-}
-
-/// Iterator for CST traversal (DFS/BFS).
-pub struct SutraCstTraversal<'a> {
-    // Implementation details omitted for now
-    _phantom: std::marker::PhantomData<&'a SutraCstNode>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TraversalOrder {
-    DepthFirst,
-    BreadthFirst,
-}
-
-/// Real CST parser using pest and the canonical grammar.
-pub struct PestCstParser;
-
-impl SutraCstParser for PestCstParser {
-    fn parse(&self, input: &str) -> Result<SutraCstNode, SutraCstParseError> {
-        let pairs = SutraParser::parse(Rule::program, input).map_err(|e| {
-            let span = match e.location {
-                InputLocation::Pos(pos) => Span {
-                    start: pos,
-                    end: pos,
-                },
-                InputLocation::Span((start, end)) => Span { start, end },
-            };
-            SutraCstParseError::Syntax {
-                span,
-                message: e.to_string(),
-            }
-        })?;
-        let root_pair = pairs.peek().ok_or_else(|| SutraCstParseError::Incomplete {
-            span: Span {
-                start: 0,
-                end: input.len(),
-            },
-            message: "Parser generated an empty tree, this should not happen.".to_string(),
-        })?;
-        Ok(build_cst_from_pair(root_pair))
-    }
-    fn traverse<'a>(&'a self, _node: &'a SutraCstNode) -> SutraCstTraversal<'a> {
-        SutraCstTraversal {
-            _phantom: std::marker::PhantomData,
-        }
-    }
-    fn visit<'a, F: FnMut(&'a SutraCstNode)>(
-        &'a self,
-        _node: &'a SutraCstNode,
-        _visitor: F,
-        _order: TraversalOrder,
-    ) {
-        // Not implemented for now
-    }
-}
-
-fn build_cst_from_pair(pair: Pair<Rule>) -> SutraCstNode {
-    let span = Span {
-        start: pair.as_span().start(),
-        end: pair.as_span().end(),
-    };
-    let rule = format!("{:?}", pair.as_rule());
-    let children: Vec<SutraCstNode> = pair.clone().into_inner().map(build_cst_from_pair).collect();
-    SutraCstNode {
-        rule,
-        children,
-        span,
-    }
-}
-
-fn build_quote(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
+/// Extracts parameter list and body from special forms
+fn extract_form_parts(
+    pair: Pair<Rule>,
+    source: &str,
+) -> Result<(AstNode, AstNode, Span), SutraError> {
     let src_arc = to_error_source(source);
     let span = get_span(&pair);
-    let quoted_expr = build_expr(
-        pair.clone().into_inner().next().ok_or_else(|| {
-            err_ctx!(
-                Parse,
-                "Malformed quote: missing inner expression",
-                &src_arc,
-                span
-            )
-        })?,
-        source,
-    )?;
-    Ok(Spanned {
-        value: Expr::Quote(Box::new(quoted_expr), span).into(),
-        span,
-    })
+    let mut form_pairs = pair.clone().into_inner();
+
+    let param_list_pair = form_pairs
+        .next()
+        .ok_or_else(|| err_ctx!(Internal, ERROR_MISSING_PARAM_LIST, &src_arc, span))?;
+    let param_list = build_param_list_ast(param_list_pair, source)?;
+
+    let body_pair = form_pairs
+        .next()
+        .ok_or_else(|| err_ctx!(Internal, ERROR_MISSING_BODY, &src_arc, span))?;
+    let body = build_expression_ast(body_pair, source)?;
+
+    Ok((param_list, body, span))
 }
 
-fn build_define_form(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
-    let src_arc = to_error_source(source);
-    let span = get_span(&pair);
-    let mut inner = pair.clone().into_inner();
-    let param_list = inner.next().ok_or_else(|| {
-        err_ctx!(
-            Internal,
-            "Missing parameter list in define form",
-            &src_arc,
-            span
-        )
-    })?;
-    let param_list = match param_list.as_rule() {
-        Rule::param_list => build_param_list(param_list, source)?,
-        _ => {
-            return Err(err_ctx!(
-                Internal,
-                "Expected ParamList AST node for define form parameters",
-                &src_arc,
-                span
-            ));
-        }
-    };
-    let (required, rest, param_span) = match &*param_list.value {
-        Expr::ParamList(pl) => (pl.required.clone(), pl.rest.clone(), pl.span),
-        _ => {
-            return Err(err_ctx!(
-                Internal,
-                "Define form must have a ParamList",
-                &src_arc,
-                span
-            ));
-        }
-    };
-    let name = required
-        .first()
-        .ok_or_else(|| {
-            err_ctx!(
-                Internal,
-                "Define form must have a name in its parameter list",
-                &src_arc,
-                span
-            )
-        })?
-        .clone();
-    let actual_params = ParamList {
-        required: required[1..].to_vec(),
-        rest,
-        span: param_span,
-    };
-    let body = inner.next().ok_or_else(|| {
-        err_ctx!(
-            Internal,
-            "Missing body expression in define form",
-            &src_arc,
-            span
-        )
-    })?;
-    let body = build_expr(body, source)?;
-    Ok(Spanned {
-        value: Expr::Define {
-            name,
-            params: actual_params,
-            body: Box::new(body),
-            span,
-        }
-        .into(),
-        span,
-    })
-}
+// ============================================================================
+// ERROR HANDLING
+// ============================================================================
 
-fn build_lambda_form(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
-    let src_arc = to_error_source(source);
-    let span = get_span(&pair);
-    let mut inner = pair.clone().into_inner();
-    let param_list = inner.next().ok_or_else(|| {
-        err_ctx!(
-            Internal,
-            "Missing parameter list in lambda form",
-            &src_arc,
-            span
-        )
-    })?;
-    let param_list = match param_list.as_rule() {
-        Rule::param_list => build_param_list(param_list, source)?,
-        _ => {
-            return Err(err_ctx!(
-                Internal,
-                "Expected ParamList AST node for lambda form parameters",
-                &src_arc,
-                span
-            ));
-        }
-    };
-    let (required, rest, param_span) = match &*param_list.value {
-        Expr::ParamList(pl) => (pl.required.clone(), pl.rest.clone(), pl.span),
-        _ => {
-            return Err(err_ctx!(
-                Internal,
-                "Lambda form must have a ParamList",
-                &src_arc,
-                span
-            ));
-        }
-    };
-    let body = inner.next().ok_or_else(|| {
-        err_ctx!(
-            Internal,
-            "Missing body expression in lambda form",
-            &src_arc,
-            span
-        )
-    })?;
-    let body = build_expr(body, source)?;
-    Ok(Spanned {
-        value: Expr::List(
-            vec![
-                Spanned {
-                    value: Expr::Symbol("lambda".to_string(), span).into(),
-                    span,
-                },
-                Spanned {
-                    value: Expr::ParamList(ParamList {
-                        required,
-                        rest,
-                        span: param_span,
-                    })
-                    .into(),
-                    span,
-                },
-                body.clone(),
-            ],
-            span,
-        )
-        .into(),
-        span,
-    })
-}
-
-fn build_spread_arg(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
-    let src_arc = to_error_source(source);
-    let span = get_span(&pair);
-    let symbol_expr = build_symbol(
-        pair.clone()
-            .into_inner()
-            .next()
-            .ok_or_else(|| err_ctx!(Parse, "Malformed spread: missing symbol", &src_arc, span))?,
-        source,
-    )?;
-    Ok(Spanned {
-        value: Expr::Spread(Box::new(symbol_expr)).into(),
-        span,
-    })
-}
-
-fn build_list_elem(pair: Pair<Rule>, source: &str) -> AstBuilderResult {
-    build_expr(pair, source)
-}
-
-#[cfg(test)]
-mod pest_cst_tests {
-    use super::*;
-    #[test]
-    fn pest_cst_parser_parses_simple_program() {
-        let parser = PestCstParser;
-        let input = "(foo 42)";
-        let cst = parser.parse(input).unwrap();
-        assert_eq!(cst.rule, "program");
-        assert_eq!(cst.children.len(), 2); // expr + EOI
-        let expr = &cst.children[0];
-        assert_eq!(expr.rule, "expr");
-        assert_eq!(expr.children.len(), 1);
-        let list = &expr.children[0];
-        assert_eq!(list.rule, "list");
-        assert_eq!(list.span.start, 0);
-        assert_eq!(list.span.end, 8);
+/// Creates parse error from pest error
+fn create_parse_error(e: Error<Rule>, src_arc: &SourceArc) -> SutraError {
+    let span = pest_location_to_span(e.location.clone());
+    let (custom_msg, help) = improve_parse_error_message(&e.to_string());
+    match help {
+        Some(help_msg) => err_ctx!(Parse, custom_msg, src_arc, span, help_msg),
+        None => err_ctx!(Parse, custom_msg, src_arc, span),
     }
+}
+
+/// Converts pest parse errors to user-friendly SutraError messages
+fn improve_parse_error_message(msg: &str) -> (String, Option<String>) {
+    fn create_error(problem: &str, help: &str) -> (String, Option<String>) {
+        (problem.to_string(), Some(help.to_string()))
+    }
+
+    let error_patterns = [
+        (
+            EXPECTED_LIST_ELEM,
+            "Unmatched or missing closing parenthesis ')'",
+            "Check for missing or extra parentheses in your code.",
+        ),
+        (
+            EXPECTED_CLOSING_PAREN,
+            "Unmatched or missing closing parenthesis ')'",
+            "Check for missing or extra parentheses in your code.",
+        ),
+        (
+            EXPECTED_CLOSING_BRACE,
+            "Unmatched or missing closing brace '}'",
+            "Check for missing or extra braces in your code.",
+        ),
+        (
+            EXPECTED_BLOCK,
+            "Unmatched or missing closing brace '}'",
+            "Check for missing or extra braces in your code.",
+        ),
+        (
+            EXPECTED_STRING,
+            "Unmatched or missing closing quote '\"'",
+            "Check for missing or extra quotes in your code.",
+        ),
+        (
+            EXPECTED_QUOTE,
+            "Unmatched or missing closing quote '\"'",
+            "Check for missing or extra quotes in your code.",
+        ),
+    ];
+
+    for (pattern, problem, help) in &error_patterns {
+        if msg.contains(pattern) {
+            return create_error(problem, help);
+        }
+    }
+
+    if msg.contains("expected expr") && msg.contains("{") {
+        return create_error(
+            "Unmatched or missing closing brace '}'",
+            "Check for missing or extra braces in your code.",
+        );
+    }
+
+    if msg.contains("expected program") && msg.contains("\"") {
+        return create_error(
+            "Unmatched or missing closing quote '\"'",
+            "Check for missing or extra quotes in your code.",
+        );
+    }
+
+    (msg.to_string(), None)
 }

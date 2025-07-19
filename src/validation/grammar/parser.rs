@@ -2,7 +2,17 @@ use std::collections::HashMap;
 
 use regex::Regex;
 
-use crate::validation::grammar::{CollectionState, Rule};
+use crate::validation::{CollectionState, Rule};
+
+// ============================================================================
+// TYPE ALIASES - Reduce verbosity in parser functions
+// ============================================================================
+
+/// Type alias for grammar parser results
+type GrammarResult<T> = Result<T, Box<dyn std::error::Error>>;
+
+/// Type alias for rule collections
+type RuleMap = HashMap<String, Rule>;
 
 /// Parser for grammar rule definitions
 /// Handles the complex state machine logic for collecting multi-line rule definitions
@@ -12,25 +22,24 @@ pub struct GrammarParser {
 }
 
 impl GrammarParser {
-    pub fn new() -> Self {
-        Self {
-            rule_regex: Regex::new(r"([a-zA-Z_][a-zA-Z0-9_]*)").unwrap(),
-            identifier_regex: Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_]*$").unwrap(),
-        }
+    pub fn new() -> GrammarResult<Self> {
+        Ok(Self {
+            rule_regex: Regex::new(r"([a-zA-Z_][a-zA-Z0-9_]*)")
+                .map_err(|e| format!("Failed to compile rule regex: {e}"))?,
+            identifier_regex: Regex::new(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+                .map_err(|e| format!("Failed to compile identifier regex: {e}"))?,
+        })
     }
 }
 
 impl Default for GrammarParser {
     fn default() -> Self {
-        Self::new()
+        Self::new().expect("GrammarParser::new() should not fail with valid regex patterns")
     }
 }
 
 impl GrammarParser {
-    pub fn parse_rules(
-        &self,
-        content: &str,
-    ) -> Result<HashMap<String, Rule>, Box<dyn std::error::Error>> {
+    pub fn parse_rules(&self, content: &str) -> GrammarResult<RuleMap> {
         if self.is_empty_or_whitespace(content) {
             return Err("Empty grammar content".into());
         }
@@ -59,7 +68,7 @@ impl GrammarParser {
         &self,
         lines: &[&str],
         start_index: usize,
-    ) -> Result<Option<(Rule, usize)>, Box<dyn std::error::Error>> {
+    ) -> GrammarResult<Option<(Rule, usize)>> {
         if start_index >= lines.len() {
             return Ok(None);
         }
@@ -83,31 +92,27 @@ impl GrammarParser {
         &self,
         lines: &[&str],
         start_index: usize,
-    ) -> Result<(String, usize), Box<dyn std::error::Error>> {
-        self.validate_collection_input(lines, start_index)?;
-        let mut state = self.initialize_collection_state(start_index);
+    ) -> GrammarResult<(String, usize)> {
+        fn validate_collection_input(lines: &[&str], start_index: usize) -> GrammarResult<()> {
+            if start_index >= lines.len() {
+                return Err("Invalid start index for rule collection".into());
+            }
+            Ok(())
+        }
+
+        fn initialize_collection_state(start_index: usize) -> CollectionState {
+            CollectionState {
+                definition: String::new(),
+                brace_count: 0,
+                in_rule: false,
+                current_index: start_index,
+            }
+        }
+
+        validate_collection_input(lines, start_index)?;
+        let mut state = initialize_collection_state(start_index);
         self.collect_lines_until_complete(lines, &mut state);
         Ok((state.definition, state.current_index))
-    }
-
-    fn validate_collection_input(
-        &self,
-        lines: &[&str],
-        start_index: usize,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        if start_index >= lines.len() {
-            return Err("Invalid start index for rule collection".into());
-        }
-        Ok(())
-    }
-
-    fn initialize_collection_state(&self, start_index: usize) -> CollectionState {
-        CollectionState {
-            definition: String::new(),
-            brace_count: 0,
-            in_rule: false,
-            current_index: start_index,
-        }
     }
 
     fn collect_lines_until_complete(&self, lines: &[&str], state: &mut CollectionState) {
@@ -125,19 +130,19 @@ impl GrammarParser {
     }
 
     fn line_completes_rule(&self, cleaned_line: &str, state: &mut CollectionState) -> bool {
+        fn should_complete_collection(brace_count: i32, in_rule: bool) -> bool {
+            brace_count == 0 && in_rule
+        }
+
         if let Some((new_brace_count, rule_started)) =
             self.process_line_braces(cleaned_line, state.brace_count, state.in_rule)
         {
             state.brace_count = new_brace_count;
             state.in_rule = rule_started;
-            self.should_complete_collection(state.brace_count, state.in_rule)
+            should_complete_collection(state.brace_count, state.in_rule)
         } else {
             false
         }
-    }
-
-    fn should_complete_collection(&self, brace_count: i32, in_rule: bool) -> bool {
-        brace_count == 0 && in_rule
     }
 
     fn process_line_braces(
@@ -211,16 +216,29 @@ impl GrammarParser {
         refs
     }
 
-    fn extract_inline_patterns(&self, definition: &str) -> Vec<String> {
-        let re = Regex::new(r#"([^"]*)"|'([^']*)'|\{([^}]*)\}"#).unwrap();
-        re.captures_iter(definition)
-            .flat_map(|cap| Self::extract_patterns_from_capture(&cap))
-            .collect()
-    }
+    fn extract_inline_patterns(&self, grammar_definition: &str) -> Vec<String> {
+        /// Extracts non-empty pattern strings from regex capture groups
+        fn extract_non_empty_patterns_from_capture(
+            capture_groups: &regex::Captures,
+        ) -> Vec<String> {
+            let capture_group_indices = 1..=3; // Groups 1, 2, 3 correspond to quoted strings, single quotes, and braces
+            capture_group_indices
+                .filter_map(|group_index| {
+                    capture_groups
+                        .get(group_index)
+                        .map(|matched_text| matched_text.as_str().to_string())
+                })
+                .collect()
+        }
 
-    fn extract_patterns_from_capture(cap: &regex::Captures) -> Vec<String> {
-        (1..=3)
-            .filter_map(|i| cap.get(i).map(|m| m.as_str().to_string()))
+        let inline_pattern_regex = match Regex::new(r#"([^"]*)"|'([^']*)'|\{([^}]*)\}"#) {
+            Ok(regex) => regex,
+            Err(_) => return Vec::new(), // Return empty vector on regex compilation failure
+        };
+
+        inline_pattern_regex
+            .captures_iter(grammar_definition)
+            .flat_map(|capture_groups| extract_non_empty_patterns_from_capture(&capture_groups))
             .collect()
     }
 

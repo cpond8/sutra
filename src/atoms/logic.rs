@@ -18,7 +18,7 @@ use crate::{
         helpers::{
             pure_eval_numeric_sequence_comparison, pure_eval_unary_typed_op, validate_binary_arity,
         },
-        Atom, AtomRegistry, PureAtomFn,
+        AtomRegistry, PureAtomFn,
     },
     Value,
 };
@@ -38,9 +38,6 @@ use crate::{
 ///   (eq? 1 1) ; => true
 ///   (eq? 1 2) ; => false
 ///   (eq? 1 1 1) ; => true
-///
-/// # Safety
-/// Pure, does not mutate state.
 pub const ATOM_EQ: PureAtomFn = |args| {
     validate_binary_arity(args, "eq?")?;
     for window in args.windows(2) {
@@ -61,9 +58,6 @@ pub const ATOM_EQ: PureAtomFn = |args| {
 /// Example:
 ///   (gt? 3 2) ; => true
 ///   (gt? 3 2 1) ; => true
-///
-/// # Safety
-/// Pure, does not mutate state.
 pub const ATOM_GT: PureAtomFn =
     |args| pure_eval_numeric_sequence_comparison(args, |a, b| a <= b, "gt?");
 
@@ -77,9 +71,6 @@ pub const ATOM_GT: PureAtomFn =
 /// Example:
 ///   (lt? 1 2) ; => true
 ///   (lt? 1 2 3) ; => true
-///
-/// # Safety
-/// Pure, does not mutate state.
 pub const ATOM_LT: PureAtomFn =
     |args| pure_eval_numeric_sequence_comparison(args, |a, b| a >= b, "lt?");
 
@@ -93,9 +84,6 @@ pub const ATOM_LT: PureAtomFn =
 /// Example:
 ///   (gte? 2 2) ; => true
 ///   (gte? 3 2 1) ; => true
-///
-/// # Safety
-/// Pure, does not mutate state.
 pub const ATOM_GTE: PureAtomFn =
     |args| pure_eval_numeric_sequence_comparison(args, |a, b| a < b, "gte?");
 
@@ -109,9 +97,6 @@ pub const ATOM_GTE: PureAtomFn =
 /// Example:
 ///   (lte? 1 2) ; => true
 ///   (lte? 1 2 3) ; => true
-///
-/// # Safety
-/// Pure, does not mutate state.
 pub const ATOM_LTE: PureAtomFn =
     |args| pure_eval_numeric_sequence_comparison(args, |a, b| a > b, "lte?");
 
@@ -128,9 +113,6 @@ pub const ATOM_LTE: PureAtomFn =
 ///
 /// Example:
 ///   (not true) ; => false
-///
-/// # Safety
-/// Pure, does not mutate state.
 pub const ATOM_NOT: PureAtomFn =
     |args| pure_eval_unary_typed_op::<bool, _>(args, |b| Value::Bool(!b), "not");
 
@@ -141,24 +123,24 @@ pub const ATOM_NOT: PureAtomFn =
 /// Registers all logic and comparison atoms with the given registry.
 pub fn register_logic_atoms(registry: &mut AtomRegistry) {
     // Comparison operations
-    registry.register("eq?", Atom::Pure(ATOM_EQ));
-    registry.register("gt?", Atom::Pure(ATOM_GT));
-    registry.register("lt?", Atom::Pure(ATOM_LT));
-    registry.register("gte?", Atom::Pure(ATOM_GTE));
-    registry.register("lte?", Atom::Pure(ATOM_LTE));
+    registry.register_pure("eq?", ATOM_EQ);
+    registry.register_pure("gt?", ATOM_GT);
+    registry.register_pure("lt?", ATOM_LT);
+    registry.register_pure("gte?", ATOM_GTE);
+    registry.register_pure("lte?", ATOM_LTE);
 
     // Comparison aliases
-    registry.register("=", Atom::Pure(ATOM_EQ));
-    registry.register(">", Atom::Pure(ATOM_GT));
-    registry.register("<", Atom::Pure(ATOM_LT));
-    registry.register(">=", Atom::Pure(ATOM_GTE));
-    registry.register("<=", Atom::Pure(ATOM_LTE));
-    registry.register("is?", Atom::Pure(ATOM_EQ));
-    registry.register("over?", Atom::Pure(ATOM_GT));
-    registry.register("under?", Atom::Pure(ATOM_LT));
-    registry.register("at-least?", Atom::Pure(ATOM_GTE));
-    registry.register("at-most?", Atom::Pure(ATOM_LTE));
+    registry.register_pure("=", ATOM_EQ);
+    registry.register_pure(">", ATOM_GT);
+    registry.register_pure("<", ATOM_LT);
+    registry.register_pure(">=", ATOM_GTE);
+    registry.register_pure("<=", ATOM_LTE);
+    registry.register_pure("is?", ATOM_EQ);
+    registry.register_pure("over?", ATOM_GT);
+    registry.register_pure("under?", ATOM_LT);
+    registry.register_pure("at-least?", ATOM_GTE);
+    registry.register_pure("at-most?", ATOM_LTE);
 
     // Logic operations
-    registry.register("not", Atom::Pure(ATOM_NOT));
+    registry.register_pure("not", ATOM_NOT);
 }

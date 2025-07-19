@@ -1,15 +1,21 @@
-use std::{cell::RefCell, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 use miette::NamedSource;
 
 use crate::{
-    err_ctx, err_msg,
+    atoms::AtomRegistry,
+    err_ctx,
     macros::{
         expand_macros_recursively, is_macro_definition, parse_macro_definition, MacroDefinition,
+        MacroExpansionContext, MacroValidationContext,
     },
-    runtime::{eval::evaluate, world::build_canonical_macro_env},
-    syntax::parser::wrap_in_do,
-    to_error_source, AstNode, MacroRegistry, OutputBuffer, SharedOutput, SutraError, Value, World,
+    runtime::{
+        eval::evaluate,
+        world::{build_canonical_macro_env, build_default_atom_registry},
+    },
+    syntax::parser::{parse, wrap_in_do},
+    validation::semantic::validate_expanded_ast,
+    AstNode, MacroRegistry, OutputBuffer, SharedOutput, SutraError, Value, World,
 };
 
 // ============================================================================
@@ -21,6 +27,12 @@ type ExecutionResult = Result<(), SutraError>;
 
 /// Type alias for AST execution results
 type AstExecutionResult = Result<Value, SutraError>;
+
+/// Type alias for evaluation results with world state
+type EvaluationResult = Result<(Value, World), SutraError>;
+
+/// Type alias for source context used in error reporting
+type SourceContext = Arc<NamedSource<String>>;
 
 /// Unified execution pipeline that enforces strict layering: Parse → Expand → Validate → Evaluate
 /// This is the single source of truth for all Sutra execution paths, including tests and production.
@@ -42,12 +54,117 @@ impl Default for ExecutionPipeline {
 }
 
 impl ExecutionPipeline {
+    // ============================================================================
+    // HELPER METHODS - Extract common patterns for reuse
+    // ============================================================================
+
+    /// Builds standard registries used across all execution paths
+    fn build_standard_registries() -> (AtomRegistry, MacroExpansionContext) {
+        let atom_registry = build_default_atom_registry();
+        let macro_env = build_canonical_macro_env().expect("Standard macro env should build");
+        (atom_registry, macro_env)
+    }
+
+    /// Creates a source context for error reporting
+    fn create_source_context(&self, name: &str, content: &str) -> SourceContext {
+        Arc::new(NamedSource::new(name, content.to_string()))
+    }
+
+    /// Processes macro definitions and adds them to the environment
+    fn process_macro_definitions(
+        &self,
+        macro_defs: Vec<AstNode>,
+        env: &mut MacroExpansionContext,
+    ) -> ExecutionResult {
+        let ctx = MacroValidationContext::for_user_macros();
+        let mut macros = Vec::new();
+
+        for macro_expr in macro_defs {
+            let (name, template) = parse_macro_definition(&macro_expr)?;
+            macros.push((name, template));
+        }
+
+        ctx.validate_and_insert_many(macros, &mut env.user_macros)
+    }
+
+    /// Combines core and user macros into a single registry for validation
+    fn combine_macro_registries(
+        &self,
+        env: &MacroExpansionContext,
+    ) -> HashMap<String, MacroDefinition> {
+        let mut combined = env.core_macros.clone();
+        combined.extend(env.user_macros.clone());
+        combined
+    }
+
+    /// Validates an expanded AST if validation is enabled
+    fn validate_expanded_ast(
+        &self,
+        expanded: &AstNode,
+        env: &MacroExpansionContext,
+        atom_registry: &AtomRegistry,
+        source_context: &SourceContext,
+    ) -> ExecutionResult {
+        if !self.validate {
+            return Ok(());
+        }
+
+        let combined_macros = self.combine_macro_registries(env);
+        let macro_registry = MacroRegistry {
+            macros: combined_macros,
+        };
+
+        let validation_result = validate_expanded_ast(expanded, &macro_registry, atom_registry);
+
+        if !validation_result.is_valid() {
+            let error_message = validation_result.errors.join("\n");
+            return Err(err_ctx!(
+                Validation,
+                format!("Semantic validation failed:\n{}", error_message),
+                source_context,
+                expanded.span,
+                "Check for undefined symbols, type errors, or invalid macro usage in your code."
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Evaluates an expanded AST with standard context
+    fn evaluate_expanded_ast(
+        &self,
+        expanded: &AstNode,
+        output: SharedOutput,
+        source_context: SourceContext,
+        atom_registry: &AtomRegistry,
+    ) -> EvaluationResult {
+        let world = World::default();
+        evaluate(
+            expanded,
+            &world,
+            output,
+            atom_registry,
+            source_context,
+            self.max_depth,
+        )
+    }
+
+    /// Outputs result if not nil
+    fn output_result_if_not_nil(&self, result: &Value, output: &SharedOutput) {
+        if !result.is_nil() {
+            output.emit(&result.to_string(), None);
+        }
+    }
+
+    // ============================================================================
+    // PUBLIC EXECUTION METHODS
+    // ============================================================================
+
     /// Executes Sutra source code through the complete pipeline.
     /// This is the single entry point for all execution paths, including tests.
     pub fn execute(&self, source: &str, output: SharedOutput) -> ExecutionResult {
-        let src_arc = to_error_source(source);
         // Phase 1: Parse the source into AST nodes
-        let ast_nodes = crate::syntax::parser::parse(source)?;
+        let ast_nodes = parse(source)?;
 
         // Phase 2: Partition AST nodes: macro definitions vs user code
         // Note: define forms are special forms that should be evaluated, not treated as macros
@@ -57,15 +174,8 @@ impl ExecutionPipeline {
         // Phase 3: Build canonical macro environment
         let mut env = build_canonical_macro_env()?;
 
-        // Phase 4: Extend env.user_macros with user-defined macros parsed from the source.
-        for macro_expr in macro_defs {
-            let (name, template) = parse_macro_definition(&macro_expr)?;
-            if env.user_macros.contains_key(&name) {
-                return Err(err_msg!(Validation, "Duplicate macro name '{}'", name));
-            }
-            env.user_macros
-                .insert(name.clone(), MacroDefinition::Template(template));
-        }
+        // Phase 4: Process user-defined macros
+        self.process_macro_definitions(macro_defs, &mut env)?;
 
         // Phase 5: Wrap user_code in a (do ...) if needed
         let program = wrap_in_do(user_code);
@@ -74,48 +184,16 @@ impl ExecutionPipeline {
         let expanded = expand_macros_recursively(program, &mut env)?;
 
         // Phase 7: Validation step (optional but recommended)
-        if self.validate {
-            let atom_registry = crate::runtime::world::build_default_atom_registry();
-            let mut combined_macros = env.core_macros.clone();
-            combined_macros.extend(env.user_macros.clone());
-            let macro_registry_for_validation = MacroRegistry {
-                macros: combined_macros,
-            };
-            let validation_result = crate::validation::semantic::validate_expanded_ast(
-                &expanded,
-                &macro_registry_for_validation,
-                &atom_registry,
-            );
-
-            if !validation_result.is_valid() {
-                let error_message = validation_result.errors.join("\n");
-                return Err(err_ctx!(
-                    Validation,
-                    format!("Semantic validation failed:\n{}", error_message),
-                    &src_arc,
-                    expanded.span,
-                    "Check for undefined symbols, type errors, or invalid macro usage in your code."
-                ));
-            }
-        }
+        let (atom_registry, _) = Self::build_standard_registries();
+        let source_context = self.create_source_context("source", source);
+        self.validate_expanded_ast(&expanded, &env, &atom_registry, &source_context)?;
 
         // Phase 8: Evaluate the expanded AST (CRITICAL: No macro expansion happens here)
-        let world = World::default();
-        let source = Arc::new(NamedSource::new("source", source.to_string()));
-        let atom_registry = crate::runtime::world::build_default_atom_registry();
-        let (result, _updated_world) = evaluate(
-            &expanded,
-            &world,
-            output.clone(),
-            &atom_registry,
-            source.clone(),
-            self.max_depth,
-        )?;
+        let (result, _updated_world) =
+            self.evaluate_expanded_ast(&expanded, output.clone(), source_context, &atom_registry)?;
 
         // Phase 9: Output result (if not nil)
-        if !result.is_nil() {
-            output.emit(&result.to_string(), None);
-        }
+        self.output_result_if_not_nil(&result, &output);
 
         Ok(())
     }
@@ -128,9 +206,9 @@ impl ExecutionPipeline {
         expanded_ast: &AstNode,
         world: &World,
         output: SharedOutput,
-        source: Arc<NamedSource<String>>,
+        source: SourceContext,
     ) -> Result<(Value, World), SutraError> {
-        let atom_registry = crate::runtime::world::build_default_atom_registry();
+        let atom_registry = build_default_atom_registry();
         evaluate(
             expanded_ast,
             world,
@@ -152,22 +230,13 @@ impl ExecutionPipeline {
         let expanded = expand_macros_recursively(test_body.clone(), &mut env)?;
 
         // Phase 3: Evaluate the expanded AST
-        let world = World::default();
-        let source = Arc::new(NamedSource::new("test", "".to_string()));
-        let atom_registry = crate::runtime::world::build_default_atom_registry();
-        let (result, _updated_world) = evaluate(
-            &expanded,
-            &world,
-            output.clone(),
-            &atom_registry,
-            source.clone(),
-            self.max_depth,
-        )?;
+        let (atom_registry, _) = Self::build_standard_registries();
+        let source_context = self.create_source_context("test", "");
+        let (result, _updated_world) =
+            self.evaluate_expanded_ast(&expanded, output.clone(), source_context, &atom_registry)?;
 
         // Phase 4: Output result (if not nil)
-        if !result.is_nil() {
-            output.emit(&result.to_string(), None);
-        }
+        self.output_result_if_not_nil(&result, &output);
 
         Ok(())
     }
@@ -181,15 +250,8 @@ impl ExecutionPipeline {
         // Build canonical macro environment
         let mut env = build_canonical_macro_env()?;
 
-        // Extend env.user_macros with user-defined macros
-        for macro_expr in macro_defs {
-            let (name, template) = parse_macro_definition(&macro_expr)?;
-            if env.user_macros.contains_key(&name) {
-                return Err(err_msg!(Validation, "Duplicate macro name '{}'", name));
-            }
-            env.user_macros
-                .insert(name.clone(), MacroDefinition::Template(template));
-        }
+        // Process user-defined macros
+        self.process_macro_definitions(macro_defs, &mut env)?;
 
         // Wrap user_code in a (do ...) if needed
         let program = wrap_in_do(user_code);
@@ -198,47 +260,14 @@ impl ExecutionPipeline {
         let expanded = expand_macros_recursively(program, &mut env)?;
 
         // Optional validation step
-        if self.validate {
-            let atom_registry = crate::runtime::world::build_default_atom_registry();
-            let mut combined_macros = env.core_macros.clone();
-            combined_macros.extend(env.user_macros.clone());
-            let macro_registry = MacroRegistry {
-                macros: combined_macros,
-            };
-
-            let validation_result = crate::validation::semantic::validate_expanded_ast(
-                &expanded,
-                &macro_registry,
-                &atom_registry,
-            );
-
-            if !validation_result.is_valid() {
-                let errors = validation_result.errors.join("\n");
-                let src_arc = to_error_source("");
-                return Err(err_ctx!(
-                    Validation,
-                    format!("Semantic validation failed:\n{}", errors),
-                    &src_arc,
-                    expanded.span,
-                    "Check for undefined symbols, type errors, or invalid macro usage in your code."
-                ));
-            }
-        }
+        let (atom_registry, _) = Self::build_standard_registries();
+        let source_context = self.create_source_context("ast_execution", "");
+        self.validate_expanded_ast(&expanded, &env, &atom_registry, &source_context)?;
 
         // Evaluate the expanded AST
-        let world = World::default();
-        let source = Arc::new(NamedSource::new("ast_execution", "".to_string()));
-        let atom_registry = crate::runtime::world::build_default_atom_registry();
         let output = SharedOutput(Rc::new(RefCell::new(OutputBuffer::new())));
-
-        let (result, _) = evaluate(
-            &expanded,
-            &world,
-            output,
-            &atom_registry,
-            source,
-            self.max_depth,
-        )?;
+        let (result, _) =
+            self.evaluate_expanded_ast(&expanded, output, source_context, &atom_registry)?;
 
         Ok(result)
     }

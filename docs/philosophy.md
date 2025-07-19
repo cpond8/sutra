@@ -253,8 +253,119 @@ storylet "find-key" {
 
 ---
 
+## Code Review and Refactoring Prompts
+
+**Purpose:** These prompts help identify opportunities for consolidation, simplification, and improved readability during code reviews. They focus on aligning code with the philosophy's core principles.
+
+### Structural Simplification
+
+**Redundant Parameter Structs:**
+- Look for multiple similar parameter structs that could be unified
+- Identify functions that create temporary objects just to pass parameters
+- Find public/internal function pairs that add unnecessary complexity
+
+**Example Prompts:**
+```
+"@philosophy.md review @[filename] -- identify any redundant parameter structs, unnecessary function wrappers, or violations of the flat code structure principle"
+```
+
+### Philosophy-Specific Violations
+
+**Flat Code Structure:**
+- Functions with depth > 3 that need guard clauses or early returns
+- Deep nesting that could be flattened
+- Complex conditional chains that could be simplified
+
+**Error Handling Consistency:**
+- Mix of `map_err` chains vs early returns with `?`
+- Inconsistent use of `err_msg!` vs `err_ctx!` macros
+- Error messages that don't follow the unified error system
+
+**Example Prompts:**
+```
+"@philosophy.md analyze @[filename] -- find functions that could be simplified by removing temporary parameter objects or consolidating similar operations"
+```
+
+### Code Quality Issues
+
+**Antipatterns:**
+- Excessive `.clone()` calls that could be avoided with better ownership design
+- Functions that clone just to pass parameters
+- Complex functions that do multiple things (violating single responsibility)
+
+**Type Aliases:**
+- Complex return types that could benefit from type aliases
+- Repeated complex parameter combinations
+- Missing type aliases for complex results and contexts
+
+**Example Prompts:**
+```
+"@philosophy.md check @[filename] -- look for inconsistent error handling patterns, excessive cloning, or functions that violate the 'one responsibility' principle"
+```
+
+### Domain-Specific Patterns
+
+**AST Traversal:**
+- Look for similar traversal logic across different modules
+- Functions that could be unified into generic traversal patterns
+- Redundant tree-walking code
+
+**Macro Expansion:**
+- Complex macro substitution logic that could be simplified
+- Redundant parameter binding code
+- Overly complex expansion patterns
+
+**Validation Logic:**
+- Validation functions that do multiple checks
+- Validation that could be composed from smaller validators
+- Non-modular validation components
+
+**Example Prompts:**
+```
+"@philosophy.md review @[filename] -- find AST traversal patterns that could be unified or macro expansion logic that could be simplified"
+```
+
+### General Review Prompts
+
+**Comprehensive Code Review:**
+```
+"@philosophy.md comprehensive-review @[filename] -- check for structural simplification opportunities, philosophy violations, code quality issues, and domain-specific patterns that could be improved"
+```
+
+**Architecture Review:**
+```
+"@philosophy.md architecture-review @[filename] -- analyze for separation of concerns, encapsulation quality, error handling consistency, and opportunities for better composition"
+```
+
+**Refactoring Assessment:**
+```
+"@philosophy.md refactor-check @[filename] -- identify functions that could be simplified, redundant structures to consolidate, and patterns that violate minimalism principles"
+```
+
+**Quality Gate Review:**
+```
+"@philosophy.md quality-review @[filename] -- check for flat code structure, consistent error handling, proper type aliases, and adherence to functional programming principles"
+```
+
+### Review Process
+
+**When to Use:**
+- During code reviews for new features
+- When refactoring existing modules
+- Before merging complex changes
+- During architectural reviews
+
+**Expected Outcomes:**
+- Simplified function signatures
+- Reduced code duplication
+- Improved readability
+- Better alignment with philosophy principles
+
+---
+
 ## Changelog
 
+- **2025-07-18:** Added comprehensive "Code Review and Refactoring Prompts" section with specific and general review prompts for maintaining code quality and philosophy alignment
 - **2025-07-16:** Comprehensive rewrite reflecting current architecture, validation system, error handling, quality gates, and development process
 - **2025-07-05:** Updated to require explicit value lookup (no more auto-get)
 

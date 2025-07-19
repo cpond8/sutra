@@ -850,6 +850,104 @@ pub fn build_apply_call_expr(
 }
 
 // ============================================================================
+// COLLECTION VALIDATION HELPERS
+// ============================================================================
+
+/// Validates that a value is a Path and extracts it.
+/// Provides consistent error messages for path validation across collection atoms.
+///
+/// # Arguments
+/// * `args` - The arguments array
+/// * `atom_name` - Name of the atom for error messages
+///
+/// # Returns
+/// * `Ok(&Path)` - The path if valid
+/// * `Err(SutraError)` - Error with descriptive message
+pub fn validate_path_arg<'a>(args: &'a [Value], atom_name: &str) -> Result<&'a Path, SutraError> {
+    match &args[0] {
+        Value::Path(p) => Ok(p),
+        _ => Err(err_msg!(
+            Eval,
+            "{} expects a Path as first argument, found {}",
+            atom_name,
+            args[0].to_string()
+        )),
+    }
+}
+
+/// Validates that a value is a String and extracts it.
+/// Provides consistent error messages for string validation across collection atoms.
+///
+/// # Arguments
+/// * `value` - The value to validate
+/// * `context` - Context for error messages (e.g., "map key", "string argument")
+///
+/// # Returns
+/// * `Ok(&str)` - The string slice if valid
+/// * `Err(SutraError)` - Error with descriptive message
+pub fn validate_string_value<'a>(value: &'a Value, context: &str) -> Result<&'a str, SutraError> {
+    match value {
+        Value::String(s) => Ok(s),
+        _ => Err(err_msg!(
+            Eval,
+            "Expected String for {}, found {}",
+            context,
+            value.to_string()
+        )),
+    }
+}
+
+/// Validates that a value is a List and extracts a mutable reference to it.
+/// Provides consistent error messages for list validation across collection atoms.
+///
+/// # Arguments
+/// * `value` - The value to validate
+/// * `context` - Context for error messages (e.g., "first argument", "at path")
+///
+/// # Returns
+/// * `Ok(&mut Vec<Value>)` - Mutable reference to the list if valid
+/// * `Err(SutraError)` - Error with descriptive message
+pub fn validate_list_value_mut<'a>(
+    value: &'a mut Value,
+    context: &str,
+) -> Result<&'a mut Vec<Value>, SutraError> {
+    match value {
+        Value::List(items) => Ok(items),
+        _ => Err(err_msg!(
+            Eval,
+            "Expected List for {}, found {}",
+            context,
+            value.to_string()
+        )),
+    }
+}
+
+/// Validates that a value is a List and extracts a reference to it.
+/// Provides consistent error messages for list validation across collection atoms.
+///
+/// # Arguments
+/// * `value` - The value to validate
+/// * `context` - Context for error messages (e.g., "first argument", "at path")
+///
+/// # Returns
+/// * `Ok(&Vec<Value>)` - Reference to the list if valid
+/// * `Err(SutraError)` - Error with descriptive message
+pub fn validate_list_value<'a>(
+    value: &'a Value,
+    context: &str,
+) -> Result<&'a Vec<Value>, SutraError> {
+    match value {
+        Value::List(items) => Ok(items),
+        _ => Err(err_msg!(
+            Eval,
+            "Expected List for {}, found {}",
+            context,
+            value.to_string()
+        )),
+    }
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 

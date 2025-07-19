@@ -25,30 +25,68 @@ use crate::{
     ast::{AstNode, Expr, ParamList, Span, Spanned},
     err_src,
     macros::{
-        MacroDefinition, MacroExpansionContext, MacroExpansionResult, MacroExpansionStep,
-        MacroOrigin, MacroTemplate, MAX_MACRO_RECURSION_DEPTH,
+        check_arity, MacroDefinition, MacroExpansionContext, MacroExpansionResult,
+        MacroExpansionStep, MacroOrigin, MacroTemplate, MAX_MACRO_RECURSION_DEPTH,
     },
     SutraError,
 };
 
 // =============================
-// Type definitions for parameter grouping
+// Type aliases to reduce verbosity
 // =============================
 
-/// Groups parameters commonly used in template substitution functions
-struct SubstitutionContext<'a> {
-    bindings: &'a HashMap<String, AstNode>,
+/// Type alias for macro parameter bindings
+type MacroBindings = HashMap<String, AstNode>;
+
+/// Type alias for AST node slice
+type AstNodeSlice = [AstNode];
+
+/// Type alias for common macro substitution parameters
+type MacroSubstitutionParams<'a> = (&'a MacroBindings, &'a MacroExpansionContext, usize, &'a str);
+
+// =============================
+// Unified context for macro operations
+// =============================
+
+/// Unified context for macro substitution and expansion operations
+struct MacroContext<'a> {
+    bindings: &'a MacroBindings,
     env: &'a MacroExpansionContext,
     depth: usize,
     macro_name: &'a str,
+}
+
+impl<'a> MacroContext<'a> {
+    fn new(
+        bindings: &'a MacroBindings,
+        env: &'a MacroExpansionContext,
+        depth: usize,
+        macro_name: &'a str,
+    ) -> Self {
+        Self {
+            bindings,
+            env,
+            depth,
+            macro_name,
+        }
+    }
+
+    fn with_depth(&self, depth: usize) -> Self {
+        Self {
+            bindings: self.bindings,
+            env: self.env,
+            depth,
+            macro_name: self.macro_name,
+        }
+    }
 }
 
 // =============================
 // Public API for macro expansion
 // =============================
 
-/// Public entry point for macro expansion.
 /// Expands all macro calls recursively within an AST node, tracing expansions.
+/// This is the main entry point for macro expansion during evaluation.
 pub fn expand_macros_recursively(
     ast: AstNode,
     env: &mut MacroExpansionContext,
@@ -56,10 +94,8 @@ pub fn expand_macros_recursively(
     expand_macros_recursively_with_trace(ast, env, 0)
 }
 
-/// Centralized macro expansion function replicating existing logic from the evaluator.
-///
-/// This function is designed to replace the inline macro expansion in the evaluator.
-/// It handles both template and function macros with recursion depth checking.
+/// Expands a single macro call, handling both template and function macros.
+/// Used by the evaluator to replace inline macro expansion logic.
 pub fn expand_macro_call(
     macro_def: &MacroDefinition,
     call: &AstNode,
@@ -67,14 +103,7 @@ pub fn expand_macro_call(
     depth: usize,
 ) -> MacroExpansionResult {
     // Check recursion depth
-    if depth > MAX_MACRO_RECURSION_DEPTH {
-        return Err(err_src!(
-            Internal,
-            "Recursion limit exceeded",
-            &env.source,
-            call.span
-        ));
-    }
+    check_recursion_depth(depth, "macro", &call.span, env)?;
 
     match macro_def {
         MacroDefinition::Template(template) => {
@@ -84,7 +113,7 @@ pub fn expand_macro_call(
                 _ => {
                     return Err(err_src!(
                         Eval,
-                        "Macro call must be a list",
+                        "Macro call must be a list expression",
                         &env.source,
                         call.span
                     ));
@@ -113,8 +142,8 @@ pub fn expand_macro_call(
     }
 }
 
-/// Expands a macro template call by substituting arguments into the template body.
-/// Handles arity checks, parameter binding, and recursion depth.
+/// Expands a macro template by substituting arguments into the template body.
+/// Performs arity checks, parameter binding, and recursion depth validation.
 pub fn expand_template(
     template: &MacroTemplate,
     call: &AstNode,
@@ -122,14 +151,7 @@ pub fn expand_template(
     depth: usize,
     env: &MacroExpansionContext,
 ) -> MacroExpansionResult {
-    if depth > crate::macros::MAX_MACRO_RECURSION_DEPTH {
-        return Err(err_src!(
-            Internal,
-            format!("Recursion limit exceeded in macro '{}'.", macro_name),
-            &env.source,
-            call.span
-        ));
-    }
+    check_recursion_depth(depth, macro_name, &call.span, env)?;
 
     let (args, span) = match &*call.value {
         Expr::List(items, span) if !items.is_empty() => (&items[1..], span),
@@ -143,17 +165,18 @@ pub fn expand_template(
         }
     };
 
-    crate::macros::loader::check_arity(args.len(), &template.params, macro_name, span)?;
+    check_arity(args.len(), &template.params, macro_name, span)?;
     let bindings = bind_macro_params(args, &template.params, span);
     substitute_template(&template.body, &bindings, env, depth + 1, macro_name)
 }
 
-/// Binds macro parameters to arguments, returning a map for template substitution.
+/// Binds macro parameters to arguments for template substitution.
+/// Handles both regular and variadic parameters with proper list construction.
 pub fn bind_macro_params(
-    args: &[AstNode],
+    args: &AstNodeSlice,
     params: &ParamList,
     expr_span: &Span,
-) -> HashMap<String, AstNode> {
+) -> MacroBindings {
     let mut bindings = HashMap::new();
 
     // Bind regular parameters
@@ -187,28 +210,25 @@ pub fn bind_macro_params(
     bindings
 }
 
-/// Recursively substitutes macro parameters in the template body with provided arguments.
+/// Recursively substitutes macro parameters in template expressions.
+/// Handles symbol substitution, list traversal, and variadic splicing.
 pub fn substitute_template(
     expr: &AstNode,
-    bindings: &HashMap<String, AstNode>,
+    bindings: &MacroBindings,
     env: &MacroExpansionContext,
     depth: usize,
     macro_name: &str,
 ) -> MacroExpansionResult {
-    if depth > crate::macros::MAX_MACRO_RECURSION_DEPTH {
-        return Err(err_src!(
-            Internal,
-            format!(
-                "Recursion limit exceeded during substitution in macro '{}'.",
-                macro_name
-            ),
-            &env.source,
-            expr.span
-        ));
-    }
+    let ctx = MacroContext::new(bindings, env, depth, macro_name);
+    substitute_template_with_context(expr, &ctx)
+}
+
+/// Template substitution implementation using unified context.
+fn substitute_template_with_context(expr: &AstNode, ctx: &MacroContext) -> MacroExpansionResult {
+    check_recursion_depth(ctx.depth, ctx.macro_name, &expr.span, ctx.env)?;
     // Symbol substitution (including variadic)
     if let Expr::Symbol(name, _) = &*expr.value {
-        if let Some(result) = substitute_symbol(name, expr, bindings) {
+        if let Some(result) = substitute_symbol(name, expr, ctx.bindings) {
             return result;
         }
     }
@@ -218,7 +238,8 @@ pub fn substitute_template(
     }
     // List: recurse
     if let Expr::List(items, _) = &*expr.value {
-        return substitute_list(items, bindings, &expr.span, env, depth + 1, macro_name);
+        let list_ctx = ctx.with_depth(ctx.depth + 1);
+        return substitute_list(&list_ctx, items);
     }
     // If: recurse
     if let Expr::If {
@@ -228,12 +249,7 @@ pub fn substitute_template(
         span,
     } = &*expr.value
     {
-        let ctx = SubstitutionContext {
-            bindings,
-            env,
-            depth: depth + 1,
-            macro_name,
-        };
+        let ctx = ctx.with_depth(ctx.depth + 1);
         return substitute_if(condition, then_branch, else_branch, span, &expr.span, &ctx);
     }
     // Default: return as is (atomic types)
@@ -244,7 +260,7 @@ pub fn substitute_template(
 // Internal expansion helpers
 // =============================
 
-// Recursively expands macros and records trace.
+/// Recursively expands macros and records trace.
 fn expand_macros_recursively_with_trace(
     node: AstNode,
     env: &mut MacroExpansionContext,
@@ -257,7 +273,7 @@ fn expand_macros_recursively_with_trace(
     map_ast(node, &expand_macros_recursively_with_trace, env, depth)
 }
 
-// Expands a macro call once, checking recursion depth.
+/// Expands a macro call once, checking recursion depth.
 fn expand_macro_once(
     node: &AstNode,
     env: &mut MacroExpansionContext,
@@ -267,14 +283,7 @@ fn expand_macro_once(
         return Ok(None);
     };
 
-    if depth > crate::macros::MAX_MACRO_RECURSION_DEPTH {
-        return Err(err_src!(
-            Internal,
-            "Recursion limit exceeded",
-            &env.source,
-            node.span
-        ));
-    }
+    check_recursion_depth(depth, "macro", &node.span, env)?;
 
     // Clone MacroDefinition to avoid holding a borrow of env
     let (provenance, macro_def) = match env.lookup_macro(macro_name) {
@@ -286,7 +295,7 @@ fn expand_macro_once(
     Ok(Some((macro_name.to_string(), provenance, expanded)))
 }
 
-// Handles the actual expansion based on MacroDefinition type (Fn or Template).
+/// Handles the actual expansion based on MacroDefinition type (Fn or Template).
 fn expand_macro_definition(
     macro_def: &MacroDefinition,
     node: &AstNode,
@@ -299,24 +308,13 @@ fn expand_macro_definition(
     let original_node = node.clone();
 
     let result = match macro_def {
-        MacroDefinition::Fn(func) => func(node).map_err(|e| {
-            err_src!(
-                Internal,
-                format!("Error in macro '{}': {}", macro_name, e),
-                &env.source,
-                node.span
-            )
-        }),
-        MacroDefinition::Template(template) => {
-            expand_template(template, node, &macro_name, depth, env).map_err(|e| {
-                err_src!(
-                    Internal,
-                    format!("Error in macro '{}': {}", macro_name, e),
-                    &env.source,
-                    node.span
-                )
-            })
-        }
+        MacroDefinition::Fn(func) => wrap_macro_error(func(node), &macro_name, &node.span, env),
+        MacroDefinition::Template(template) => wrap_macro_error(
+            expand_template(template, node, &macro_name, depth, env),
+            &macro_name,
+            &node.span,
+            env,
+        ),
     };
 
     if let Ok(expanded_node) = &result {
@@ -332,7 +330,7 @@ fn expand_macro_definition(
     result
 }
 
-// Records a single macro expansion step in the trace.
+/// Records a single macro expansion step in the trace.
 fn record_macro_expansion(
     trace: &mut Vec<MacroExpansionStep>,
     macro_name: String,
@@ -348,7 +346,7 @@ fn record_macro_expansion(
     });
 }
 
-// Extracts the macro name from a macro call AST node.
+/// Extracts the macro name from a macro call AST node.
 fn extract_macro_name_from_call(node: &AstNode) -> Option<&str> {
     let Expr::List(items, _) = &*node.value else {
         return None;
@@ -364,11 +362,11 @@ fn extract_macro_name_from_call(node: &AstNode) -> Option<&str> {
 // Template substitution helpers
 // =============================
 
-// Handles symbol substitution during template expansion, including variadic splicing.
+/// Handles symbol substitution during template expansion, including variadic splicing.
 fn substitute_symbol(
     name: &str,
     expr: &AstNode,
-    bindings: &HashMap<String, AstNode>,
+    bindings: &MacroBindings,
 ) -> Option<MacroExpansionResult> {
     let bound_node = bindings.get(name)?;
 
@@ -382,60 +380,65 @@ fn substitute_symbol(
     Some(Ok(bound_node.clone()))
 }
 
-// Creates a `(list ...)` AST node from a vector of elements.
-fn make_list_call(elements: &[AstNode], span: &Span) -> AstNode {
+/// Creates a `(list ...)` AST node from a vector of elements.
+fn make_list_call(elements: &AstNodeSlice, span: &Span) -> AstNode {
     let mut list_call = Vec::with_capacity(elements.len() + 1);
     list_call.push(with_span(Expr::Symbol("list".to_string(), *span), span));
     list_call.extend_from_slice(elements);
     with_span(Expr::List(list_call, *span), span)
 }
 
-// Substitutes parameters within a list expression, handling spreads.
-fn substitute_list(
-    items: &[AstNode],
-    bindings: &HashMap<String, AstNode>,
-    original_span: &Span,
-    env: &MacroExpansionContext,
-    depth: usize,
-    macro_name: &str,
-) -> MacroExpansionResult {
+/// List substitution implementation using unified context.
+fn substitute_list(ctx: &MacroContext, items: &AstNodeSlice) -> MacroExpansionResult {
     let mut new_items = Vec::new();
 
     for item in items {
         // Handle explicit spread (e.g., ...args)
-        if try_handle_spread_item(item, bindings, &mut new_items, env, depth, macro_name)? {
+        if try_handle_spread_item(
+            item,
+            ctx.bindings,
+            &mut new_items,
+            ctx.env,
+            ctx.depth,
+            ctx.macro_name,
+        )? {
             continue;
         }
         // Handle regular substitution (no implicit splicing)
-        handle_regular_item(item, bindings, &mut new_items, env, depth, macro_name)?;
+        handle_regular_item(
+            item,
+            ctx.bindings,
+            &mut new_items,
+            ctx.env,
+            ctx.depth,
+            ctx.macro_name,
+        )?;
     }
 
-    Ok(with_span(
-        Expr::List(new_items, *original_span),
-        original_span,
-    ))
+    let span = items.first().unwrap().span;
+    Ok(with_span(Expr::List(new_items, span), &span))
 }
 
-// Attempts to handle a spread item (`...expr`). Returns true if handled.
+/// Attempts to handle a spread item (`...expr`). Returns true if handled.
 fn try_handle_spread_item(
     item: &AstNode,
-    bindings: &HashMap<String, AstNode>,
+    bindings: &MacroBindings,
     new_items: &mut Vec<AstNode>,
     env: &MacroExpansionContext,
     depth: usize,
     macro_name: &str,
 ) -> Result<bool, SutraError> {
     if let Expr::Spread(inner) = &*item.value {
-        substitute_spread_item(inner, bindings, new_items, env, depth, macro_name)?;
+        substitute_spread_item_internal(inner, bindings, new_items, env, depth, macro_name)?;
         return Ok(true);
     }
     Ok(false)
 }
 
-// Handles regular (non-spread) items, including direct variadic param reference.
+/// Handles regular (non-spread) items, including direct variadic param reference.
 fn handle_regular_item(
     item: &AstNode,
-    bindings: &HashMap<String, AstNode>,
+    bindings: &MacroBindings,
     new_items: &mut Vec<AstNode>,
     env: &MacroExpansionContext,
     depth: usize,
@@ -449,13 +452,15 @@ fn handle_regular_item(
     }
 
     // Otherwise, substitute normally and push the result
-    substitute_and_push(item, bindings, new_items, env, depth, macro_name)
+    let substituted_item = substitute_and_collect(item, (bindings, env, depth, macro_name))?;
+    new_items.push(substituted_item);
+    Ok(())
 }
 
-// Handles substitution for spread arguments (`...param` or `...list-expr`).
-fn substitute_spread_item(
+/// Internal spread item handling with variadic parameter support.
+fn substitute_spread_item_internal(
     inner: &AstNode,
-    bindings: &HashMap<String, AstNode>,
+    bindings: &MacroBindings,
     new_items: &mut Vec<AstNode>,
     env: &MacroExpansionContext,
     depth: usize,
@@ -468,7 +473,7 @@ fn substitute_spread_item(
             return Err(err_src!(
                 Internal,
                 format!(
-                    "Variadic parameter '{}' is not a list in macro '{}'",
+                    "Variadic parameter '{}' is not a list in '{}'",
                     name, macro_name
                 ),
                 &env.source,
@@ -476,20 +481,18 @@ fn substitute_spread_item(
             ));
         };
 
-        for element in elements {
-            new_items.push(element.clone());
-        }
+        extend_with_elements(new_items, elements);
         return Ok(());
     }
 
     // Otherwise, substitute the inner expression and require it to be a list for splicing
-    handle_non_symbol_spread(inner, bindings, new_items, env, depth, macro_name)
+    handle_non_symbol_spread_internal(inner, bindings, new_items, env, depth, macro_name)
 }
 
-// Handles spreading a non-symbol expression (requires it to evaluate to a list).
-fn handle_non_symbol_spread(
+/// Internal non-symbol spread handling with list validation.
+fn handle_non_symbol_spread_internal(
     inner: &AstNode,
-    bindings: &HashMap<String, AstNode>,
+    bindings: &MacroBindings,
     new_items: &mut Vec<AstNode>,
     env: &MacroExpansionContext,
     depth: usize,
@@ -497,14 +500,12 @@ fn handle_non_symbol_spread(
 ) -> Result<(), SutraError> {
     let substituted = substitute_template(inner, bindings, env, depth + 1, macro_name)?;
     if let Expr::List(elements, _) = &*substituted.value {
-        for element in elements {
-            new_items.push(element.clone());
-        }
+        extend_with_elements(new_items, elements);
     } else {
         return Err(err_src!(
             Internal,
             format!(
-                "Spread argument did not evaluate to a list in macro '{}'",
+                "Spread argument did not evaluate to a list in '{}'",
                 macro_name
             ),
             &env.source,
@@ -514,14 +515,14 @@ fn handle_non_symbol_spread(
     Ok(())
 }
 
-// Substitutes parameters within an `If` expression's branches.
+/// Substitutes parameters within an `If` expression's branches.
 fn substitute_if(
     condition: &AstNode,
     then_branch: &AstNode,
     else_branch: &AstNode,
     if_span: &Span,
     original_span: &Span,
-    ctx: &SubstitutionContext,
+    ctx: &MacroContext,
 ) -> MacroExpansionResult {
     let new_condition = substitute_template(
         condition,
@@ -556,25 +557,8 @@ fn substitute_if(
     ))
 }
 
-// Substitutes a single item and pushes it to the new items list.
-fn substitute_and_push(
-    item: &AstNode,
-    bindings: &HashMap<String, AstNode>,
-    new_items: &mut Vec<AstNode>,
-    env: &MacroExpansionContext,
-    depth: usize,
-    macro_name: &str,
-) -> Result<(), SutraError> {
-    let substituted_item = substitute_template(item, bindings, env, depth + 1, macro_name)?;
-    new_items.push(substituted_item);
-    Ok(())
-}
-
-// Checks if a node is a variadic parameter symbol and returns its name.
-fn extract_variadic_param_name<'a>(
-    node: &'a AstNode,
-    bindings: &HashMap<String, AstNode>,
-) -> Option<&'a str> {
+/// Checks if a node is a variadic parameter symbol and returns its name.
+fn extract_variadic_param_name<'a>(node: &'a AstNode, bindings: &MacroBindings) -> Option<&'a str> {
     let Expr::Symbol(name, _) = &*node.value else {
         return None;
     };
@@ -586,8 +570,8 @@ fn extract_variadic_param_name<'a>(
     Some(name)
 }
 
-// Checks if a given symbol name corresponds to a variadic parameter in the bindings.
-fn is_variadic_param(name: &str, bindings: &HashMap<String, AstNode>) -> bool {
+/// Checks if a given symbol name corresponds to a variadic parameter in the bindings.
+fn is_variadic_param(name: &str, bindings: &MacroBindings) -> bool {
     bindings.contains_key(&format!("__variadic__{name}"))
 }
 
@@ -595,7 +579,7 @@ fn is_variadic_param(name: &str, bindings: &HashMap<String, AstNode>) -> bool {
 // AST traversal helpers
 // =============================
 
-/// Recursively maps a function over child AST nodes.
+/// Recursively maps a function over AST nodes for macro expansion.
 fn map_ast<F>(
     node: AstNode,
     f: &F,
@@ -606,115 +590,108 @@ where
     F: Fn(AstNode, &mut MacroExpansionContext, usize) -> MacroExpansionResult,
 {
     match &*node.value {
-        Expr::List(items, span) => map_list(items, f, env, depth, &node.span, span),
+        Expr::List(items, span) => {
+            let new_items: Result<Vec<_>, _> = items
+                .iter()
+                .map(|item| f(item.clone(), env, depth + 1))
+                .collect();
+            Ok(with_span(Expr::List(new_items?, *span), &node.span))
+        }
         Expr::If {
             condition,
             then_branch,
             else_branch,
             span,
-        } => map_if(
-            condition,
-            then_branch,
-            else_branch,
-            f,
-            env,
-            depth,
-            (span, &node.span),
-        ),
-        Expr::Quote(inner, span) => map_quote(inner, f, env, depth, span, &node.span),
-        Expr::Spread(inner) => map_spread(inner, f, env, depth, &node.span),
+        } => {
+            let cond = f((**condition).clone(), env, depth + 1)?;
+            let then_b = f((**then_branch).clone(), env, depth + 1)?;
+            let else_b = f((**else_branch).clone(), env, depth + 1)?;
+            Ok(with_span(
+                Expr::If {
+                    condition: Box::new(cond),
+                    then_branch: Box::new(then_b),
+                    else_branch: Box::new(else_b),
+                    span: *span,
+                },
+                &node.span,
+            ))
+        }
+        Expr::Quote(inner, span) => {
+            let new_inner = f((**inner).clone(), env, depth + 1)?;
+            Ok(with_span(
+                Expr::Quote(Box::new(new_inner), *span),
+                &node.span,
+            ))
+        }
+        Expr::Spread(inner) => {
+            let new_inner = f((**inner).clone(), env, depth + 1)?;
+            Ok(with_span(Expr::Spread(Box::new(new_inner)), &node.span))
+        }
         // Atomic types (Symbol, Path, String, Number, Bool) and ParamList don't need traversal
         _ => Ok(node),
     }
 }
 
-/// Recursively maps a function over items within a List expression.
-fn map_list<F>(
-    items: &[AstNode],
-    f: &F,
-    env: &mut MacroExpansionContext,
-    depth: usize,
-    original_span: &Span,
-    list_span: &Span,
-) -> MacroExpansionResult
-where
-    F: Fn(AstNode, &mut MacroExpansionContext, usize) -> MacroExpansionResult,
-{
-    let new_items: Result<Vec<_>, _> = items
-        .iter()
-        .map(|item| f(item.clone(), env, depth + 1))
-        .collect();
+// =============================
+// Helper functions for common operations
+// =============================
 
-    Ok(with_span(Expr::List(new_items?, *list_span), original_span))
+/// Checks recursion depth and returns error if exceeded.
+fn check_recursion_depth(
+    depth: usize,
+    macro_name: &str,
+    span: &Span,
+    env: &MacroExpansionContext,
+) -> Result<(), SutraError> {
+    if depth > MAX_MACRO_RECURSION_DEPTH {
+        return Err(err_src!(
+            Internal,
+            format!("Macro recursion limit exceeded in '{}'", macro_name),
+            &env.source,
+            *span
+        ));
+    }
+    Ok(())
 }
 
-/// Recursively maps a function over branches within an If expression.
-fn map_if<F>(
-    condition: &AstNode,
-    then_branch: &AstNode,
-    else_branch: &AstNode,
-    f: &F,
-    env: &mut MacroExpansionContext,
-    depth: usize,
-    spans: (&Span, &Span),
-) -> MacroExpansionResult
-where
-    F: Fn(AstNode, &mut MacroExpansionContext, usize) -> MacroExpansionResult,
-{
-    let cond = f(condition.clone(), env, depth + 1)?;
-    let then_b = f(then_branch.clone(), env, depth + 1)?;
-    let else_b = f(else_branch.clone(), env, depth + 1)?;
-
-    Ok(with_span(
-        Expr::If {
-            condition: Box::new(cond),
-            then_branch: Box::new(then_b),
-            else_branch: Box::new(else_b),
-            span: *spans.0,
-        },
-        spans.1,
-    ))
+/// Wraps macro errors with consistent formatting.
+fn wrap_macro_error<T>(
+    result: Result<T, SutraError>,
+    macro_name: &str,
+    span: &Span,
+    env: &MacroExpansionContext,
+) -> Result<T, SutraError> {
+    result.map_err(|e| {
+        err_src!(
+            Internal,
+            format!("Error in macro '{}': {}", macro_name, e),
+            &env.source,
+            *span
+        )
+    })
 }
 
-/// Recursively maps a function over the content of a Quote expression.
-fn map_quote<F>(
-    inner: &AstNode,
-    f: &F,
-    env: &mut MacroExpansionContext,
-    depth: usize,
-    quote_span: &Span,
-    original_span: &Span,
-) -> MacroExpansionResult
-where
-    F: Fn(AstNode, &mut MacroExpansionContext, usize) -> MacroExpansionResult,
-{
-    let new_inner = f(inner.clone(), env, depth + 1)?;
-    Ok(with_span(
-        Expr::Quote(Box::new(new_inner), *quote_span),
-        original_span,
-    ))
+/// Extends a vector with cloned elements from a slice.
+fn extend_with_elements(new_items: &mut Vec<AstNode>, elements: &[AstNode]) {
+    for element in elements {
+        new_items.push(element.clone());
+    }
 }
 
-/// Recursively maps a function over the content of a Spread expression.
-fn map_spread<F>(
-    inner: &AstNode,
-    f: &F,
-    env: &mut MacroExpansionContext,
-    depth: usize,
-    original_span: &Span,
-) -> MacroExpansionResult
-where
-    F: Fn(AstNode, &mut MacroExpansionContext, usize) -> MacroExpansionResult,
-{
-    let new_inner = f(inner.clone(), env, depth + 1)?;
-    Ok(with_span(Expr::Spread(Box::new(new_inner)), original_span))
+/// Substitutes an item and returns the result.
+fn substitute_and_collect(
+    item: &AstNode,
+    params: MacroSubstitutionParams,
+) -> Result<AstNode, SutraError> {
+    let (bindings, env, depth, macro_name) = params;
+    substitute_template(item, bindings, env, depth + 1, macro_name)
 }
 
 // =============================
 // Utility functions
 // =============================
 
-// Creates a `Spanned` wrapper with consistent span handling.
+// Creates a Spanned wrapper with consistent span handling.
 fn with_span(value: Expr, original_span: &Span) -> AstNode {
     Spanned {
         value: value.into(),

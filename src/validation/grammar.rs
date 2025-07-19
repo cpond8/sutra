@@ -115,7 +115,7 @@ pub fn validate_grammar(path: &str) -> Result<ValidationResult, Box<dyn std::err
 /// Validates grammar from string content
 pub fn validate_grammar_str(content: &str) -> Result<ValidationResult, Box<dyn std::error::Error>> {
     let mut result = ValidationResult::new();
-    let parser = parser::GrammarParser::new();
+    let parser = parser::GrammarParser::new()?;
     let rules = parser.parse_rules(content)?;
 
     use validators::GrammarValidators;

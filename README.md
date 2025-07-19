@@ -87,7 +87,7 @@ Atoms are the primitive operations of the engine, organized into domain modules:
 - Purely syntactic transformation of the AST before evaluation
 - Supports both native Rust macro functions and declarative macro templates
 - Modularized into `expander.rs`, `loader.rs`, `std_macros.rs`
-- User and standard macros loaded from `macros.sutra`
+- User and standard macros loaded from `std_macros.sutra`
 
 ### 4. **Parsing & Syntax (`src/syntax.rs`, `src/syntax/`)**
 - PEG grammar (`grammar.pest`)

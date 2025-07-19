@@ -36,8 +36,8 @@ use std::{collections::HashMap, rc::Rc, sync::Arc};
 use miette::NamedSource;
 
 use crate::{
-    ast::{AstNode, Expr, Spanned},
-    atoms::helpers::AtomResult,
+    ast::{value::Lambda, AstNode, Expr, Spanned},
+    atoms::{helpers::AtomResult, special_forms, Atom},
     err_ctx, err_src,
     runtime::world::{AtomExecutionContext, World},
     AtomRegistry, ParamList, Path, SharedOutput, Span, SutraError, Value,
@@ -111,7 +111,7 @@ impl<'a> EvaluationContext<'a> {
     ) -> AtomResult {
         // Look up atom in registry
         let Some(atom) = self.atom_registry.get(symbol_name).cloned() else {
-            return Err(crate::err_src!(
+            return Err(err_src!(
                 Eval,
                 format!("Undefined symbol: '{}'", symbol_name),
                 &self.source,
@@ -140,7 +140,7 @@ impl<'a> EvaluationContext<'a> {
 
             if SPECIAL_FORM_NAMES.contains(&symbol_name) {
                 assert!(
-                    matches!(atom, crate::atoms::Atom::SpecialForm(_)),
+                    matches!(atom, Atom::SpecialForm(_)),
                     "CRITICAL: Atom '{symbol_name}' is a special form and MUST be registered as Atom::SpecialForm."
                 );
             }
@@ -149,10 +149,10 @@ impl<'a> EvaluationContext<'a> {
         // Dispatch to the correct atom type.
         match atom {
             // The special form path, for atoms that control their own evaluation.
-            crate::atoms::Atom::SpecialForm(special_form_fn) => special_form_fn(args, self, span),
+            Atom::SpecialForm(special_form_fn) => special_form_fn(args, self, span),
 
             // Eagerly evaluated atoms (Pure and Stateful)
-            crate::atoms::Atom::Stateful(stateful_fn) => {
+            Atom::Stateful(stateful_fn) => {
                 let (values, world_after_args) = evaluate_eager_args(args, self)?;
                 let mut world_context = world_after_args;
                 let result = {
@@ -166,7 +166,7 @@ impl<'a> EvaluationContext<'a> {
                 Ok((result, world_context))
             }
 
-            crate::atoms::Atom::Pure(pure_fn) => {
+            Atom::Pure(pure_fn) => {
                 let (values, world_after_args) = evaluate_eager_args(args, self)?;
                 let result = pure_fn(&values)?;
                 Ok((result, world_after_args))
@@ -313,7 +313,7 @@ fn evaluate_invalid_expr(expr: &AstNode, context: &mut EvaluationContext) -> Ato
 }
 
 fn capture_lexical_env(lexical_env: &[HashMap<String, Value>]) -> HashMap<String, Value> {
-    let mut captured_env = std::collections::HashMap::new();
+    let mut captured_env = HashMap::new();
     for frame in lexical_env {
         for (key, value) in frame {
             captured_env.insert(key.clone(), value.clone());
@@ -426,7 +426,7 @@ pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext)
         } => {
             if !params.required.is_empty() || params.rest.is_some() {
                 let captured_env = capture_lexical_env(&context.lexical_env);
-                let lambda = Value::Lambda(Rc::new(crate::ast::value::Lambda {
+                let lambda = Value::Lambda(Rc::new(Lambda {
                     params: params.clone(),
                     body: body.clone(),
                     captured_env,
@@ -522,7 +522,7 @@ fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext
             depth: context.depth + 1,
             lexical_env: context.lexical_env.clone(),
         };
-        return crate::atoms::special_forms::call_lambda(&lambda, &arg_values, &mut lambda_context);
+        return special_forms::call_lambda(&lambda, &arg_values, &mut lambda_context);
     }
     let world_path = Path(vec![symbol_name.clone()]);
     if let Some(Value::Lambda(lambda)) = context.world.state.get(&world_path) {
@@ -536,7 +536,7 @@ fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext
             depth: context.depth + 1,
             lexical_env: context.lexical_env.clone(),
         };
-        return crate::atoms::special_forms::call_lambda(lambda, &arg_values, &mut lambda_context);
+        return special_forms::call_lambda(lambda, &arg_values, &mut lambda_context);
     }
     context.call_atom(symbol_name, head, &flat_tail, span)
 }

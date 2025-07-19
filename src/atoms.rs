@@ -142,9 +142,27 @@ impl AtomRegistry {
     }
 
     // API for extensibility.
-    pub fn register(&mut self, name: &str, func: Atom) {
+    fn register(&mut self, name: &str, func: Atom) {
         // Changed parameter type
         self.atoms.insert(name.to_string(), func);
+    }
+
+    /// Register a pure atom that operates only on values with no state access.
+    /// This prevents misclassification by ensuring the correct calling convention.
+    pub fn register_pure(&mut self, name: &str, func: PureAtomFn) {
+        self.register(name, Atom::Pure(func));
+    }
+
+    /// Register a stateful atom that needs limited state access via Context facade.
+    /// This prevents misclassification by ensuring the correct calling convention.
+    pub fn register_stateful(&mut self, name: &str, func: StatefulAtomFn) {
+        self.register(name, Atom::Stateful(func));
+    }
+
+    /// Register a special form atom that controls its own argument evaluation.
+    /// This prevents misclassification by ensuring the correct calling convention.
+    pub fn register_special_form(&mut self, name: &str, func: SpecialFormAtomFn) {
+        self.register(name, Atom::SpecialForm(func));
     }
 
     pub fn clear(&mut self) {
@@ -190,6 +208,10 @@ pub mod world;
 #[cfg(any(test, feature = "test-atom", debug_assertions))]
 pub mod test;
 
+// Re-exports for concise imports
+#[cfg(any(test, feature = "test-atom", debug_assertions))]
+pub use test::{TestDefinition, TEST_REGISTRY};
+
 // ============================================================================
 // UNIFIED REGISTRATION FUNCTION
 // ============================================================================
@@ -218,22 +240,22 @@ pub fn register_all_atoms(registry: &mut AtomRegistry) {
 /// String operations: core/str+
 pub fn register_collection_atoms(registry: &mut AtomRegistry) {
     // List operations
-    registry.register("list", Atom::Pure(collections::ATOM_LIST));
-    registry.register("len", Atom::Pure(collections::ATOM_LEN));
-    registry.register("has?", Atom::Pure(collections::ATOM_HAS));
-    registry.register("car", Atom::Pure(collections::ATOM_CAR));
-    registry.register("cdr", Atom::Pure(collections::ATOM_CDR));
-    registry.register("cons", Atom::Pure(collections::ATOM_CONS));
+    registry.register_pure("list", collections::ATOM_LIST);
+    registry.register_pure("len", collections::ATOM_LEN);
+    registry.register_pure("has?", collections::ATOM_HAS);
+    registry.register_pure("car", collections::ATOM_CAR);
+    registry.register_pure("cdr", collections::ATOM_CDR);
+    registry.register_pure("cons", collections::ATOM_CONS);
 
     // String operations
-    registry.register("core/str+", Atom::Pure(collections::ATOM_CORE_STR_PLUS));
+    registry.register_pure("core/str+", collections::ATOM_CORE_STR_PLUS);
 }
 
 /// Registers all special form atoms (lambda, let, if, etc.) with the given registry.
 pub fn register_special_forms(registry: &mut AtomRegistry) {
-    registry.register("lambda", Atom::SpecialForm(special_forms::ATOM_LAMBDA));
-    registry.register("let", Atom::SpecialForm(special_forms::ATOM_LET));
-    registry.register("if", Atom::SpecialForm(special_forms::ATOM_IF));
+    registry.register_special_form("lambda", special_forms::ATOM_LAMBDA);
+    registry.register_special_form("let", special_forms::ATOM_LET);
+    registry.register_special_form("if", special_forms::ATOM_IF);
 }
 
 // ============================================================================

@@ -10,7 +10,7 @@
 use crate::{
     atoms::{
         helpers::{pure_eval_string_concat, validate_unary_arity},
-        Atom, AtomRegistry, PureAtomFn,
+        AtomRegistry, PureAtomFn,
     },
     Value,
 };
@@ -44,6 +44,6 @@ pub const ATOM_STR_PLUS: PureAtomFn = |args| pure_eval_string_concat(args, "str+
 
 /// Registers all string manipulation atoms with the given registry.
 pub fn register_string_atoms(registry: &mut AtomRegistry) {
-    registry.register("str", Atom::Pure(ATOM_STR));
-    registry.register("str+", Atom::Pure(ATOM_STR_PLUS));
+    registry.register_pure("str", ATOM_STR);
+    registry.register_pure("str+", ATOM_STR_PLUS);
 }

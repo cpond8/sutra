@@ -6,8 +6,13 @@ use std::{collections::HashSet, fs, path::Path};
 
 use crate::{
     ast::{AstNode, Expr, ParamList, Span},
-    err_ctx, err_msg, to_error_source, MacroTemplate, SutraError,
+    err_ctx, err_msg,
+    syntax::parser::parse,
+    to_error_source, MacroTemplate, SutraError,
 };
+
+/// Type alias for macro parsing results
+type MacroParseResult = Result<Vec<(String, MacroTemplate)>, SutraError>;
 
 // =============================
 // Public API for macro loading
@@ -15,8 +20,8 @@ use crate::{
 
 /// Parses Sutra macro definitions from a source string.
 /// Identifies `define` forms, validates structure and parameters, and checks for duplicates.
-pub fn parse_macros_from_source(source: &str) -> Result<Vec<(String, MacroTemplate)>, SutraError> {
-    let exprs = crate::syntax::parser::parse(source)?;
+pub fn parse_macros_from_source(source: &str) -> MacroParseResult {
+    let exprs = parse(source)?;
     let mut macros = Vec::new();
     let mut names_seen = HashSet::new();
 
@@ -29,9 +34,7 @@ pub fn parse_macros_from_source(source: &str) -> Result<Vec<(String, MacroTempla
 }
 
 /// Loads macro definitions from a file, with ergonomic path handling.
-pub fn load_macros_from_file<P: AsRef<Path>>(
-    path: P,
-) -> Result<Vec<(String, MacroTemplate)>, SutraError> {
+pub fn load_macros_from_file<P: AsRef<Path>>(path: P) -> MacroParseResult {
     let path_str = path.as_ref().to_string_lossy();
     let src_arc = to_error_source(&*path_str);
     let source = fs::read_to_string(&path).map_err(|e| {

@@ -15,6 +15,7 @@ pub mod atoms;
 pub mod cli;
 pub mod diagnostics;
 pub mod engine;
+pub mod error_messages;
 pub mod macros;
 pub mod runtime;
 pub mod syntax;

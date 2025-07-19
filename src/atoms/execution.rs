@@ -19,7 +19,7 @@ use crate::{
             build_apply_call_expr, eval_apply_list_arg, eval_apply_normal_args, eval_single_arg,
             sub_eval_context, validate_special_form_min_arity,
         },
-        Atom, AtomRegistry, SpecialFormAtomFn,
+        AtomRegistry, SpecialFormAtomFn,
     },
     err_msg,
     runtime::eval::evaluate_ast_node,
@@ -96,9 +96,6 @@ pub const ATOM_ERROR: SpecialFormAtomFn = |args, context, _parent_span| {
 /// Example:
 ///   (apply + 1 2 (list 3 4)) ; => 10
 ///   (apply core/str+ (list "a" "b" "c")) ; => "abc"
-///
-/// # Safety
-/// Pure, does not mutate state. All state is explicit.
 pub const ATOM_APPLY: SpecialFormAtomFn = |args, context, parent_span| {
     validate_special_form_min_arity(args, 2, "apply")?;
 
@@ -126,9 +123,9 @@ pub const ATOM_APPLY: SpecialFormAtomFn = |args, context, parent_span| {
 /// Registers all execution control atoms with the given registry.
 pub fn register_execution_atoms(registry: &mut AtomRegistry) {
     // Control flow
-    registry.register("do", Atom::SpecialForm(ATOM_DO));
-    registry.register("error", Atom::SpecialForm(ATOM_ERROR));
+    registry.register_special_form("do", ATOM_DO);
+    registry.register_special_form("error", ATOM_ERROR);
 
     // Higher-order functions
-    registry.register("apply", Atom::SpecialForm(ATOM_APPLY));
+    registry.register_special_form("apply", ATOM_APPLY);
 }

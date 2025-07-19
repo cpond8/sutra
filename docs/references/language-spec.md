@@ -320,7 +320,7 @@ build_canonical_macro_env() -> MacroExpansionContext
 **Purpose:**
 
 - Registers all core/built-in macros.
-- Loads and registers all standard library macros from `src/macros/macros.sutra`.
+- Loads and registers all standard library macros from `src/macros/std_macros.sutra`.
 - Returns a fully populated `MacroExpansionContext`.
 
 **Usage:**

@@ -1,15 +1,18 @@
-use std::{collections::HashMap as StdHashMap, fmt};
+use std::{collections::HashMap as StdHashMap, fmt, fs, sync::Arc};
 
 use im::HashMap;
+use miette::NamedSource;
 use rand::{RngCore, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    atoms::{self, AtomRegistry, SharedOutput, StateContext},
-    err_ctx,
-    macros::{self, load_macros_from_file, MacroDefinition, MacroExpansionContext, MacroRegistry},
-    to_error_source, Span, SutraError, Value,
+    atoms::{register_all_atoms, AtomRegistry, SharedOutput, StateContext},
+    macros::{
+        load_macros_from_file, std_macros::register_std_macros, MacroDefinition,
+        MacroExpansionContext, MacroRegistry, MacroValidationContext,
+    },
+    to_error_source, SutraError, Value,
 };
 
 // Using a concrete, seedable PRNG for determinism.
@@ -105,7 +108,7 @@ pub struct World {
 
 impl World {
     pub fn new() -> Self {
-        let source = std::sync::Arc::new(miette::NamedSource::new("empty", "".to_string()));
+        let source = Arc::new(NamedSource::new("empty", "".to_string()));
         Self {
             state: WorldState::new(),
             prng: SmallRng::from_entropy(),
@@ -114,7 +117,7 @@ impl World {
     }
 
     pub fn from_seed(seed: [u8; 32]) -> Self {
-        let source = std::sync::Arc::new(miette::NamedSource::new("empty", "".to_string()));
+        let source = Arc::new(NamedSource::new("empty", "".to_string()));
         Self {
             state: WorldState::new(),
             prng: SmallRng::from_seed(seed),
@@ -173,7 +176,7 @@ impl Default for World {
 #[inline]
 pub fn build_default_atom_registry() -> AtomRegistry {
     let mut registry = AtomRegistry::new();
-    atoms::register_all_atoms(&mut registry);
+    register_all_atoms(&mut registry);
     registry
 }
 
@@ -191,7 +194,7 @@ pub fn build_default_atom_registry() -> AtomRegistry {
 #[inline]
 pub fn build_default_macro_registry() -> MacroRegistry {
     let mut registry = MacroRegistry::new();
-    macros::std_macros::register_std_macros(&mut registry);
+    register_std_macros(&mut registry);
     registry
 }
 
@@ -199,7 +202,7 @@ pub fn build_default_macro_registry() -> MacroRegistry {
 ///
 /// This function is the single source of truth for macro environment construction. It:
 /// 1. Registers all core/built-in macros (quote, unquote, etc.)
-/// 2. Loads and registers all standard macros from `src/macros/macros.sutra`
+/// 2. Loads and registers all standard macros from `src/macros/std_macros.sutra`
 /// 3. Validates for duplicate macro names
 /// 4. Returns a complete MacroExpansionContext ready for expansion
 ///
@@ -214,17 +217,17 @@ pub fn build_default_macro_registry() -> MacroRegistry {
 ///
 /// # Errors
 /// Returns a `SutraError` if:
-/// - The standard macro file (`src/macros/macros.sutra`) cannot be loaded or parsed
+/// - The standard macro file (`src/macros/std_macros.sutra`) cannot be loaded or parsed
 /// - Duplicate macro names are found in the standard macro library
 ///
 /// # Safety
 /// This function is pure and has no side effects. All state is explicit.
 pub fn build_canonical_macro_env() -> Result<MacroExpansionContext, SutraError> {
     let core_macros = build_core_macro_registry();
-    let user_macros = load_and_process_user_macros("src/macros/macros.sutra")?;
-    let source = std::sync::Arc::new(miette::NamedSource::new(
-        "macros.sutra",
-        std::fs::read_to_string("src/macros/macros.sutra").unwrap_or_default(),
+    let user_macros = load_and_process_user_macros("src/macros/std_macros.sutra")?;
+    let source = Arc::new(NamedSource::new(
+        "std_macros.sutra",
+        fs::read_to_string("src/macros/std_macros.sutra").unwrap_or_default(),
     ));
 
     Ok(MacroExpansionContext {
@@ -245,7 +248,7 @@ pub fn build_canonical_macro_env() -> Result<MacroExpansionContext, SutraError> 
 /// Used internally by `build_canonical_macro_env`.
 fn build_core_macro_registry() -> MacroRegistry {
     let mut core_registry = MacroRegistry::new();
-    macros::std_macros::register_std_macros(&mut core_registry);
+    register_std_macros(&mut core_registry);
     #[cfg(any(test, feature = "test-atom", debug_assertions))]
     {
         // Register test-only macros here if/when they exist
@@ -265,7 +268,7 @@ fn build_core_macro_registry() -> MacroRegistry {
 /// Used internally by `build_canonical_macro_env`.
 ///
 /// # Arguments
-/// * `path` - File path to load macros from (typically "src/macros/macros.sutra")
+/// * `path` - File path to load macros from (typically "src/macros/std_macros.sutra")
 ///
 /// # Errors
 /// Returns a `SutraError` if:
@@ -283,20 +286,10 @@ fn load_and_process_user_macros(
 
     // Process loaded macros with duplicate checking
     let mut user_macros = StdHashMap::new();
-    for (name, template) in macros {
-        if user_macros.contains_key(&name) {
-            let src_arc = to_error_source(&name);
-            return Err(err_ctx!(
-                Validation,
-                format!("Duplicate macro name '{}' in standard macro library.", name),
-                &src_arc,
-                Span::default(),
-                "Duplicate macro name in standard macro library."
-            ));
-        }
-        user_macros.insert(name, MacroDefinition::Template(template));
-    }
+    let mut ctx = MacroValidationContext::for_standard_library();
+    ctx.source_context = Some(to_error_source(path));
 
+    ctx.validate_and_insert_many(macros, &mut user_macros)?;
     Ok(user_macros)
 }
 

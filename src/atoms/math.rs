@@ -19,7 +19,7 @@ use crate::{
             pure_eval_nary_numeric_op_custom, pure_eval_unary_typed_op, validate_binary_arity,
             validate_min_arity, ExtractValue,
         },
-        Atom, AtomRegistry, PureAtomFn,
+        AtomRegistry, PureAtomFn,
     },
     err_msg, Value,
 };
@@ -180,14 +180,14 @@ pub const ATOM_MAX: PureAtomFn =
 /// Registers all mathematical atoms with the given registry.
 pub fn register_math_atoms(registry: &mut AtomRegistry) {
     // Arithmetic operations
-    registry.register("+", Atom::Pure(ATOM_ADD));
-    registry.register("-", Atom::Pure(ATOM_SUB));
-    registry.register("*", Atom::Pure(ATOM_MUL));
-    registry.register("/", Atom::Pure(ATOM_DIV));
-    registry.register("mod", Atom::Pure(ATOM_MOD));
+    registry.register_pure("+", ATOM_ADD);
+    registry.register_pure("-", ATOM_SUB);
+    registry.register_pure("*", ATOM_MUL);
+    registry.register_pure("/", ATOM_DIV);
+    registry.register_pure("mod", ATOM_MOD);
 
     // Math functions
-    registry.register("abs", Atom::Pure(ATOM_ABS));
-    registry.register("min", Atom::Pure(ATOM_MIN));
-    registry.register("max", Atom::Pure(ATOM_MAX));
+    registry.register_pure("abs", ATOM_ABS);
+    registry.register_pure("min", ATOM_MIN);
+    registry.register_pure("max", ATOM_MAX);
 }

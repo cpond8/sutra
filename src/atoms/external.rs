@@ -16,7 +16,7 @@
 use crate::{
     atoms::{
         helpers::{validate_unary_arity, validate_zero_arity},
-        Atom, AtomRegistry, StatefulAtomFn,
+        AtomRegistry, StatefulAtomFn,
     },
     Value,
 };
@@ -34,9 +34,6 @@ use crate::{
 ///
 /// Example:
 ///   (print "hello")
-///
-/// # Safety
-/// Emits output, does not mutate world state.
 pub const ATOM_PRINT: StatefulAtomFn = |args, context| {
     validate_unary_arity(args, "print")?;
 
@@ -53,9 +50,6 @@ pub const ATOM_PRINT: StatefulAtomFn = |args, context| {
 ///
 /// Example:
 ///   (output "hello")
-///
-/// # Safety
-/// Emits output, does not mutate world state.
 pub const ATOM_OUTPUT: StatefulAtomFn = |args, context| {
     validate_unary_arity(args, "output")?;
 
@@ -76,10 +70,6 @@ pub const ATOM_OUTPUT: StatefulAtomFn = |args, context| {
 ///
 /// Example:
 ///   (rand) ; => 0.7234567 (example)
-///
-/// # Safety
-/// Pure random generation, does not mutate world state.
-/// Uses a simple pseudo-random generator based on system time.
 pub const ATOM_RAND: StatefulAtomFn = |args, context| {
     validate_zero_arity(args, "rand")?;
 
@@ -95,10 +85,10 @@ pub const ATOM_RAND: StatefulAtomFn = |args, context| {
 /// Registers all external interface atoms with the given registry.
 pub fn register_external_atoms(registry: &mut AtomRegistry) {
     // I/O operations
-    registry.register("print", Atom::Stateful(ATOM_PRINT));
-    registry.register("core/print", Atom::Stateful(ATOM_PRINT));
-    registry.register("output", Atom::Stateful(ATOM_OUTPUT));
+    registry.register_stateful("print", ATOM_PRINT);
+    registry.register_stateful("core/print", ATOM_PRINT);
+    registry.register_stateful("output", ATOM_OUTPUT);
 
     // Randomness
-    registry.register("rand", Atom::Stateful(ATOM_RAND));
+    registry.register_stateful("rand", ATOM_RAND);
 }

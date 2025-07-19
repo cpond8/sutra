@@ -4,19 +4,37 @@
 //!
 //! ## Atoms Provided
 //!
-//! - **List Operations**: `list`, `len`, `has?`, `core/push!`, `core/pull!`
-//! - **String Operations**: `core/str+`
+//! ### List Operations
+//! - `list` - Constructs a list from arguments
+//! - `len` - Returns the length of a list or string
+//! - `has?` - Tests if a collection contains a value or key
+//! - `core/push!` - Appends a value to a list at a path
+//! - `core/pull!` - Removes and returns the last element from a list
+//! - `car` - Returns the first element of a list
+//! - `cdr` - Returns the tail of a list
+//! - `cons` - Prepends an element to a list
+//!
+//! ### String Operations
+//! - `core/str+` - Concatenates two or more strings
+//!
+//! ### Map Operations
+//! - `core/map` - Creates a map from alternating key-value pairs
 //!
 //! ## Design Principles
 //!
 //! - **Type Safety**: Clear error messages for type mismatches
 //! - **Immutable Operations**: Pure functions where possible
 //! - **Mutable Operations**: World-state operations for list manipulation
+//! - **Performance**: Minimal cloning, efficient string operations
 
 use crate::{
     atoms::{
-        helpers::{validate_binary_arity, validate_even_arity, validate_unary_arity},
-        Atom, AtomRegistry, PureAtomFn, StatefulAtomFn,
+        helpers::{
+            validate_binary_arity, validate_even_arity, validate_list_value,
+            validate_list_value_mut, validate_path_arg, validate_string_value,
+            validate_unary_arity,
+        },
+        AtomRegistry, PureAtomFn, StatefulAtomFn,
     },
     err_msg, Value,
 };
@@ -34,9 +52,6 @@ use crate::{
 ///
 /// Example:
 ///   (list 1 2 3) ; => (1 2 3)
-///
-/// # Safety
-/// Pure, does not mutate state.
 pub const ATOM_LIST: PureAtomFn = |args| Ok(Value::List(args.to_vec()));
 
 /// Returns the length of a list or string.
@@ -49,20 +64,23 @@ pub const ATOM_LIST: PureAtomFn = |args| Ok(Value::List(args.to_vec()));
 /// Example:
 ///   (len (list 1 2 3)) ; => 3
 ///   (len "abc") ; => 3
-///
-/// # Safety
-/// Pure, does not mutate state.
 pub const ATOM_LEN: PureAtomFn = |args| {
     validate_unary_arity(args, "len")?;
-    match &args[0] {
-        Value::List(items) => Ok(Value::Number(items.len() as f64)),
-        Value::String(s) => Ok(Value::Number(s.len() as f64)),
-        _ => Err(err_msg!(
-            Eval,
-            "len expects a List or String, found {}",
-            args[0].to_string()
-        )),
-    }
+
+    let val = &args[0];
+    let len = match val {
+        Value::List(items) => items.len(),
+        Value::String(s) => s.len(),
+        _ => {
+            return Err(err_msg!(
+                Eval,
+                "len expects a List or String, found {}",
+                val.to_string()
+            ));
+        }
+    };
+
+    Ok(Value::Number(len as f64))
 };
 
 /// Tests if a collection contains a value or key.
@@ -77,24 +95,17 @@ pub const ATOM_LEN: PureAtomFn = |args| {
 ///   (has? (list 1 2 3) 2) ; => true
 ///   (has? {"key" "value"} "key") ; => true
 ///   (has? (list 1 2 3) 4) ; => false
-///
-/// # Safety
-/// Pure, does not mutate state.
 pub const ATOM_HAS: PureAtomFn = |args| {
     validate_binary_arity(args, "has?")?;
+
     let collection_val = &args[0];
     let search_val = &args[1];
+
     let found = match collection_val {
         Value::List(items) => items.contains(search_val),
         Value::Map(map) => {
-            let Value::String(key) = search_val else {
-                return Err(err_msg!(
-                    Eval,
-                    "has? expects a String for Map key, found {}",
-                    search_val.to_string()
-                ));
-            };
-            map.contains_key(&key[..])
+            let key = validate_string_value(search_val, "map key")?;
+            map.contains_key(key)
         }
         _ => {
             return Err(err_msg!(
@@ -104,6 +115,7 @@ pub const ATOM_HAS: PureAtomFn = |args| {
             ));
         }
     };
+
     Ok(Value::Bool(found))
 };
 
@@ -122,32 +134,20 @@ pub const ATOM_HAS: PureAtomFn = |args| {
 /// Mutates the world at the given path. **Creates a new empty list if the path doesn't exist.**
 pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
     validate_binary_arity(args, "core/push!")?;
-    let path = match &args[0] {
-        Value::Path(p) => p,
-        _ => {
-            return Err(err_msg!(
-                Eval,
-                "core/push! expects a Path as first argument, found {}",
-                args[0].to_string()
-            ))
-        }
-    };
+
+    let path = validate_path_arg(args, "core/push!")?;
+
+    // Get existing list or create new one
     let mut list_val = context
         .state
         .get(path)
         .cloned()
         .unwrap_or(Value::List(vec![]));
 
-    match &mut list_val {
-        Value::List(items) => items.push(args[1].clone()),
-        _ => {
-            return Err(err_msg!(
-                Eval,
-                "core/push! expects a List at path, found {}",
-                list_val.to_string()
-            ))
-        }
-    }
+    // Validate and modify list
+    let items = validate_list_value_mut(&mut list_val, "core/push!")?;
+    items.push(args[1].clone());
+
     context.state.set(path, list_val);
     Ok(Value::Nil)
 };
@@ -166,32 +166,20 @@ pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
 /// Mutates the world at the given path. **Creates a new empty list if the path doesn't exist.**
 pub const ATOM_CORE_PULL: StatefulAtomFn = |args, context| {
     validate_unary_arity(args, "core/pull!")?;
-    let path = match &args[0] {
-        Value::Path(p) => p,
-        _ => {
-            return Err(err_msg!(
-                Eval,
-                "core/pull! expects a Path as first argument, found {}",
-                args[0].to_string()
-            ))
-        }
-    };
+
+    let path = validate_path_arg(args, "core/pull!")?;
+
+    // Get existing list or create new one
     let mut list_val = context
         .state
         .get(path)
         .cloned()
         .unwrap_or(Value::List(vec![]));
 
-    let pulled_value = match &mut list_val {
-        Value::List(items) => items.pop().unwrap_or(Value::Nil),
-        _ => {
-            return Err(err_msg!(
-                Eval,
-                "core/pull! expects a List at path, found {}",
-                list_val.to_string()
-            ))
-        }
-    };
+    // Validate and modify list
+    let items = validate_list_value_mut(&mut list_val, "core/pull!")?;
+    let pulled_value = items.pop().unwrap_or(Value::Nil);
+
     context.state.set(path, list_val);
     Ok(pulled_value)
 };
@@ -209,26 +197,37 @@ pub const ATOM_CORE_PULL: StatefulAtomFn = |args, context| {
 ///
 /// Example:
 ///   (core/str+ "foo" "bar" "baz") ; => "foobarbaz"
-///
-/// # Safety
-/// Pure, does not mutate state. This atom only accepts `Value::String` arguments.
 pub const ATOM_CORE_STR_PLUS: PureAtomFn = |args| {
+    // Handle empty args case explicitly
     if args.is_empty() {
         return Ok(Value::String(String::new()));
     }
-    let mut result = String::new();
-    for val in args.iter() {
-        match val {
-            Value::String(s) => result.push_str(&s[..]),
-            _ => {
-                return Err(err_msg!(
-                    Eval,
-                    "core/str+ expects all arguments to be Strings, found {}",
-                    val.to_string()
-                ));
+
+    // Pre-calculate total capacity for better performance
+    let total_capacity: usize = args
+        .iter()
+        .filter_map(|v| {
+            if let Value::String(s) = v {
+                Some(s.len())
+            } else {
+                None
             }
-        }
+        })
+        .sum();
+
+    let mut result = String::with_capacity(total_capacity);
+
+    for val in args.iter() {
+        let Value::String(s) = val else {
+            return Err(err_msg!(
+                Eval,
+                "core/str+ expects all arguments to be Strings, found {}",
+                val.to_string()
+            ));
+        };
+        result.push_str(s);
     }
+
     Ok(Value::String(result))
 };
 
@@ -246,20 +245,19 @@ pub const ATOM_CORE_STR_PLUS: PureAtomFn = |args| {
 /// Returns an error if the argument is not a list or if the list is empty.
 pub const ATOM_CAR: PureAtomFn = |args| {
     validate_unary_arity(args, "car")?;
-    match &args[0] {
-        Value::List(items) => {
-            if let Some(first) = items.first() {
-                Ok(first.clone())
-            } else {
-                Err(err_msg!(Eval, "car: empty list"))
-            }
-        }
-        _ => Err(err_msg!(
+
+    let Value::List(items) = &args[0] else {
+        return Err(err_msg!(
             Eval,
             "car expects a List, found {}",
             args[0].to_string()
-        )),
-    }
+        ));
+    };
+
+    let first = items
+        .first()
+        .ok_or_else(|| err_msg!(Eval, "car: empty list"))?;
+    Ok(first.clone())
 };
 
 /// Returns the tail (all but the first element) of a list.
@@ -276,20 +274,20 @@ pub const ATOM_CAR: PureAtomFn = |args| {
 /// Returns an error if the argument is not a list or if the list is empty.
 pub const ATOM_CDR: PureAtomFn = |args| {
     validate_unary_arity(args, "cdr")?;
-    match &args[0] {
-        Value::List(items) => {
-            if items.is_empty() {
-                Err(err_msg!(Eval, "cdr: empty list"))
-            } else {
-                Ok(Value::List(items[1..].to_vec()))
-            }
-        }
-        _ => Err(err_msg!(
+
+    let Value::List(items) = &args[0] else {
+        return Err(err_msg!(
             Eval,
             "cdr expects a List, found {}",
             args[0].to_string()
-        )),
+        ));
+    };
+
+    if items.is_empty() {
+        return Err(err_msg!(Eval, "cdr: empty list"));
     }
+
+    Ok(Value::List(items[1..].to_vec()))
 };
 
 /// Prepends an element to a list.
@@ -307,19 +305,15 @@ pub const ATOM_CDR: PureAtomFn = |args| {
 /// Returns an error if the second argument is not a list.
 pub const ATOM_CONS: PureAtomFn = |args| {
     validate_binary_arity(args, "cons")?;
-    match &args[1] {
-        Value::List(items) => {
-            let mut new_list = Vec::with_capacity(items.len() + 1);
-            new_list.push(args[0].clone());
-            new_list.extend_from_slice(items);
-            Ok(Value::List(new_list))
-        }
-        _ => Err(err_msg!(
-            Eval,
-            "cons expects second argument to be a List, found {}",
-            args[1].to_string()
-        )),
-    }
+
+    let items = validate_list_value(&args[1], "cons second argument")?;
+
+    // Pre-allocate vector for better performance
+    let mut new_list = Vec::with_capacity(items.len() + 1);
+    new_list.push(args[0].clone());
+    new_list.extend_from_slice(items);
+
+    Ok(Value::List(new_list))
 };
 
 /// Creates a map from alternating key-value pairs.
@@ -340,16 +334,7 @@ pub const ATOM_CORE_MAP: PureAtomFn = |args| {
 
     let mut map = im::HashMap::new();
     for chunk in args.chunks(2) {
-        let key = match &chunk[0] {
-            Value::String(s) => s.clone(),
-            _ => {
-                return Err(err_msg!(
-                    Eval,
-                    "core/map expects string keys, found {}",
-                    chunk[0].to_string()
-                ))
-            }
-        };
+        let key = validate_string_value(&chunk[0], "core/map key")?.to_string();
         let value = chunk[1].clone();
         map.insert(key, value);
     }
@@ -364,18 +349,18 @@ pub const ATOM_CORE_MAP: PureAtomFn = |args| {
 /// Registers all collection atoms with the given registry.
 pub fn register_collection_atoms(registry: &mut AtomRegistry) {
     // List operations
-    registry.register("list", Atom::Pure(ATOM_LIST));
-    registry.register("len", Atom::Pure(ATOM_LEN));
-    registry.register("has?", Atom::Pure(ATOM_HAS));
-    registry.register("core/push!", Atom::Stateful(ATOM_CORE_PUSH));
-    registry.register("core/pull!", Atom::Stateful(ATOM_CORE_PULL));
+    registry.register_pure("list", ATOM_LIST);
+    registry.register_pure("len", ATOM_LEN);
+    registry.register_pure("has?", ATOM_HAS);
+    registry.register_stateful("core/push!", ATOM_CORE_PUSH);
+    registry.register_stateful("core/pull!", ATOM_CORE_PULL);
 
     // String operations
-    registry.register("core/str+", Atom::Pure(ATOM_CORE_STR_PLUS));
-    registry.register("car", Atom::Pure(ATOM_CAR));
-    registry.register("cdr", Atom::Pure(ATOM_CDR));
-    registry.register("cons", Atom::Pure(ATOM_CONS));
+    registry.register_pure("core/str+", ATOM_CORE_STR_PLUS);
+    registry.register_pure("car", ATOM_CAR);
+    registry.register_pure("cdr", ATOM_CDR);
+    registry.register_pure("cons", ATOM_CONS);
 
     // Map operations
-    registry.register("core/map", Atom::Pure(ATOM_CORE_MAP));
+    registry.register_pure("core/map", ATOM_CORE_MAP);
 }
