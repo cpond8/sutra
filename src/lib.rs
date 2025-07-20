@@ -1,16 +1,14 @@
 pub use crate::{
     ast::{value::Value, AstNode, Expr, ParamList, Span, Spanned},
     atoms::{AtomRegistry, SharedOutput, StateContext},
-    diagnostics::{to_error_source, ErrorContext, SutraError},
-    engine::{
-        print_error, EngineOutputBuffer, EngineStdoutSink, TestResult as EngineTestResult,
-        TestSummary as EngineTestSummary,
-    },
+    diagnostics::{to_error_source, ErrorContext, ErrorType, SutraError},
+    engine::{print_error, EngineOutputBuffer, EngineStdoutSink},
     macros::{
         expand_macros_recursively, MacroDefinition, MacroExpansionContext, MacroRegistry,
         MacroTemplate,
     },
     runtime::world::{AtomExecutionContext, Path, World},
+    test::{Expectation, TestResult, TestSummary},
 };
 
 pub mod ast;
@@ -24,6 +22,7 @@ pub mod macros;
 pub mod runtime;
 pub mod syntax;
 pub mod validation;
+pub mod test;
 
 #[cfg(test)]
 mod sutra_harness {

@@ -36,7 +36,7 @@ coverage/
 
 # Project-specific/infra
 .clinerules/
-.cursor/
+.cursor/archive/
 .cursorrules
 .deprecated/
 .github/

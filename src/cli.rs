@@ -156,10 +156,7 @@ pub fn run() {
 // ============================================================================
 
 fn run_test_suite(path: PathBuf) {
-    use crate::{
-        discovery::TestDiscoverer,
-        engine::ExecutionPipeline,
-    };
+    use crate::discovery::TestDiscoverer;
 
     let test_files = match TestDiscoverer::discover_test_files(path) {
         Ok(files) => files,
@@ -170,7 +167,7 @@ fn run_test_suite(path: PathBuf) {
     };
 
     if !test_files.is_empty() {
-        println!("Found {} test files", test_files.len());
+        println!("\nFound {} test files", test_files.len());
     }
 
     // Collect all tests first for progress tracking
@@ -195,21 +192,24 @@ fn run_test_suite(path: PathBuf) {
         // Progress indicator
         if current % 5 == 0 || current == total_tests - 1 {
             let progress = ((current + 1) as f64 / total_tests as f64) * 100.0;
-            println!("\x1b[34mRunning tests... [{}/{}] ({:.1}%)\x1b[0m", current + 1, total_tests, progress);
+            println!(
+                "\n\x1b[34mRunning tests... [{}/{}] ({:.1}%)\x1b[0m",
+                current + 1,
+                total_tests,
+                progress
+            );
         }
 
-        match ExecutionPipeline::run_single_test(&test_form) {
+        match crate::test::runner::TestRunner::run_single_test(&test_form) {
             Ok(()) => {
                 passed += 1;
                 println!("\x1b[32m✓\x1b[0m {}", test_form.name);
             }
             Err(e) => {
                 failed += 1;
-                println!("\x1b[31m✗\x1b[0m {}", test_form.name);
-
-                // Let miette handle the rich error display
+                // Let miette handle the rich error display (includes test name)
                 let report = miette::Report::new(e);
-                eprintln!("{report:?}\n----------------\n");
+                eprintln!("{report:?}");
             }
         }
     }
@@ -230,7 +230,10 @@ fn run_test_suite(path: PathBuf) {
     } else {
         0.0
     };
-    println!("\n\x1b[1m成 Success Rate: {:.1}% ({}/{})\x1b[0m", rate, passed, total);
+    println!(
+        "\n\x1b[1m成 Success Rate: {:.1}% ({}/{})\x1b[0m\n",
+        rate, passed, total
+    );
 }
 
 // ============================================================================

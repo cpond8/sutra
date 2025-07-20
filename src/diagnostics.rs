@@ -62,6 +62,45 @@ use crate::Span;
 // Type aliases for clarity and brevity
 pub type SourceArc = Arc<NamedSource<String>>;
 
+/// Type-safe error classification enum that corresponds to SutraError variants.
+/// This replaces fragile string-based error type matching in test code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ErrorType {
+    /// Parse errors: Invalid syntax, unmatched delimiters, bad escapes
+    Parse,
+    /// Validation errors: Unknown macros/atoms, arity errors, invalid paths
+    Validation,
+    /// Runtime evaluation errors, arity mismatches, division by zero
+    Eval,
+    /// Type mismatches (e.g., string + number)
+    TypeError,
+    /// Internal engine errors
+    Internal,
+    /// Test assertion failures
+    TestFailure,
+}
+
+impl ErrorType {
+    /// Returns the string representation used in legacy test files.
+    /// This maintains backward compatibility with existing test expectations.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ErrorType::Parse => "Parse",
+            ErrorType::Validation => "Validation",
+            ErrorType::Eval => "Eval",
+            ErrorType::TypeError => "TypeError",
+            ErrorType::Internal => "Internal",
+            ErrorType::TestFailure => "TestFailure",
+        }
+    }
+}
+
+impl std::fmt::Display for ErrorType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 /// A single additional label for multi-span diagnostics.
 #[derive(Debug)]
 pub struct RelatedLabel {
@@ -180,7 +219,7 @@ pub enum SutraError {
         source: Option<Box<dyn std::error::Error + Send + Sync + 'static>>,
     },
     #[error("Test failure: {message}")]
-    TestFailure {
+    TestSyntaxFailure {
         message: String,
         ctx: ErrorContext,
         #[source]
@@ -197,23 +236,28 @@ impl SutraError {
             SutraError::TypeError { ctx, .. } => ctx,
             SutraError::DivisionByZero { ctx, .. } => ctx,
             SutraError::Internal { ctx, .. } => ctx,
-            SutraError::TestFailure { ctx, .. } => ctx,
+            SutraError::TestSyntaxFailure { ctx, .. } => ctx,
+        }
+    }
+
+    /// Returns the type-safe error classification for this error.
+    /// This replaces the fragile string-based error type extraction.
+    pub fn error_type(&self) -> ErrorType {
+        match self {
+            SutraError::Parse { .. } => ErrorType::Parse,
+            SutraError::Validation { .. } => ErrorType::Validation,
+            SutraError::Eval { .. } => ErrorType::Eval,
+            SutraError::TypeError { .. } => ErrorType::TypeError,
+            SutraError::DivisionByZero { .. } => ErrorType::Eval, // Division by zero is a runtime eval error
+            SutraError::Internal { .. } => ErrorType::Internal,
+            SutraError::TestSyntaxFailure { .. } => ErrorType::TestFailure,
         }
     }
 }
 
 impl Diagnostic for SutraError {
     fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
-        let code: &str = match self {
-            SutraError::Parse { .. } => "sutra::parse",
-            SutraError::Validation { .. } => "sutra::validation",
-            SutraError::Eval { .. } => "sutra::eval",
-            SutraError::TypeError { .. } => "sutra::type_error",
-            SutraError::DivisionByZero { .. } => "sutra::division_by_zero",
-            SutraError::Internal { .. } => "sutra::internal",
-            SutraError::TestFailure { .. } => "sutra::test_failure",
-        };
-        Some(Box::new(code))
+        None
     }
 
     fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
@@ -242,7 +286,7 @@ impl Diagnostic for SutraError {
                 SutraError::TypeError { message, .. } => Some(message.clone()),
                 SutraError::DivisionByZero { .. } => Some("division by zero".to_string()),
                 SutraError::Internal { message, .. } => Some(message.clone()),
-                SutraError::TestFailure { message, .. } => Some(message.clone()),
+                SutraError::TestSyntaxFailure { message, .. } => Some(message.clone()),
             };
             let len = if span.end > span.start {
                 span.end - span.start

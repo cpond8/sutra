@@ -178,75 +178,137 @@ pub fn substitute_template(
     depth: usize,
     macro_name: &str,
 ) -> MacroExpansionResult {
+    // Step 1: Early validation - check recursion depth
     check_recursion_depth(depth, macro_name, &expr.span, env)?;
 
     let value = &*expr.value;
 
-    // Handle symbol substitution
+    // Step 2: Handle symbol substitution (early return)
     if let Expr::Symbol(name, _) = value {
-        return bindings
-            .get(name)
-            .map(|node| Ok(node.clone()))
-            .unwrap_or(Ok(expr.clone()));
+        return substitute_symbol(name, bindings, expr);
     }
 
-    // Handle list processing with spreads
+    // Step 3: Handle list processing with spreads (early return)
     if let Expr::List(items, _) = value {
-        let mut new_items = Vec::new();
-        for item in items {
-            match &*item.value {
-                Expr::Spread(inner) => {
-                    let substituted =
-                        substitute_template(inner, bindings, env, depth + 1, macro_name)?;
-                    let Expr::List(elements, _) = &*substituted.value else {
-                        return Err(err_src!(
-                            Internal,
-                            "Spread expression must evaluate to a list",
-                            &env.source,
-                            inner.span
-                        ));
-                    };
-                    new_items.extend_from_slice(elements);
-                }
-                _ => {
-                    let substituted =
-                        substitute_template(item, bindings, env, depth + 1, macro_name)?;
-                    new_items.push(substituted);
-                }
-            }
-        }
-        let span = items.first().unwrap().span;
-        return Ok(with_span(Expr::List(new_items, span), &span));
+        return substitute_list(items, bindings, env, depth, macro_name);
     }
 
-    // Handle other expressions recursively
+    // Step 4: Handle other expression types (early returns)
     match value {
-        Expr::Quote(inner, span) => {
-            // Don't substitute inside quotes - they should be literal
-            Ok(with_span(Expr::Quote(inner.clone(), *span), &expr.span))
-        }
+        Expr::Quote(inner, span) => substitute_quote(inner, span, expr),
         Expr::If {
             condition,
             then_branch,
             else_branch,
             span,
-        } => {
-            let new_condition =
-                substitute_template(condition, bindings, env, depth + 1, macro_name)?;
-            let new_then = substitute_template(then_branch, bindings, env, depth + 1, macro_name)?;
-            let new_else = substitute_template(else_branch, bindings, env, depth + 1, macro_name)?;
-            Ok(with_span(
-                Expr::If {
-                    condition: Box::new(new_condition),
-                    then_branch: Box::new(new_then),
-                    else_branch: Box::new(new_else),
-                    span: *span,
-                },
-                &expr.span,
-            ))
-        }
+        } => substitute_if_expression(
+            condition,
+            then_branch,
+            else_branch,
+            span,
+            expr,
+            bindings,
+            env,
+            depth,
+            macro_name,
+        ),
         _ => Ok(expr.clone()),
     }
+}
+
+/// Substitutes a symbol with its binding if available
+fn substitute_symbol(name: &str, bindings: &MacroBindings, expr: &AstNode) -> MacroExpansionResult {
+    Ok(bindings.get(name).cloned().unwrap_or_else(|| expr.clone()))
+}
+
+/// Substitutes elements in a list, handling spreads
+fn substitute_list(
+    items: &[AstNode],
+    bindings: &MacroBindings,
+    env: &MacroExpansionContext,
+    depth: usize,
+    macro_name: &str,
+) -> MacroExpansionResult {
+    // Step 1: Process each item in the list
+    let mut new_items = Vec::new();
+
+    for item in items {
+        let processed_items = substitute_list_item(item, bindings, env, depth, macro_name)?;
+        new_items.extend(processed_items);
+    }
+
+    // Step 2: Create new list expression
+    let span = items.first().unwrap().span;
+    Ok(with_span(Expr::List(new_items, span), &span))
+}
+
+/// Substitutes a single list item, handling spreads
+fn substitute_list_item(
+    item: &AstNode,
+    bindings: &MacroBindings,
+    env: &MacroExpansionContext,
+    depth: usize,
+    macro_name: &str,
+) -> Result<Vec<AstNode>, SutraError> {
+    // Step 1: Handle spread expressions (early return)
+    if let Expr::Spread(inner) = &*item.value {
+        let substituted = substitute_template(inner, bindings, env, depth + 1, macro_name)?;
+        let Expr::List(elements, _) = &*substituted.value else {
+            return Err(err_src!(
+                Internal,
+                "Spread expression must evaluate to a list",
+                &env.source,
+                inner.span
+            ));
+        };
+        return Ok(elements.clone());
+    }
+
+    // Step 2: Handle regular expressions
+    let substituted = substitute_template(item, bindings, env, depth + 1, macro_name)?;
+    Ok(vec![substituted])
+}
+
+/// Substitutes quote expressions (preserves literal content)
+fn substitute_quote(inner: &AstNode, span: &Span, expr: &AstNode) -> MacroExpansionResult {
+    // Don't substitute inside quotes - they should be literal
+    Ok(with_span(
+        Expr::Quote(Box::new(inner.clone()), *span),
+        &expr.span,
+    ))
+}
+
+/// Substitutes if expressions recursively
+fn substitute_if_expression(
+    condition: &AstNode,
+    then_branch: &AstNode,
+    else_branch: &AstNode,
+    span: &Span,
+    expr: &AstNode,
+    bindings: &MacroBindings,
+    env: &MacroExpansionContext,
+    depth: usize,
+    macro_name: &str,
+) -> MacroExpansionResult {
+    // Step 1: Substitute condition
+    let new_condition = substitute_template(condition, bindings, env, depth + 1, macro_name)?;
+
+    // Step 2: Substitute then branch
+    let new_then = substitute_template(then_branch, bindings, env, depth + 1, macro_name)?;
+
+    // Step 3: Substitute else branch
+    let new_else = substitute_template(else_branch, bindings, env, depth + 1, macro_name)?;
+
+    // Step 4: Create new if expression
+    Ok(with_span(
+        Expr::If {
+            condition: Box::new(new_condition),
+            then_branch: Box::new(new_then),
+            else_branch: Box::new(new_else),
+            span: *span,
+        },
+        &expr.span,
+    ))
 }
 
 // =============================

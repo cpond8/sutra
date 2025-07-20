@@ -1,13 +1,13 @@
-use std::{cell::RefCell, collections::HashMap, path::Path, rc::Rc, sync::Arc};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 use miette::{NamedSource, Report};
 
 use crate::{
     atoms::{AtomRegistry, OutputSink},
-    err_ctx, err_msg, err_src,
+    err_ctx, err_msg,
     macros::{
-        expand_macros_recursively, is_macro_definition, parse_macro_definition, MacroDefinition,
-        MacroExpansionContext, MacroValidationContext,
+        expand_macros_recursively, parse_macro_definition, MacroDefinition, MacroExpansionContext,
+        MacroValidationContext,
     },
     runtime::{
         eval::evaluate,
@@ -70,55 +70,194 @@ pub fn print_error(error: SutraError) {
 }
 
 // ============================================================================
-// TEST TYPES - Generic test infrastructure
-// ============================================================================
-
-/// Test result summary for CLI reporting
-#[derive(Debug, Default)]
-pub struct TestSummary {
-    pub passed: usize,
-    pub failed: usize,
-}
-
-impl TestSummary {
-    pub fn has_failures(&self) -> bool {
-        self.failed > 0
-    }
-
-    pub fn total_tests(&self) -> usize {
-        self.passed + self.failed
-    }
-
-    pub fn success_rate(&self) -> f64 {
-        if self.total_tests() == 0 {
-            return 0.0;
-        }
-        (self.passed as f64 / self.total_tests() as f64) * 100.0
-    }
-}
-
-/// Test result for individual test execution
-#[derive(Debug, Clone)]
-pub enum TestResult {
-    Passed,
-    Failed,
-}
-
-// ============================================================================
 // TYPE ALIASES - Reduce verbosity in engine functions
 // ============================================================================
 
 /// Type alias for execution results
 type ExecutionResult = Result<(), SutraError>;
 
-/// Type alias for AST execution results
-type AstExecutionResult = Result<Value, SutraError>;
-
 /// Type alias for evaluation results with world state
 type EvaluationResult = Result<(Value, World), SutraError>;
 
 /// Type alias for source context used in error reporting
 type SourceContext = Arc<NamedSource<String>>;
+
+// ============================================================================
+// MACRO PROCESSOR - Dedicated macro processing service to eliminate duplication
+// ============================================================================
+
+/// Dedicated macro processing service that encapsulates macro environment building and processing.
+/// This eliminates ~120 lines of duplication between ExecutionPipeline and TestRunner.
+pub struct MacroProcessor {
+    /// Whether to validate expanded AST before evaluation
+    pub validate: bool,
+    /// Maximum recursion depth for evaluation
+    pub max_depth: usize,
+}
+
+impl Default for MacroProcessor {
+    fn default() -> Self {
+        Self {
+            validate: true,
+            max_depth: 100,
+        }
+    }
+}
+
+impl MacroProcessor {
+    /// Creates a new macro processor with specified settings
+    pub fn new(validate: bool, max_depth: usize) -> Self {
+        Self {
+            validate,
+            max_depth,
+        }
+    }
+
+    /// Partition AST nodes, process macros, and expand - unified macro processing pipeline
+    pub fn partition_and_process_macros(
+        &self,
+        ast_nodes: Vec<AstNode>,
+    ) -> Result<(AstNode, MacroExpansionContext), SutraError> {
+        // Step 1: Partition AST nodes into macro definitions and user code
+        let (macro_defs, user_code) = self.partition_ast_nodes(ast_nodes);
+
+        // Step 2: Build canonical macro environment
+        let mut env = build_canonical_macro_env()?;
+
+        // Step 3: Process user-defined macros
+        self.process_macro_definitions(macro_defs, &mut env)?;
+
+        // Step 4: Wrap user code in a (do ...) block if needed
+        let program = wrap_in_do(user_code);
+
+        // Step 5: Expand macros recursively
+        let expanded = expand_macros_recursively(program, &mut env)?;
+
+        Ok((expanded, env))
+    }
+
+    /// Partitions AST nodes into macro definitions and user code
+    fn partition_ast_nodes(&self, ast_nodes: Vec<AstNode>) -> (Vec<AstNode>, Vec<AstNode>) {
+        // Note: define forms are special forms that should be evaluated, not treated as macros
+        ast_nodes.into_iter().partition(|_expr| false) // Don't partition define forms as macros
+    }
+
+    /// Expand macros with existing environment (for single AST nodes)
+    pub fn expand_with_macros(
+        &self,
+        ast: AstNode,
+        env: &mut MacroExpansionContext,
+    ) -> Result<AstNode, SutraError> {
+        expand_macros_recursively(ast, env)
+    }
+
+    /// Processes macro definitions and adds them to the environment
+    pub fn process_macro_definitions(
+        &self,
+        macro_defs: Vec<AstNode>,
+        env: &mut MacroExpansionContext,
+    ) -> ExecutionResult {
+        let ctx = MacroValidationContext::for_user_macros();
+        let mut macros = Vec::new();
+
+        for macro_expr in macro_defs {
+            let (name, template) = parse_macro_definition(&macro_expr)?;
+            macros.push((name, template));
+        }
+
+        ctx.validate_and_insert_many(macros, &mut env.user_macros)
+    }
+
+    /// Combines core and user macros into a single registry for validation
+    pub fn combine_macro_registries(
+        &self,
+        env: &MacroExpansionContext,
+    ) -> HashMap<String, MacroDefinition> {
+        let mut combined = env.core_macros.clone();
+        combined.extend(env.user_macros.clone());
+        combined
+    }
+
+    /// Validates an expanded AST if validation is enabled
+    pub fn validate_expanded_ast(
+        &self,
+        expanded: &AstNode,
+        env: &MacroExpansionContext,
+        atom_registry: &AtomRegistry,
+        source_context: &SourceContext,
+    ) -> ExecutionResult {
+        // Step 1: Early validation - check if validation is enabled
+        if !self.validate {
+            return Ok(());
+        }
+
+        // Step 2: Build macro registry for validation
+        let combined_macros = self.combine_macro_registries(env);
+        let macro_registry = MacroRegistry {
+            macros: combined_macros,
+        };
+
+        // Step 3: Perform semantic validation
+        let validation_result = validate_expanded_ast(expanded, &macro_registry, atom_registry);
+
+        // Step 4: Handle validation results (early return on failure)
+        if !validation_result.is_valid() {
+            let error_message = validation_result.errors.join("\n");
+            return Err(err_ctx!(
+                Validation,
+                format!("Semantic validation failed:\n{}", error_message),
+                source_context,
+                expanded.span,
+                "Check for undefined symbols, type errors, or invalid macro usage in your code."
+            ));
+        }
+
+        // Step 5: Validation successful
+        Ok(())
+    }
+
+    /// Evaluates an expanded AST with standard context
+    pub fn evaluate_expanded_ast(
+        &self,
+        expanded: &AstNode,
+        output: SharedOutput,
+        source_context: SourceContext,
+        atom_registry: &AtomRegistry,
+    ) -> EvaluationResult {
+        let world = World::default();
+        evaluate(
+            expanded,
+            &world,
+            output,
+            atom_registry,
+            source_context,
+            self.max_depth,
+        )
+    }
+
+    /// Outputs result if not nil
+    pub fn output_result_if_not_nil(&self, result: &Value, output: &SharedOutput) {
+        if !result.is_nil() {
+            output.emit(&result.to_string(), None);
+        }
+    }
+
+    /// Builds standard registries used across all execution paths
+    pub fn build_standard_registries() -> (AtomRegistry, MacroExpansionContext) {
+        let atom_registry = build_default_atom_registry();
+        let macro_env = build_canonical_macro_env().expect("Standard macro env should build");
+        (atom_registry, macro_env)
+    }
+
+    /// Creates a source context for error reporting
+    pub fn create_source_context(&self, name: &str, content: &str) -> SourceContext {
+        Arc::new(NamedSource::new(name, content.to_string()))
+    }
+}
+
+// ============================================================================
+// EXECUTION PIPELINE - Unified execution using MacroProcessor
+// ============================================================================
 
 /// Unified execution pipeline that enforces strict layering: Parse → Expand → Validate → Evaluate
 /// This is the single source of truth for all Sutra execution paths, including tests and production.
@@ -141,108 +280,6 @@ impl Default for ExecutionPipeline {
 
 impl ExecutionPipeline {
     // ============================================================================
-    // HELPER METHODS - Extract common patterns for reuse
-    // ============================================================================
-
-    /// Builds standard registries used across all execution paths
-    fn build_standard_registries() -> (AtomRegistry, MacroExpansionContext) {
-        let atom_registry = build_default_atom_registry();
-        let macro_env = build_canonical_macro_env().expect("Standard macro env should build");
-        (atom_registry, macro_env)
-    }
-
-    /// Creates a source context for error reporting
-    fn create_source_context(&self, name: &str, content: &str) -> SourceContext {
-        Arc::new(NamedSource::new(name, content.to_string()))
-    }
-
-    /// Processes macro definitions and adds them to the environment
-    fn process_macro_definitions(
-        &self,
-        macro_defs: Vec<AstNode>,
-        env: &mut MacroExpansionContext,
-    ) -> ExecutionResult {
-        let ctx = MacroValidationContext::for_user_macros();
-        let mut macros = Vec::new();
-
-        for macro_expr in macro_defs {
-            let (name, template) = parse_macro_definition(&macro_expr)?;
-            macros.push((name, template));
-        }
-
-        ctx.validate_and_insert_many(macros, &mut env.user_macros)
-    }
-
-    /// Combines core and user macros into a single registry for validation
-    fn combine_macro_registries(
-        &self,
-        env: &MacroExpansionContext,
-    ) -> HashMap<String, MacroDefinition> {
-        let mut combined = env.core_macros.clone();
-        combined.extend(env.user_macros.clone());
-        combined
-    }
-
-    /// Validates an expanded AST if validation is enabled
-    fn validate_expanded_ast(
-        &self,
-        expanded: &AstNode,
-        env: &MacroExpansionContext,
-        atom_registry: &AtomRegistry,
-        source_context: &SourceContext,
-    ) -> ExecutionResult {
-        if !self.validate {
-            return Ok(());
-        }
-
-        let combined_macros = self.combine_macro_registries(env);
-        let macro_registry = MacroRegistry {
-            macros: combined_macros,
-        };
-
-        let validation_result = validate_expanded_ast(expanded, &macro_registry, atom_registry);
-
-        if !validation_result.is_valid() {
-            let error_message = validation_result.errors.join("\n");
-            return Err(err_ctx!(
-                Validation,
-                format!("Semantic validation failed:\n{}", error_message),
-                source_context,
-                expanded.span,
-                "Check for undefined symbols, type errors, or invalid macro usage in your code."
-            ));
-        }
-
-        Ok(())
-    }
-
-    /// Evaluates an expanded AST with standard context
-    fn evaluate_expanded_ast(
-        &self,
-        expanded: &AstNode,
-        output: SharedOutput,
-        source_context: SourceContext,
-        atom_registry: &AtomRegistry,
-    ) -> EvaluationResult {
-        let world = World::default();
-        evaluate(
-            expanded,
-            &world,
-            output,
-            atom_registry,
-            source_context,
-            self.max_depth,
-        )
-    }
-
-    /// Outputs result if not nil
-    fn output_result_if_not_nil(&self, result: &Value, output: &SharedOutput) {
-        if !result.is_nil() {
-            output.emit(&result.to_string(), None);
-        }
-    }
-
-    // ============================================================================
     // CLI SERVICE METHODS - Pure execution services for CLI orchestration
     // ============================================================================
 
@@ -255,13 +292,11 @@ impl ExecutionPipeline {
     pub fn parse_source(source: &str) -> Result<Vec<AstNode>, SutraError> {
         parse(source)
     }
-
     /// Expands macros in source code with pure expansion logic (no I/O)
     pub fn expand_macros_source(source: &str) -> Result<String, SutraError> {
+        let processor = MacroProcessor::default();
         let ast_nodes = parse(source)?;
-        let mut env = build_canonical_macro_env()?;
-        let program = wrap_in_do(ast_nodes);
-        let expanded = expand_macros_recursively(program, &mut env)?;
+        let (expanded, _env) = processor.partition_and_process_macros(ast_nodes)?;
         Ok(expanded.value.pretty())
     }
 
@@ -280,204 +315,6 @@ impl ExecutionPipeline {
                 "Check that the file exists and is readable."
             )
         })
-    }
-
-    // ============================================================================
-    // TEST EXECUTION SERVICES - Pure test logic for CLI
-    // ============================================================================
-
-    /// Executes a test with expectation checking (pure logic, no I/O)
-    pub fn execute_test_with_expectation(
-        test_form: &crate::discovery::ASTDefinition,
-    ) -> TestResult {
-        let expected_value = match Self::extract_expect_value(test_form) {
-            Ok(value) => value,
-            Err(_) => return TestResult::Failed,
-        };
-
-        if Self::is_error_test(&expected_value) {
-            return Self::handle_error_test(test_form, &expected_value);
-        }
-
-        Self::handle_value_test(test_form, &expected_value)
-    }
-
-    /// Checks if the expected value indicates an error test
-    fn is_error_test(expected_value: &Value) -> bool {
-        matches!(expected_value, Value::String(s) if s.starts_with("ERROR:"))
-    }
-
-    /// Handles error test execution
-    fn handle_error_test(
-        test_form: &crate::discovery::ASTDefinition,
-        expected_value: &Value,
-    ) -> TestResult {
-        let expected_error_type = match expected_value {
-            Value::String(s) => &s[6..], // Remove "ERROR:" prefix
-            _ => return TestResult::Failed,
-        };
-
-        match Self::execute_test_body(&test_form.body) {
-            Ok(_) => TestResult::Failed, // Expected to fail but succeeded
-            Err(error) => {
-                let error_type = Self::extract_error_type(&error);
-                if error_type == expected_error_type {
-                    TestResult::Passed
-                } else {
-                    TestResult::Failed
-                }
-            }
-        }
-    }
-
-    /// Handles value test execution
-    fn handle_value_test(
-        test_form: &crate::discovery::ASTDefinition,
-        expected_value: &Value,
-    ) -> TestResult {
-        let actual_value = match Self::execute_test_body(&test_form.body) {
-            Ok(value) => value,
-            Err(_) => return TestResult::Failed,
-        };
-
-        if actual_value == *expected_value {
-            TestResult::Passed
-        } else {
-            TestResult::Failed
-        }
-    }
-
-    /// Executes test body with pure execution logic
-    fn execute_test_body(body: &[AstNode]) -> Result<Value, SutraError> {
-        if body.is_empty() {
-            return Ok(Value::Nil);
-        }
-
-        let pipeline = Self::default();
-        pipeline.execute_ast(body)
-    }
-
-    /// Extracts expected value from test form
-    fn extract_expect_value(
-        test_form: &crate::discovery::ASTDefinition,
-    ) -> Result<Value, SutraError> {
-        let expect = test_form
-            .expect_form
-            .as_ref()
-            .ok_or_else(|| err_msg!(TestFailure, "Test is missing expect form"))?;
-
-        let crate::ast::Expr::List(items, _) = &*expect.value else {
-            return Err(err_src!(
-                TestFailure,
-                format!("Test '{}' expect form must be a list", test_form.name),
-                &test_form.source_file,
-                test_form.span
-            ));
-        };
-
-        // Look for value clause in the expect form
-        for item in items {
-            if let Some(value) = Self::extract_value_clause(&item, test_form)? {
-                return Ok(value);
-            }
-        }
-
-        // Look for error clause in the expect form
-        for item in items {
-            if let Some(error_value) = Self::extract_error_clause(&item, test_form)? {
-                return Ok(error_value);
-            }
-        }
-
-        Err(err_src!(
-            TestFailure,
-            format!(
-                "Test '{}' missing (value <expected>) or (error <type>) in expect form",
-                test_form.name
-            ),
-            &test_form.source_file,
-            test_form.span
-        ))
-    }
-
-    /// Extracts value clause from test item
-    fn extract_value_clause(
-        item: &AstNode,
-        test_form: &crate::discovery::ASTDefinition,
-    ) -> Result<Option<Value>, SutraError> {
-        let crate::ast::Expr::List(value_items, _) = &*item.value else {
-            return Ok(None);
-        };
-        if value_items.len() != 2 {
-            return Ok(None);
-        };
-
-        let crate::ast::Expr::Symbol(s, _) = &*value_items[0].value else {
-            return Ok(None);
-        };
-        if s != "value" {
-            return Ok(None);
-        };
-
-        match &*value_items[1].value {
-            crate::ast::Expr::Number(n, _) => Ok(Some(Value::Number(*n))),
-            crate::ast::Expr::String(s, _) => Ok(Some(Value::String(s.clone()))),
-            crate::ast::Expr::Bool(b, _) => Ok(Some(Value::Bool(*b))),
-            crate::ast::Expr::Symbol(s, _) if s == "nil" => Ok(Some(Value::Nil)),
-            _ => Err(err_src!(
-                TestFailure,
-                format!(
-                    "Test '{}' has unsupported expected value type",
-                    test_form.name
-                ),
-                &test_form.source_file,
-                test_form.span
-            )),
-        }
-    }
-
-    /// Extracts error clause from test item
-    fn extract_error_clause(
-        item: &AstNode,
-        test_form: &crate::discovery::ASTDefinition,
-    ) -> Result<Option<Value>, SutraError> {
-        let crate::ast::Expr::List(error_items, _) = &*item.value else {
-            return Ok(None);
-        };
-        if error_items.len() != 2 {
-            return Ok(None);
-        };
-
-        let crate::ast::Expr::Symbol(s, _) = &*error_items[0].value else {
-            return Ok(None);
-        };
-        if s != "error" {
-            return Ok(None);
-        };
-
-        let crate::ast::Expr::Symbol(error_type, _) = &*error_items[1].value else {
-            return Err(err_src!(
-                TestFailure,
-                format!("Test '{}' error type must be a symbol", test_form.name),
-                &test_form.source_file,
-                test_form.span
-            ));
-        };
-
-        Ok(Some(Value::String(format!("ERROR:{}", error_type))))
-    }
-
-    /// Extracts error type from SutraError
-    fn extract_error_type(error: &SutraError) -> String {
-        match error {
-            SutraError::Parse { .. } => "Parse".to_string(),
-            SutraError::Validation { .. } => "Validation".to_string(),
-            SutraError::Eval { .. } => "Eval".to_string(),
-            SutraError::TypeError { .. } => "TypeError".to_string(),
-            SutraError::DivisionByZero { .. } => "Eval".to_string(),
-            SutraError::Internal { .. } => "Internal".to_string(),
-            SutraError::TestFailure { .. } => "TestFailure".to_string(),
-        }
     }
 
     // ============================================================================
@@ -513,47 +350,50 @@ impl ExecutionPipeline {
     // PUBLIC EXECUTION METHODS
     // ============================================================================
 
+    /// Core execution method that all execution variants use.
+    /// Takes AST nodes and returns the result value after complete pipeline processing.
+    /// This is the single source of truth for AST execution.
+    pub fn execute_nodes(&self, nodes: &[AstNode]) -> Result<Value, SutraError> {
+        // Create macro processor with same configuration
+        let processor = MacroProcessor::new(self.validate, self.max_depth);
+
+        // Phase 1-5: Use MacroProcessor's unified partition and process pipeline
+        let (expanded, env) = processor.partition_and_process_macros(nodes.to_vec())?;
+
+        // Phase 6: Validation step (optional but recommended)
+        let (atom_registry, _) = MacroProcessor::build_standard_registries();
+        let source_context = processor.create_source_context("ast_execution", "");
+        processor.validate_expanded_ast(&expanded, &env, &atom_registry, &source_context)?;
+
+        // Phase 7: Evaluate the expanded AST (CRITICAL: No macro expansion happens here)
+        let output = SharedOutput(std::rc::Rc::new(std::cell::RefCell::new(
+            EngineOutputBuffer::new(),
+        )));
+        let (result, _updated_world) =
+            processor.evaluate_expanded_ast(&expanded, output, source_context, &atom_registry)?;
+
+        Ok(result)
+    }
+
     /// Executes Sutra source code through the complete pipeline.
-    /// This is the single entry point for all execution paths, including tests.
+    /// This parses source then calls execute_nodes() for unified processing.
     pub fn execute(&self, source: &str, output: SharedOutput) -> ExecutionResult {
         // Phase 1: Parse the source into AST nodes
         let ast_nodes = parse(source)?;
 
-        // Phase 2: Partition AST nodes: macro definitions vs user code
-        // Note: define forms are special forms that should be evaluated, not treated as macros
-        let (macro_defs, user_code): (Vec<_>, Vec<_>) =
-            ast_nodes.into_iter().partition(|_expr| false); // Don't partition define forms as macros
+        // Phase 2: Execute nodes through unified pipeline
+        let result = self.execute_nodes(&ast_nodes)?;
 
-        // Phase 3: Build canonical macro environment
-        let mut env = build_canonical_macro_env()?;
-
-        // Phase 4: Process user-defined macros
-        self.process_macro_definitions(macro_defs, &mut env)?;
-
-        // Phase 5: Wrap user_code in a (do ...) if needed
-        let program = wrap_in_do(user_code);
-
-        // Phase 6: Expand macros (CRITICAL: This happens BEFORE evaluation)
-        let expanded = expand_macros_recursively(program, &mut env)?;
-
-        // Phase 7: Validation step (optional but recommended)
-        let (atom_registry, _) = Self::build_standard_registries();
-        let source_context = self.create_source_context("source", source);
-        self.validate_expanded_ast(&expanded, &env, &atom_registry, &source_context)?;
-
-        // Phase 8: Evaluate the expanded AST (CRITICAL: No macro expansion happens here)
-        let (result, _updated_world) =
-            self.evaluate_expanded_ast(&expanded, output.clone(), source_context, &atom_registry)?;
-
-        // Phase 9: Output result (if not nil)
-        self.output_result_if_not_nil(&result, &output);
+        // Phase 3: Output result (if not nil)
+        if !result.is_nil() {
+            output.emit(&result.to_string(), None);
+        }
 
         Ok(())
     }
 
-    /// Executes a single AST node that has already been expanded.
-    /// This is used for testing and internal evaluation where macro expansion
-    /// has already been performed.
+    /// Executes already-expanded AST nodes, bypassing macro processing.
+    /// This is optimized for test execution where AST is already available.
     pub fn execute_expanded_ast(
         &self,
         expanded_ast: &AstNode,
@@ -570,96 +410,5 @@ impl ExecutionPipeline {
             source,
             self.max_depth,
         )
-    }
-
-    /// Executes test code with proper macro expansion and special form preservation.
-    /// This method is specifically designed for test execution and ensures that
-    /// both macro expansion and special form evaluation work correctly.
-    pub fn execute_test(&self, test_body: &AstNode, output: SharedOutput) -> ExecutionResult {
-        // Phase 1: Build canonical macro environment (includes null?, etc.)
-        let mut env = build_canonical_macro_env()?;
-
-        // Phase 2: Expand macros in the test body
-        let expanded = expand_macros_recursively(test_body.clone(), &mut env)?;
-
-        // Phase 3: Evaluate the expanded AST
-        let (atom_registry, _) = Self::build_standard_registries();
-        let source_context = self.create_source_context("test", "");
-        let (result, _updated_world) =
-            self.evaluate_expanded_ast(&expanded, output.clone(), source_context, &atom_registry)?;
-
-        // Phase 4: Output result (if not nil)
-        self.output_result_if_not_nil(&result, &output);
-
-        Ok(())
-    }
-
-    /// Executes AST nodes directly without parsing, avoiding double execution.
-    /// This is optimized for test execution where AST is already available.
-    pub fn execute_ast(&self, nodes: &[AstNode]) -> AstExecutionResult {
-        // Partition AST nodes: macro definitions vs user code
-        let (macro_defs, user_code) = nodes.iter().cloned().partition(is_macro_definition);
-
-        // Build canonical macro environment
-        let mut env = build_canonical_macro_env()?;
-
-        // Process user-defined macros
-        self.process_macro_definitions(macro_defs, &mut env)?;
-
-        // Wrap user_code in a (do ...) if needed
-        let program = wrap_in_do(user_code);
-
-        // Expand macros
-        let expanded = expand_macros_recursively(program, &mut env)?;
-
-        // Optional validation step
-        let (atom_registry, _) = Self::build_standard_registries();
-        let source_context = self.create_source_context("ast_execution", "");
-        self.validate_expanded_ast(&expanded, &env, &atom_registry, &source_context)?;
-
-        // Evaluate the expanded AST
-        let output = SharedOutput(Rc::new(RefCell::new(EngineOutputBuffer::new())));
-        let (result, _) =
-            self.evaluate_expanded_ast(&expanded, output, source_context, &atom_registry)?;
-
-        Ok(result)
-    }
-
-    /// Run a single test case, returning Ok(()) if passed, or Err(error) if failed.
-    pub fn run_single_test(test_form: &crate::discovery::ASTDefinition) -> Result<(), SutraError> {
-        let expected = Self::extract_expect_value(test_form)?;
-        if Self::is_error_test(&expected) {
-            match Self::execute_test_body(&test_form.body) {
-                Ok(_) => Err(err_src!(
-                    TestFailure,
-                    "Expected error, but test succeeded",
-                    &test_form.source_file,
-                    test_form.span
-                )),
-                Err(e) => {
-                    let error_type = Self::extract_error_type(&e);
-                    let expected_type = match expected {
-                        crate::ast::value::Value::String(ref s) => &s[6..],
-                        _ => "",
-                    };
-                    if error_type == expected_type {
-                        Ok(())
-                    } else {
-                        Err(e)
-                    }
-                }
-            }
-        } else {
-            match Self::execute_test_body(&test_form.body) {
-                Ok(actual) if actual == expected => Ok(()),
-                Ok(actual) => Err(err_src!(
-                    TestFailure,
-                    format!("Expected {}, got {}", expected, actual),
-                    &test_form.source_file,
-                    test_form.span
-                )),
-                Err(e) => Err(e),
-            }
-        }
     }
 }

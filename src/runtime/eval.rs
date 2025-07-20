@@ -289,12 +289,12 @@ pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext)
 
 /// Evaluates list expressions (function calls)
 fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext) -> AtomResult {
-    // Empty list returns empty list
+    // Step 1: Early validation - check for empty list
     if items.is_empty() {
         return wrap_value_with_world_state(Value::List(vec![]), context.world);
     }
 
-    // Extract head symbol
+    // Step 2: Early validation - extract and validate head symbol
     let head = &items[0];
     let tail = &items[1..];
     let Expr::Symbol(symbol_name, _) = &*head.value else {
@@ -306,23 +306,25 @@ fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext
         ));
     };
 
-    // Flatten arguments and handle special forms
+    // Step 3: Process arguments (flatten spreads)
     let flat_tail = flatten_spread_args(tail, context)?;
+
+    // Step 4: Handle special form "define" (early return)
     if symbol_name == "define" {
         return handle_define_special_form(&flat_tail, span, context, head);
     }
 
-    // Check if it's a special form atom - if so, let it handle its own evaluation
+    // Step 5: Handle special form atoms (early return)
     if let Some(atom) = context.atom_registry.get(symbol_name) {
         if matches!(atom, Atom::SpecialForm(_)) {
             return context.call_atom(symbol_name, head, &flat_tail, span);
         }
     }
 
-    // For eager atoms (Pure, Stateful), evaluate arguments first
+    // Step 6: Evaluate arguments for eager atoms
     let (arg_values, world_after_args) = evaluate_eager_args(&flat_tail, context)?;
 
-    // Try lexical environment first
+    // Step 7: Try lexical environment lambda lookup (early return)
     if let Some(Value::Lambda(lambda)) = context.get_lexical_var(symbol_name) {
         let mut lambda_context = EvaluationContext {
             world: &world_after_args,
@@ -336,10 +338,9 @@ fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext
         return special_forms::call_lambda(lambda, &arg_values, &mut lambda_context);
     }
 
-    // Try world state - separate lookup and pattern match
+    // Step 8: Try world state lambda lookup (early return)
     let world_path = Path(vec![symbol_name.to_string()]);
-    let world_value = context.world.state.get(&world_path);
-    if let Some(Value::Lambda(lambda)) = world_value {
+    if let Some(Value::Lambda(lambda)) = context.world.state.get(&world_path) {
         let mut lambda_context = EvaluationContext {
             world: &world_after_args,
             output: context.output.clone(),
@@ -352,7 +353,7 @@ fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext
         return special_forms::call_lambda(lambda, &arg_values, &mut lambda_context);
     }
 
-    // Fall back to atom registry
+    // Step 9: Fall back to atom registry
     context.call_atom(symbol_name, head, &flat_tail, span)
 }
 
@@ -428,50 +429,70 @@ fn parse_define_definition(
     span: &Span,
     context: &mut EvaluationContext,
 ) -> Result<AstNode, SutraError> {
-    // Extract name and parameters based on definition type
-    let (name, params) = match &*name_expr.value {
-        // Function definition: (define (name param1 param2...) body)
-        Expr::ParamList(param_list) => {
-            let function_name = param_list.required.first().cloned().ok_or_else(|| {
-                err_src!(
-                    Eval,
-                    "define: function name missing in parameter list",
-                    &context.source,
-                    name_expr.span
-                )
-            })?;
+    // Step 1: Parse function definition (early return)
+    if let Expr::ParamList(param_list) = &*name_expr.value {
+        let (function_name, function_params) =
+            parse_function_definition(param_list, name_expr, context)?;
+        return create_define_ast_node(function_name, function_params, value_expr, span);
+    }
 
-            let function_parameters = ParamList {
-                required: param_list.required[1..].to_vec(),
-                rest: param_list.rest.clone(),
-                span: param_list.span,
-            };
+    // Step 2: Parse variable definition (early return)
+    if let Expr::Symbol(variable_name, _) = &*name_expr.value {
+        let empty_params = create_empty_param_list(*span);
+        return create_define_ast_node(variable_name.clone(), empty_params, value_expr, span);
+    }
 
-            (function_name, function_parameters)
-        }
+    // Step 3: Invalid definition type (early return with error)
+    Err(err_src!(
+        Eval,
+        "define: first argument must be a symbol or parameter list",
+        &context.source,
+        name_expr.span
+    ))
+}
 
-        // Variable definition: (define name value)
-        Expr::Symbol(variable_name, _) => {
-            let empty_parameters = ParamList {
-                required: vec![],
-                rest: None,
-                span: *span,
-            };
-            (variable_name.clone(), empty_parameters)
-        }
+/// Parses function definition from parameter list
+fn parse_function_definition(
+    param_list: &ParamList,
+    name_expr: &AstNode,
+    context: &mut EvaluationContext,
+) -> Result<(String, ParamList), SutraError> {
+    // Step 1: Extract function name (early validation)
+    let function_name = param_list.required.first().cloned().ok_or_else(|| {
+        err_src!(
+            Eval,
+            "define: function name missing in parameter list",
+            &context.source,
+            name_expr.span
+        )
+    })?;
 
-        // Invalid: first argument must be symbol or parameter list
-        _ => {
-            return Err(err_src!(
-                Eval,
-                "define: first argument must be a symbol or parameter list",
-                &context.source,
-                name_expr.span
-            ));
-        }
+    // Step 2: Build function parameters
+    let function_parameters = ParamList {
+        required: param_list.required[1..].to_vec(),
+        rest: param_list.rest.clone(),
+        span: param_list.span,
     };
 
-    // Create the define AST node
+    Ok((function_name, function_parameters))
+}
+
+/// Creates empty parameter list for variable definitions
+fn create_empty_param_list(span: Span) -> ParamList {
+    ParamList {
+        required: vec![],
+        rest: None,
+        span,
+    }
+}
+
+/// Creates define AST node with given name, parameters, and body
+fn create_define_ast_node(
+    name: String,
+    params: ParamList,
+    value_expr: &AstNode,
+    span: &Span,
+) -> Result<AstNode, SutraError> {
     Ok(AstNode {
         value: Arc::new(Expr::Define {
             name,

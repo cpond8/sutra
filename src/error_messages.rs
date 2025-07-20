@@ -3,22 +3,6 @@
 //!
 //! This module provides a single source of truth for all error messages,
 //! organized by functional area.
-//!
-//! # Usage
-//!
-//! ```rust
-//! use crate::error_messages::*;
-//!
-//! // Use constants directly
-//! return Err(err_msg!(Validation, DUPLICATE_PARAMETER_NAME));
-//!
-//! // Use with string replacement
-//! return Err(err_msg!(
-//!     Validation,
-//!     format!("{}", DUPLICATE_MACRO_NAME.replace("{}", &name))
-//! ));
-//! ```
-
 // ============================================================================
 // PARSING ERRORS
 // ============================================================================
