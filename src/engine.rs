@@ -1,10 +1,10 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, path::Path, rc::Rc, sync::Arc};
 
-use miette::NamedSource;
+use miette::{NamedSource, Report};
 
 use crate::{
-    atoms::AtomRegistry,
-    err_ctx,
+    atoms::{AtomRegistry, OutputSink},
+    err_ctx, err_msg, err_src,
     macros::{
         expand_macros_recursively, is_macro_definition, parse_macro_definition, MacroDefinition,
         MacroExpansionContext, MacroValidationContext,
@@ -14,9 +14,95 @@ use crate::{
         world::{build_canonical_macro_env, build_default_atom_registry},
     },
     syntax::parser::{parse, wrap_in_do},
+    to_error_source,
     validation::semantic::validate_expanded_ast,
-    AstNode, MacroRegistry, OutputBuffer, SharedOutput, SutraError, Value, World,
+    AstNode, MacroRegistry, SharedOutput, Span, SutraError, Value, World,
 };
+
+// ============================================================================
+// OUTPUT TYPES - Generic output handling for CLI and testing
+// ============================================================================
+
+/// OutputBuffer: collects output into a String for testing or programmatic capture.
+pub struct EngineOutputBuffer {
+    pub buffer: String,
+}
+
+impl EngineOutputBuffer {
+    pub fn new() -> Self {
+        Self {
+            buffer: String::new(),
+        }
+    }
+    pub fn as_str(&self) -> &str {
+        &self.buffer
+    }
+}
+
+impl Default for EngineOutputBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl OutputSink for EngineOutputBuffer {
+    fn emit(&mut self, text: &str, _span: Option<&Span>) {
+        if !self.buffer.is_empty() {
+            self.buffer.push('\n');
+        }
+        self.buffer.push_str(text);
+    }
+}
+
+/// StdoutSink: writes output to stdout for CLI and default runner use.
+pub struct EngineStdoutSink;
+
+impl OutputSink for EngineStdoutSink {
+    fn emit(&mut self, text: &str, _span: Option<&Span>) {
+        println!("{text}");
+    }
+}
+
+/// Prints a SutraError with full miette diagnostics
+pub fn print_error(error: SutraError) {
+    let report = Report::new(error);
+    eprintln!("{report:?}");
+}
+
+// ============================================================================
+// TEST TYPES - Generic test infrastructure
+// ============================================================================
+
+/// Test result summary for CLI reporting
+#[derive(Debug, Default)]
+pub struct TestSummary {
+    pub passed: usize,
+    pub failed: usize,
+}
+
+impl TestSummary {
+    pub fn has_failures(&self) -> bool {
+        self.failed > 0
+    }
+
+    pub fn total_tests(&self) -> usize {
+        self.passed + self.failed
+    }
+
+    pub fn success_rate(&self) -> f64 {
+        if self.total_tests() == 0 {
+            return 0.0;
+        }
+        (self.passed as f64 / self.total_tests() as f64) * 100.0
+    }
+}
+
+/// Test result for individual test execution
+#[derive(Debug, Clone)]
+pub enum TestResult {
+    Passed,
+    Failed,
+}
 
 // ============================================================================
 // TYPE ALIASES - Reduce verbosity in engine functions
@@ -157,6 +243,273 @@ impl ExecutionPipeline {
     }
 
     // ============================================================================
+    // CLI SERVICE METHODS - Pure execution services for CLI orchestration
+    // ============================================================================
+
+    /// Executes source code with pure execution logic (no I/O, no formatting)
+    pub fn execute_source(source: &str, output: SharedOutput) -> Result<(), SutraError> {
+        Self::default().execute(source, output)
+    }
+
+    /// Parses source code with pure parsing logic (no I/O)
+    pub fn parse_source(source: &str) -> Result<Vec<AstNode>, SutraError> {
+        parse(source)
+    }
+
+    /// Expands macros in source code with pure expansion logic (no I/O)
+    pub fn expand_macros_source(source: &str) -> Result<String, SutraError> {
+        let ast_nodes = parse(source)?;
+        let mut env = build_canonical_macro_env()?;
+        let program = wrap_in_do(ast_nodes);
+        let expanded = expand_macros_recursively(program, &mut env)?;
+        Ok(expanded.value.pretty())
+    }
+
+    /// Reads a file with standardized error handling
+    pub fn read_file(path: &Path) -> Result<String, SutraError> {
+        let filename = path
+            .to_str()
+            .ok_or_else(|| err_msg!(Internal, "Invalid filename"))?;
+
+        std::fs::read_to_string(filename).map_err(|error| {
+            err_ctx!(
+                Internal,
+                format!("Failed to read file: {}", error),
+                &to_error_source(filename),
+                Span::default(),
+                "Check that the file exists and is readable."
+            )
+        })
+    }
+
+    // ============================================================================
+    // TEST EXECUTION SERVICES - Pure test logic for CLI
+    // ============================================================================
+
+    /// Executes a test with expectation checking (pure logic, no I/O)
+    pub fn execute_test_with_expectation(
+        test_form: &crate::discovery::ASTDefinition,
+    ) -> TestResult {
+        let expected_value = match Self::extract_expect_value(test_form) {
+            Ok(value) => value,
+            Err(_) => return TestResult::Failed,
+        };
+
+        if Self::is_error_test(&expected_value) {
+            return Self::handle_error_test(test_form, &expected_value);
+        }
+
+        Self::handle_value_test(test_form, &expected_value)
+    }
+
+    /// Checks if the expected value indicates an error test
+    fn is_error_test(expected_value: &Value) -> bool {
+        matches!(expected_value, Value::String(s) if s.starts_with("ERROR:"))
+    }
+
+    /// Handles error test execution
+    fn handle_error_test(
+        test_form: &crate::discovery::ASTDefinition,
+        expected_value: &Value,
+    ) -> TestResult {
+        let expected_error_type = match expected_value {
+            Value::String(s) => &s[6..], // Remove "ERROR:" prefix
+            _ => return TestResult::Failed,
+        };
+
+        match Self::execute_test_body(&test_form.body) {
+            Ok(_) => TestResult::Failed, // Expected to fail but succeeded
+            Err(error) => {
+                let error_type = Self::extract_error_type(&error);
+                if error_type == expected_error_type {
+                    TestResult::Passed
+                } else {
+                    TestResult::Failed
+                }
+            }
+        }
+    }
+
+    /// Handles value test execution
+    fn handle_value_test(
+        test_form: &crate::discovery::ASTDefinition,
+        expected_value: &Value,
+    ) -> TestResult {
+        let actual_value = match Self::execute_test_body(&test_form.body) {
+            Ok(value) => value,
+            Err(_) => return TestResult::Failed,
+        };
+
+        if actual_value == *expected_value {
+            TestResult::Passed
+        } else {
+            TestResult::Failed
+        }
+    }
+
+    /// Executes test body with pure execution logic
+    fn execute_test_body(body: &[AstNode]) -> Result<Value, SutraError> {
+        if body.is_empty() {
+            return Ok(Value::Nil);
+        }
+
+        let pipeline = Self::default();
+        pipeline.execute_ast(body)
+    }
+
+    /// Extracts expected value from test form
+    fn extract_expect_value(
+        test_form: &crate::discovery::ASTDefinition,
+    ) -> Result<Value, SutraError> {
+        let expect = test_form
+            .expect_form
+            .as_ref()
+            .ok_or_else(|| err_msg!(TestFailure, "Test is missing expect form"))?;
+
+        let crate::ast::Expr::List(items, _) = &*expect.value else {
+            return Err(err_src!(
+                TestFailure,
+                format!("Test '{}' expect form must be a list", test_form.name),
+                &test_form.source_file,
+                test_form.span
+            ));
+        };
+
+        // Look for value clause in the expect form
+        for item in items {
+            if let Some(value) = Self::extract_value_clause(&item, test_form)? {
+                return Ok(value);
+            }
+        }
+
+        // Look for error clause in the expect form
+        for item in items {
+            if let Some(error_value) = Self::extract_error_clause(&item, test_form)? {
+                return Ok(error_value);
+            }
+        }
+
+        Err(err_src!(
+            TestFailure,
+            format!(
+                "Test '{}' missing (value <expected>) or (error <type>) in expect form",
+                test_form.name
+            ),
+            &test_form.source_file,
+            test_form.span
+        ))
+    }
+
+    /// Extracts value clause from test item
+    fn extract_value_clause(
+        item: &AstNode,
+        test_form: &crate::discovery::ASTDefinition,
+    ) -> Result<Option<Value>, SutraError> {
+        let crate::ast::Expr::List(value_items, _) = &*item.value else {
+            return Ok(None);
+        };
+        if value_items.len() != 2 {
+            return Ok(None);
+        };
+
+        let crate::ast::Expr::Symbol(s, _) = &*value_items[0].value else {
+            return Ok(None);
+        };
+        if s != "value" {
+            return Ok(None);
+        };
+
+        match &*value_items[1].value {
+            crate::ast::Expr::Number(n, _) => Ok(Some(Value::Number(*n))),
+            crate::ast::Expr::String(s, _) => Ok(Some(Value::String(s.clone()))),
+            crate::ast::Expr::Bool(b, _) => Ok(Some(Value::Bool(*b))),
+            crate::ast::Expr::Symbol(s, _) if s == "nil" => Ok(Some(Value::Nil)),
+            _ => Err(err_src!(
+                TestFailure,
+                format!(
+                    "Test '{}' has unsupported expected value type",
+                    test_form.name
+                ),
+                &test_form.source_file,
+                test_form.span
+            )),
+        }
+    }
+
+    /// Extracts error clause from test item
+    fn extract_error_clause(
+        item: &AstNode,
+        test_form: &crate::discovery::ASTDefinition,
+    ) -> Result<Option<Value>, SutraError> {
+        let crate::ast::Expr::List(error_items, _) = &*item.value else {
+            return Ok(None);
+        };
+        if error_items.len() != 2 {
+            return Ok(None);
+        };
+
+        let crate::ast::Expr::Symbol(s, _) = &*error_items[0].value else {
+            return Ok(None);
+        };
+        if s != "error" {
+            return Ok(None);
+        };
+
+        let crate::ast::Expr::Symbol(error_type, _) = &*error_items[1].value else {
+            return Err(err_src!(
+                TestFailure,
+                format!("Test '{}' error type must be a symbol", test_form.name),
+                &test_form.source_file,
+                test_form.span
+            ));
+        };
+
+        Ok(Some(Value::String(format!("ERROR:{}", error_type))))
+    }
+
+    /// Extracts error type from SutraError
+    fn extract_error_type(error: &SutraError) -> String {
+        match error {
+            SutraError::Parse { .. } => "Parse".to_string(),
+            SutraError::Validation { .. } => "Validation".to_string(),
+            SutraError::Eval { .. } => "Eval".to_string(),
+            SutraError::TypeError { .. } => "TypeError".to_string(),
+            SutraError::DivisionByZero { .. } => "Eval".to_string(),
+            SutraError::Internal { .. } => "Internal".to_string(),
+            SutraError::TestFailure { .. } => "TestFailure".to_string(),
+        }
+    }
+
+    // ============================================================================
+    // REGISTRY ACCESS SERVICES - Pure registry access for CLI
+    // ============================================================================
+
+    /// Gets the atom registry (pure access, no I/O)
+    pub fn get_atom_registry() -> AtomRegistry {
+        build_default_atom_registry()
+    }
+
+    /// Gets the macro registry (pure access, no I/O)
+    pub fn get_macro_registry() -> MacroExpansionContext {
+        build_canonical_macro_env().expect("Standard macro env should build")
+    }
+
+    /// Lists all available atoms (pure access, no I/O)
+    pub fn list_atoms() -> Vec<String> {
+        let atom_registry = Self::get_atom_registry();
+        atom_registry.atoms.keys().cloned().collect()
+    }
+
+    /// Lists all available macros (pure access, no I/O)
+    pub fn list_macros() -> Vec<String> {
+        let macro_registry = Self::get_macro_registry();
+        let mut items = Vec::new();
+        items.extend(macro_registry.core_macros.keys().cloned());
+        items.extend(macro_registry.user_macros.keys().cloned());
+        items
+    }
+
+    // ============================================================================
     // PUBLIC EXECUTION METHODS
     // ============================================================================
 
@@ -265,10 +618,48 @@ impl ExecutionPipeline {
         self.validate_expanded_ast(&expanded, &env, &atom_registry, &source_context)?;
 
         // Evaluate the expanded AST
-        let output = SharedOutput(Rc::new(RefCell::new(OutputBuffer::new())));
+        let output = SharedOutput(Rc::new(RefCell::new(EngineOutputBuffer::new())));
         let (result, _) =
             self.evaluate_expanded_ast(&expanded, output, source_context, &atom_registry)?;
 
         Ok(result)
+    }
+
+    /// Run a single test case, returning Ok(()) if passed, or Err(error) if failed.
+    pub fn run_single_test(test_form: &crate::discovery::ASTDefinition) -> Result<(), SutraError> {
+        let expected = Self::extract_expect_value(test_form)?;
+        if Self::is_error_test(&expected) {
+            match Self::execute_test_body(&test_form.body) {
+                Ok(_) => Err(err_src!(
+                    TestFailure,
+                    "Expected error, but test succeeded",
+                    &test_form.source_file,
+                    test_form.span
+                )),
+                Err(e) => {
+                    let error_type = Self::extract_error_type(&e);
+                    let expected_type = match expected {
+                        crate::ast::value::Value::String(ref s) => &s[6..],
+                        _ => "",
+                    };
+                    if error_type == expected_type {
+                        Ok(())
+                    } else {
+                        Err(e)
+                    }
+                }
+            }
+        } else {
+            match Self::execute_test_body(&test_form.body) {
+                Ok(actual) if actual == expected => Ok(()),
+                Ok(actual) => Err(err_src!(
+                    TestFailure,
+                    format!("Expected {}, got {}", expected, actual),
+                    &test_form.source_file,
+                    test_form.span
+                )),
+                Err(e) => Err(e),
+            }
+        }
     }
 }

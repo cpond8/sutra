@@ -184,7 +184,10 @@ pub fn substitute_template(
 
     // Handle symbol substitution
     if let Expr::Symbol(name, _) = value {
-        return bindings.get(name).map(|node| Ok(node.clone())).unwrap_or(Ok(expr.clone()));
+        return bindings
+            .get(name)
+            .map(|node| Ok(node.clone()))
+            .unwrap_or(Ok(expr.clone()));
     }
 
     // Handle list processing with spreads
@@ -193,7 +196,8 @@ pub fn substitute_template(
         for item in items {
             match &*item.value {
                 Expr::Spread(inner) => {
-                    let substituted = substitute_template(inner, bindings, env, depth + 1, macro_name)?;
+                    let substituted =
+                        substitute_template(inner, bindings, env, depth + 1, macro_name)?;
                     let Expr::List(elements, _) = &*substituted.value else {
                         return Err(err_src!(
                             Internal,
@@ -205,7 +209,8 @@ pub fn substitute_template(
                     new_items.extend_from_slice(elements);
                 }
                 _ => {
-                    let substituted = substitute_template(item, bindings, env, depth + 1, macro_name)?;
+                    let substituted =
+                        substitute_template(item, bindings, env, depth + 1, macro_name)?;
                     new_items.push(substituted);
                 }
             }
@@ -220,18 +225,27 @@ pub fn substitute_template(
             // Don't substitute inside quotes - they should be literal
             Ok(with_span(Expr::Quote(inner.clone(), *span), &expr.span))
         }
-        Expr::If { condition, then_branch, else_branch, span } => {
-            let new_condition = substitute_template(condition, bindings, env, depth + 1, macro_name)?;
+        Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+            span,
+        } => {
+            let new_condition =
+                substitute_template(condition, bindings, env, depth + 1, macro_name)?;
             let new_then = substitute_template(then_branch, bindings, env, depth + 1, macro_name)?;
             let new_else = substitute_template(else_branch, bindings, env, depth + 1, macro_name)?;
-            Ok(with_span(Expr::If {
-                condition: Box::new(new_condition),
-                then_branch: Box::new(new_then),
-                else_branch: Box::new(new_else),
-                span: *span,
-            }, &expr.span))
+            Ok(with_span(
+                Expr::If {
+                    condition: Box::new(new_condition),
+                    then_branch: Box::new(new_then),
+                    else_branch: Box::new(new_else),
+                    span: *span,
+                },
+                &expr.span,
+            ))
         }
-        _ => Ok(expr.clone())
+        _ => Ok(expr.clone()),
     }
 }
 
@@ -270,7 +284,8 @@ fn expand_macro_once(
         None => return Ok(None),
     };
 
-    let expanded = expand_macro_definition(&macro_def, node, macro_name, depth, &mut *env, provenance)?;
+    let expanded =
+        expand_macro_definition(&macro_def, node, macro_name, depth, &mut *env, provenance)?;
     Ok(Some((macro_name.to_string(), provenance, expanded)))
 }
 
@@ -345,16 +360,21 @@ where
             let result = with_span(list_expr, &node.span);
             Ok(result)
         }
-        Expr::If { condition, then_branch, else_branch, span } => {
+        Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+            span,
+        } => {
             let cond = f(condition.as_ref().clone(), env, depth + 1)?;
             let then_b = f(then_branch.as_ref().clone(), env, depth + 1)?;
             let else_b = f(else_branch.as_ref().clone(), env, depth + 1)?;
 
             let if_expr = Expr::If {
-                    condition: Box::new(cond),
-                    then_branch: Box::new(then_b),
-                    else_branch: Box::new(else_b),
-                    span: *span,
+                condition: Box::new(cond),
+                then_branch: Box::new(then_b),
+                else_branch: Box::new(else_b),
+                span: *span,
             };
             let result = with_span(if_expr, &node.span);
             Ok(result)

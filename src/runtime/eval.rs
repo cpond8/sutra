@@ -312,22 +312,27 @@ fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext
         return handle_define_special_form(&flat_tail, span, context, head);
     }
 
-    // Evaluate arguments once
-    let (arg_values, world_after_args) = evaluate_eager_args(&flat_tail, context)?;
+    // Check if it's a special form atom - if so, let it handle its own evaluation
+    if let Some(atom) = context.atom_registry.get(symbol_name) {
+        if matches!(atom, Atom::SpecialForm(_)) {
+            return context.call_atom(symbol_name, head, &flat_tail, span);
+        }
+    }
 
-    // Create lambda context once
-    let mut lambda_context = EvaluationContext {
-        world: &world_after_args,
-        output: context.output.clone(),
-        atom_registry: context.atom_registry,
-        source: context.source.clone(),
-        max_depth: context.max_depth,
-        depth: context.depth + 1,
-        lexical_env: context.lexical_env.clone(),
-    };
+    // For eager atoms (Pure, Stateful), evaluate arguments first
+    let (arg_values, world_after_args) = evaluate_eager_args(&flat_tail, context)?;
 
     // Try lexical environment first
     if let Some(Value::Lambda(lambda)) = context.get_lexical_var(symbol_name) {
+        let mut lambda_context = EvaluationContext {
+            world: &world_after_args,
+            output: context.output.clone(),
+            atom_registry: context.atom_registry,
+            source: context.source.clone(),
+            max_depth: context.max_depth,
+            depth: context.depth + 1,
+            lexical_env: context.lexical_env.clone(),
+        };
         return special_forms::call_lambda(lambda, &arg_values, &mut lambda_context);
     }
 
@@ -335,6 +340,15 @@ fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext
     let world_path = Path(vec![symbol_name.to_string()]);
     let world_value = context.world.state.get(&world_path);
     if let Some(Value::Lambda(lambda)) = world_value {
+        let mut lambda_context = EvaluationContext {
+            world: &world_after_args,
+            output: context.output.clone(),
+            atom_registry: context.atom_registry,
+            source: context.source.clone(),
+            max_depth: context.max_depth,
+            depth: context.depth + 1,
+            lexical_env: context.lexical_env.clone(),
+        };
         return special_forms::call_lambda(lambda, &arg_values, &mut lambda_context);
     }
 

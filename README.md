@@ -38,17 +38,17 @@ For a detailed statement of philosophy and guiding principles, see [`docs/philos
 ```
 .
 ├── src/
-│   ├── ast.rs, ast/           # Core AST types and value representations
-│   ├── atoms.rs, atoms/       # Atom system: primitive operations, domain modules
-│   ├── cli.rs, cli/           # Command-line interface and subcommands
-│   ├── diagnostics.rs         # Error types, diagnostics, and reporting
-│   ├── engine.rs              # High-level orchestration and pipeline
-│   ├── lib.rs                 # Library entry point, module exports
-│   ├── macros.rs, macros/     # Macro system: expansion, registry, std macros
-│   ├── main.rs                # Binary entry point (CLI launcher)
-│   ├── runtime.rs, runtime/   # Evaluation and world state management
-│   ├── syntax.rs, syntax/     # Parsing and grammar
-│   ├── testing.rs, testing/   # Test discovery and harness
+│   ├── ast.rs, ast/               # Core AST types and value representations
+│   ├── atoms.rs, atoms/           # Atom system: primitive operations, domain modules
+│   ├── cli.rs, cli/               # Command-line interface and subcommands
+│   ├── diagnostics.rs             # Error types, diagnostics, and reporting
+│   ├── engine.rs                  # High-level orchestration and pipeline
+│   ├── lib.rs                     # Library entry point, module exports
+│   ├── macros.rs, macros/         # Macro system: expansion, registry, std macros
+│   ├── main.rs                    # Binary entry point (CLI launcher)
+│   ├── runtime.rs, runtime/       # Evaluation and world state management
+│   ├── syntax.rs, syntax/         # Parsing and grammar
+│   ├── testing.rs, discovery.rs   # Test discovery and harness
 │   ├── validation.rs, validation/ # Grammar and semantic validation
 │   └── ...
 ├── tests/                     # Test suite: atoms, macros, runtime, syntax, io
@@ -108,7 +108,7 @@ Atoms are the primitive operations of the engine, organized into domain modules:
 - Argument parsing (`args.rs`)
 - Output formatting (`output.rs`)
 
-### 8. **Testing (`src/testing.rs`, `src/testing/`)**
+### 8. **Testing (`src/testing.rs`, `src/discovery.rs`)**
 - Test discovery and harness (`discovery.rs`)
 
 ### 9. **Diagnostics (`src/diagnostics.rs`)**
