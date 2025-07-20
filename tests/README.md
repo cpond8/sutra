@@ -67,7 +67,7 @@ Each `.sutra` file is a suite of Verse-language tests for a specific feature or 
 
 ## How to Run the Test Suite
 
-- **All Verse tests:**
+- **All Sutra tests:**
   ```sh
   cargo test
   ```

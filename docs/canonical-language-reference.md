@@ -192,11 +192,11 @@ The `let` special form introduces new lexical bindings for the duration of its b
 
 ## 3. Block Style Transformation Rules
 
-While List style is the canonical ground truth syntax, Sutra provides Block style as authoring sugar that compiles losslessly to List style. Both syntaxes are unified by the fundamental s-expression grammar that underlies all Verse language constructs.
+While List style is the canonical ground truth syntax, Sutra provides Block style as authoring sugar that compiles losslessly to List style. Both syntaxes are unified by the fundamental s-expression grammar that underlies all Sutra language constructs.
 
 ### 3.1 The Fundamental S-Expression Grammar
 
-At its core, every Verse construct—whether written in List or Block style—is an **s-expression**: a symbolic expression consisting of atoms and nested lists. This is the unifying grammatical foundation:
+At its core, every Sutra construct—whether written in List or Block style—is an **s-expression**: a symbolic expression consisting of atoms and nested lists. This is the unifying grammatical foundation:
 
 - **Atoms**: Numbers, strings, symbols, booleans, nil
 - **Lists**: Ordered sequences of atoms and/or nested lists, denoted `(element1 element2 ...)`
@@ -356,7 +356,7 @@ choices {
 
 ### 3.5 The Unifying S-Expression Principle
 
-Every Verse construct, whether written in List or Block style, ultimately becomes an s-expression tree. This fundamental unity means:
+Every Sutra construct, whether written in List or Block style, ultimately becomes an s-expression tree. This fundamental unity means:
 
 1. **Semantic Equivalence**: Both styles produce identical s-expression trees and execute identically
 2. **Lossless Transformation**: The newline-to-parentheses mapping preserves all semantic information

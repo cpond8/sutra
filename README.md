@@ -1,6 +1,7 @@
 # Sutra Engine
 
-**Sutra is an emergent narrative engine and language designed to empower the creation of deeply modular, emergent, and replayable interactive stories.**
+**Sutra is a compositional, emergent narrative engine and language designed to empower the creation of deeply modular, emergent, and replayable interactive stories.**
+
 Its core aim is to enable authors and designers to build games where narrative is not a fixed branching tree, but a living system: stories are composed from small, self-contained units (storylets, threads) that become available, interact and recombine dynamically based on the evolving state of the world and its characters to create emergent stories.
 
 Sutra is inspired by the best practices of quality-based narrative (QBN), storylet-driven design, and salience/waypoint-based progression. It provides a foundation for games where:
@@ -10,7 +11,7 @@ Sutra is inspired by the best practices of quality-based narrative (QBN), storyl
 - **Authors can express complex, interlocking systems of narrative logic, resources, relationships, and pacing**, without sacrificing clarity or maintainability.
 
 Sutra achieves this by:
-- Providing a minimal, compositional language (Verse) that unifies s-expression and block syntax for both authors and the engine.
+- Providing a minimal, compositional language that unifies s-expression and block syntax for both authors and the engine.
 - Enforcing a strict separation of concerns: parsing, macro-expansion, validation, evaluation, and presentation are all modular and inspectable.
 - Making all computation, macro expansion, and world state changes transparent and debuggable.
 - Supporting canonical patterns for modular content (storylets), flexible narrative flows (threads), and dynamic, state-driven event selection (pools, salience, history).
@@ -29,7 +30,7 @@ Sutra is designed for:
 - **Separation of Concerns:** Parsing, macro-expansion, validation, evaluation, and presentation are strictly separated for maintainability and testability.
 - **Single Source of Truth:** Eliminates documentation and implementation drift by enforcing a single source of truth for all concepts and patterns.
 
-For a detailed statement of philosophy and guiding principles, see [`docs/philosophy.md`](docs/philosophy/philosophy.md).
+For a detailed statement of philosophy and guiding principles, see [`docs/philosophy.md`](docs/philosophy.md).
 
 ---
 
@@ -40,15 +41,16 @@ For a detailed statement of philosophy and guiding principles, see [`docs/philos
 ├── src/
 │   ├── ast.rs, ast/               # Core AST types and value representations
 │   ├── atoms.rs, atoms/           # Atom system: primitive operations, domain modules
-│   ├── cli.rs, cli/               # Command-line interface and subcommands
+│   ├── cli.rs                     # Command-line interface and subcommands
 │   ├── diagnostics.rs             # Error types, diagnostics, and reporting
+│   ├── discovery.rs               # Test discovery and harness
 │   ├── engine.rs                  # High-level orchestration and pipeline
+│   ├── error_messages.rs          # Centralized error message constants
 │   ├── lib.rs                     # Library entry point, module exports
 │   ├── macros.rs, macros/         # Macro system: expansion, registry, std macros
 │   ├── main.rs                    # Binary entry point (CLI launcher)
 │   ├── runtime.rs, runtime/       # Evaluation and world state management
 │   ├── syntax.rs, syntax/         # Parsing and grammar
-│   ├── testing.rs, discovery.rs   # Test discovery and harness
 │   ├── validation.rs, validation/ # Grammar and semantic validation
 │   └── ...
 ├── tests/                     # Test suite: atoms, macros, runtime, syntax, io
@@ -75,44 +77,83 @@ For a detailed statement of philosophy and guiding principles, see [`docs/philos
 ### 1. **AST Layer (`src/ast.rs`, `src/ast/`)**
 Defines the core data structures for representing Sutra expressions, including:
 - `Expr`, `AstNode`, `Span`, `ParamList`
-- Value representations (`value.rs`)
+- Value representations (`value.rs`) with `Value` enum supporting `Nil`, `Number`, `String`, `Bool`, `List`, `Map`, `Path`, and `Lambda`
 
 ### 2. **Atoms System (`src/atoms.rs`, `src/atoms/`)**
 Atoms are the primitive operations of the engine, organized into domain modules:
-- `math.rs`, `logic.rs`, `collections.rs`, `execution.rs`, `external.rs`, `string.rs`, `world.rs`, `special_forms.rs`
+- `math.rs`, `logic.rs`, `collections.rs`, `execution.rs`, `external.rs`, `string.rs`, `world.rs`, `special_forms.rs`, `test.rs`
 - `helpers.rs` provides shared infrastructure
-- Atoms are registered and managed via the `AtomRegistry`
+- Atoms are registered and managed via the `AtomRegistry` with three calling conventions: `Pure`, `Stateful`, and `SpecialForm`
 
 ### 3. **Macro System (`src/macros.rs`, `src/macros/`)**
 - Purely syntactic transformation of the AST before evaluation
 - Supports both native Rust macro functions and declarative macro templates
 - Modularized into `expander.rs`, `loader.rs`, `std_macros.rs`
 - User and standard macros loaded from `std_macros.sutra`
+- Supports variadic macro forwarding with spread arguments (`...args`)
 
 ### 4. **Parsing & Syntax (`src/syntax.rs`, `src/syntax/`)**
-- PEG grammar (`grammar.pest`)
-- Parser implementation (`parser.rs`)
-- Supports both s-expression and brace-block syntax
+- PEG grammar (`grammar.pest`) with comprehensive rule coverage
+- Parser implementation (`parser.rs`) with robust error reporting
+- Supports both s-expression `()` and brace-block `{}` syntaxes
+- Handles quotes, defines, lambdas, spread arguments, and parameter lists
 
 ### 5. **Validation (`src/validation.rs`, `src/validation/`)**
-- Grammar validation (`grammar/`)
-- Semantic validation (`semantic/`)
+- Grammar validation (`grammar/`) with comprehensive rule checking
+- Semantic validation (`semantic/`) for expanded AST correctness
 - Ensures scripts are well-formed and semantically correct
 
 ### 6. **Runtime & Evaluation (`src/runtime.rs`, `src/runtime/`)**
-- Evaluation engine (`eval.rs`)
-- World state management (`world.rs`)
+- Evaluation engine (`eval.rs`) with lexical scoping and recursion control
+- World state management (`world.rs`) with immutable state updates
+- Deterministic PRNG for reproducible execution
 
-### 7. **CLI (`src/cli.rs`, `src/cli/`)**
-- Command-line interface and subcommands
-- Argument parsing (`args.rs`)
-- Output formatting (`output.rs`)
+### 7. **CLI (`src/cli.rs`)**
+- Command-line interface with comprehensive subcommands
+- Test discovery and execution with progress tracking
+- Macro expansion tracing and AST inspection
 
-### 8. **Testing (`src/testing.rs`, `src/discovery.rs`)**
-- Test discovery and harness (`discovery.rs`)
+### 8. **Testing (`src/discovery.rs`)**
+- Test discovery and harness with AST-based test extraction
+- Support for `(test "name" (expect value) body...)` test forms
 
 ### 9. **Diagnostics (`src/diagnostics.rs`)**
-- Error types, context, and reporting
+- Unified error system with `miette`-based diagnostics
+- Error construction macros (`err_msg!`, `err_ctx!`, `err_src!`)
+- Multi-label diagnostics and error chaining
+
+---
+
+## Language Features
+
+### Syntax
+- **Unified Syntax:** Both s-expressions `()` and brace blocks `{}` produce identical AST
+- **Quotes:** `'expr` for unevaluated expressions
+- **Defines:** `(define (name params...) body)` for function definitions
+- **Lambdas:** `(lambda (params...) body)` for anonymous functions
+- **Spread Arguments:** `...args` for variadic parameters and calls
+- **Paths:** `set!` for hierarchical symbol resolution
+
+### Core Operations
+- **Math:** `+`, `-`, `*`, `/`, `mod`, `abs`, `min`, `max`
+- **Logic:** `eq?`, `gt?`, `lt?`, `gte?`, `lte?`, `not`
+- **Collections:** `list`, `len`, `has?`, `car`, `cdr`, `cons`, `push!`, `pull!`, `map`
+- **Strings:** `str`, `str+`, `display`
+- **World State:** `get`, `set!`, `del!`, `exists?`, `path`, `add!`, `sub!`, `inc!`, `dec!`
+- **Execution:** `do`, `apply`, `error`, `if`, `let`, `lambda`, `cond`
+- **External:** `print`, `output`, `rand`
+
+### Macro System
+- **Template Macros:** Declarative macro definitions with parameter lists
+- **Native Macros:** Rust function macros for complex transformations
+- **Variadic Support:** `...args` forwarding for Lisp-style macros
+- **Standard Library:** Rich set of built-in macros in `std_macros.sutra`
+
+### Testing Framework
+- **Test Discovery:** Automatic discovery of `.sutra` test files
+- **Test Forms:** `(test "name" (expect value) body...)` syntax
+- **Error Testing:** `(expect-error error-type)` for testing error conditions
+- **Progress Tracking:** Real-time test execution progress
 
 ---
 
@@ -137,24 +178,24 @@ cargo test
 
 **Validate the grammar:**
 ```sh
-cargo run -- validate
+cargo run -- validate-grammar
 ```
 
 ---
 
 ## CLI Commands
 
-See `src/cli/args.rs` for full details. Key commands:
+Key commands:
 
 - `run <file>`: Full pipeline (parse, expand, validate, eval, output)
 - `macroexpand <file>`: Print fully macro-expanded code
 - `macrotrace <file>`: Show stepwise macro expansion trace with diffs
-- `validate <file>`: Validate a script and show errors/warnings
 - `validate-grammar`: Validate the PEG grammar for errors
 - `format <file>`: Pretty-print and normalize a script
 - `test [path]`: Discover and run all test scripts in a directory (default: `tests`)
 - `listmacros`: List all available macros with documentation
 - `listatoms`: List all available atoms with documentation
+- `ast <file>`: Show the Abstract Syntax Tree (AST) for a script
 
 ---
 
