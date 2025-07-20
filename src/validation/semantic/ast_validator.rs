@@ -1,7 +1,10 @@
+// Core types via prelude
+use crate::prelude::*;
+
+// Domain modules with aliases
 use crate::{
-    ast::{AstNode, Expr},
     validation::grammar::{ValidationReporter, ValidationResult},
-    AtomRegistry, MacroDefinition, MacroRegistry, MacroTemplate,
+    MacroDefinition, MacroRegistry, MacroTemplate,
 };
 
 /// Validates AST nodes for semantic correctness

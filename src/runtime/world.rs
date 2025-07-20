@@ -6,13 +6,16 @@ use rand::{RngCore, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
 use serde::{Deserialize, Serialize};
 
+// Core types via prelude
+use crate::prelude::*;
+
+// Domain modules with aliases
 use crate::{
-    atoms::{register_all_atoms, AtomRegistry, SharedOutput, StateContext},
+    atoms::{register_all_atoms, StateContext},
     macros::{
         load_macros_from_file, std_macros::register_std_macros, MacroDefinition,
-        MacroExpansionContext, MacroRegistry, MacroValidationContext,
+        MacroExpansionContext, MacroValidationContext,
     },
-    to_error_source, SutraError, Value,
 };
 
 // Using a concrete, seedable PRNG for determinism.

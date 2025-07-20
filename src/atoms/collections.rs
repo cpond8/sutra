@@ -1,24 +1,13 @@
 //!
-//! This module provides all collection manipulation atom operations for the Sutra engine.
-//! These atoms work with lists, strings, and maps.
+//! This module provides all collection atom operations for the Sutra engine.
+//! Collections include lists, maps, and strings with both pure and stateful operations.
 //!
 //! ## Atoms Provided
 //!
-//! ### List Operations
-//! - `list` - Constructs a list from arguments
-//! - `len` - Returns the length of a list or string
-//! - `has?` - Tests if a collection contains a value or key
-//! - `core/push!` - Appends a value to a list at a path
-//! - `core/pull!` - Removes and returns the last element from a list
-//! - `car` - Returns the first element of a list
-//! - `cdr` - Returns the tail of a list
-//! - `cons` - Prepends an element to a list
-//!
-//! ### String Operations
-//! - `core/str+` - Concatenates two or more strings
-//!
-//! ### Map Operations
-//! - `core/map` - Creates a map from alternating key-value pairs
+//! - **List Operations**: `list`, `len`, `has?`, `car`, `cdr`, `cons`
+//! - **Mutable List Operations**: `core/push!`, `core/pull!`
+//! - **String Operations**: `core/str+`
+//! - **Map Operations**: `core/map`
 //!
 //! ## Design Principles
 //!
@@ -27,16 +16,10 @@
 //! - **Mutable Operations**: World-state operations for list manipulation
 //! - **Performance**: Minimal cloning, efficient string operations
 
+use crate::prelude::*;
 use crate::{
-    atoms::{
-        helpers::{
-            validate_binary_arity, validate_even_arity, validate_list_value,
-            validate_list_value_mut, validate_path_arg, validate_string_value,
-            validate_unary_arity,
-        },
-        AtomRegistry, PureAtomFn, StatefulAtomFn,
-    },
-    err_msg, Value,
+    atoms::{PureAtomFn, StatefulAtomFn},
+    helpers,
 };
 
 // ============================================================================
@@ -65,7 +48,7 @@ pub const ATOM_LIST: PureAtomFn = |args| Ok(Value::List(args.to_vec()));
 ///   (len (list 1 2 3)) ; => 3
 ///   (len "abc") ; => 3
 pub const ATOM_LEN: PureAtomFn = |args| {
-    validate_unary_arity(args, "len")?;
+    helpers::validate_unary_arity(args, "len")?;
 
     let val = &args[0];
     let len = match val {
@@ -96,7 +79,7 @@ pub const ATOM_LEN: PureAtomFn = |args| {
 ///   (has? {"key" "value"} "key") ; => true
 ///   (has? (list 1 2 3) 4) ; => false
 pub const ATOM_HAS: PureAtomFn = |args| {
-    validate_binary_arity(args, "has?")?;
+    helpers::validate_binary_arity(args, "has?")?;
 
     let collection_val = &args[0];
     let search_val = &args[1];
@@ -104,7 +87,7 @@ pub const ATOM_HAS: PureAtomFn = |args| {
     let found = match collection_val {
         Value::List(items) => items.contains(search_val),
         Value::Map(map) => {
-            let key = validate_string_value(search_val, "map key")?;
+            let key = helpers::validate_string_value(search_val, "map key")?;
             map.contains_key(key)
         }
         _ => {
@@ -133,9 +116,9 @@ pub const ATOM_HAS: PureAtomFn = |args| {
 /// # Safety
 /// Mutates the world at the given path. **Creates a new empty list if the path doesn't exist.**
 pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
-    validate_binary_arity(args, "core/push!")?;
+    helpers::validate_binary_arity(args, "core/push!")?;
 
-    let path = validate_path_arg(args, "core/push!")?;
+    let path = helpers::validate_path_arg(args, "core/push!")?;
 
     // Get existing list or create new one
     let mut list_val = context
@@ -145,7 +128,7 @@ pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
         .unwrap_or(Value::List(vec![]));
 
     // Validate and modify list
-    let items = validate_list_value_mut(&mut list_val, "core/push!")?;
+    let items = helpers::validate_list_value_mut(&mut list_val, "core/push!")?;
     items.push(args[1].clone());
 
     context.state.set(path, list_val);
@@ -165,9 +148,9 @@ pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
 /// # Safety
 /// Mutates the world at the given path. **Creates a new empty list if the path doesn't exist.**
 pub const ATOM_CORE_PULL: StatefulAtomFn = |args, context| {
-    validate_unary_arity(args, "core/pull!")?;
+    helpers::validate_unary_arity(args, "core/pull!")?;
 
-    let path = validate_path_arg(args, "core/pull!")?;
+    let path = helpers::validate_path_arg(args, "core/pull!")?;
 
     // Get existing list or create new one
     let mut list_val = context
@@ -177,7 +160,7 @@ pub const ATOM_CORE_PULL: StatefulAtomFn = |args, context| {
         .unwrap_or(Value::List(vec![]));
 
     // Validate and modify list
-    let items = validate_list_value_mut(&mut list_val, "core/pull!")?;
+    let items = helpers::validate_list_value_mut(&mut list_val, "core/pull!")?;
     let pulled_value = items.pop().unwrap_or(Value::Nil);
 
     context.state.set(path, list_val);
@@ -198,26 +181,13 @@ pub const ATOM_CORE_PULL: StatefulAtomFn = |args, context| {
 /// Example:
 ///   (core/str+ "foo" "bar" "baz") ; => "foobarbaz"
 pub const ATOM_CORE_STR_PLUS: PureAtomFn = |args| {
-    // Handle empty args case explicitly
     if args.is_empty() {
         return Ok(Value::String(String::new()));
     }
 
-    // Pre-calculate total capacity for better performance
-    let total_capacity: usize = args
-        .iter()
-        .filter_map(|v| {
-            if let Value::String(s) = v {
-                Some(s.len())
-            } else {
-                None
-            }
-        })
-        .sum();
+    let mut result = String::new();
 
-    let mut result = String::with_capacity(total_capacity);
-
-    for val in args.iter() {
+    for val in args {
         let Value::String(s) = val else {
             return Err(err_msg!(
                 Eval,
@@ -231,110 +201,101 @@ pub const ATOM_CORE_STR_PLUS: PureAtomFn = |args| {
     Ok(Value::String(result))
 };
 
+// ============================================================================
+// LIST ACCESS OPERATIONS
+// ============================================================================
+
 /// Returns the first element of a list.
 ///
 /// Usage: (car <list>)
-///   - <list>: List to extract the first element from
+///   - <list>: List to get first element from
 ///
-///   Returns: The first element of the list
+///   Returns: First element, or Nil if list is empty
 ///
 /// Example:
 ///   (car (list 1 2 3)) ; => 1
-///
-/// # Errors
-/// Returns an error if the argument is not a list or if the list is empty.
+///   (car (list)) ; => Nil
 pub const ATOM_CAR: PureAtomFn = |args| {
-    validate_unary_arity(args, "car")?;
+    helpers::validate_unary_arity(args, "car")?;
 
-    let Value::List(items) = &args[0] else {
-        return Err(err_msg!(
-            Eval,
-            "car expects a List, found {}",
-            args[0].to_string()
-        ));
-    };
+    let list_val = &args[0];
+    let items = helpers::validate_list_value(list_val, "car")?;
 
     let first = items
         .first()
         .ok_or_else(|| err_msg!(Eval, "car: empty list"))?;
+
     Ok(first.clone())
 };
 
-/// Returns the tail (all but the first element) of a list.
+/// Returns all elements of a list except the first.
 ///
 /// Usage: (cdr <list>)
-///   - <list>: List to extract the tail from
+///   - <list>: List to get rest of elements from
 ///
-///   Returns: List containing all elements except the first
+///   Returns: List of remaining elements, or empty list if original is empty
 ///
 /// Example:
 ///   (cdr (list 1 2 3)) ; => (2 3)
-///
-/// # Errors
-/// Returns an error if the argument is not a list or if the list is empty.
+///   (cdr (list 1)) ; => ()
+///   (cdr (list)) ; => ()
 pub const ATOM_CDR: PureAtomFn = |args| {
-    validate_unary_arity(args, "cdr")?;
+    helpers::validate_unary_arity(args, "cdr")?;
 
-    let Value::List(items) = &args[0] else {
-        return Err(err_msg!(
-            Eval,
-            "cdr expects a List, found {}",
-            args[0].to_string()
-        ));
-    };
+    let list_val = &args[0];
+    let items = helpers::validate_list_value(list_val, "cdr")?;
 
     if items.is_empty() {
         return Err(err_msg!(Eval, "cdr: empty list"));
     }
 
-    Ok(Value::List(items[1..].to_vec()))
+    let rest = items[1..].to_vec();
+    Ok(Value::List(rest))
 };
 
-/// Prepends an element to a list.
+/// Constructs a new list by prepending an element to an existing list.
 ///
 /// Usage: (cons <element> <list>)
 ///   - <element>: Value to prepend
 ///   - <list>: List to prepend to
 ///
-///   Returns: New list with the element prepended
+///   Returns: New list with element prepended
 ///
 /// Example:
 ///   (cons 1 (list 2 3)) ; => (1 2 3)
-///
-/// # Errors
-/// Returns an error if the second argument is not a list.
+///   (cons 1 (list)) ; => (1)
 pub const ATOM_CONS: PureAtomFn = |args| {
-    validate_binary_arity(args, "cons")?;
+    helpers::validate_binary_arity(args, "cons")?;
 
-    let items = validate_list_value(&args[1], "cons second argument")?;
+    let element = &args[0];
+    let list_val = &args[1];
+    let items = helpers::validate_list_value(list_val, "cons")?;
 
-    // Pre-allocate vector for better performance
-    let mut new_list = Vec::with_capacity(items.len() + 1);
-    new_list.push(args[0].clone());
-    new_list.extend_from_slice(items);
+    let mut new_list = vec![element.clone()];
+    new_list.extend(items.iter().cloned());
 
     Ok(Value::List(new_list))
 };
 
+// ============================================================================
+// MAP OPERATIONS
+// ============================================================================
+
 /// Creates a map from alternating key-value pairs.
 ///
 /// Usage: (core/map <key1> <value1> <key2> <value2> ...)
-///   - <key1>, <key2>, ...: String keys
-///   - <value1>, <value2>, ...: Values to associate with keys
+///   - <key1>, <value1>, ...: Alternating keys and values
 ///
-///   Returns: Map with the specified key-value pairs
+///   Returns: Map with the key-value pairs
 ///
 /// Example:
-///   (core/map ":span" (list 0 0) ":file" "test.sutra") ; => {:span (0 0), :file "test.sutra"}
-///
-/// # Errors
-/// Returns an error if the number of arguments is odd or if any key is not a string.
+///   (core/map "a" 1 "b" 2) ; => {"a" 1 "b" 2}
 pub const ATOM_CORE_MAP: PureAtomFn = |args| {
-    validate_even_arity(args, "core/map")?;
+    helpers::validate_even_arity(args, "core/map")?;
 
     let mut map = im::HashMap::new();
     for chunk in args.chunks(2) {
-        let key = validate_string_value(&chunk[0], "core/map key")?.to_string();
+        let key = helpers::validate_string_value(&chunk[0], "map key")?.to_string();
         let value = chunk[1].clone();
         map.insert(key, value);
     }
@@ -352,14 +313,16 @@ pub fn register_collection_atoms(registry: &mut AtomRegistry) {
     registry.register_pure("list", ATOM_LIST);
     registry.register_pure("len", ATOM_LEN);
     registry.register_pure("has?", ATOM_HAS);
+    registry.register_pure("car", ATOM_CAR);
+    registry.register_pure("cdr", ATOM_CDR);
+    registry.register_pure("cons", ATOM_CONS);
+
+    // Mutable list operations
     registry.register_stateful("core/push!", ATOM_CORE_PUSH);
     registry.register_stateful("core/pull!", ATOM_CORE_PULL);
 
     // String operations
     registry.register_pure("core/str+", ATOM_CORE_STR_PLUS);
-    registry.register_pure("car", ATOM_CAR);
-    registry.register_pure("cdr", ATOM_CDR);
-    registry.register_pure("cons", ATOM_CONS);
 
     // Map operations
     registry.register_pure("core/map", ATOM_CORE_MAP);

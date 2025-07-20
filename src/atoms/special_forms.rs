@@ -1,17 +1,13 @@
 use std::rc::Rc;
 
+use crate::prelude::*;
 use crate::{
-    ast::{
-        value::{Lambda, Value},
-        AstNode, Expr,
-    },
+    ast::value::Lambda,
     atoms::{
         helpers::{validate_special_form_arity, validate_special_form_min_arity},
         SpecialFormAtomFn,
     },
-    err_msg,
-    runtime::eval::{evaluate_ast_node, evaluate_condition_as_bool},
-    SutraError, World,
+    runtime::eval,
 };
 
 /// Implements the (if ...) special form with lazy evaluation.
@@ -21,12 +17,12 @@ pub const ATOM_IF: SpecialFormAtomFn = |args, context, _span| {
     let then_branch = &args[1];
     let else_branch = &args[2];
 
-    let (is_true, next_world) = evaluate_condition_as_bool(condition, context)?;
+    let (is_true, next_world) = eval::evaluate_condition_as_bool(condition, context)?;
     let mut sub_context = context.clone_with_new_lexical_frame();
     sub_context.world = &next_world;
 
     let branch = if is_true { then_branch } else { else_branch };
-    evaluate_ast_node(branch, &mut sub_context)
+    eval::evaluate_ast_node(branch, &mut sub_context)
 };
 
 /// Implements the (lambda ...) special form.
@@ -130,7 +126,7 @@ pub const ATOM_LET: SpecialFormAtomFn = |args, context, span| {
                 ))
             }
         };
-        let (value, _) = evaluate_ast_node(value_expr, &mut new_context)?;
+        let (value, _) = eval::evaluate_ast_node(value_expr, &mut new_context)?;
         new_context.set_lexical_var(&name, value);
     }
 
@@ -158,7 +154,7 @@ pub const ATOM_LET: SpecialFormAtomFn = |args, context, span| {
         }
     };
 
-    let (result, world) = evaluate_ast_node(body, &mut new_context)?;
+    let (result, world) = eval::evaluate_ast_node(body, &mut new_context)?;
     Ok((result, world))
 };
 
@@ -166,7 +162,7 @@ pub const ATOM_LET: SpecialFormAtomFn = |args, context, span| {
 pub fn call_lambda(
     lambda: &Lambda,
     args: &[Value],
-    context: &mut crate::runtime::eval::EvaluationContext,
+    context: &mut eval::EvaluationContext,
 ) -> Result<(Value, World), SutraError> {
     let mut new_context = context.clone_with_new_lexical_frame();
 
@@ -196,6 +192,6 @@ pub fn call_lambda(
     }
 
     // Evaluate body in new context
-    let (result, world) = evaluate_ast_node(&lambda.body, &mut new_context)?;
+    let (result, world) = eval::evaluate_ast_node(&lambda.body, &mut new_context)?;
     Ok((result, world))
 }

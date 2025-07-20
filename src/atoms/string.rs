@@ -7,13 +7,8 @@
 //! - **`str`**: Converts any value to its string representation.
 //! - **`str+`**: Concatenates multiple values into a single string.
 
-use crate::{
-    atoms::{
-        helpers::{pure_eval_string_concat, validate_unary_arity},
-        AtomRegistry, PureAtomFn,
-    },
-    Value,
-};
+use crate::prelude::*;
+use crate::{atoms::PureAtomFn, helpers};
 
 // ============================================================================
 // STRING OPERATIONS
@@ -26,7 +21,7 @@ use crate::{
 ///
 /// Returns: A new String value.
 pub const ATOM_STR: PureAtomFn = |args| {
-    validate_unary_arity(args, "str")?;
+    helpers::validate_unary_arity(args, "str")?;
     Ok(Value::String(args[0].to_string()))
 };
 
@@ -36,7 +31,7 @@ pub const ATOM_STR: PureAtomFn = |args| {
 ///   - <value...>: Zero or more values to concatenate.
 ///
 /// Returns: A new String value. If no arguments are provided, returns an empty string.
-pub const ATOM_STR_PLUS: PureAtomFn = |args| pure_eval_string_concat(args, "str+");
+pub const ATOM_STR_PLUS: PureAtomFn = |args| helpers::pure_eval_string_concat(args, "str+");
 
 // ============================================================================
 // REGISTRATION FUNCTION

@@ -2,21 +2,16 @@ use std::{collections::HashMap, path::Path, sync::Arc};
 
 use miette::{NamedSource, Report};
 
+use crate::prelude::*;
 use crate::{
-    atoms::{AtomRegistry, OutputSink},
-    err_ctx, err_msg,
+    atoms::{OutputSink, SharedOutput},
     macros::{
         expand_macros_recursively, parse_macro_definition, MacroDefinition, MacroExpansionContext,
         MacroValidationContext,
     },
-    runtime::{
-        eval::evaluate,
-        world::{build_canonical_macro_env, build_default_atom_registry},
-    },
-    syntax::parser::{parse, wrap_in_do},
-    to_error_source,
-    validation::semantic::validate_expanded_ast,
-    AstNode, MacroRegistry, SharedOutput, Span, SutraError, Value, World,
+    runtime::{eval, world},
+    syntax::parser,
+    validation::semantic,
 };
 
 // ============================================================================
@@ -122,13 +117,13 @@ impl MacroProcessor {
         let (macro_defs, user_code) = self.partition_ast_nodes(ast_nodes);
 
         // Step 2: Build canonical macro environment
-        let mut env = build_canonical_macro_env()?;
+        let mut env = world::build_canonical_macro_env()?;
 
         // Step 3: Process user-defined macros
         self.process_macro_definitions(macro_defs, &mut env)?;
 
         // Step 4: Wrap user code in a (do ...) block if needed
-        let program = wrap_in_do(user_code);
+        let program = parser::wrap_in_do(user_code);
 
         // Step 5: Expand macros recursively
         let expanded = expand_macros_recursively(program, &mut env)?;
@@ -198,7 +193,8 @@ impl MacroProcessor {
         };
 
         // Step 3: Perform semantic validation
-        let validation_result = validate_expanded_ast(expanded, &macro_registry, atom_registry);
+        let validation_result =
+            semantic::validate_expanded_ast(expanded, &macro_registry, atom_registry);
 
         // Step 4: Handle validation results (early return on failure)
         if !validation_result.is_valid() {
@@ -225,7 +221,7 @@ impl MacroProcessor {
         atom_registry: &AtomRegistry,
     ) -> EvaluationResult {
         let world = World::default();
-        evaluate(
+        eval::evaluate(
             expanded,
             &world,
             output,
@@ -244,8 +240,9 @@ impl MacroProcessor {
 
     /// Builds standard registries used across all execution paths
     pub fn build_standard_registries() -> (AtomRegistry, MacroExpansionContext) {
-        let atom_registry = build_default_atom_registry();
-        let macro_env = build_canonical_macro_env().expect("Standard macro env should build");
+        let atom_registry = world::build_default_atom_registry();
+        let macro_env =
+            world::build_canonical_macro_env().expect("Standard macro env should build");
         (atom_registry, macro_env)
     }
 
@@ -290,12 +287,12 @@ impl ExecutionPipeline {
 
     /// Parses source code with pure parsing logic (no I/O)
     pub fn parse_source(source: &str) -> Result<Vec<AstNode>, SutraError> {
-        parse(source)
+        parser::parse(source)
     }
     /// Expands macros in source code with pure expansion logic (no I/O)
     pub fn expand_macros_source(source: &str) -> Result<String, SutraError> {
         let processor = MacroProcessor::default();
-        let ast_nodes = parse(source)?;
+        let ast_nodes = parser::parse(source)?;
         let (expanded, _env) = processor.partition_and_process_macros(ast_nodes)?;
         Ok(expanded.value.pretty())
     }
@@ -323,12 +320,12 @@ impl ExecutionPipeline {
 
     /// Gets the atom registry (pure access, no I/O)
     pub fn get_atom_registry() -> AtomRegistry {
-        build_default_atom_registry()
+        world::build_default_atom_registry()
     }
 
     /// Gets the macro registry (pure access, no I/O)
     pub fn get_macro_registry() -> MacroExpansionContext {
-        build_canonical_macro_env().expect("Standard macro env should build")
+        world::build_canonical_macro_env().expect("Standard macro env should build")
     }
 
     /// Lists all available atoms (pure access, no I/O)
@@ -379,7 +376,7 @@ impl ExecutionPipeline {
     /// This parses source then calls execute_nodes() for unified processing.
     pub fn execute(&self, source: &str, output: SharedOutput) -> ExecutionResult {
         // Phase 1: Parse the source into AST nodes
-        let ast_nodes = parse(source)?;
+        let ast_nodes = parser::parse(source)?;
 
         // Phase 2: Execute nodes through unified pipeline
         let result = self.execute_nodes(&ast_nodes)?;
@@ -401,8 +398,8 @@ impl ExecutionPipeline {
         output: SharedOutput,
         source: SourceContext,
     ) -> Result<(Value, World), SutraError> {
-        let atom_registry = build_default_atom_registry();
-        evaluate(
+        let atom_registry = world::build_default_atom_registry();
+        eval::evaluate(
             expanded_ast,
             world,
             output,

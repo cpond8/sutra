@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use regex::Regex;
 
+// Domain modules with aliases
 use crate::validation::{CollectionState, Rule};
 
 // ============================================================================

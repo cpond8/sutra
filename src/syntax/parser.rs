@@ -22,12 +22,12 @@
 // - **Error Handling**: Centralized error message improvement
 //
 // Grammar Rule → AST Node Mapping:
-// | Grammar Rule    | Builder Function      | AST Node Type        | Notes                    |
+// | Grammar Rule    | Builder Function     | AST Node Type       | Notes                    |
 // |-----------------|----------------------|---------------------|--------------------------|
 // | program         | build_program_ast    | Vec<AstNode>        | Top-level expressions    |
 // | expr            | build_expression_ast | AstNode             | Delegates to subrules    |
 // | list            | build_list_ast       | Expr::List          | Regular lists            |
-// | block           | build_list_ast       | Expr::List          | Brace blocks (same as list) |
+// | block           | build_list_ast       | Expr::List          | Brace-style blocks       |
 // | param_list      | build_param_list_ast | Expr::ParamList     | Function parameters      |
 // | atom            | build_atom_ast       | AstNode             | Delegates to subrules    |
 // | number          | build_number_ast     | Expr::Number        | Numeric literals         |
@@ -47,13 +47,8 @@ use pest::{
 };
 use pest_derive::Parser;
 
-use crate::{
-    ast::{AstNode, Expr, ParamList, Span, Spanned},
-    diagnostics::SourceArc,
-    err_ctx, err_msg,
-    error_messages::*,
-    to_error_source, Path, SutraError,
-};
+use crate::prelude::*;
+use crate::{ast::ParamList, diagnostics::SourceArc, error_messages::*};
 
 // ============================================================================
 // MACROS

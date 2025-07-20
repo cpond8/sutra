@@ -11,6 +11,28 @@ pub use crate::{
     test::{Expectation, TestResult, TestSummary},
 };
 
+// Module aliases for concise imports
+pub use ast::value;
+pub use atoms::helpers;
+pub use runtime::{eval, world};
+pub use syntax::parser;
+pub use validation::{grammar, semantic};
+
+pub mod prelude {
+    pub use crate::{
+        ast::value::Value,
+        ast::{AstNode, Expr, Span, Spanned},
+        atoms::{AtomRegistry, SharedOutput},
+        diagnostics::{to_error_source, ErrorType, SutraError},
+        err_ctx, err_msg, err_src,
+        macros::MacroRegistry,
+        runtime::eval::EvaluationContext,
+        runtime::world::AtomExecutionContext,
+        runtime::world::World,
+        MacroDefinition, Path,
+    };
+}
+
 pub mod ast;
 pub mod atoms;
 pub mod cli;
@@ -21,8 +43,8 @@ pub mod error_messages;
 pub mod macros;
 pub mod runtime;
 pub mod syntax;
-pub mod validation;
 pub mod test;
+pub mod validation;
 
 #[cfg(test)]
 mod sutra_harness {

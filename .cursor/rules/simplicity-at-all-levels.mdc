@@ -1,0 +1,174 @@
+---
+alwaysApply: true
+---
+
+# Simplicity at All Levels
+
+## Core Principle
+
+**Complexity begets complexity** - unnecessary abstraction layers create ecosystems of helper functions, detection logic, and conditional branches that hide the underlying simplicity.
+
+## The Pattern
+
+When you see:
+- Helper functions that just check one thing
+- Special-case handling for "different" types
+- Multiple layers of indirection
+- Duplicate logic patterns
+- Complex parameter passing
+
+**Stop and ask**: "What is this actually trying to do?"
+
+The answer is usually something much simpler than the code suggests.
+
+## Examples from Macro Expansion
+
+### Before: Over-Engineered Substitution
+```rust
+// 8 functions with complex variadic parameter handling
+fn substitute_template_with_context(...)
+fn try_handle_spread_item(...)
+fn handle_regular_item(...)
+fn substitute_spread_item_internal(...)
+fn handle_non_symbol_spread_internal(...)
+fn extract_variadic_param_name(...)
+fn is_variadic_param(...)
+fn extend_with_elements(...)
+```
+
+### After: Simple Substitution
+```rust
+// 2 functions with unified behavior
+fn substitute_template(...)
+fn process_list_item(...)
+```
+
+**Key insight**: The different behaviors for variadic parameters were context-dependent and intentional. The complexity came from trying to handle them differently when the context already determined the behavior.
+
+## The Revelation Process
+
+1. **Identify the apparent complexity** - multiple functions, nested conditionals, special cases
+2. **Trace the actual data flow** - what information is really needed?
+3. **Ask "why is this complex?"** - often the complexity is unnecessary
+4. **Unwind the layers** - remove abstraction layers to reveal the simple core
+5. **Let context determine behavior** - don't create special cases unless absolutely necessary
+
+## Implementation Guidelines
+
+- **Each function does one obvious thing**
+- **No special cases unless absolutely necessary**
+- **Let context determine behavior, not type**
+- **Compose simple operations, don't create complex ones**
+- **If you need a helper function, the original function is too complex**
+
+## Warning Signs
+
+- Functions that just check one condition then delegate
+- Multiple functions doing similar things with slight variations
+- Complex parameter passing between functions
+- Special-case handling for "different" types
+- Helper functions that are only used once
+
+## The Decision Process
+
+When refactoring, always ask:
+1. **"Is this really necessary?"** - Can I eliminate this complexity?
+2. **"Could I do this even more concisely?"** - Can I reduce lines without losing clarity?
+3. **"Could I make the logic here even clearer?"** - Is the control flow obvious?
+
+## Remember
+
+**Simplicity at all levels means**:
+- Each function has a single, clear purpose
+- No unnecessary abstraction layers
+- Let context determine behavior
+- Compose simple operations
+- If you need a helper function, the original function is too complex
+
+The goal is **composition of simple parts**, not complex abstractions.
+
+
+# Simplicity at All Levels
+
+## Core Principle
+
+**Complexity begets complexity** - unnecessary abstraction layers create ecosystems of helper functions, detection logic, and conditional branches that hide the underlying simplicity.
+
+## The Pattern
+
+When you see:
+- Helper functions that just check one thing
+- Special-case handling for "different" types
+- Multiple layers of indirection
+- Duplicate logic patterns
+- Complex parameter passing
+
+**Stop and ask**: "What is this actually trying to do?"
+
+The answer is usually something much simpler than the code suggests.
+
+## Examples from Macro Expansion
+
+### Before: Over-Engineered Substitution
+```rust
+// 8 functions with complex variadic parameter handling
+fn substitute_template_with_context(...)
+fn try_handle_spread_item(...)
+fn handle_regular_item(...)
+fn substitute_spread_item_internal(...)
+fn handle_non_symbol_spread_internal(...)
+fn extract_variadic_param_name(...)
+fn is_variadic_param(...)
+fn extend_with_elements(...)
+```
+
+### After: Simple Substitution
+```rust
+// 2 functions with unified behavior
+fn substitute_template(...)
+fn process_list_item(...)
+```
+
+**Key insight**: The different behaviors for variadic parameters were context-dependent and intentional. The complexity came from trying to handle them differently when the context already determined the behavior.
+
+## The Revelation Process
+
+1. **Identify the apparent complexity** - multiple functions, nested conditionals, special cases
+2. **Trace the actual data flow** - what information is really needed?
+3. **Ask "why is this complex?"** - often the complexity is unnecessary
+4. **Unwind the layers** - remove abstraction layers to reveal the simple core
+5. **Let context determine behavior** - don't create special cases unless absolutely necessary
+
+## Implementation Guidelines
+
+- **Each function does one obvious thing**
+- **No special cases unless absolutely necessary**
+- **Let context determine behavior, not type**
+- **Compose simple operations, don't create complex ones**
+- **If you need a helper function, the original function is too complex**
+
+## Warning Signs
+
+- Functions that just check one condition then delegate
+- Multiple functions doing similar things with slight variations
+- Complex parameter passing between functions
+- Special-case handling for "different" types
+- Helper functions that are only used once
+
+## The Decision Process
+
+When refactoring, always ask:
+1. **"Is this really necessary?"** - Can I eliminate this complexity?
+2. **"Could I do this even more concisely?"** - Can I reduce lines without losing clarity?
+3. **"Could I make the logic here even clearer?"** - Is the control flow obvious?
+
+## Remember
+
+**Simplicity at all levels means**:
+- Each function has a single, clear purpose
+- No unnecessary abstraction layers
+- Let context determine behavior
+- Compose simple operations
+- If you need a helper function, the original function is too complex
+
+The goal is **composition of simple parts**, not complex abstractions.

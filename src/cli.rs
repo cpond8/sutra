@@ -6,10 +6,10 @@ use std::{path::PathBuf, process};
 
 use clap::{Parser, Subcommand};
 
+use crate::prelude::*;
 use crate::{
     engine::{print_error, EngineStdoutSink as StdoutSink, ExecutionPipeline},
-    validation::validate_grammar,
-    SharedOutput, SutraError,
+    validation::grammar,
 };
 
 // ============================================================================
@@ -128,8 +128,8 @@ pub fn run() {
         }
 
         ArgsCommand::ValidateGrammar => {
-            let validation_result =
-                validate_grammar("src/syntax/grammar.pest").unwrap_or_else(|e| {
+            let validation_result = grammar::validate_grammar("src/syntax/grammar.pest")
+                .unwrap_or_else(|e| {
                     print_error(crate::err_msg!(
                         Internal,
                         format!("Failed to validate grammar: {}", e)

@@ -4,12 +4,11 @@
 
 use std::{collections::HashSet, fs, path::Path};
 
-use crate::{
-    ast::{AstNode, Expr, ParamList, Span},
-    err_ctx, err_msg,
-    syntax::parser::parse,
-    to_error_source, MacroTemplate, SutraError,
-};
+// Core types via prelude
+use crate::prelude::*;
+
+// Domain modules with aliases
+use crate::{ast::ParamList, syntax::parser, MacroTemplate};
 
 /// Type alias for macro parsing results
 type MacroParseResult = Result<Vec<(String, MacroTemplate)>, SutraError>;
@@ -21,7 +20,7 @@ type MacroParseResult = Result<Vec<(String, MacroTemplate)>, SutraError>;
 /// Parses Sutra macro definitions from a source string.
 /// Identifies `define` forms, validates structure and parameters, and checks for duplicates.
 pub fn parse_macros_from_source(source: &str) -> MacroParseResult {
-    let exprs = parse(source)?;
+    let exprs = parser::parse(source)?;
     let mut macros = Vec::new();
     let mut names_seen = HashSet::new();
 

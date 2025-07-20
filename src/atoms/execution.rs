@@ -13,18 +13,8 @@
 //! - **Meta-Programming**: Function application with argument flattening
 //! - **State Threading**: Proper world state propagation through execution
 
-use crate::{
-    atoms::{
-        helpers::{
-            build_apply_call_expr, eval_apply_list_arg, eval_apply_normal_args, eval_single_arg,
-            sub_eval_context, validate_special_form_min_arity,
-        },
-        AtomRegistry, SpecialFormAtomFn,
-    },
-    err_msg,
-    runtime::eval::evaluate_ast_node,
-    Value,
-};
+use crate::prelude::*;
+use crate::{atoms::SpecialFormAtomFn, helpers, runtime::eval};
 
 // ============================================================================
 // CONTROL FLOW OPERATIONS
@@ -48,9 +38,9 @@ pub const ATOM_DO: SpecialFormAtomFn = |args, context, _parent_span| {
 
     for arg in args {
         // Create a new evaluation context for the sub-expression, threading the world.
-        let mut sub_context = sub_eval_context!(context, &world);
+        let mut sub_context = helpers::sub_eval_context!(context, &world);
         // Evaluate the expression. `evaluate_ast_node` will return the result and the *new* world state.
-        let (val, new_world) = evaluate_ast_node(arg, &mut sub_context)?;
+        let (val, new_world) = eval::evaluate_ast_node(arg, &mut sub_context)?;
         last_value = val;
         // Update our tracked world state for the next iteration.
         world = new_world;
@@ -73,7 +63,7 @@ pub const ATOM_DO: SpecialFormAtomFn = |args, context, _parent_span| {
 /// # Safety
 /// Always errors. Does not mutate state.
 pub const ATOM_ERROR: SpecialFormAtomFn = |args, context, _parent_span| {
-    let (val, _world) = eval_single_arg(args, context)?;
+    let (val, _world) = helpers::eval_single_arg(args, context)?;
     let Value::String(msg) = val else {
         return Err(err_msg!(TypeError, "error expects a String argument"));
     };
@@ -97,23 +87,24 @@ pub const ATOM_ERROR: SpecialFormAtomFn = |args, context, _parent_span| {
 ///   (apply + 1 2 (list 3 4)) ; => 10
 ///   (apply core/str+ (list "a" "b" "c")) ; => "abc"
 pub const ATOM_APPLY: SpecialFormAtomFn = |args, context, parent_span| {
-    validate_special_form_min_arity(args, 2, "apply")?;
+    helpers::validate_special_form_min_arity(args, 2, "apply")?;
 
     let func_expr = &args[0];
     let normal_args_slice = &args[1..args.len() - 1];
     let list_arg = &args[args.len() - 1];
 
     // Evaluate normal arguments
-    let (normal_args, world) = eval_apply_normal_args(normal_args_slice, context)?;
+    let (normal_args, world) = helpers::eval_apply_normal_args(normal_args_slice, context)?;
 
     // Evaluate list argument
-    let mut context_with_world = sub_eval_context!(context, &world);
-    let (list_args, world) = eval_apply_list_arg(list_arg, &mut context_with_world, parent_span)?;
+    let mut context_with_world = helpers::sub_eval_context!(context, &world);
+    let (list_args, world) =
+        helpers::eval_apply_list_arg(list_arg, &mut context_with_world, parent_span)?;
 
     // Build and evaluate the call expression
-    let call_expr = build_apply_call_expr(func_expr, normal_args, list_args, parent_span);
-    let mut sub_context = sub_eval_context!(context, &world);
-    evaluate_ast_node(&call_expr, &mut sub_context)
+    let call_expr = helpers::build_apply_call_expr(func_expr, normal_args, list_args, parent_span);
+    let mut sub_context = helpers::sub_eval_context!(context, &world);
+    eval::evaluate_ast_node(&call_expr, &mut sub_context)
 };
 
 // ============================================================================

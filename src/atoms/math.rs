@@ -13,15 +13,10 @@
 //! - **Numeric Focus**: All operations work with `Value::Number` (f64)
 //! - **Error Handling**: Proper validation for edge cases (division by zero, etc.)
 
+use crate::prelude::*;
 use crate::{
-    atoms::{
-        helpers::{
-            pure_eval_nary_numeric_op_custom, pure_eval_unary_typed_op, validate_binary_arity,
-            validate_min_arity, ExtractValue,
-        },
-        AtomRegistry, PureAtomFn,
-    },
-    err_msg, Value,
+    atoms::PureAtomFn,
+    helpers::{self, ExtractValue},
 };
 
 // ============================================================================
@@ -38,7 +33,7 @@ use crate::{
 /// Example:
 ///   (+ 1 2 3) ; => 6
 pub const ATOM_ADD: PureAtomFn =
-    |args| pure_eval_nary_numeric_op_custom(args, 0.0, |acc, n| acc + n, "+");
+    |args| helpers::pure_eval_nary_numeric_op_custom(args, 0.0, |acc, n| acc + n, "+");
 
 /// Subtracts two numbers.
 ///
@@ -50,7 +45,7 @@ pub const ATOM_ADD: PureAtomFn =
 /// Example:
 ///   (- 5 2) ; => 3
 pub const ATOM_SUB: PureAtomFn = |args| {
-    validate_min_arity(args, 1, "-")?;
+    helpers::validate_min_arity(args, 1, "-")?;
 
     let first: f64 = args[0].extract()?;
     if args.len() == 1 {
@@ -75,7 +70,7 @@ pub const ATOM_SUB: PureAtomFn = |args| {
 /// Example:
 ///   (* 2 3 4) ; => 24
 pub const ATOM_MUL: PureAtomFn =
-    |args| pure_eval_nary_numeric_op_custom(args, 1.0, |acc, n| acc * n, "*");
+    |args| helpers::pure_eval_nary_numeric_op_custom(args, 1.0, |acc, n| acc * n, "*");
 
 /// Divides two numbers.
 ///
@@ -88,7 +83,7 @@ pub const ATOM_MUL: PureAtomFn =
 ///   (/ 6 2) ; => 3
 /// Note: Errors on division by zero.
 pub const ATOM_DIV: PureAtomFn = |args| {
-    validate_min_arity(args, 1, "/")?;
+    helpers::validate_min_arity(args, 1, "/")?;
 
     let first: f64 = args[0].extract()?;
     if args.len() == 1 {
@@ -121,7 +116,7 @@ pub const ATOM_DIV: PureAtomFn = |args| {
 ///
 /// Note: Errors on division by zero or non-integer input.
 pub const ATOM_MOD: PureAtomFn = |args| {
-    validate_binary_arity(args, "mod")?;
+    helpers::validate_binary_arity(args, "mod")?;
     let a: f64 = args[0].extract()?;
     let b: f64 = args[1].extract()?;
 
@@ -147,7 +142,7 @@ pub const ATOM_MOD: PureAtomFn = |args| {
 ///   (abs -5) ; => 5
 ///   (abs 3.14) ; => 3.14
 pub const ATOM_ABS: PureAtomFn =
-    |args| pure_eval_unary_typed_op::<f64, _>(args, |n| Value::Number(n.abs()), "abs");
+    |args| helpers::pure_eval_unary_typed_op::<f64, _>(args, |n| Value::Number(n.abs()), "abs");
 
 /// Minimum of multiple numbers.
 ///
@@ -158,8 +153,9 @@ pub const ATOM_ABS: PureAtomFn =
 ///
 /// Example:
 ///   (min 3 1 4) ; => 1
-pub const ATOM_MIN: PureAtomFn =
-    |args| pure_eval_nary_numeric_op_custom(args, f64::INFINITY, |acc, n| acc.min(n), "min");
+pub const ATOM_MIN: PureAtomFn = |args| {
+    helpers::pure_eval_nary_numeric_op_custom(args, f64::INFINITY, |acc, n| acc.min(n), "min")
+};
 
 /// Maximum of multiple numbers.
 ///
@@ -170,8 +166,9 @@ pub const ATOM_MIN: PureAtomFn =
 ///
 /// Example:
 ///   (max 3 1 4) ; => 4
-pub const ATOM_MAX: PureAtomFn =
-    |args| pure_eval_nary_numeric_op_custom(args, f64::NEG_INFINITY, |acc, n| acc.max(n), "max");
+pub const ATOM_MAX: PureAtomFn = |args| {
+    helpers::pure_eval_nary_numeric_op_custom(args, f64::NEG_INFINITY, |acc, n| acc.max(n), "max")
+};
 
 // ============================================================================
 // REGISTRATION FUNCTION

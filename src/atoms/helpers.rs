@@ -9,11 +9,8 @@
 //! - **Consistency**: Standardized error messages and evaluation patterns
 //! - **Safety**: All functions handle ownership and borrowing correctly
 
-use crate::{
-    err_msg,
-    runtime::eval::{evaluate_ast_node, EvaluationContext},
-    AstNode, Expr, Path, Span, Spanned, SutraError, Value, World,
-};
+use crate::prelude::*;
+use crate::runtime::eval::{evaluate_ast_node, EvaluationContext};
 
 // ============================================================================
 // TYPE ALIASES AND CORE TYPES
@@ -105,7 +102,7 @@ impl ExtractValue<Path> for Value {
 #[macro_export]
 macro_rules! sub_eval_context {
     ($parent:expr, $world:expr) => {
-        $crate::runtime::eval::EvaluationContext {
+        $crate::eval::EvaluationContext {
             world: $world,
             output: $parent.output.clone(),
             atom_registry: $parent.atom_registry,

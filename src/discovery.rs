@@ -6,7 +6,11 @@ use std::{
 use miette::NamedSource;
 use walkdir::WalkDir;
 
-use crate::{err_msg, err_src, syntax::parser, AstNode, Expr, Span, SutraError};
+// Core types via prelude
+use crate::prelude::*;
+
+// Domain modules with aliases
+use crate::syntax::parser;
 
 // =====================
 // Type Aliases for Complex Types

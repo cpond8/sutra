@@ -21,14 +21,16 @@
 
 use std::collections::HashMap;
 
+// Core types via prelude
+use crate::prelude::*;
+
+// Domain modules with aliases
 use crate::{
-    ast::{AstNode, Expr, ParamList, Span, Spanned},
-    err_src,
+    ast::ParamList,
     macros::{
         check_arity, MacroDefinition, MacroExpansionContext, MacroExpansionResult,
         MacroExpansionStep, MacroOrigin, MacroTemplate, MAX_MACRO_RECURSION_DEPTH,
     },
-    SutraError,
 };
 
 // =============================

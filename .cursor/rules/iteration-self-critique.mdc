@@ -1,0 +1,153 @@
+# Self-Critique and Iteration Process
+
+---
+
+## Core Principle: Always Iterate and Critique
+
+Every solution should go through multiple iterations with rigorous self-critique. The goal is to arrive at the simplest, most effective solution. _Never settle for "good enough" -- push until you can go no farther._
+
+---
+
+## Do Actual Iteration: Don't Just Talk About It
+
+- **Make multiple drafts** - create complete code examples, not mere descriptions of potential code
+- **Push each draft further** - each iteration should improve on the previous
+- **Keep going until you can go no farther** - don't stop at the first "good" version
+
+---
+
+## The Iteration Process
+
+## Warning Signs
+
+- Special-case handling for "different" types
+
+
+### Step 1: Identify the Apparent Complexity
+
+**Look for:**
+
+- Long, deeply nested chain operations
+- Elaborate matching logic
+- Consecutive nested conditionals
+- Unnecessary abstraction layers
+- Complex parameter passing between functions
+- Helper functions that are only used once
+- Functions that just check one condition then delegate
+- Multiple functions doing similar things with slight variations
+
+### Step 2: Trace the Actual Data Flow
+
+**Ask Yourself: "What information is really needed?"**
+
+- Examine actual data formats
+- Look at real usage patterns
+- Understand the core requirements
+
+### Step 3: Ask "Why is this complex?"
+
+**Often the complexity is unnecessary:**
+
+- Are you handling cases that don't exist?
+- Is the abstraction actually helping?
+- Could this be done more directly?
+
+### Step 4: Unwind the Layers
+
+**Remove abstraction layers to reveal the simple core:**
+
+- Eliminate helper functions that are only used once
+- Combine similar operations
+- Straighten out the logic flow -- often this reveals deep flaws and redundancy hidden by the former complexity.
+
+### Step 5: Let Context Determine Behavior
+
+- How does this effect the system as a whole?
+- Can this be reused?
+- Can this be replaced with something more appropriate for the system as a whole?
+
+---
+
+## Example: Macro Analysis
+
+### Draft 1: Surface-Level Analysis
+
+**Problem**: Complex substitution logic with many functions
+**Solution**: Consolidate functions and use parameter structs
+
+**=> Self-critique**: This just hides complexity, doesn't eliminate it.
+
+### Draft 2: Deep Dive
+
+**Problem**: The functions themselves are complex
+**Solution**: Simplify the logic inside each function
+
+**=> Self-critique**: Still not addressing the core issue.
+
+### Draft 3: Root Cause Analysis
+
+**Problem**: The complexity was unnecessary - context already determined behavior
+**Solution**: Remove all special-casing and let context handle it
+
+**Self-critique =>**: Now I'm getting to the real issue!
+
+### Final Draft: Revelation
+
+**The complexity was artificial:**
+
+- The system was already simple, just over-engineered.
+- **Had you not kept pushing yourself to the very end, you would never have discovered the true solution.**
+
+---
+
+## Key Questions for Self-Critique
+
+1. **"Is this really necessary?"**
+   - Can I eliminate this complexity?
+   - Is this abstraction actually needed?
+   - Could I do this more directly?
+2. **"Could I do this even more concisely?"**
+   - Can I reduce lines without losing clarity?
+   - Is there unnecessary repetition?
+   - Could I combine related operations?
+3. **"Could I make the logic here even clearer?"**
+   - Is the control flow obvious?
+   - Are the steps self-documenting?
+   - Could I make this more like a recipe?
+4. **"What is this actually trying to do?"**
+   - Am I solving the right problem?
+   - Is the real problem actually earlier down the pipeline?
+   - Do I even need to solve this?
+
+---
+
+## Benefits of This Process
+
+- **Readability**: Each step is obvious and isolated
+- **Maintainability**: Easy to modify individual validation steps
+- **Debugging**: Can easily add breakpoints at each validation point
+- **Consistency**: Same patterns throughout the codebase
+- **Reduced cognitive load**: Linear flow is easier to follow
+
+---
+
+## Remember
+
+**Simplicity at all levels means**:
+
+- Each function has a single, clear purpose
+- No unnecessary abstraction layers
+- Let context determine behavior
+- Compose simple operations
+- If you need a helper function, the original function is too complex
+
+The goal is **composition of simple parts**, not complex abstractions.
+
+--
+
+## Key Insights
+
+- **Complexity at any level is a sign of poor design**
+- **The iterative process reveals the true simplicity**
+- **Each iteration should eliminate more complexity, not reorganize it**
+- **The final solution is often much simpler than the initial approach**

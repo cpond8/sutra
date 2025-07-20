@@ -46,13 +46,8 @@ use std::{
 use miette::NamedSource;
 use serde::{Deserialize, Serialize};
 
-// Internal crate imports
-use crate::{
-    ast::{AstNode, ParamList},
-    err_ctx, err_msg,
-    error_messages::*,
-    to_error_source, AtomExecutionContext, Span, SutraError, Value, World,
-};
+use crate::prelude::*;
+use crate::{ast::ParamList, atoms, error_messages::*};
 
 // ============================================================================
 // MODULE DECLARATIONS
@@ -644,7 +639,7 @@ impl MacroRegistry {
 // CALLABLE TRAIT IMPLEMENTATION
 // ============================================================================
 
-impl crate::atoms::Callable for MacroDefinition {
+impl atoms::Callable for MacroDefinition {
     fn call(
         &self,
         _args: &[Value],

@@ -1,0 +1,328 @@
+---
+alwaysApply: false
+---
+
+# Simplification Insights for Self-Critique Iteration
+
+This rule extends the existing self-critique iteration process with specific insights and techniques discovered through systematic code review and simplification.
+
+## Core Principle: Preserve Subtle Intentional Behavior
+
+**Before eliminating complexity, verify it's not intentional:**
+- Complex error handling might be necessary for different error types
+- Separation of concerns might be intentional (parsing vs execution)
+- Helper functions might exist for reuse or testing
+- Validation steps might be intentionally separate from processing
+
+## The Enhanced Iteration Process
+
+### Step 1: Identify Apparent Complexity
+**Look for:**
+- Functions that are always called together
+- Unnecessary struct wrappers (zero state)
+- Complex parameter passing between functions
+- Redundant helper functions for simple operations
+- Mixed responsibilities in single functions
+
+### Step 2: Trace Actual Data Flow
+**Ask: "What information is really needed?"**
+- Examine actual data formats and usage patterns
+- Understand the core requirements
+- Identify if separation is intentional (e.g., validation before execution)
+
+### Step 3: Ask "Why is this complex?"
+**Often the complexity is unnecessary:**
+- Are you handling cases that don't exist?
+- Is the abstraction actually helping?
+- Could this be done more directly?
+- Is the separation intentional for error handling?
+
+### Step 4: Unwind the Layers (Carefully)
+**Remove abstraction layers to reveal the simple core:**
+- Eliminate helper functions that are only used once
+- Combine similar operations
+- Straighten out the logic flow
+- **But preserve intentional separation of concerns**
+
+### Step 5: Let Context Determine Behavior
+- How does this affect the system as a whole?
+- Can this be reused?
+- Can this be replaced with something more appropriate?
+
+## Specific Simplification Patterns
+
+### Pattern 1: Eliminate Unnecessary Struct Wrappers
+**Before:**
+```rust
+struct ValidationOrchestrator;
+impl ValidationOrchestrator {
+    fn validate_grammar(&self) -> CliResult { ... }
+    fn handle_validation_result(&self, validation_result: &ValidationResult) -> CliResult { ... }
+    // ... 5 more functions
+}
+```
+
+**After:**
+```rust
+fn validate_grammar_workflow() -> CliResult {
+    // 1. Execute validation
+    // 2. Handle validation result
+    // 3. Print warnings and suggestions
+    // 4. Print success message
+}
+```
+
+### Pattern 2: Consolidate Always-Called-Together Functions
+**Before:**
+```rust
+fn separate_macros_from_user_code(ast_nodes: Vec<AstNode>) -> MacroParseResult { ... }
+fn build_macro_environment_and_expand(ast_nodes: Vec<AstNode>, source: &str) -> Result<AstNode, SutraError> { ... }
+```
+
+**After:**
+```rust
+fn expand_user_code_with_macros(ast_nodes: Vec<AstNode>, source: &str) -> Result<AstNode, SutraError> {
+    // 1. Parse and validate user macros
+    // 2. Build complete macro environment
+    // 3. Wrap user code in do block if needed
+    // 4. Expand all macros recursively
+}
+```
+
+### Pattern 3: Eliminate Actual Redundancy
+**Before:**
+```rust
+fn handle_macroexpand(path: &Path) -> CliResult { ... }
+fn handle_format(path: &Path) -> CliResult { ... }
+// Identical implementations
+```
+
+**After:**
+```rust
+fn handle_macro_expansion_or_format(path: &Path) -> CliResult {
+    // Single implementation for both commands
+}
+```
+
+### Pattern 4: Extract Necessary Complex Logic to Helpers
+**Before:**
+```rust
+fn handle_list_atoms() -> CliResult {
+    let atom_registry = build_default_atom_registry();
+    let mut pure_atoms = Vec::new();
+    let mut stateful_atoms = Vec::new();
+    let mut special_forms = Vec::new();
+    // ... complex categorization logic
+}
+```
+
+**After:**
+```rust
+fn handle_list_atoms() -> CliResult {
+    // 1. Get atom registry
+    let atom_registry = build_default_atom_registry();
+    // 2. Categorize atoms by type
+    let (pure_atoms, stateful_atoms, special_forms) = categorize_atoms(&atom_registry);
+    // 3. Print categorized listing
+    print_registry_listing(...);
+}
+```
+
+## Warning Signs for Safe Simplification
+
+### Safe to Simplify:
+- Functions that are always called together
+- Zero-state struct wrappers
+- Helper functions only used once
+- Identical implementations
+- Complex formatting logic that can be inlined
+
+### NOT Safe to Simplify:
+- Functions with different error handling requirements
+- Intentional separation of validation and execution
+- Complex test logic that might have subtle requirements
+- Functions that handle different edge cases
+- Code that might be reused in the future
+
+## The Decision Process
+
+When refactoring, always ask:
+1. **"Is this really unnecessary?"** - Can I eliminate this complexity safely?
+2. **"Could I do this even more concisely?"** - Can I reduce lines without losing clarity?
+3. **"Could I make the logic here even clearer?"** - Is the control flow obvious?
+4. **"What is this actually trying to do?"** - Am I solving the right problem?
+5. **"Is this separation intentional?"** - Does this serve a specific purpose?
+
+## Remember
+
+**Simplicity at all levels means:**
+- Each function has a single, clear purpose
+- No unnecessary abstraction layers
+- Let context determine behavior
+- Compose simple operations
+- If you need a helper function, the original function is too complex
+- **But preserve intentional complexity that serves a purpose**
+
+The goal is **composition of simple parts**, not complex abstractions, while being careful not to eliminate subtle intentional behavior.
+# Simplification Insights for Self-Critique Iteration
+
+This rule extends the existing self-critique iteration process with specific insights and techniques discovered through systematic code review and simplification.
+
+## Core Principle: Preserve Subtle Intentional Behavior
+
+**Before eliminating complexity, verify it's not intentional:**
+- Complex error handling might be necessary for different error types
+- Separation of concerns might be intentional (parsing vs execution)
+- Helper functions might exist for reuse or testing
+- Validation steps might be intentionally separate from processing
+
+## The Enhanced Iteration Process
+
+### Step 1: Identify Apparent Complexity
+**Look for:**
+- Functions that are always called together
+- Unnecessary struct wrappers (zero state)
+- Complex parameter passing between functions
+- Redundant helper functions for simple operations
+- Mixed responsibilities in single functions
+
+### Step 2: Trace Actual Data Flow
+**Ask: "What information is really needed?"**
+- Examine actual data formats and usage patterns
+- Understand the core requirements
+- Identify if separation is intentional (e.g., validation before execution)
+
+### Step 3: Ask "Why is this complex?"
+**Often the complexity is unnecessary:**
+- Are you handling cases that don't exist?
+- Is the abstraction actually helping?
+- Could this be done more directly?
+- Is the separation intentional for error handling?
+
+### Step 4: Unwind the Layers (Carefully)
+**Remove abstraction layers to reveal the simple core:**
+- Eliminate helper functions that are only used once
+- Combine similar operations
+- Straighten out the logic flow
+- **But preserve intentional separation of concerns**
+
+### Step 5: Let Context Determine Behavior
+- How does this affect the system as a whole?
+- Can this be reused?
+- Can this be replaced with something more appropriate?
+
+## Specific Simplification Patterns
+
+### Pattern 1: Eliminate Unnecessary Struct Wrappers
+**Before:**
+```rust
+struct ValidationOrchestrator;
+impl ValidationOrchestrator {
+    fn validate_grammar(&self) -> CliResult { ... }
+    fn handle_validation_result(&self, validation_result: &ValidationResult) -> CliResult { ... }
+    // ... 5 more functions
+}
+```
+
+**After:**
+```rust
+fn validate_grammar_workflow() -> CliResult {
+    // 1. Execute validation
+    // 2. Handle validation result
+    // 3. Print warnings and suggestions
+    // 4. Print success message
+}
+```
+
+### Pattern 2: Consolidate Always-Called-Together Functions
+**Before:**
+```rust
+fn separate_macros_from_user_code(ast_nodes: Vec<AstNode>) -> MacroParseResult { ... }
+fn build_macro_environment_and_expand(ast_nodes: Vec<AstNode>, source: &str) -> Result<AstNode, SutraError> { ... }
+```
+
+**After:**
+```rust
+fn expand_user_code_with_macros(ast_nodes: Vec<AstNode>, source: &str) -> Result<AstNode, SutraError> {
+    // 1. Parse and validate user macros
+    // 2. Build complete macro environment
+    // 3. Wrap user code in do block if needed
+    // 4. Expand all macros recursively
+}
+```
+
+### Pattern 3: Eliminate Actual Redundancy
+**Before:**
+```rust
+fn handle_macroexpand(path: &Path) -> CliResult { ... }
+fn handle_format(path: &Path) -> CliResult { ... }
+// Identical implementations
+```
+
+**After:**
+```rust
+fn handle_macro_expansion_or_format(path: &Path) -> CliResult {
+    // Single implementation for both commands
+}
+```
+
+### Pattern 4: Extract Necessary Complex Logic to Helpers
+**Before:**
+```rust
+fn handle_list_atoms() -> CliResult {
+    let atom_registry = build_default_atom_registry();
+    let mut pure_atoms = Vec::new();
+    let mut stateful_atoms = Vec::new();
+    let mut special_forms = Vec::new();
+    // ... complex categorization logic
+}
+```
+
+**After:**
+```rust
+fn handle_list_atoms() -> CliResult {
+    // 1. Get atom registry
+    let atom_registry = build_default_atom_registry();
+    // 2. Categorize atoms by type
+    let (pure_atoms, stateful_atoms, special_forms) = categorize_atoms(&atom_registry);
+    // 3. Print categorized listing
+    print_registry_listing(...);
+}
+```
+
+## Warning Signs for Safe Simplification
+
+### Safe to Simplify:
+- Functions that are always called together
+- Zero-state struct wrappers
+- Helper functions only used once
+- Identical implementations
+- Complex formatting logic that can be inlined
+
+### NOT Safe to Simplify:
+- Functions with different error handling requirements
+- Intentional separation of validation and execution
+- Complex test logic that might have subtle requirements
+- Functions that handle different edge cases
+- Code that might be reused in the future
+
+## The Decision Process
+
+When refactoring, always ask:
+1. **"Is this really unnecessary?"** - Can I eliminate this complexity safely?
+2. **"Could I do this even more concisely?"** - Can I reduce lines without losing clarity?
+3. **"Could I make the logic here even clearer?"** - Is the control flow obvious?
+4. **"What is this actually trying to do?"** - Am I solving the right problem?
+5. **"Is this separation intentional?"** - Does this serve a specific purpose?
+
+## Remember
+
+**Simplicity at all levels means:**
+- Each function has a single, clear purpose
+- No unnecessary abstraction layers
+- Let context determine behavior
+- Compose simple operations
+- If you need a helper function, the original function is too complex
+- **But preserve intentional complexity that serves a purpose**
+
+The goal is **composition of simple parts**, not complex abstractions, while being careful not to eliminate subtle intentional behavior.

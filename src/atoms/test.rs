@@ -1,32 +1,30 @@
 //!
-//! This module provides test-only atoms for debugging, testing, and development.
-//! These atoms are only available when compiled with debug assertions or the `test-atom` feature.
+//! This module provides test-related atoms for the Sutra engine.
+//! These atoms support test registration, execution, and assertion.
 //!
-//! ## Test Atom Contracts
+//! ## Atoms Provided
 //!
-//! Test atoms follow the same contracts as standard atoms but may have additional
-//! behaviors for testing purposes:
-//! - May emit debug output for verification
-//! - May stress-test internal systems (borrowing, recursion, etc.)
-//! - May have non-standard return values for testing edge cases
+//! - **Test Registration**: `register-test!`
+//! - **Test Assertions**: `value`, `tags`
+//! - **Test Utilities**: `test/echo`
+//!
+//! ## Design Principles
+//!
+//! - **AST Storage**: Tests are stored as AST nodes to preserve source context
+//! - **Diagnostic Support**: Rich error reporting with source locations
+//! - **Global Registry**: Centralized test storage for discovery and execution
 
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
 
+use lazy_static::lazy_static;
 use miette::NamedSource;
-use once_cell::sync::Lazy;
 
 // Use the public context helper macro
-use crate::sub_eval_context;
-use crate::{
-    ast::{AstNode, Expr, Span, Spanned},
-    atoms::{helpers::validate_special_form_arity, AtomRegistry, SpecialFormAtomFn},
-    err_ctx, err_msg, err_src,
-    runtime::eval::{evaluate_ast_node, EvaluationContext},
-    to_error_source, SutraError, Value, World,
-};
+use crate::prelude::*;
+use crate::{atoms::SpecialFormAtomFn, helpers, runtime::eval, sub_eval_context};
 
 /// Represents a single test case definition with source context for diagnostics.
 #[derive(Debug, Clone)]
@@ -38,9 +36,10 @@ pub struct TestDefinition {
     pub source_file: Arc<NamedSource<String>>,
 }
 
-/// A global registry for storing test definitions.
-pub static TEST_REGISTRY: Lazy<Mutex<HashMap<String, TestDefinition>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+lazy_static! {
+    pub static ref TEST_REGISTRY: Mutex<HashMap<String, TestDefinition>> =
+        Mutex::new(HashMap::new());
+}
 
 /// `register-test!` special form updated for AST storage.
 ///
@@ -83,7 +82,7 @@ fn register_test_atom(
     let expect = args[1].clone();
     let body = args[2..args.len() - 1].to_vec();
 
-    let (metadata_val, _) = evaluate_ast_node(&args[args.len() - 1], ctx)?;
+    let (metadata_val, _) = eval::evaluate_ast_node(&args[args.len() - 1], ctx)?;
     let metadata = match metadata_val.as_map() {
         Some(m) => m,
         _ => {
@@ -156,7 +155,7 @@ fn value_atom(
     };
 
     // Evaluate the argument to get the actual value
-    let (val, world) = evaluate_ast_node(first, _ctx)?;
+    let (val, world) = eval::evaluate_ast_node(first, _ctx)?;
     Ok((val, world))
 }
 
@@ -177,7 +176,7 @@ fn tags_atom(
 ) -> Result<(Value, World), SutraError> {
     let mut tags = Vec::new();
     for arg in args {
-        let (val, _) = evaluate_ast_node(arg, _ctx)?;
+        let (val, _) = eval::evaluate_ast_node(arg, _ctx)?;
         match val {
             Value::String(s) => tags.push(Value::String(s)),
             _ => tags.push(val),
@@ -372,9 +371,9 @@ fn assert_atom(
     ctx: &mut EvaluationContext,
     _span: &Span,
 ) -> Result<(Value, World), SutraError> {
-    validate_special_form_arity(args, 1, "assert")?;
+    helpers::validate_special_form_arity(args, 1, "assert")?;
 
-    let (value, world) = evaluate_ast_node(&args[0], ctx)?;
+    let (value, world) = eval::evaluate_ast_node(&args[0], ctx)?;
     let is_truthy = match value {
         Value::Bool(b) => b,
         Value::Nil => false,
@@ -411,11 +410,11 @@ fn assert_eq_atom(
     ctx: &mut EvaluationContext,
     span: &Span,
 ) -> Result<(Value, World), SutraError> {
-    validate_special_form_arity(args, 2, "assert-eq")?;
+    helpers::validate_special_form_arity(args, 2, "assert-eq")?;
 
-    let (expected, world1) = evaluate_ast_node(&args[0], ctx)?;
+    let (expected, world1) = eval::evaluate_ast_node(&args[0], ctx)?;
     let mut sub_context = sub_eval_context!(ctx, &world1);
-    let (actual, world2) = evaluate_ast_node(&args[1], &mut sub_context)?;
+    let (actual, world2) = eval::evaluate_ast_node(&args[1], &mut sub_context)?;
 
     if expected != actual {
         return Err(err_src!(

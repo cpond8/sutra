@@ -40,11 +40,13 @@ use std::{cell::RefCell, rc::Rc};
 
 use im::HashMap;
 
+// Core types via prelude
+use crate::prelude::*;
+
+// Domain modules with aliases
 use crate::{
     atoms::helpers::{AtomResult, PureResult},
-    err_msg,
     runtime::eval::EvaluationContext,
-    AstNode, AtomExecutionContext, Path, Span, SutraError, Value, World,
 };
 
 // ============================================================================

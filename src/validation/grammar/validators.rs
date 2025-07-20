@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+// Domain modules with aliases
 use crate::validation::{Rule, ValidationReporter, ValidationResult, GRAMMAR_CONSTANTS};
 
 /// Validates grammar rules for various correctness issues

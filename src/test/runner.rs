@@ -1,7 +1,5 @@
-use crate::{
-    discovery::ASTDefinition, engine::ExecutionPipeline, err_msg, err_src, AstNode, ErrorType,
-    SharedOutput, SutraError, Value,
-};
+use crate::prelude::*;
+use crate::{discovery::ASTDefinition, engine::ExecutionPipeline};
 
 /// Executes test code with proper macro expansion and special form preservation.
 /// This method is specifically designed for test execution and ensures that
@@ -102,7 +100,7 @@ impl TestRunner {
             .as_ref()
             .ok_or_else(|| err_msg!(TestSyntaxFailure, "Test is missing expect form"))?;
 
-        let crate::ast::Expr::List(items, _) = &*expect.value else {
+        let Expr::List(items, _) = &*expect.value else {
             return Err(err_src!(
                 TestSyntaxFailure,
                 format!("\"{}\"\nexpect form must be a list", test_form.name),
@@ -140,14 +138,14 @@ impl TestRunner {
         item: &AstNode,
         test_form: &ASTDefinition,
     ) -> Result<Option<Value>, SutraError> {
-        let crate::ast::Expr::List(value_items, _) = &*item.value else {
+        let Expr::List(value_items, _) = &*item.value else {
             return Ok(None);
         };
         if value_items.len() != 2 {
             return Ok(None);
         };
 
-        let crate::ast::Expr::Symbol(s, _) = &*value_items[0].value else {
+        let Expr::Symbol(s, _) = &*value_items[0].value else {
             return Ok(None);
         };
         if s != "value" {
@@ -155,10 +153,10 @@ impl TestRunner {
         };
 
         match &*value_items[1].value {
-            crate::ast::Expr::Number(n, _) => Ok(Some(Value::Number(*n))),
-            crate::ast::Expr::String(s, _) => Ok(Some(Value::String(s.clone()))),
-            crate::ast::Expr::Bool(b, _) => Ok(Some(Value::Bool(*b))),
-            crate::ast::Expr::Symbol(s, _) if s == "nil" => Ok(Some(Value::Nil)),
+            Expr::Number(n, _) => Ok(Some(Value::Number(*n))),
+            Expr::String(s, _) => Ok(Some(Value::String(s.clone()))),
+            Expr::Bool(b, _) => Ok(Some(Value::Bool(*b))),
+            Expr::Symbol(s, _) if s == "nil" => Ok(Some(Value::Nil)),
             _ => Err(err_src!(
                 TestSyntaxFailure,
                 format!(
@@ -175,21 +173,21 @@ impl TestRunner {
         item: &AstNode,
         test_form: &ASTDefinition,
     ) -> Result<Option<Value>, SutraError> {
-        let crate::ast::Expr::List(error_items, _) = &*item.value else {
+        let Expr::List(error_items, _) = &*item.value else {
             return Ok(None);
         };
         if error_items.len() != 2 {
             return Ok(None);
         };
 
-        let crate::ast::Expr::Symbol(s, _) = &*error_items[0].value else {
+        let Expr::Symbol(s, _) = &*error_items[0].value else {
             return Ok(None);
         };
         if s != "error" {
             return Ok(None);
         };
 
-        let crate::ast::Expr::Symbol(error_type, _) = &*error_items[1].value else {
+        let Expr::Symbol(error_type, _) = &*error_items[1].value else {
             return Err(err_src!(
                 TestSyntaxFailure,
                 format!("\"{}\"\nerror type must be a symbol", test_form.name),

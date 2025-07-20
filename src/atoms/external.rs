@@ -13,13 +13,8 @@
 //! - **Deterministic Where Possible**: Consistent behavior within constraints
 //! - **Minimal External Dependencies**: Simple implementations
 
-use crate::{
-    atoms::{
-        helpers::{validate_unary_arity, validate_zero_arity},
-        AtomRegistry, StatefulAtomFn,
-    },
-    Value,
-};
+use crate::prelude::*;
+use crate::{atoms::StatefulAtomFn, helpers};
 
 // ============================================================================
 // I/O OPERATIONS
@@ -35,7 +30,7 @@ use crate::{
 /// Example:
 ///   (print "hello")
 pub const ATOM_PRINT: StatefulAtomFn = |args, context| {
-    validate_unary_arity(args, "print")?;
+    helpers::validate_unary_arity(args, "print")?;
 
     context.output.borrow_mut().emit(&args[0].to_string(), None);
     Ok(Value::Nil)
@@ -51,7 +46,7 @@ pub const ATOM_PRINT: StatefulAtomFn = |args, context| {
 /// Example:
 ///   (output "hello")
 pub const ATOM_OUTPUT: StatefulAtomFn = |args, context| {
-    validate_unary_arity(args, "output")?;
+    helpers::validate_unary_arity(args, "output")?;
 
     context.output.borrow_mut().emit(&args[0].to_string(), None);
     Ok(Value::Nil)
@@ -71,7 +66,7 @@ pub const ATOM_OUTPUT: StatefulAtomFn = |args, context| {
 /// Example:
 ///   (rand) ; => 0.7234567 (example)
 pub const ATOM_RAND: StatefulAtomFn = |args, context| {
-    validate_zero_arity(args, "rand")?;
+    helpers::validate_zero_arity(args, "rand")?;
 
     let n = context.rng.next_u32();
     let random_value = (n as f64) / (u32::MAX as f64);

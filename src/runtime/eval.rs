@@ -24,12 +24,13 @@ use std::{collections::HashMap, rc::Rc, sync::Arc};
 
 use miette::NamedSource;
 
+// Core types via prelude
+use crate::prelude::*;
+
+// Domain modules with aliases
 use crate::{
-    ast::{value::Lambda, AstNode, Expr, Spanned},
+    ast::{value::Lambda, ParamList},
     atoms::{helpers::AtomResult, special_forms, Atom},
-    err_ctx, err_src,
-    runtime::world::{AtomExecutionContext, World},
-    AtomRegistry, ParamList, Path, SharedOutput, Span, SutraError, Value,
 };
 
 // ===================================================================================================
