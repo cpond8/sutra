@@ -82,7 +82,6 @@ type SourceContext = Arc<NamedSource<String>>;
 // ============================================================================
 
 /// Dedicated macro processing service that encapsulates macro environment building and processing.
-/// This eliminates ~120 lines of duplication between ExecutionPipeline and TestRunner.
 pub struct MacroProcessor {
     /// Whether to validate expanded AST before evaluation
     pub validate: bool,
@@ -181,7 +180,7 @@ impl MacroProcessor {
         atom_registry: &AtomRegistry,
         source_context: &SourceContext,
     ) -> ExecutionResult {
-        // Step 1: Early validation - check if validation is enabled
+        // Step 1: Check if validation is enabled
         if !self.validate {
             return Ok(());
         }
@@ -201,7 +200,7 @@ impl MacroProcessor {
             let error_message = validation_result.errors.join("\n");
             return Err(SutraError::ValidationGeneral {
                 message: format!("Semantic validation failed:\n{}", error_message),
-                src: (**source_context).clone(),
+                src: source_context.as_ref().clone(),
                 span: parser::to_source_span(expanded.span),
                 suggestion: Some("Check for undefined symbols, type errors, or invalid macro usage in your code.".to_string()),
             });
@@ -347,15 +346,15 @@ impl ExecutionPipeline {
         // Create macro processor with same configuration
         let processor = MacroProcessor::new(self.validate, self.max_depth);
 
-        // Phase 1-5: Use MacroProcessor's unified partition and process pipeline
+        // Step 1: Use MacroProcessor's unified partition and process pipeline
         let (expanded, env) = processor.partition_and_process_macros(nodes.to_vec())?;
 
-        // Phase 6: Validation step (optional but recommended)
+        // Step 2: Validation step (optional but recommended)
         let (atom_registry, _) = MacroProcessor::build_standard_registries();
         let source_context = processor.create_source_context("ast_execution", "");
         processor.validate_expanded_ast(&expanded, &env, &atom_registry, &source_context)?;
 
-        // Phase 7: Evaluate the expanded AST (CRITICAL: No macro expansion happens here)
+        // Step 3: Evaluate the expanded AST (CRITICAL: No macro expansion happens here)
         let output = SharedOutput(std::rc::Rc::new(std::cell::RefCell::new(
             EngineOutputBuffer::new(),
         )));
@@ -368,13 +367,13 @@ impl ExecutionPipeline {
     /// Executes Sutra source code through the complete pipeline.
     /// This parses source then calls execute_nodes() for unified processing.
     pub fn execute(&self, source: &str, output: SharedOutput) -> ExecutionResult {
-        // Phase 1: Parse the source into AST nodes
+        // Step 1: Parse the source into AST nodes
         let ast_nodes = parser::parse(source)?;
 
-        // Phase 2: Execute nodes through unified pipeline
+        // Step 2: Execute nodes through unified pipeline
         let result = self.execute_nodes(&ast_nodes)?;
 
-        // Phase 3: Output result (if not nil)
+        // Step 3: Output result (if not nil)
         if !result.is_nil() {
             output.emit(&result.to_string(), None);
         }
