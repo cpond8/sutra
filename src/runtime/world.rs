@@ -290,7 +290,7 @@ fn load_and_process_user_macros(
     // Process loaded macros with duplicate checking
     let mut user_macros = StdHashMap::new();
     let mut ctx = MacroValidationContext::for_standard_library();
-    ctx.source_context = Some(to_error_source(path));
+    ctx.source_context = Some(Arc::new(NamedSource::new(path.to_string(), String::new())));
 
     ctx.validate_and_insert_many(macros, &mut user_macros)?;
     Ok(user_macros)

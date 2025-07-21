@@ -8,13 +8,8 @@
 //! (e.g., `player.score` or `(player score)`) into a canonical `Expr::Path`
 //! node. This is the only place in the entire engine where path syntax is parsed.
 
-// Core types via prelude
 use crate::prelude::*;
-
-// Domain modules with aliases
-use crate::error_messages::*;
-
-use crate::macros::MacroExpansionResult as macro_result;
+use crate::{macros::MacroExpansionResult as macro_result, errors::SutraError, syntax::parser};
 
 // ===================================================================================================
 // SYSTEM OVERVIEW
@@ -68,10 +63,12 @@ fn expr_to_path(expr: &AstNode) -> Result<Path, SutraError> {
             match item_value {
                 Expr::Symbol(s, _) | Expr::String(s, _) => parts.push(s.clone()),
                 _ => {
-                    return Err(err_msg!(
-                        Validation,
-                        "Path elements must be symbols or strings"
-                    ))
+                    return Err(SutraError::ValidationGeneral {
+                        message: "Path elements must be symbols or strings".to_string(),
+                        src: miette::NamedSource::new("macro", format!("{:?}", expr)),
+                        span: parser::to_source_span(expr.span),
+                        suggestion: Some("Use only symbols or strings in path expressions".to_string()),
+                    })
                 }
             }
         }
@@ -80,10 +77,12 @@ fn expr_to_path(expr: &AstNode) -> Result<Path, SutraError> {
     }
 
     // Fallback for unsupported expression types
-    Err(err_msg!(
-        Validation,
-        "Expression cannot be converted to a path"
-    ))
+    Err(SutraError::ValidationGeneral {
+        message: "Expression cannot be converted to a path".to_string(),
+        src: miette::NamedSource::new("macro", format!("{:?}", expr)),
+        span: parser::to_source_span(expr.span),
+        suggestion: Some("Provide a symbol, string, or list for path conversion".to_string()),
+    })
 }
 
 /// Converts a path argument to a canonical `Expr::Path` node.
@@ -136,8 +135,12 @@ fn create_number(value: f64, span: &Span) -> AstNode {
 
 /// Creates a validation error with consistent formatting for macro arity mismatches.
 fn create_arity_error(op_name: &str, expected: usize, got: usize) -> SutraError {
-    let msg = format!("{op_name} requires at least {expected} argument(s), got {got}");
-    err_msg!(Validation, msg)
+    SutraError::ValidationArity {
+        expected: format!("at least {}", expected),
+        actual: got,
+        src: miette::NamedSource::new("macro", op_name.to_string()),
+        span: parser::to_source_span(Span::default()),
+    }
 }
 
 // ===================================================================================================
@@ -149,7 +152,12 @@ fn create_arity_error(op_name: &str, expected: usize, got: usize) -> SutraError 
 /// Converts the first argument to a canonical path if present.
 fn create_flexible_path_op(expr: &AstNode, op_name: &str, min_args: usize) -> macro_result {
     let Expr::List(items, span) = &*expr.value else {
-        return Err(err_msg!(Validation, ERROR_EXPECTED_LIST_FORM));
+        return Err(SutraError::ValidationGeneral {
+            message: "Expected list form for macro".to_string(),
+            src: miette::NamedSource::new("macro", format!("{:?}", expr)),
+            span: parser::to_source_span(expr.span),
+            suggestion: Some("Macro calls must be list expressions".to_string()),
+        });
     };
 
     if items.len() < min_args {
@@ -182,7 +190,12 @@ fn create_binary_op(expr: &AstNode, op_name: &str) -> macro_result {
 /// Flexible helper for assignment macros like `add!`, `sub!`, etc.
 fn create_assignment_macro(expr: &AstNode, op_symbol: &str) -> macro_result {
     let Expr::List(items, span) = &*expr.value else {
-        return Err(err_msg!(Validation, ERROR_EXPECTED_LIST_FORM));
+        return Err(SutraError::ValidationGeneral {
+            message: "Expected list form for macro".to_string(),
+            src: miette::NamedSource::new("macro", format!("{:?}", expr)),
+            span: parser::to_source_span(expr.span),
+            suggestion: Some("Macro calls must be list expressions".to_string()),
+        });
     };
 
     if items.len() < 3 {
@@ -215,7 +228,12 @@ fn create_assignment_macro(expr: &AstNode, op_symbol: &str) -> macro_result {
 /// Flexible helper for unary increment/decrement macros like `inc!`, `dec!`.
 fn create_unary_assignment_macro(expr: &AstNode, op_symbol: &str) -> macro_result {
     let Expr::List(items, span) = &*expr.value else {
-        return Err(err_msg!(Validation, ERROR_EXPECTED_LIST_FORM));
+        return Err(SutraError::ValidationGeneral {
+            message: "Expected list form for macro".to_string(),
+            src: miette::NamedSource::new("macro", format!("{:?}", expr)),
+            span: parser::to_source_span(expr.span),
+            suggestion: Some("Macro calls must be list expressions".to_string()),
+        });
     };
 
     if items.len() < 2 {
@@ -311,12 +329,22 @@ pub fn expand_dec(expr: &AstNode) -> macro_result {
 pub fn expand_print(expr: &AstNode) -> macro_result {
     // Extract list items and span
     let Expr::List(items, span) = &*expr.value else {
-        return Err(err_msg!(Validation, ERROR_EXPECTED_LIST_FORM));
+        return Err(SutraError::ValidationGeneral {
+            message: "Expected list form for macro".to_string(),
+            src: miette::NamedSource::new("macro", format!("{:?}", expr)),
+            span: parser::to_source_span(expr.span),
+            suggestion: Some("Macro calls must be list expressions".to_string()),
+        });
     };
 
     // Ensure we have at least the macro name
     if items.is_empty() {
-        return Err(err_msg!(Validation, ERROR_EXPECTED_LIST_FORM));
+        return Err(SutraError::ValidationGeneral {
+            message: "Expected list form for macro".to_string(),
+            src: miette::NamedSource::new("macro", format!("{:?}", expr)),
+            span: parser::to_source_span(expr.span),
+            suggestion: Some("Macro calls must be list expressions".to_string()),
+        });
     }
 
     // Replace macro name with core/print

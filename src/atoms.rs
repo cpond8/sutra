@@ -39,6 +39,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use im::HashMap;
+use miette::NamedSource;
 
 // Core types via prelude
 use crate::prelude::*;
@@ -47,6 +48,7 @@ use crate::prelude::*;
 use crate::{
     atoms::helpers::{AtomResult, PureResult},
     runtime::eval::EvaluationContext,
+    syntax::parser,
 };
 
 // ============================================================================
@@ -284,7 +286,12 @@ impl Callable for Atom {
             }
             Atom::SpecialForm(_) => {
                 // SpecialForm atoms require AstNode/EvaluationContext and cannot be called via Callable
-                Err(err_msg!(Eval, "Special Form atoms cannot be called through Callable interface - use direct dispatch instead"))
+                Err(SutraError::RuntimeGeneral {
+                    message: "Special Form atoms cannot be called through Callable interface - use direct dispatch instead".to_string(),
+                    src: NamedSource::new("atoms.rs".to_string(), "".to_string()),
+                    span: parser::to_source_span(Span::default()),
+                    suggestion: None,
+                })
             }
         }
     }

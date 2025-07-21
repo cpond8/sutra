@@ -130,10 +130,12 @@ pub fn run() {
         ArgsCommand::ValidateGrammar => {
             let validation_result = grammar::validate_grammar("src/syntax/grammar.pest")
                 .unwrap_or_else(|e| {
-                    print_error(crate::err_msg!(
-                        Internal,
-                        format!("Failed to validate grammar: {}", e)
-                    ));
+                    print_error(
+                        SutraError::internal_error(
+                            "Failed to validate grammar",
+                            e.to_string(),
+                        )
+                    );
                     process::exit(1);
                 });
             let valid = validation_result.is_valid();

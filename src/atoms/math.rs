@@ -18,6 +18,8 @@ use crate::{
     atoms::PureAtomFn,
     helpers::{self, ExtractValue},
 };
+use crate::syntax::parser::to_source_span;
+use miette::NamedSource;
 
 // ============================================================================
 // ARITHMETIC OPERATIONS
@@ -33,7 +35,10 @@ use crate::{
 /// Example:
 ///   (+ 1 2 3) ; => 6
 pub const ATOM_ADD: PureAtomFn =
-    |args| helpers::pure_eval_nary_numeric_op_custom(args, 0.0, |acc, n| acc + n, "+");
+    |args| {
+        helpers::validate_min_arity(args, 2, "+")?;
+        helpers::pure_eval_nary_numeric_op_custom(args, 0.0, |acc, n| acc + n, "+")
+    };
 
 /// Subtracts two numbers.
 ///
@@ -70,7 +75,10 @@ pub const ATOM_SUB: PureAtomFn = |args| {
 /// Example:
 ///   (* 2 3 4) ; => 24
 pub const ATOM_MUL: PureAtomFn =
-    |args| helpers::pure_eval_nary_numeric_op_custom(args, 1.0, |acc, n| acc * n, "*");
+    |args| {
+        helpers::validate_min_arity(args, 2, "*")?;
+        helpers::pure_eval_nary_numeric_op_custom(args, 1.0, |acc, n| acc * n, "*")
+    };
 
 /// Divides two numbers.
 ///
@@ -88,7 +96,12 @@ pub const ATOM_DIV: PureAtomFn = |args| {
     let first: f64 = args[0].extract()?;
     if args.len() == 1 {
         if first == 0.0 {
-            return Err(err_msg!(Eval, "division by zero"));
+            return Err(SutraError::RuntimeGeneral {
+                message: "division by zero".to_string(),
+                src: NamedSource::new("atoms/math.rs".to_string(), "".to_string()),
+                span: to_source_span(Span::default()),
+                suggestion: None,
+            });
         }
         return Ok(Value::Number(1.0 / first));
     }
@@ -97,7 +110,12 @@ pub const ATOM_DIV: PureAtomFn = |args| {
     for arg in args.iter().skip(1) {
         let n: f64 = arg.extract()?;
         if n == 0.0 {
-            return Err(err_msg!(Eval, "division by zero"));
+            return Err(SutraError::RuntimeGeneral {
+                message: "division by zero".to_string(),
+                src: NamedSource::new("atoms/math.rs".to_string(), "".to_string()),
+                span: to_source_span(Span::default()),
+                suggestion: None,
+            });
         }
         result /= n;
     }
@@ -121,7 +139,12 @@ pub const ATOM_MOD: PureAtomFn = |args| {
     let b: f64 = args[1].extract()?;
 
     if b == 0.0 {
-        return Err(err_msg!(Eval, "modulo by zero"));
+        return Err(SutraError::RuntimeGeneral {
+            message: "modulo by zero".to_string(),
+            src: NamedSource::new("atoms/math.rs".to_string(), "".to_string()),
+            span: to_source_span(Span::default()),
+            suggestion: None,
+        });
     }
 
     Ok(Value::Number(a % b))

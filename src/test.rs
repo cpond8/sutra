@@ -1,4 +1,4 @@
-use crate::{ErrorType, SutraError, Value};
+use crate::{errors::ErrorType, errors::SutraError, Value};
 
 /// Type-safe expectation enum for test assertions.
 /// This replaces fragile string-based expectation handling.
@@ -8,6 +8,8 @@ pub enum Expectation {
     Value(Value),
     /// Expect a specific error type
     Error(ErrorType),
+    /// Expect specific output to be produced
+    Output(String),
 }
 
 impl Expectation {

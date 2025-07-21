@@ -371,11 +371,6 @@ The power of this design is that authors can write in the more natural Block sty
 
 This section highlights specific behaviors and design choices in Sutra that might be non-obvious but are intentional. Understanding these can help in writing more robust and idiomatic Sutra code.
 
-- **Identity Values for Arithmetic Atoms:** When called with no arguments, `+` returns its identity value `0`, and `*` returns its identity value `1`. This is a common convention in Lisp-family languages.
-
-  - `(+)` => `0`
-  - `(*)` => `1`
-
 - **Unary Negation and Reciprocal:** The `-` and `/` atoms can be called with a single argument.
 
   - `(- x)` returns the negation of `x`.
@@ -447,9 +442,9 @@ This section highlights specific behaviors and design choices in Sutra that migh
 
 | Operation | Arity | Purpose                      | Example               |
 | :-------- | :---- | :--------------------------- | :-------------------- |
-| `+`       | 0..   | Addition                     | `(+ 1 2 3)`           |
+| `+`       | 2..   | Addition                     | `(+ 1 2 3)`           |
 | `-`       | 1..   | Subtraction/Negation         | `(- 10 5)`            |
-| `*`       | 0..   | Multiplication               | `(* 2 3 4)`           |
+| `*`       | 2..   | Multiplication               | `(* 2 3 4)`           |
 | `/`       | 1..   | Division                     | `(/ 10 4)`            |
 | `mod`     | 2     | Modulo (int)                 | `(mod 10 3)`          |
 | `len`     | 1     | Length (list/string)         | `(len (list 1 2 3))`  |

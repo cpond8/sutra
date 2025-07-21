@@ -9,7 +9,7 @@
 //! - **Syntactic Only**: Macros operate solely on the AST (`AstNode`) with no access
 //!   to `World` state or side effects
 //! - **Pure Transformation**: Expansion is a pure function: `(AstNode) -> Result<AstNode, SutraError>`
-//! - **Unified Error System**: All errors use `SutraError` via `err_msg!` or `err_ctx!` macros
+//! - **Unified Error System**: All errors use miette-native `SutraError` variants directly
 //! - **Inspectable**: Expansion process can be traced for debugging
 //! - **Layered**: Runs after parsing, before validation and evaluation
 //!
@@ -47,7 +47,9 @@ use miette::NamedSource;
 use serde::{Deserialize, Serialize};
 
 use crate::prelude::*;
-use crate::{ast::ParamList, atoms, error_messages::*};
+use crate::{ast::ParamList, atoms};
+use crate::errors::SutraError;
+use crate::syntax::parser::to_source_span;
 
 // ============================================================================
 // MODULE DECLARATIONS
@@ -123,7 +125,7 @@ impl Default for MacroValidationContext {
         Self {
             check_duplicates: true,
             allow_overwrites: false,
-            duplicate_error_template: ERROR_DUPLICATE_MACRO_NAME.to_string(),
+            duplicate_error_template: "duplicate macro name '{}'".to_string(),
             source_context: None,
         }
     }
@@ -135,7 +137,7 @@ impl MacroValidationContext {
         Self {
             check_duplicates: true,
             allow_overwrites: false,
-            duplicate_error_template: ERROR_DUPLICATE_MACRO_NAME.to_string(),
+            duplicate_error_template: "duplicate macro name '{}'".to_string(),
             source_context: None,
         }
     }
@@ -145,7 +147,7 @@ impl MacroValidationContext {
         Self {
             check_duplicates: true,
             allow_overwrites: false,
-            duplicate_error_template: ERROR_DUPLICATE_MACRO_NAME_STANDARD_LIBRARY.to_string(),
+            duplicate_error_template: "duplicate macro name '{}'".to_string(),
             source_context: None,
         }
     }
@@ -159,21 +161,23 @@ impl MacroValidationContext {
     ) -> Result<(), SutraError> {
         // Step 1: Check for duplicates if validation is enabled
         if self.check_duplicates && target.contains_key(&name) {
-            let error_msg = self.duplicate_error_template.replace("{}", &name);
-
             // Step 2: Create error with source context if available
             if let Some(source) = &self.source_context {
-                return Err(err_ctx!(
-                    Validation,
-                    error_msg,
-                    source,
-                    Span::default(),
-                    ERROR_DUPLICATE_MACRO_NAME_CONTEXT
-                ));
+                return Err(SutraError::ValidationGeneral {
+                    message: format!("duplicate macro name '{}'", name),
+                    src: (**source).clone(),
+                    span: to_source_span(Span::default()),
+                    suggestion: Some("Use unique names for macro definitions".to_string()),
+                });
             }
 
             // Step 3: Create error without source context
-            return Err(err_msg!(Validation, error_msg));
+            return Err(SutraError::ValidationGeneral {
+                message: format!("duplicate macro name '{}'", name),
+                src: NamedSource::new("macros.rs".to_string(), "".to_string()),
+                span: to_source_span(Span::default()),
+                suggestion: Some("Use unique names for macro definitions".to_string()),
+            });
         }
 
         // Step 4: Insert the macro
@@ -270,13 +274,23 @@ impl MacroTemplate {
 
         for name in &params.required {
             if !seen.insert(name) {
-                return Err(err_msg!(Validation, ERROR_DUPLICATE_PARAMETER_NAME));
+                return Err(SutraError::ValidationGeneral {
+                    message: format!("duplicate parameter name '{}'", name),
+                    src: NamedSource::new("macros.rs".to_string(), "".to_string()),
+                    span: to_source_span(Span::default()),
+                    suggestion: Some("Each parameter must have a unique name".to_string()),
+                });
             }
         }
 
         if let Some(var) = &params.rest {
             if !seen.insert(var) {
-                return Err(err_msg!(Validation, ERROR_DUPLICATE_PARAMETER_NAME));
+                return Err(SutraError::ValidationGeneral {
+                    message: format!("duplicate parameter name '{}'", var),
+                    src: NamedSource::new("macros.rs".to_string(), "".to_string()),
+                    span: to_source_span(Span::default()),
+                    suggestion: Some("Each parameter must have a unique name".to_string()),
+                });
             }
         }
 
@@ -432,19 +446,22 @@ impl MacroRegistry {
     ) -> Result<(), SutraError> {
         // Step 1: Validate name is not empty (if name validation is enabled)
         if config.validate_name && name.is_empty() {
-            return Err(err_msg!(Validation, ERROR_MACRO_NAME_CANNOT_BE_EMPTY));
+            return Err(SutraError::ValidationGeneral {
+                message: "macro name cannot be empty".to_string(),
+                src: NamedSource::new("macros.rs".to_string(), "".to_string()),
+                span: to_source_span(Span::default()),
+                suggestion: Some("Provide a non-empty macro name".to_string()),
+            });
         }
 
         // Step 2: Check for duplicate names (if duplicate checking is enabled)
         if config.check_duplicates && self.macros.contains_key(name) {
-            let src_arc = to_error_source(name);
-            return Err(err_ctx!(
-                Validation,
-                format!("Macro '{}' is already registered", name),
-                &src_arc,
-                Span::default(),
-                ERROR_MACRO_ALREADY_REGISTERED_CONTEXT
-            ));
+            return Err(SutraError::ValidationGeneral {
+                message: format!("macro '{}' is already registered", name),
+                src: NamedSource::new(name.to_string(), String::new()),
+                span: to_source_span(Span::default()),
+                suggestion: Some("Use a different name or unregister the existing macro".to_string()),
+            });
         }
 
         // Step 3: Validation successful
@@ -474,14 +491,12 @@ impl MacroRegistry {
 
         // Step 2: Reject if macro exists and overwrites not allowed
         if !config.allow_overwrite && self.macros.contains_key(name) {
-            let src_arc = to_error_source(name);
-            return Err(err_ctx!(
-                Validation,
-                format!("Macro '{}' is already registered", name),
-                &src_arc,
-                Span::default(),
-                ERROR_MACRO_ALREADY_REGISTERED_CONTEXT
-            ));
+            return Err(SutraError::ValidationGeneral {
+                message: format!("macro '{}' is already registered", name),
+                src: NamedSource::new(name.to_string(), String::new()),
+                span: to_source_span(Span::default()),
+                suggestion: Some("Use a different name or unregister the existing macro".to_string()),
+            });
         }
 
         // Step 3: Insert macro and return any previous definition
@@ -628,7 +643,12 @@ impl atoms::Callable for MacroDefinition {
     ) -> Result<(Value, World), SutraError> {
         // Macros operate on AST nodes, not Values, so they cannot be called through the Callable interface
         // This is a design limitation - macros need syntax transformation, not evaluation
-        Err(err_msg!(Validation, ERROR_MACRO_CALLABLE_INTERFACE))
+        Err(SutraError::ValidationGeneral {
+            message: "macros require AST transformation, not evaluation".to_string(),
+            src: NamedSource::new("macros.rs".to_string(), "".to_string()),
+            span: to_source_span(Span::default()),
+            suggestion: Some("Use direct macro expansion instead".to_string()),
+        })
     }
 }
 

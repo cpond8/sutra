@@ -13,16 +13,6 @@
               (tags "math"))
       (+ 1 2 3 4))  ; 1 + 2 + 3 + 4 ? => 10
 
-(test "math: + identity (zero args)"
-      (expect (value 0)
-              (tags "math"))
-      (+))  ; + ? => 0 (identity)
-
-(test "math: + single argument"
-      (expect (value 5)
-              (tags "math"))
-      (+ 5))  ; + with single argument should work
-
 (test "math: + with negatives"
       (expect (value -2)
               (tags "math"))
@@ -32,6 +22,16 @@
       (expect (error TypeError)
               (tags "math"))
       (+ 1 "two"))  ; 1 + "two" ? => type error
+
+(test "math: + arity error (zero args)"
+      (expect (error Eval)
+              (tags "math"))
+      (+))  ; + expects at least 2 arguments, got 0
+
+(test "math: + arity error (one arg)"
+      (expect (error Eval)
+              (tags "math"))
+      (+ 1))  ; + expects at least 2 arguments, got 1
 
 ;;;
 ;;; 2. Subtraction (-)
@@ -66,16 +66,6 @@
               (tags "math"))
       (* 2 3 4))  ; 2 * 3 * 4 ? => 24
 
-(test "math: * identity (zero args)"
-      (expect (value 1)
-              (tags "math"))
-      (*))  ; * ? => 1 (identity)
-
-(test "math: * single argument"
-      (expect (value 5)
-              (tags "math"))
-      (* 5))  ; * with single argument should work
-
 (test "math: * with zero"
       (expect (value 0)
               (tags "math"))
@@ -85,6 +75,16 @@
       (expect (error TypeError)
               (tags "math"))
       (* 2 "three"))  ; 2 * "three" ? => type error
+
+(test "math: * arity error (zero args)"
+      (expect (error Eval)
+              (tags "math"))
+      (*))  ; * expects at least 2 arguments, got 0
+
+(test "math: * arity error (one arg)"
+      (expect (error Eval)
+              (tags "math"))
+      (* 2))  ; * expects at least 2 arguments, got 1
 
 ;;;
 ;;; 4. Division (/)

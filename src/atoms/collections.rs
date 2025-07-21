@@ -21,6 +21,8 @@ use crate::{
     atoms::{PureAtomFn, StatefulAtomFn},
     helpers,
 };
+use crate::syntax::parser::to_source_span;
+use miette::NamedSource;
 
 // ============================================================================
 // LIST OPERATIONS
@@ -55,11 +57,12 @@ pub const ATOM_LEN: PureAtomFn = |args| {
         Value::List(items) => items.len(),
         Value::String(s) => s.len(),
         _ => {
-            return Err(err_msg!(
-                Eval,
-                "len expects a List or String, found {}",
-                val.to_string()
-            ));
+            return Err(SutraError::RuntimeGeneral {
+                message: format!("len expects a List or String, found {}", val.to_string()),
+                src: NamedSource::new("atoms/collections.rs".to_string(), "".to_string()),
+                span: to_source_span(Span::default()),
+                suggestion: None,
+            });
         }
     };
 
@@ -91,11 +94,12 @@ pub const ATOM_HAS: PureAtomFn = |args| {
             map.contains_key(key)
         }
         _ => {
-            return Err(err_msg!(
-                Eval,
-                "has? expects a List or Map as first argument, found {}",
-                collection_val.to_string()
-            ));
+            return Err(SutraError::RuntimeGeneral {
+                message: format!("has? expects a List or Map as first argument, found {}", collection_val.to_string()),
+                src: NamedSource::new("atoms/collections.rs".to_string(), "".to_string()),
+                span: to_source_span(Span::default()),
+                suggestion: None,
+            });
         }
     };
 
@@ -189,11 +193,12 @@ pub const ATOM_CORE_STR_PLUS: PureAtomFn = |args| {
 
     for val in args {
         let Value::String(s) = val else {
-            return Err(err_msg!(
-                Eval,
-                "core/str+ expects all arguments to be Strings, found {}",
-                val.to_string()
-            ));
+            return Err(SutraError::RuntimeGeneral {
+                message: format!("core/str+ expects all arguments to be Strings, found {}", val.to_string()),
+                src: NamedSource::new("atoms/collections.rs".to_string(), "".to_string()),
+                span: to_source_span(Span::default()),
+                suggestion: None,
+            });
         };
         result.push_str(s);
     }
@@ -223,7 +228,12 @@ pub const ATOM_CAR: PureAtomFn = |args| {
 
     let first = items
         .first()
-        .ok_or_else(|| err_msg!(Eval, "car: empty list"))?;
+        .ok_or_else(|| SutraError::RuntimeGeneral {
+            message: "car: empty list".to_string(),
+            src: NamedSource::new("atoms/collections.rs".to_string(), "".to_string()),
+            span: to_source_span(Span::default()),
+            suggestion: None,
+        })?;
 
     Ok(first.clone())
 };
@@ -246,7 +256,12 @@ pub const ATOM_CDR: PureAtomFn = |args| {
     let items = helpers::validate_list_value(list_val, "cdr")?;
 
     if items.is_empty() {
-        return Err(err_msg!(Eval, "cdr: empty list"));
+        return Err(SutraError::RuntimeGeneral {
+            message: "cdr: empty list".to_string(),
+            src: NamedSource::new("atoms/collections.rs".to_string(), "".to_string()),
+            span: to_source_span(Span::default()),
+            suggestion: None,
+        });
     }
 
     let rest = items[1..].to_vec();

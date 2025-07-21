@@ -9,6 +9,8 @@ use crate::{
     },
     runtime::eval,
 };
+use crate::syntax::parser::to_source_span;
+use miette::NamedSource;
 
 /// Implements the (if ...) special form with lazy evaluation.
 pub const ATOM_IF: SpecialFormAtomFn = |args, context, _span| {
@@ -32,10 +34,12 @@ pub const ATOM_LAMBDA: SpecialFormAtomFn = |args, context, span| {
     let param_list = match &*args[0].value {
         Expr::ParamList(pl) => pl.clone(),
         _ => {
-            return Err(err_msg!(
-                Eval,
-                "lambda: first argument must be a parameter list"
-            ))
+            return Err(SutraError::RuntimeGeneral {
+                message: "lambda: first argument must be a parameter list".to_string(),
+                src: NamedSource::new("atoms/special_forms.rs".to_string(), "".to_string()),
+                span: to_source_span(*span),
+                suggestion: None,
+            });
         }
     };
 
@@ -43,16 +47,22 @@ pub const ATOM_LAMBDA: SpecialFormAtomFn = |args, context, span| {
     let mut seen = std::collections::HashSet::new();
     for name in &param_list.required {
         if !seen.insert(name) {
-            return Err(err_msg!(Eval, "lambda: duplicate parameter '{}'", name));
+            return Err(SutraError::RuntimeGeneral {
+                message: format!("lambda: duplicate parameter '{}'", name),
+                src: NamedSource::new("atoms/special_forms.rs".to_string(), "".to_string()),
+                span: to_source_span(*span),
+                suggestion: None,
+            });
         }
     }
     if let Some(rest) = &param_list.rest {
         if !seen.insert(rest) {
-            return Err(err_msg!(
-                Eval,
-                "lambda: duplicate variadic parameter '{}'",
-                rest
-            ));
+            return Err(SutraError::RuntimeGeneral {
+                message: format!("lambda: duplicate variadic parameter '{}'", rest),
+                src: NamedSource::new("atoms/special_forms.rs".to_string(), "".to_string()),
+                span: to_source_span(*span),
+                suggestion: None,
+            });
         }
     }
 
@@ -103,10 +113,12 @@ pub const ATOM_LET: SpecialFormAtomFn = |args, context, span| {
     let bindings = match &*args[0].value {
         Expr::List(pairs, _) => pairs,
         _ => {
-            return Err(err_msg!(
-                Eval,
-                "let: first argument must be a list of bindings"
-            ))
+            return Err(SutraError::RuntimeGeneral {
+                message: "let: first argument must be a list of bindings".to_string(),
+                src: NamedSource::new("atoms/special_forms.rs".to_string(), "".to_string()),
+                span: to_source_span(*span),
+                suggestion: None,
+            });
         }
     };
 
@@ -117,13 +129,20 @@ pub const ATOM_LET: SpecialFormAtomFn = |args, context, span| {
         let (name, value_expr) = match &*pair.value {
             Expr::List(items, _) if items.len() == 2 => match &*items[0].value {
                 Expr::Symbol(name, _) => (name.clone(), &items[1]),
-                _ => return Err(err_msg!(Eval, "let: binding name must be a symbol")),
+                _ => return Err(SutraError::RuntimeGeneral {
+                    message: "let: binding name must be a symbol".to_string(),
+                    src: NamedSource::new("atoms/special_forms.rs".to_string(), "".to_string()),
+                    span: to_source_span(*span),
+                    suggestion: None,
+                }),
             },
             _ => {
-                return Err(err_msg!(
-                    Eval,
-                    "let: each binding must be a (name value) pair"
-                ))
+                return Err(SutraError::RuntimeGeneral {
+                    message: "let: each binding must be a (name value) pair".to_string(),
+                    src: NamedSource::new("atoms/special_forms.rs".to_string(), "".to_string()),
+                    span: to_source_span(*span),
+                    suggestion: None,
+                });
             }
         };
         let (value, _) = eval::evaluate_ast_node(value_expr, &mut new_context)?;
@@ -181,7 +200,12 @@ pub fn call_lambda(
             if variadic { "+" } else { "" },
             args.len()
         );
-        return Err(err_msg!(Eval, "{}", msg));
+        return Err(SutraError::RuntimeGeneral {
+            message: msg,
+            src: NamedSource::new("atoms/special_forms.rs".to_string(), "".to_string()),
+            span: to_source_span(Span::default()),
+            suggestion: None,
+        });
     }
     for (name, value) in lambda.params.required.iter().zip(args.iter()) {
         new_context.set_lexical_var(name, value.clone());

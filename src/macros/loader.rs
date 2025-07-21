@@ -4,11 +4,10 @@
 
 use std::{collections::HashSet, fs, path::Path};
 
-// Core types via prelude
-use crate::prelude::*;
 
-// Domain modules with aliases
-use crate::{ast::ParamList, syntax::parser, MacroTemplate};
+use crate::prelude::*;
+use crate::{ast::ParamList, errors::SutraError, syntax::parser, MacroTemplate};
+use crate::syntax::parser::to_source_span;
 
 /// Type alias for macro parsing results
 type MacroParseResult = Result<Vec<(String, MacroTemplate)>, SutraError>;
@@ -20,7 +19,16 @@ type MacroParseResult = Result<Vec<(String, MacroTemplate)>, SutraError>;
 /// Parses Sutra macro definitions from a source string.
 /// Identifies `define` forms, validates structure and parameters, and checks for duplicates.
 pub fn parse_macros_from_source(source: &str) -> MacroParseResult {
-    let exprs = parser::parse(source)?;
+    let exprs = parser::parse(source).map_err(|e| {
+        // If parser::parse already returns SutraError, this is a no-op. Otherwise, wrap as ParseMalformed.
+        // Here, we assume e is convertible to string for message, and no source context is available.
+        SutraError::ParseMalformed {
+            construct: "macro source".to_string(),
+            src: miette::NamedSource::new("macro source", source.to_string()),
+            span: to_source_span(Span::default()),
+            suggestion: Some(e.to_string()),
+        }
+    })?;
     let mut macros = Vec::new();
     let mut names_seen = HashSet::new();
 
@@ -35,15 +43,12 @@ pub fn parse_macros_from_source(source: &str) -> MacroParseResult {
 /// Loads macro definitions from a file, with ergonomic path handling.
 pub fn load_macros_from_file<P: AsRef<Path>>(path: P) -> MacroParseResult {
     let path_str = path.as_ref().to_string_lossy();
-    let src_arc = to_error_source(&*path_str);
-    let source = fs::read_to_string(&path).map_err(|e| {
-        err_ctx!(
-            Internal,
-            format!("Failed to read file: {}", e.to_string()),
-            &src_arc,
-            Span::default(),
-            "Check that the macro file exists and is readable."
-        )
+    let source = fs::read_to_string(&path).map_err(|e| SutraError::ResourceOperation {
+        operation: "read".to_string(),
+        path: path_str.to_string(),
+        reason: e.to_string(),
+        source: Some(Box::new(e)),
+        suggestion: Some("Check that the macro file exists and is readable.".to_string()),
     })?;
     parse_macros_from_source(&source)
 }
@@ -58,32 +63,22 @@ pub fn check_arity(
 ) -> Result<(), SutraError> {
     let required_len = params.required.len();
     let has_variadic = params.rest.is_some();
-    let src_arc = to_error_source(macro_name);
-    // Too few arguments
+    let src = miette::NamedSource::new(macro_name.to_string(), macro_name.to_string());
     if args_len < required_len {
-        return Err(err_ctx!(
-            Eval,
-            format!(
-                "Macro arity error: expected at least {} arguments, got {}",
-                required_len, args_len
-            ),
-            &src_arc,
-            *span,
-            "Too few arguments for macro"
-        ));
+        return Err(SutraError::ValidationArity {
+            expected: format!("at least {}", required_len),
+            actual: args_len,
+            src: src.clone(),
+            span: to_source_span(*span),
+        });
     }
-    // Too many arguments for non-variadic macro
     if args_len > required_len && !has_variadic {
-        return Err(err_ctx!(
-            Eval,
-            format!(
-                "Macro arity error: expected exactly {} arguments, got {}",
-                required_len, args_len
-            ),
-            &src_arc,
-            *span,
-            "Too many arguments for macro"
-        ));
+        return Err(SutraError::ValidationArity {
+            expected: format!("{}", required_len),
+            actual: args_len,
+            src,
+            span: to_source_span(*span),
+        });
     }
     Ok(())
 }
@@ -107,16 +102,15 @@ fn try_parse_macro_form(
     else {
         return Ok(None);
     };
-    let src_arc = to_error_source(name);
+    let src = miette::NamedSource::new(name.clone(), name.clone());
     // Check for duplicate macro names
     if !names_seen.insert(name.clone()) {
-        return Err(err_ctx!(
-            Validation,
-            format!("Duplicate macro name '{}'", name),
-            &src_arc,
-            *span,
-            "Duplicate macro name"
-        ));
+        return Err(SutraError::MacroDuplicate {
+            name: name.clone(),
+            src: src.clone(),
+            span: to_source_span(*span),
+            first_definition: to_source_span(*span),
+        });
     }
     // Attempt to construct the macro template
     let template = MacroTemplate::new(params.clone(), body.clone())?;
@@ -143,29 +137,57 @@ pub fn is_macro_definition(expr: &AstNode) -> bool {
 
 /// Parses a macro definition AST node into a (name, MacroTemplate) pair.
 pub fn parse_macro_definition(expr: &AstNode) -> Result<(String, MacroTemplate), SutraError> {
-    let Expr::List(items, _) = &*expr.value else {
-        return Err(err_msg!(Internal, "Not a macro definition list."));
+    let Expr::List(items, span) = &*expr.value else {
+        return Err(SutraError::MacroInvalidDefinition {
+            reason: "must be list expression".to_string(),
+            actual_count: None,
+            src: miette::NamedSource::new("macro definition", format!("{:?}", expr)),
+            span: to_source_span(expr.span),
+        });
     };
     if items.len() != 3 {
-        return Err(err_msg!(Internal, "Macro definition must have 3 elements."));
+        return Err(SutraError::MacroInvalidDefinition {
+            reason: "requires exactly 3 elements".to_string(),
+            actual_count: Some(items.len()),
+            src: miette::NamedSource::new("macro definition", format!("{:?}", expr)),
+            span: to_source_span(*span),
+        });
     }
     let Expr::Symbol(def, _) = &*items[0].value else {
-        return Err(err_msg!(Internal, "First element must be 'define'."));
+        return Err(SutraError::MacroInvalidDefinition {
+            reason: "must start with 'define'".to_string(),
+            actual_count: Some(items.len()),
+            src: miette::NamedSource::new("macro definition", format!("{:?}", expr)),
+            span: to_source_span(items[0].span),
+        });
     };
     if def != "define" {
-        return Err(err_msg!(Internal, "First element must be 'define'."));
+        return Err(SutraError::MacroInvalidDefinition {
+            reason: "first element must be 'define'".to_string(),
+            actual_count: Some(items.len()),
+            src: miette::NamedSource::new("macro definition", format!("{:?}", expr)),
+            span: to_source_span(items[0].span),
+        });
     }
     let Expr::ParamList(param_list) = &*items[1].value else {
-        return Err(err_msg!(
-            Internal,
-            "Second element must be a parameter list."
-        ));
+        return Err(SutraError::MacroInvalidDefinition {
+            reason: "second element must be parameter list".to_string(),
+            actual_count: Some(items.len()),
+            src: miette::NamedSource::new("macro definition", format!("{:?}", expr)),
+            span: to_source_span(items[1].span),
+        });
     };
-    let macro_name = param_list
-        .required
-        .first()
-        .cloned()
-        .ok_or_else(|| err_msg!(Internal, "Macro name missing in parameter list."))?;
+    let macro_name =
+        param_list
+            .required
+            .first()
+            .cloned()
+            .ok_or_else(|| SutraError::MacroInvalidDefinition {
+                reason: "macro name missing in parameter list".to_string(),
+                actual_count: Some(param_list.required.len()),
+                src: miette::NamedSource::new("macro definition", format!("{:?}", expr)),
+                span: to_source_span(items[1].span),
+            })?;
     let params = ParamList {
         required: param_list.required[1..].to_vec(),
         rest: param_list.rest.clone(),

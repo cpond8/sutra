@@ -15,6 +15,8 @@
 
 use crate::prelude::*;
 use crate::{atoms::SpecialFormAtomFn, helpers, runtime::eval};
+use crate::syntax::parser::to_source_span;
+use miette::NamedSource;
 
 // ============================================================================
 // CONTROL FLOW OPERATIONS
@@ -65,9 +67,19 @@ pub const ATOM_DO: SpecialFormAtomFn = |args, context, _parent_span| {
 pub const ATOM_ERROR: SpecialFormAtomFn = |args, context, _parent_span| {
     let (val, _world) = helpers::eval_single_arg(args, context)?;
     let Value::String(msg) = val else {
-        return Err(err_msg!(TypeError, "error expects a String argument"));
+        return Err(SutraError::TypeMismatch {
+            expected: "String".to_string(),
+            actual: val.type_name().to_string(),
+            src: NamedSource::new("atoms/execution.rs".to_string(), "".to_string()),
+            span: to_source_span(Span::default()),
+        });
     };
-    Err(err_msg!(Eval, msg))
+    Err(SutraError::RuntimeGeneral {
+        message: msg,
+        src: NamedSource::new("atoms/execution.rs".to_string(), "".to_string()),
+        span: to_source_span(Span::default()),
+        suggestion: None,
+    })
 };
 
 // ============================================================================

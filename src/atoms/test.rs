@@ -24,7 +24,10 @@ use miette::NamedSource;
 
 // Use the public context helper macro
 use crate::prelude::*;
-use crate::{atoms::SpecialFormAtomFn, helpers, runtime::eval, sub_eval_context};
+use crate::{
+    atoms::SpecialFormAtomFn, helpers, runtime::eval, sub_eval_context,
+    syntax::parser::to_source_span,
+};
 
 /// Represents a single test case definition with source context for diagnostics.
 #[derive(Debug, Clone)]
@@ -59,23 +62,23 @@ fn register_test_atom(
     span: &Span,
 ) -> Result<(Value, World), SutraError> {
     if args.len() < 4 {
-        return Err(err_src!(
-            Validation,
-            "Expected at least 4 arguments (name, expect, metadata, and at least one body expression)",
-            &ctx.source,
-            *span
-        ));
+        return Err(SutraError::ValidationGeneral {
+            message: "Expected at least 4 arguments (name, expect, metadata, and at least one body expression)".to_string(),
+            src: ctx.source.as_ref().clone(),
+            span: to_source_span(*span),
+            suggestion: None,
+        });
     }
 
     let name = match &*args[0].value {
         Expr::String(s, _) => s.clone(),
         _ => {
-            return Err(err_src!(
-                Validation,
-                "Test name must be a string",
-                &ctx.source,
-                args[0].span
-            ));
+            return Err(SutraError::ValidationGeneral {
+                message: "Test name must be a string".to_string(),
+                src: ctx.source.as_ref().clone(),
+                span: to_source_span(args[0].span),
+                suggestion: None,
+            });
         }
     };
 
@@ -86,36 +89,37 @@ fn register_test_atom(
     let metadata = match metadata_val.as_map() {
         Some(m) => m,
         _ => {
-            return Err(err_src!(
-                Validation,
-                "Test metadata must be a map",
-                &ctx.source,
-                args[args.len() - 1].span
-            ));
+            return Err(SutraError::ValidationGeneral {
+                message: "Test metadata must be a map".to_string(),
+                src: ctx.source.as_ref().clone(),
+                span: to_source_span(args[args.len() - 1].span),
+                suggestion: None,
+            });
         }
     };
 
     let source_file = match metadata.get(":source-file") {
         Some(Value::String(file_path)) => {
-            let src_arc = to_error_source(file_path);
+            let src_arc = NamedSource::new(file_path.clone(), String::new());
             let source = std::fs::read_to_string(file_path).map_err(|e| {
-                err_ctx!(
-                    Internal,
-                    format!("Failed to read source file: {}", e.to_string()),
-                    &src_arc,
-                    Span::default(),
-                    "Check that the test source file exists and is readable."
-                )
+                SutraError::Internal {
+                    issue: "Failed to read source file".to_string(),
+                    details: e.to_string(),
+                    context: None,
+                    src: src_arc.clone().into(),
+                    span: Some(to_source_span(Span::default())),
+                    source: None,
+                }
             })?;
             Arc::new(NamedSource::new(file_path.clone(), source))
         }
         _ => {
-            return Err(err_src!(
-                Validation,
-                "Test metadata must contain :source-file string",
-                &ctx.source,
-                args[args.len() - 1].span
-            ));
+            return Err(SutraError::ValidationGeneral {
+                message: "Test metadata must contain :source-file string".to_string(),
+                src: ctx.source.as_ref().clone(),
+                span: to_source_span(args[args.len() - 1].span),
+                suggestion: None,
+            });
         }
     };
 
@@ -129,7 +133,14 @@ fn register_test_atom(
 
     let mut registry = TEST_REGISTRY
         .lock()
-        .map_err(|_| err_msg!(Internal, "Test registry mutex poisoned"))?;
+        .map_err(|_| SutraError::Internal {
+            issue: "Test registry mutex poisoned".to_string(),
+            details: "Mutex was poisoned during test registration".to_string(),
+            context: None,
+            src: ctx.source.as_ref().clone().into(),
+            span: Some(to_source_span(Span::default())),
+            source: None,
+        })?;
     registry.insert(name, test_def);
 
     Ok((Value::Nil, ctx.world.clone()))
@@ -381,12 +392,13 @@ fn assert_atom(
     };
 
     if !is_truthy {
-        return Err(err_src!(
-            Eval,
-            format!("Assertion failed: expected truthy value, got {:?}", value),
-            &ctx.source,
-            args[0].span
-        ));
+        return Err(SutraError::TestAssertion {
+            message: format!("Assertion failed: expected truthy value, got {:?}", value),
+            src: ctx.source.as_ref().clone(),
+            span: to_source_span(args[0].span),
+            expected: Some("truthy value".to_string()),
+            actual: Some(format!("{:?}", value)),
+        });
     }
 
     Ok((Value::Nil, world))
@@ -417,15 +429,13 @@ fn assert_eq_atom(
     let (actual, world2) = eval::evaluate_ast_node(&args[1], &mut sub_context)?;
 
     if expected != actual {
-        return Err(err_src!(
-            Eval,
-            format!(
-                "Assertion failed: expected {:?}, got {:?}",
-                expected, actual
-            ),
-            &ctx.source,
-            *span
-        ));
+        return Err(SutraError::TestAssertion {
+            message: format!("Assertion failed: expected {:?}, got {:?}", expected, actual),
+            src: ctx.source.as_ref().clone(),
+            span: to_source_span(*span),
+            expected: Some(format!("{:?}", expected)),
+            actual: Some(format!("{:?}", actual)),
+        });
     }
 
     Ok((Value::Nil, world2))

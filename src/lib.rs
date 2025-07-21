@@ -1,7 +1,6 @@
 pub use crate::{
     ast::{value::Value, AstNode, Expr, ParamList, Span, Spanned},
     atoms::{AtomRegistry, SharedOutput, StateContext},
-    diagnostics::{to_error_source, ErrorContext, ErrorType, SutraError},
     engine::{print_error, EngineOutputBuffer, EngineStdoutSink},
     macros::{
         expand_macros_recursively, MacroDefinition, MacroExpansionContext, MacroRegistry,
@@ -23,8 +22,7 @@ pub mod prelude {
         ast::value::Value,
         ast::{AstNode, Expr, Span, Spanned},
         atoms::{AtomRegistry, SharedOutput},
-        diagnostics::{to_error_source, ErrorType, SutraError},
-        err_ctx, err_msg, err_src,
+        errors::{ErrorType, SutraError},
         macros::MacroRegistry,
         runtime::eval::EvaluationContext,
         runtime::world::AtomExecutionContext,
@@ -36,10 +34,9 @@ pub mod prelude {
 pub mod ast;
 pub mod atoms;
 pub mod cli;
-pub mod diagnostics;
 pub mod discovery;
 pub mod engine;
-pub mod error_messages;
+pub mod errors;
 pub mod macros;
 pub mod runtime;
 pub mod syntax;

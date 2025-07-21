@@ -17,7 +17,9 @@ use crate::prelude::*;
 use crate::{
     atoms::{AtomRegistry, StatefulAtomFn},
     helpers::{self, ExtractValue},
+    syntax::parser::to_source_span,
 };
+use miette::NamedSource;
 
 // ============================================================================
 // WORLD STATE OPERATIONS
@@ -69,11 +71,12 @@ pub const ATOM_PATH: StatefulAtomFn = |args, _context| {
             let path = Path(vec![s.clone()]);
             Ok(Value::Path(path))
         }
-        _ => Err(err_msg!(
-            TypeError,
-            "path expects a String, found {}",
-            args[0].to_string()
-        )),
+        _ => Err(SutraError::TypeMismatch {
+            expected: "String".to_string(),
+            actual: args[0].type_name().to_string(),
+            src: NamedSource::new("atoms/world.rs".to_string(), "".to_string()),
+            span: to_source_span(Span::default()),
+        }),
     }
 };
 

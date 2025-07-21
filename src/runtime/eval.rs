@@ -9,13 +9,10 @@
 //!
 //! ## Error Handling
 //!
-//! All errors use `SutraError` via `err_msg!` or `err_ctx!` macros.
-//! See `src/diagnostics.rs` for usage rules.
+//! All errors use miette-native `SutraError` variants directly.
+//! See `src/errors.rs` for error types and usage rules.
 //!
-//! Example:
-//! ```rust
-//! use sutra::err_msg;
-//! let err = err_msg!(Eval, "Arity error");
+//! Example: let err = SutraError::RuntimeGeneral { message: "Arity error".to_string(), ... };
 //! assert!(matches!(err, sutra::SutraError::Eval { .. }));
 //! ```
 
@@ -32,6 +29,8 @@ use crate::{
     ast::{value::Lambda, ParamList},
     atoms::{helpers::AtomResult, special_forms, Atom},
 };
+
+use crate::syntax::parser::to_source_span;
 
 // ===================================================================================================
 // CORE DATA STRUCTURES: Evaluation Context
@@ -111,12 +110,12 @@ impl<'a> EvaluationContext<'a> {
 
     fn lookup_atom(&self, symbol_name: &str, head: &AstNode) -> Result<Atom, SutraError> {
         self.atom_registry.get(symbol_name).cloned().ok_or_else(|| {
-            err_src!(
-                Eval,
-                format!("Undefined symbol: '{}'", symbol_name),
-                &self.source,
-                head.span
-            )
+            SutraError::RuntimeGeneral {
+                message: format!("Undefined symbol: '{}'", symbol_name),
+                src: self.source.as_ref().clone(),
+                span: to_source_span(head.span),
+                suggestion: None,
+            }
         })
     }
 
@@ -224,12 +223,14 @@ pub fn evaluate(
 pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext) -> AtomResult {
     // Step 1: Check recursion limit
     if context.depth > context.max_depth {
-        return Err(err_src!(
-            Internal,
-            "Recursion limit exceeded",
-            &context.source,
-            expr.span
-        ));
+        return Err(SutraError::Internal {
+            issue: "Recursion limit exceeded".to_string(),
+            details: "Evaluation exceeded maximum recursion depth".to_string(),
+            context: None,
+            src: context.source.as_ref().clone().into(),
+            span: Some(to_source_span(expr.span)),
+            source: None,
+        });
     }
 
     // Step 2: Handle each expression type based on its structure
@@ -275,12 +276,12 @@ pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext)
         }
 
         // If expressions must be handled as special forms, not direct evaluation
-        Expr::If { .. } => Err(err_src!(
-            Eval,
-            "If expressions should be evaluated as special forms, not as AST nodes",
-            &context.source,
-            expr.span
-        )),
+        Expr::If { .. } => Err(SutraError::RuntimeGeneral {
+            message: "If expressions should be evaluated as special forms, not as AST nodes".to_string(),
+            src: context.source.as_ref().clone(),
+            span: to_source_span(expr.span),
+            suggestion: None,
+        }),
     }
 }
 
@@ -299,12 +300,12 @@ fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext
     let head = &items[0];
     let tail = &items[1..];
     let Expr::Symbol(symbol_name, _) = &*head.value else {
-        return Err(err_src!(
-            Eval,
-            "first element must be a symbol naming a callable entity",
-            &context.source,
-            head.span
-        ));
+        return Err(SutraError::RuntimeGeneral {
+            message: "first element must be a symbol naming a callable entity".to_string(),
+            src: context.source.as_ref().clone(),
+            span: to_source_span(head.span),
+            suggestion: None,
+        });
     };
 
     // Step 3: Process arguments (flatten spreads)
@@ -376,24 +377,24 @@ fn evaluate_quote(inner: &AstNode, context: &mut EvaluationContext) -> AtomResul
             ..
         } => evaluate_quoted_if(condition, then_branch, else_branch, context),
         Expr::Quote(_, _) => wrap_value_with_world_state(Value::Nil, context.world),
-        Expr::Define { .. } => Err(err_ctx!(
-            Eval,
-            "Cannot quote define expressions",
-            &context.source,
-            inner.span
-        )),
-        Expr::ParamList(_) => Err(err_src!(
-            Eval,
-            "Cannot evaluate parameter list (ParamList AST node) at runtime",
-            &context.source,
-            inner.span
-        )),
-        Expr::Spread(_) => Err(err_src!(
-            Eval,
-            "Spread argument not allowed inside quote",
-            &context.source,
-            inner.span
-        )),
+        Expr::Define { .. } => Err(SutraError::RuntimeGeneral {
+            message: "Cannot quote define expressions".to_string(),
+            src: context.source.as_ref().clone(),
+            span: to_source_span(inner.span),
+            suggestion: None,
+        }),
+        Expr::ParamList(_) => Err(SutraError::RuntimeGeneral {
+            message: "Cannot evaluate parameter list (ParamList AST node) at runtime".to_string(),
+            src: context.source.as_ref().clone(),
+            span: to_source_span(inner.span),
+            suggestion: None,
+        }),
+        Expr::Spread(_) => Err(SutraError::RuntimeGeneral {
+            message: "Spread argument not allowed inside quote".to_string(),
+            src: context.source.as_ref().clone(),
+            span: to_source_span(inner.span),
+            suggestion: None,
+        }),
     }
 }
 
@@ -406,12 +407,12 @@ fn handle_define_special_form(
 ) -> AtomResult {
     // Step 1: Validate argument count
     if flat_tail.len() != 2 {
-        return Err(err_src!(
-            Eval,
-            "define expects exactly 2 arguments: (define name value) or (define (name params...) body)",
-            &context.source,
-            head.span
-        ));
+        return Err(SutraError::RuntimeGeneral {
+            message: "define expects exactly 2 arguments: (define name value) or (define (name params...) body)".to_string(),
+            src: context.source.as_ref().clone(),
+            span: to_source_span(head.span),
+            suggestion: None,
+        });
     }
 
     let name_expr = &flat_tail[0];
@@ -444,12 +445,12 @@ fn parse_define_definition(
     }
 
     // Step 3: Invalid definition type (early return with error)
-    Err(err_src!(
-        Eval,
-        "define: first argument must be a symbol or parameter list",
-        &context.source,
-        name_expr.span
-    ))
+    Err(SutraError::RuntimeGeneral {
+        message: "define: first argument must be a symbol or parameter list".to_string(),
+        src: context.source.as_ref().clone(),
+        span: to_source_span(name_expr.span),
+        suggestion: None,
+    })
 }
 
 /// Parses function definition from parameter list
@@ -460,12 +461,12 @@ fn parse_function_definition(
 ) -> Result<(String, ParamList), SutraError> {
     // Step 1: Extract function name (early validation)
     let function_name = param_list.required.first().cloned().ok_or_else(|| {
-        err_src!(
-            Eval,
-            "define: function name missing in parameter list",
-            &context.source,
-            name_expr.span
-        )
+        SutraError::RuntimeGeneral {
+            message: "define: function name missing in parameter list".to_string(),
+            src: context.source.as_ref().clone(),
+            span: to_source_span(name_expr.span),
+            suggestion: None,
+        }
     })?;
 
     // Step 2: Build function parameters
@@ -513,12 +514,14 @@ fn evaluate_literal_value(expr: &AstNode, context: &mut EvaluationContext) -> At
         Expr::Number(n, _) => Value::Number(*n),
         Expr::Bool(b, _) => Value::Bool(*b),
         _ => {
-            return Err(err_src!(
-                Internal,
-                "eval_literal_value called with non-literal expression",
-                &context.source,
-                expr.span
-            ))
+            return Err(SutraError::Internal {
+                issue: "eval_literal_value called with non-literal expression".to_string(),
+                details: "Tried to evaluate a non-literal as a literal value".to_string(),
+                context: None,
+                src: context.source.as_ref().clone().into(),
+                span: Some(to_source_span(expr.span)),
+                source: None,
+            })
         }
     };
     wrap_value_with_world_state(value, context.world)
@@ -528,23 +531,23 @@ fn evaluate_literal_value(expr: &AstNode, context: &mut EvaluationContext) -> At
 fn evaluate_invalid_expr(expr: &AstNode, context: &mut EvaluationContext) -> AtomResult {
     match &*expr.value {
         // Parameter lists cannot be evaluated at runtime
-        Expr::ParamList(_) => Err(err_src!(
-            Eval,
-            "Cannot evaluate parameter list (ParamList AST node) at runtime",
-            &context.source,
-            expr.span
-        )),
+        Expr::ParamList(_) => Err(SutraError::RuntimeGeneral {
+            message: "Cannot evaluate parameter list (ParamList AST node) at runtime".to_string(),
+            src: context.source.as_ref().clone(),
+            span: to_source_span(expr.span),
+            suggestion: None,
+        }),
 
         // Symbols need resolution - may succeed or fail
         Expr::Symbol(symbol_name, span) => resolve_symbol(symbol_name, span, context),
 
         // Spread arguments are only valid in function calls
-        Expr::Spread(_) => Err(err_src!(
-            Eval,
-            "Spread argument not allowed outside of call position (list context)",
-            &context.source,
-            expr.span
-        )),
+        Expr::Spread(_) => Err(SutraError::RuntimeGeneral {
+            message: "Spread argument not allowed outside of call position (list context)".to_string(),
+            src: context.source.as_ref().clone(),
+            span: to_source_span(expr.span),
+            suggestion: None,
+        }),
 
         // This should never happen with valid expressions
         _ => unreachable!("evaluate_invalid_expr called with valid expression type"),
@@ -561,12 +564,12 @@ fn resolve_symbol(symbol_name: &str, span: &Span, context: &mut EvaluationContex
 
     // Step 2: Check if symbol is an atom (must be called, not evaluated)
     if context.atom_registry.has(symbol_name) {
-        return Err(err_src!(
-            Eval,
-            format!("'{symbol_name}' is an atom and must be called with arguments (e.g., ({symbol_name} ...))"),
-            &context.source,
-            *span
-        ));
+        return Err(SutraError::RuntimeGeneral {
+            message: format!("'{symbol_name}' is an atom and must be called with arguments (e.g., ({symbol_name} ...))"),
+            src: context.source.as_ref().clone(),
+            span: to_source_span(*span),
+            suggestion: None,
+        });
     }
 
     // Step 3: Check world state (global variables)
@@ -576,12 +579,12 @@ fn resolve_symbol(symbol_name: &str, span: &Span, context: &mut EvaluationContex
     }
 
     // Step 4: Symbol is undefined
-    Err(err_src!(
-        Eval,
-        format!("undefined symbol: '{symbol_name}'"),
-        &context.source,
-        *span
-    ))
+    Err(SutraError::RuntimeGeneral {
+        message: format!("undefined symbol: '{symbol_name}'"),
+        src: context.source.as_ref().clone(),
+        span: to_source_span(*span),
+        suggestion: None,
+    })
 }
 
 // ===================================================================================================
@@ -595,18 +598,18 @@ fn evaluate_quoted_expr(expr: &AstNode, context: &EvaluationContext) -> Result<V
         Expr::Number(n, _) => Ok(Value::Number(*n)),
         Expr::Bool(b, _) => Ok(Value::Bool(*b)),
         Expr::String(s, _) => Ok(Value::String(s.clone())),
-        Expr::ParamList(_) => Err(err_src!(
-            Eval,
-            "Cannot evaluate parameter list (ParamList AST node) inside quote",
-            &context.source,
-            expr.span
-        )),
-        Expr::Spread(_) => Err(err_src!(
-            Eval,
-            "Spread argument not allowed inside quote",
-            &context.source,
-            expr.span
-        )),
+        Expr::ParamList(_) => Err(SutraError::RuntimeGeneral {
+            message: "Cannot evaluate parameter list (ParamList AST node) inside quote".to_string(),
+            src: context.source.as_ref().clone(),
+            span: to_source_span(expr.span),
+            suggestion: None,
+        }),
+        Expr::Spread(_) => Err(SutraError::RuntimeGeneral {
+            message: "Spread argument not allowed inside quote".to_string(),
+            src: context.source.as_ref().clone(),
+            span: to_source_span(expr.span),
+            suggestion: None,
+        }),
         _ => Ok(Value::Nil),
     }
 }
@@ -732,12 +735,12 @@ fn extract_list_items(
     context: &mut EvaluationContext,
 ) -> Result<Vec<Value>, SutraError> {
     let Value::List(items) = value else {
-        return Err(err_src!(
-            TypeError,
-            format!("spread argument must be a list: {}", &value),
-            &context.source,
-            expr.span
-        ));
+        return Err(SutraError::TypeMismatch {
+            expected: "list".to_string(),
+            actual: format!("{:?}", value),
+            src: context.source.as_ref().clone(),
+            span: to_source_span(expr.span),
+        });
     };
     Ok(items)
 }
@@ -770,12 +773,12 @@ pub fn evaluate_condition_as_bool(
 
     // Guard clause: ensure condition evaluates to boolean
     let Value::Bool(b) = cond_val else {
-        return Err(err_src!(
-            TypeError,
-            "if condition must be boolean",
-            &context.source,
-            condition.span
-        ));
+        return Err(SutraError::TypeMismatch {
+            expected: "bool".to_string(),
+            actual: format!("{:?}", cond_val),
+            src: context.source.as_ref().clone(),
+            span: to_source_span(condition.span),
+        });
     };
 
     Ok((b, next_world))

@@ -1,4 +1,5 @@
 use std::{
+    fs,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -55,8 +56,12 @@ impl TestDiscoverer {
     pub fn discover_test_files<P: AsRef<Path>>(root: P) -> Result<Vec<PathBuf>, SutraError> {
         let mut files = Vec::new();
         for entry in WalkDir::new(root) {
-            let entry = entry
-                .map_err(|e| err_msg!(Internal, format!("Failed to walk directory: {}", e)))?;
+            let entry = entry.map_err(|e| {
+                SutraError::internal_error(
+                    "Failed to walk directory",
+                    e.to_string(),
+                )
+            })?;
 
             if !entry.file_type().is_file() {
                 continue;
@@ -81,10 +86,11 @@ impl TestDiscoverer {
         file_path: P,
     ) -> Result<Vec<ASTDefinition>, SutraError> {
         let path_str = file_path.as_ref().display().to_string();
-        let source = std::fs::read_to_string(file_path.as_ref()).map_err(|e| {
-            err_msg!(
-                Internal,
-                format!("Failed to read file '{}': {}", path_str, e)
+        let source = fs::read_to_string(file_path.as_ref()).map_err(|e| {
+            SutraError::resource_error(
+                "read",
+                path_str.clone(),
+                e.to_string(),
             )
         })?;
 
@@ -151,12 +157,12 @@ impl TestDiscoverer {
         source_file: SourceFile,
     ) -> Result<ASTDefinition, SutraError> {
         if items.len() < 2 {
-            return Err(err_src!(
-                Validation,
-                "Invalid test form: expected at least a name",
-                &source_file,
-                span
-            ));
+            return Err(SutraError::ValidationGeneral {
+                message: "Invalid test form: expected at least a name".to_string(),
+                src: source_file.as_ref().clone(),
+                span: parser::to_source_span(span),
+                suggestion: None,
+            });
         }
 
         let name = Self::extract_and_validate_test_name(&items[1], &source_file)?;
@@ -179,12 +185,12 @@ impl TestDiscoverer {
         source_file: &SourceFile,
     ) -> Result<String, SutraError> {
         let Expr::String(s, _) = &*name_node.value else {
-            return Err(err_src!(
-                Validation,
-                "Invalid test form: test name must be a string",
-                source_file,
-                name_node.span
-            ));
+            return Err(SutraError::ValidationGeneral {
+                message: "Invalid test form: test name must be a string".to_string(),
+                src: source_file.as_ref().clone(),
+                span: parser::to_source_span(name_node.span),
+                suggestion: None,
+            });
         };
         Ok(s.clone())
     }

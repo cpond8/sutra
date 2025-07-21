@@ -1,5 +1,9 @@
 use crate::prelude::*;
 use crate::{discovery::ASTDefinition, engine::ExecutionPipeline};
+use crate::syntax::parser::to_source_span;
+use crate::engine::EngineOutputBuffer;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// Executes test code with proper macro expansion and special form preservation.
 pub struct TestRunner;
@@ -26,6 +30,30 @@ impl TestRunner {
         let expected = Self::extract_expectation(test_form)?;
 
         // Execute test body and check result
+        if let Expectation::Output(ref expected_output) = expected {
+            // Output expectation: capture output and compare
+            let output_buffer = Rc::new(RefCell::new(EngineOutputBuffer::new()));
+            let shared_output = crate::atoms::SharedOutput(output_buffer.clone());
+            let result = Self::execute_test(&test_form.body[0], shared_output);
+            let actual_output_owned = {
+                let buf_ref = output_buffer.borrow();
+                buf_ref.as_str().to_owned()
+            };
+            if actual_output_owned != *expected_output {
+                return Err(SutraError::TestAssertion {
+                    message: format!("Expected output {:?}, got {:?}", expected_output, actual_output_owned),
+                    src: test_form.source_file.as_ref().clone(),
+                    span: to_source_span(test_form.span),
+                    expected: Some(expected_output.clone()),
+                    actual: Some(actual_output_owned),
+                });
+            }
+            if let Err(e) = result {
+                return Err(e);
+            }
+            return Ok(());
+        }
+        // Value and error expectations (existing logic)
         match Self::execute_ast(&test_form.body) {
             Ok(actual) => Self::check_success_test(test_form, &expected, actual),
             Err(e) => Self::check_error_test(test_form, &expected, e),
@@ -41,19 +69,29 @@ impl TestRunner {
             // Success case: actual matches expected value
             Expectation::Value(expected_value) if actual == *expected_value => Ok(()),
             // Failure case: actual doesn't match expected value
-            Expectation::Value(expected_value) => Err(err_src!(
-                TestSyntaxFailure,
-                format!("\"{}\"\nExpected {}, got {}", test_form.name, expected_value, actual),
-                &test_form.source_file,
-                test_form.span
-            )),
+            Expectation::Value(expected_value) => Err(SutraError::TestAssertion {
+                message: format!("\"{}\"\nExpected {}, got {}", test_form.name, expected_value, actual),
+                src: test_form.source_file.as_ref().clone(),
+                span: to_source_span(test_form.span),
+                expected: Some(expected_value.to_string()),
+                actual: Some(actual.to_string()),
+            }),
             // Failure case: expected error but got success
-            Expectation::Error(_) => Err(err_src!(
-                TestSyntaxFailure,
-                format!("\"{}\"\nExpected error, but test succeeded", test_form.name),
-                &test_form.source_file,
-                test_form.span
-            )),
+            Expectation::Error(_) => Err(SutraError::TestStructure {
+                issue: "Expected error, but test succeeded".to_string(),
+                test_name: test_form.name.clone(),
+                src: test_form.source_file.as_ref().clone(),
+                span: to_source_span(test_form.span),
+                suggestion: None,
+            }),
+            // Failure case: output expectation in value test path
+            Expectation::Output(_) => Err(SutraError::TestStructure {
+                issue: "Output expectation not handled in value test path".to_string(),
+                test_name: test_form.name.clone(),
+                src: test_form.source_file.as_ref().clone(),
+                span: to_source_span(test_form.span),
+                suggestion: Some("Output expectations should be handled in the output test path".to_string()),
+            }),
         }
     }
 
@@ -66,14 +104,23 @@ impl TestRunner {
             // Success case: error type matches expected
             Expectation::Error(expected_type) if actual_error.error_type() == *expected_type => Ok(()),
             // Failure case: expected error but got different type
-            Expectation::Error(expected_type) => Err(err_src!(
-                TestSyntaxFailure,
-                format!("\"{}\"\nExpected error type {}, got {}", test_form.name, expected_type, actual_error.error_type()),
-                &test_form.source_file,
-                test_form.span
-            )),
+            Expectation::Error(expected_type) => Err(SutraError::TestStructure {
+                issue: format!("Expected error type {}, got {}", expected_type, actual_error.error_type()),
+                test_name: test_form.name.clone(),
+                src: test_form.source_file.as_ref().clone(),
+                span: to_source_span(test_form.span),
+                suggestion: None,
+            }),
             // Failure case: expected success but got error
             Expectation::Value(_) => Err(actual_error),
+            // Failure case: output expectation in error test path
+            Expectation::Output(_) => Err(SutraError::TestStructure {
+                issue: "Output expectation not handled in error test path".to_string(),
+                test_name: test_form.name.clone(),
+                src: test_form.source_file.as_ref().clone(),
+                span: to_source_span(test_form.span),
+                suggestion: Some("Output expectations should be handled in the output test path".to_string()),
+            }),
         }
     }
 
@@ -82,16 +129,23 @@ impl TestRunner {
         let expect = test_form
             .expect_form
             .as_ref()
-            .ok_or_else(|| err_msg!(TestSyntaxFailure, "Test is missing expect form"))?;
+            .ok_or_else(|| SutraError::TestStructure {
+                issue: "Test is missing expect form".to_string(),
+                test_name: test_form.name.clone(),
+                src: test_form.source_file.as_ref().clone(),
+                span: to_source_span(test_form.span),
+                suggestion: None,
+            })?;
 
         // Validate expect form is a list
         let Expr::List(items, _) = &*expect.value else {
-            return Err(err_src!(
-                TestSyntaxFailure,
-                format!("\"{}\"\nexpect form must be a list", test_form.name),
-                &test_form.source_file,
-                test_form.span
-            ));
+            return Err(SutraError::TestStructure {
+                issue: "expect form must be a list".to_string(),
+                test_name: test_form.name.clone(),
+                src: test_form.source_file.as_ref().clone(),
+                span: to_source_span(test_form.span),
+                suggestion: None,
+            });
         };
 
         // Look for value or error clause in expect form
@@ -101,37 +155,35 @@ impl TestRunner {
             }
         }
 
-        Err(err_src!(
-            TestSyntaxFailure,
-            format!("\"{}\"\nmissing (value <expected>) or (error <type>) in expect form", test_form.name),
-            &test_form.source_file,
-            test_form.span
-        ))
+        Err(SutraError::TestStructure {
+            issue: "missing (value <expected>) or (error <type>) in expect form".to_string(),
+            test_name: test_form.name.clone(),
+            src: test_form.source_file.as_ref().clone(),
+            span: to_source_span(test_form.span),
+            suggestion: None,
+        })
     }
 
     fn extract_clause(
         item: &AstNode,
         test_form: &ASTDefinition,
     ) -> Result<Option<Expectation>, SutraError> {
-        // Check if item is a list with exactly 2 elements
-        let Expr::List(items, _) = &*item.value else {
-            return Ok(None);
-        };
-        if items.len() != 2 {
-            return Ok(None);
-        };
-
-        // Extract keyword (value/error)
-        let Expr::Symbol(keyword, _) = &*items[0].value else {
-            return Ok(None);
-        };
-
-        // Parse based on keyword type
-        match keyword.as_str() {
-            "value" => Self::extract_value(&items[1], test_form).map(|v| Some(Expectation::Value(v))),
-            "error" => Self::extract_error_type(&items[1], test_form).map(|e| Some(Expectation::Error(e))),
-            _ => Ok(None),
+        let Expr::List(items, _) = &*item.value else { return Ok(None); };
+        if items.len() != 2 { return Ok(None); }
+        let Expr::Symbol(keyword, _) = &*items[0].value else { return Ok(None); };
+        if keyword == "value" {
+            let v = Self::extract_value(&items[1], test_form)?;
+            return Ok(Some(Expectation::Value(v)));
         }
+        if keyword == "error" {
+            let e = Self::extract_error_type(&items[1], test_form)?;
+            return Ok(Some(Expectation::Error(e)));
+        }
+        if keyword == "output" {
+            let o = Self::extract_output(&items[1], test_form)?;
+            return Ok(Some(Expectation::Output(o)));
+        }
+        Ok(None)
     }
 
     fn extract_value(value_node: &AstNode, test_form: &ASTDefinition) -> Result<Value, SutraError> {
@@ -141,24 +193,26 @@ impl TestRunner {
             Expr::String(s, _) => Ok(Value::String(s.clone())),
             Expr::Bool(b, _) => Ok(Value::Bool(*b)),
             Expr::Symbol(s, _) if s == "nil" => Ok(Value::Nil),
-            _ => Err(err_src!(
-                TestSyntaxFailure,
-                format!("\"{}\"\nhas unsupported expected value type", test_form.name),
-                &test_form.source_file,
-                test_form.span
-            )),
+            _ => Err(SutraError::TestStructure {
+                issue: "unsupported expected value type".to_string(),
+                test_name: test_form.name.clone(),
+                src: test_form.source_file.as_ref().clone(),
+                span: to_source_span(test_form.span),
+                suggestion: None,
+            }),
         }
     }
 
     fn extract_error_type(error_node: &AstNode, test_form: &ASTDefinition) -> Result<ErrorType, SutraError> {
         // Extract error type symbol
         let Expr::Symbol(error_type, _) = &*error_node.value else {
-            return Err(err_src!(
-                TestSyntaxFailure,
-                format!("\"{}\"\nerror type must be a symbol", test_form.name),
-                &test_form.source_file,
-                test_form.span
-            ));
+            return Err(SutraError::TestStructure {
+                issue: "error type must be a symbol".to_string(),
+                test_name: test_form.name.clone(),
+                src: test_form.source_file.as_ref().clone(),
+                span: to_source_span(test_form.span),
+                suggestion: None,
+            });
         };
 
         // Map symbol to ErrorType enum
@@ -169,13 +223,27 @@ impl TestRunner {
             "TypeError" => Ok(ErrorType::TypeError),
             "Internal" => Ok(ErrorType::Internal),
             "TestFailure" => Ok(ErrorType::TestFailure),
-            _ => Err(err_src!(
-                TestSyntaxFailure,
-                format!("\"{}\"\nunknown error type: {}", test_form.name, error_type),
-                &test_form.source_file,
-                test_form.span
-            )),
+            _ => Err(SutraError::TestStructure {
+                issue: format!("unknown error type: {}", error_type),
+                test_name: test_form.name.clone(),
+                src: test_form.source_file.as_ref().clone(),
+                span: to_source_span(test_form.span),
+                suggestion: None,
+            }),
         }
+    }
+
+    fn extract_output(output_node: &AstNode, test_form: &ASTDefinition) -> Result<String, SutraError> {
+        let Expr::String(s, _) = &*output_node.value else {
+            return Err(SutraError::TestStructure {
+                issue: "output expectation must be a string".to_string(),
+                test_name: test_form.name.clone(),
+                src: test_form.source_file.as_ref().clone(),
+                span: to_source_span(test_form.span),
+                suggestion: None,
+            });
+        };
+        Ok(s.clone())
     }
 }
 
@@ -184,4 +252,5 @@ impl TestRunner {
 enum Expectation {
     Value(Value),
     Error(ErrorType),
+    Output(String),
 }

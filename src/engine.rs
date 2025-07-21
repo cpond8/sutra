@@ -199,13 +199,12 @@ impl MacroProcessor {
         // Step 4: Handle validation results (early return on failure)
         if !validation_result.is_valid() {
             let error_message = validation_result.errors.join("\n");
-            return Err(err_ctx!(
-                Validation,
-                format!("Semantic validation failed:\n{}", error_message),
-                source_context,
-                expanded.span,
-                "Check for undefined symbols, type errors, or invalid macro usage in your code."
-            ));
+            return Err(SutraError::ValidationGeneral {
+                message: format!("Semantic validation failed:\n{}", error_message),
+                src: (**source_context).clone(),
+                span: parser::to_source_span(expanded.span),
+                suggestion: Some("Check for undefined symbols, type errors, or invalid macro usage in your code.".to_string()),
+            });
         }
 
         // Step 5: Validation successful
@@ -301,15 +300,12 @@ impl ExecutionPipeline {
     pub fn read_file(path: &Path) -> Result<String, SutraError> {
         let filename = path
             .to_str()
-            .ok_or_else(|| err_msg!(Internal, "Invalid filename"))?;
+            .ok_or_else(|| SutraError::internal_error("Invalid filename", "Could not convert path to string"))?;
 
         std::fs::read_to_string(filename).map_err(|error| {
-            err_ctx!(
-                Internal,
-                format!("Failed to read file: {}", error),
-                &to_error_source(filename),
-                Span::default(),
-                "Check that the file exists and is readable."
+            SutraError::internal_error(
+                "Failed to read file",
+                format!("{}", error),
             )
         })
     }
