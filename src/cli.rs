@@ -2,7 +2,10 @@
 //! This module is the main entry point for all CLI commands and orchestrates
 //! the core library functions.
 
-use std::{path::{Path, PathBuf}, process};
+use std::{
+    path::{Path, PathBuf},
+    process,
+};
 
 use clap::{Parser, Subcommand};
 
@@ -130,12 +133,10 @@ pub fn run() {
         ArgsCommand::ValidateGrammar => {
             let validation_result = grammar::validate_grammar("src/syntax/grammar.pest")
                 .unwrap_or_else(|e| {
-                    print_error(
-                        SutraError::internal_error(
-                            "Failed to validate grammar",
-                            e.to_string(),
-                        )
-                    );
+                    print_error(SutraError::internal_error(
+                        "Failed to validate grammar",
+                        e.to_string(),
+                    ));
                     process::exit(1);
                 });
             let valid = validation_result.is_valid();
@@ -232,9 +233,7 @@ fn run_test_suite(path: PathBuf) {
     } else {
         0.0
     };
-    println!(
-        "\n\x1b[1m成 Success Rate: {rate:.1}% ({passed}/{total})\x1b[0m\n"
-    );
+    println!("\n\x1b[1m成 Success Rate: {rate:.1}% ({passed}/{total})\x1b[0m\n");
 }
 
 // ============================================================================

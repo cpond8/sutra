@@ -1,6 +1,6 @@
 use miette::{Diagnostic, NamedSource, SourceSpan};
-use thiserror::Error;
 use std::collections::HashMap;
+use thiserror::Error;
 
 /// Unified error type for all Sutra engine failures with native miette diagnostics
 ///
@@ -14,12 +14,8 @@ pub enum SutraError {
     // ============================================================================
     // PARSE ERRORS - Syntax and structural parsing failures
     // ============================================================================
-
     #[error("Parse error: missing {element}")]
-    #[diagnostic(
-        code(sutra::parse::missing),
-        help("Add the required syntax element")
-    )]
+    #[diagnostic(code(sutra::parse::missing), help("Add the required syntax element"))]
     ParseMissing {
         element: String, // "parameter list", "body", "function name", etc.
         #[source_code]
@@ -54,10 +50,7 @@ pub enum SutraError {
     },
 
     #[error("Parse error: empty expression")]
-    #[diagnostic(
-        code(sutra::parse::empty),
-        help("Expressions must contain content")
-    )]
+    #[diagnostic(code(sutra::parse::empty), help("Expressions must contain content"))]
     ParseEmpty {
         #[source_code]
         src: NamedSource<String>,
@@ -93,7 +86,6 @@ pub enum SutraError {
     // ============================================================================
     // VALIDATION ERRORS - Semantic validation failures
     // ============================================================================
-
     #[error("Validation error: unknown symbol '{symbol}'")]
     #[diagnostic(code(sutra::validation::unknown_symbol))]
     ValidationUnknownSymbol {
@@ -150,7 +142,6 @@ pub enum SutraError {
     // ============================================================================
     // MACRO ERRORS - Macro expansion and template failures
     // ============================================================================
-
     #[error("Macro error: duplicate macro name '{name}'")]
     #[diagnostic(
         code(sutra::macros::duplicate),
@@ -211,7 +202,6 @@ pub enum SutraError {
     // ============================================================================
     // RUNTIME ERRORS - Evaluation and execution failures
     // ============================================================================
-
     #[error("Runtime error: undefined symbol '{symbol}'")]
     #[diagnostic(
         code(sutra::runtime::undefined_symbol),
@@ -260,7 +250,7 @@ pub enum SutraError {
     )]
     RuntimeInvalidConstruct {
         construct: String, // "let binding", "special form call", etc.
-        reason: String, // "name must be symbol", "requires direct dispatch", etc.
+        reason: String,    // "name must be symbol", "requires direct dispatch", etc.
         #[source_code]
         src: NamedSource<String>,
         #[label("invalid construct")]
@@ -282,7 +272,6 @@ pub enum SutraError {
     // ============================================================================
     // TYPE ERRORS - Type system violations
     // ============================================================================
-
     #[error("Type error: expected {expected}, got {actual}")]
     #[diagnostic(
         code(sutra::types::mismatch),
@@ -314,7 +303,6 @@ pub enum SutraError {
     // ============================================================================
     // ARITHMETIC ERRORS - Mathematical operation failures
     // ============================================================================
-
     #[error("Arithmetic error: {operation} by zero")]
     #[diagnostic(
         code(sutra::arithmetic::division_by_zero),
@@ -331,7 +319,6 @@ pub enum SutraError {
     // ============================================================================
     // RESOURCE ERRORS - File I/O and resource access failures
     // ============================================================================
-
     #[error("Resource error: {operation} failed for '{path}' - {reason}")]
     #[diagnostic(code(sutra::resource::operation_failed))]
     ResourceOperation {
@@ -347,7 +334,6 @@ pub enum SutraError {
     // ============================================================================
     // TEST ERRORS - Test execution and assertion failures
     // ============================================================================
-
     #[error("Test assertion failed: {message}")]
     #[diagnostic(
         code(sutra::test::assertion_failed),
@@ -364,10 +350,7 @@ pub enum SutraError {
     },
 
     #[error("Test error: duplicate test name '{name}'")]
-    #[diagnostic(
-        code(sutra::test::duplicate),
-        help("Use unique names for each test")
-    )]
+    #[diagnostic(code(sutra::test::duplicate), help("Use unique names for each test"))]
     TestDuplicate {
         name: String,
         #[source_code]
@@ -394,7 +377,6 @@ pub enum SutraError {
     // ============================================================================
     // LIMIT ERRORS - Resource and computational limits exceeded
     // ============================================================================
-
     #[error("Limit exceeded: {limit_type} - current {current}, maximum {maximum}")]
     #[diagnostic(code(sutra::limit::exceeded))]
     LimitExceeded {
@@ -412,7 +394,6 @@ pub enum SutraError {
     // ============================================================================
     // CONFIGURATION ERRORS - Setup and compatibility issues
     // ============================================================================
-
     #[error("Configuration error: {issue} - {details}")]
     #[diagnostic(code(sutra::config::error))]
     Configuration {
@@ -425,7 +406,6 @@ pub enum SutraError {
     // ============================================================================
     // STORY ERRORS - Narrative logic and consistency failures
     // ============================================================================
-
     #[error("Story error: {problem} in '{element}'")]
     #[diagnostic(code(sutra::story::logic_error))]
     StoryLogic {
@@ -444,7 +424,6 @@ pub enum SutraError {
     // ============================================================================
     // INTERNAL ERRORS - Engine bugs and system failures
     // ============================================================================
-
     #[error("Internal error: {issue} - {details}")]
     #[diagnostic(
         code(sutra::internal::error),
@@ -465,7 +444,6 @@ pub enum SutraError {
     // ============================================================================
     // COMPOSITE ERRORS - Multiple related errors
     // ============================================================================
-
     #[error("Multiple errors: {operation} failed with {count} errors")]
     #[diagnostic(
         code(sutra::composite::multiple),
@@ -480,7 +458,6 @@ pub enum SutraError {
     // ============================================================================
     // WARNINGS - Non-fatal issues
     // ============================================================================
-
     #[error("Warning: {category} - {message}")]
     #[diagnostic(code(sutra::warning::issue))]
     Warning {
@@ -556,8 +533,7 @@ impl SutraError {
             | Self::ArithmeticDivisionByZero { .. } => ErrorType::Eval,
 
             // Type Errors
-            Self::TypeMismatch { .. }
-            | Self::TypeInvalidOperation { .. } => ErrorType::TypeError,
+            Self::TypeMismatch { .. } | Self::TypeInvalidOperation { .. } => ErrorType::TypeError,
 
             // Test Errors
             Self::TestAssertion { .. }
@@ -585,10 +561,10 @@ impl SutraError {
         match self {
             Self::LimitExceeded { limit_type, .. } => {
                 limit_type.contains("stack") || limit_type.contains("memory")
-            },
+            }
             Self::Internal { issue, .. } => {
                 issue.contains("unexpected") || issue.contains("empty tree")
-            },
+            }
             _ => false,
         }
     }
@@ -629,8 +605,7 @@ impl SutraError {
             | Self::RuntimeInvalidConstruct { .. }
             | Self::RuntimeGeneral { .. } => "runtime",
 
-            Self::TypeMismatch { .. }
-            | Self::TypeInvalidOperation { .. } => "type",
+            Self::TypeMismatch { .. } | Self::TypeInvalidOperation { .. } => "type",
 
             Self::ArithmeticDivisionByZero { .. } => "arithmetic",
 
@@ -728,10 +703,7 @@ impl SutraError {
     }
 
     /// Helper for creating internal errors
-    pub fn internal_error(
-        issue: impl Into<String>,
-        details: impl Into<String>,
-    ) -> Self {
+    pub fn internal_error(issue: impl Into<String>, details: impl Into<String>) -> Self {
         Self::Internal {
             issue: issue.into(),
             details: details.into(),

@@ -10,8 +10,10 @@
 //! - **Safety**: All functions handle ownership and borrowing correctly
 
 use crate::prelude::*;
-use crate::runtime::eval::{evaluate_ast_node, EvaluationContext};
-use crate::syntax::parser::to_source_span;
+use crate::{
+    runtime::eval::{evaluate_ast_node, EvaluationContext},
+    syntax::parser::to_source_span,
+};
 use miette::NamedSource;
 
 // ============================================================================
@@ -166,15 +168,14 @@ pub fn eval_n_args<const N: usize>(
 
     // Convert Vec to array - this is safe because we checked length above
     // The try_into() should never fail given the length check, but we handle it defensively
-    let values_array: [Value; N] = values.try_into().map_err(|_| {
-        SutraError::Internal {
-            issue: "Failed to convert evaluated arguments to array - this should never happen".to_string(),
-            details: "eval_n_args failed Vec->array conversion".to_string(),
-            context: None,
-            src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()).into(),
-            span: Some(to_source_span(Span::default())),
-            source: None,
-        }
+    let values_array: [Value; N] = values.try_into().map_err(|_| SutraError::Internal {
+        issue: "Failed to convert evaluated arguments to array - this should never happen"
+            .to_string(),
+        details: "eval_n_args failed Vec->array conversion".to_string(),
+        context: None,
+        src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()).into(),
+        span: Some(to_source_span(Span::default())),
+        source: None,
     })?;
 
     Ok((values_array, world))
@@ -928,7 +929,11 @@ pub fn validate_path_arg<'a>(args: &'a [Value], atom_name: &str) -> Result<&'a P
     match &args[0] {
         Value::Path(p) => Ok(p),
         _ => Err(SutraError::RuntimeGeneral {
-            message: format!("{} expects a Path as first argument, found {}", atom_name, args[0].to_string()),
+            message: format!(
+                "{} expects a Path as first argument, found {}",
+                atom_name,
+                args[0].to_string()
+            ),
             src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
             span: to_source_span(Span::default()),
             suggestion: None,
@@ -950,7 +955,11 @@ pub fn validate_string_value<'a>(value: &'a Value, context: &str) -> Result<&'a 
     match value {
         Value::String(s) => Ok(s),
         _ => Err(SutraError::RuntimeGeneral {
-            message: format!("Expected String for {}, found {}", context, value.to_string()),
+            message: format!(
+                "Expected String for {}, found {}",
+                context,
+                value.to_string()
+            ),
             src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
             span: to_source_span(Span::default()),
             suggestion: None,

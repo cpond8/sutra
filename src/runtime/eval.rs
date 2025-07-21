@@ -109,14 +109,15 @@ impl<'a> EvaluationContext<'a> {
     }
 
     fn lookup_atom(&self, symbol_name: &str, head: &AstNode) -> Result<Atom, SutraError> {
-        self.atom_registry.get(symbol_name).cloned().ok_or_else(|| {
-            SutraError::RuntimeGeneral {
+        self.atom_registry
+            .get(symbol_name)
+            .cloned()
+            .ok_or_else(|| SutraError::RuntimeGeneral {
                 message: format!("Undefined symbol: '{}'", symbol_name),
                 src: self.source.as_ref().clone(),
                 span: to_source_span(head.span),
                 suggestion: None,
-            }
-        })
+            })
     }
 
     fn validate_atom_classification(&self, symbol_name: &str, atom: &Atom) {
@@ -277,7 +278,8 @@ pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext)
 
         // If expressions must be handled as special forms, not direct evaluation
         Expr::If { .. } => Err(SutraError::RuntimeGeneral {
-            message: "If expressions should be evaluated as special forms, not as AST nodes".to_string(),
+            message: "If expressions should be evaluated as special forms, not as AST nodes"
+                .to_string(),
             src: context.source.as_ref().clone(),
             span: to_source_span(expr.span),
             suggestion: None,
@@ -460,14 +462,17 @@ fn parse_function_definition(
     context: &mut EvaluationContext,
 ) -> Result<(String, ParamList), SutraError> {
     // Step 1: Extract function name (early validation)
-    let function_name = param_list.required.first().cloned().ok_or_else(|| {
-        SutraError::RuntimeGeneral {
-            message: "define: function name missing in parameter list".to_string(),
-            src: context.source.as_ref().clone(),
-            span: to_source_span(name_expr.span),
-            suggestion: None,
-        }
-    })?;
+    let function_name =
+        param_list
+            .required
+            .first()
+            .cloned()
+            .ok_or_else(|| SutraError::RuntimeGeneral {
+                message: "define: function name missing in parameter list".to_string(),
+                src: context.source.as_ref().clone(),
+                span: to_source_span(name_expr.span),
+                suggestion: None,
+            })?;
 
     // Step 2: Build function parameters
     let function_parameters = ParamList {
@@ -543,7 +548,8 @@ fn evaluate_invalid_expr(expr: &AstNode, context: &mut EvaluationContext) -> Ato
 
         // Spread arguments are only valid in function calls
         Expr::Spread(_) => Err(SutraError::RuntimeGeneral {
-            message: "Spread argument not allowed outside of call position (list context)".to_string(),
+            message: "Spread argument not allowed outside of call position (list context)"
+                .to_string(),
             src: context.source.as_ref().clone(),
             span: to_source_span(expr.span),
             suggestion: None,

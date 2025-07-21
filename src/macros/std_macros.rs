@@ -9,7 +9,7 @@
 //! node. This is the only place in the entire engine where path syntax is parsed.
 
 use crate::prelude::*;
-use crate::{macros::MacroExpansionResult as macro_result, errors::SutraError, syntax::parser};
+use crate::{macros::MacroExpansionResult as macro_result, syntax::parser};
 
 // ===================================================================================================
 // SYSTEM OVERVIEW
@@ -67,7 +67,9 @@ fn expr_to_path(expr: &AstNode) -> Result<Path, SutraError> {
                         message: "Path elements must be symbols or strings".to_string(),
                         src: miette::NamedSource::new("macro", format!("{:?}", expr)),
                         span: parser::to_source_span(expr.span),
-                        suggestion: Some("Use only symbols or strings in path expressions".to_string()),
+                        suggestion: Some(
+                            "Use only symbols or strings in path expressions".to_string(),
+                        ),
                     })
                 }
             }

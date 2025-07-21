@@ -47,9 +47,7 @@ use miette::NamedSource;
 use serde::{Deserialize, Serialize};
 
 use crate::prelude::*;
-use crate::{ast::ParamList, atoms};
-use crate::errors::SutraError;
-use crate::syntax::parser::to_source_span;
+use crate::{ast::ParamList, atoms, syntax::parser::to_source_span};
 
 // ============================================================================
 // MODULE DECLARATIONS
@@ -460,7 +458,9 @@ impl MacroRegistry {
                 message: format!("macro '{}' is already registered", name),
                 src: NamedSource::new(name.to_string(), String::new()),
                 span: to_source_span(Span::default()),
-                suggestion: Some("Use a different name or unregister the existing macro".to_string()),
+                suggestion: Some(
+                    "Use a different name or unregister the existing macro".to_string(),
+                ),
             });
         }
 
@@ -495,7 +495,9 @@ impl MacroRegistry {
                 message: format!("macro '{}' is already registered", name),
                 src: NamedSource::new(name.to_string(), String::new()),
                 span: to_source_span(Span::default()),
-                suggestion: Some("Use a different name or unregister the existing macro".to_string()),
+                suggestion: Some(
+                    "Use a different name or unregister the existing macro".to_string(),
+                ),
             });
         }
 

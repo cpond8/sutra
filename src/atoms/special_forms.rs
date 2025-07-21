@@ -8,8 +8,8 @@ use crate::{
         SpecialFormAtomFn,
     },
     runtime::eval,
+    syntax::parser::to_source_span,
 };
-use crate::syntax::parser::to_source_span;
 use miette::NamedSource;
 
 /// Implements the (if ...) special form with lazy evaluation.
@@ -129,12 +129,14 @@ pub const ATOM_LET: SpecialFormAtomFn = |args, context, span| {
         let (name, value_expr) = match &*pair.value {
             Expr::List(items, _) if items.len() == 2 => match &*items[0].value {
                 Expr::Symbol(name, _) => (name.clone(), &items[1]),
-                _ => return Err(SutraError::RuntimeGeneral {
-                    message: "let: binding name must be a symbol".to_string(),
-                    src: NamedSource::new("atoms/special_forms.rs".to_string(), "".to_string()),
-                    span: to_source_span(*span),
-                    suggestion: None,
-                }),
+                _ => {
+                    return Err(SutraError::RuntimeGeneral {
+                        message: "let: binding name must be a symbol".to_string(),
+                        src: NamedSource::new("atoms/special_forms.rs".to_string(), "".to_string()),
+                        span: to_source_span(*span),
+                        suggestion: None,
+                    })
+                }
             },
             _ => {
                 return Err(SutraError::RuntimeGeneral {

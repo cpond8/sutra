@@ -17,8 +17,8 @@ use crate::prelude::*;
 use crate::{
     atoms::PureAtomFn,
     helpers::{self, ExtractValue},
+    syntax::parser::to_source_span,
 };
-use crate::syntax::parser::to_source_span;
 use miette::NamedSource;
 
 // ============================================================================
@@ -34,11 +34,10 @@ use miette::NamedSource;
 ///
 /// Example:
 ///   (+ 1 2 3) ; => 6
-pub const ATOM_ADD: PureAtomFn =
-    |args| {
-        helpers::validate_min_arity(args, 2, "+")?;
-        helpers::pure_eval_nary_numeric_op_custom(args, 0.0, |acc, n| acc + n, "+")
-    };
+pub const ATOM_ADD: PureAtomFn = |args| {
+    helpers::validate_min_arity(args, 2, "+")?;
+    helpers::pure_eval_nary_numeric_op_custom(args, 0.0, |acc, n| acc + n, "+")
+};
 
 /// Subtracts two numbers.
 ///
@@ -74,11 +73,10 @@ pub const ATOM_SUB: PureAtomFn = |args| {
 ///
 /// Example:
 ///   (* 2 3 4) ; => 24
-pub const ATOM_MUL: PureAtomFn =
-    |args| {
-        helpers::validate_min_arity(args, 2, "*")?;
-        helpers::pure_eval_nary_numeric_op_custom(args, 1.0, |acc, n| acc * n, "*")
-    };
+pub const ATOM_MUL: PureAtomFn = |args| {
+    helpers::validate_min_arity(args, 2, "*")?;
+    helpers::pure_eval_nary_numeric_op_custom(args, 1.0, |acc, n| acc * n, "*")
+};
 
 /// Divides two numbers.
 ///

@@ -47,8 +47,8 @@ use pest::{
 };
 use pest_derive::Parser;
 
-use crate::prelude::*;
 use crate::ast::ParamList;
+use crate::prelude::*;
 use miette::{NamedSource, SourceSpan};
 
 // ============================================================================
@@ -126,11 +126,9 @@ pub fn parse(source: &str) -> ProgramParseResult {
     let pairs = SutraParser::parse(Rule::program, source).map_err(|e| create_parse_error(e))?;
 
     // Extract the root program node
-    let root_pair = pairs.peek().ok_or_else(|| {
-        SutraError::ParseEmpty {
-            src: NamedSource::new("sutra", source.to_string()),
-            span: SourceSpan::new(0.into(), source.len().into()),
-        }
+    let root_pair = pairs.peek().ok_or_else(|| SutraError::ParseEmpty {
+        src: NamedSource::new("sutra", source.to_string()),
+        span: SourceSpan::new(0.into(), source.len().into()),
     })?;
 
     // Build AST from all expressions in the program
@@ -213,11 +211,9 @@ fn build_program_ast(pair: Pair<Rule>, source: &str) -> ExpressionParseResult {
 /// Builds AST for individual expressions (delegates to subrules)
 fn build_expression_ast(pair: Pair<Rule>, source: &str) -> ExpressionParseResult {
     let mut inner_pairs = pair.clone().into_inner();
-    let sub_expression = inner_pairs.next().ok_or_else(|| {
-        SutraError::ParseEmpty {
-            src: NamedSource::new("sutra", source.to_string()),
-            span: to_source_span(get_span(&pair)),
-        }
+    let sub_expression = inner_pairs.next().ok_or_else(|| SutraError::ParseEmpty {
+        src: NamedSource::new("sutra", source.to_string()),
+        span: to_source_span(get_span(&pair)),
     })?;
     build_ast_from_rule(sub_expression, source)
 }
@@ -252,8 +248,7 @@ fn build_param_list_ast(pair: Pair<Rule>, source: &str) -> ExpressionParseResult
     let mut found_rest = false;
 
     for param_item in param_items_container {
-        let (param_name, is_rest) =
-            validate_and_extract_parameter(&param_item, found_rest)?;
+        let (param_name, is_rest) = validate_and_extract_parameter(&param_item, found_rest)?;
         if is_rest {
             found_rest = true;
             rest_param = Some(param_name);
@@ -279,14 +274,14 @@ fn build_param_list_ast(pair: Pair<Rule>, source: &str) -> ExpressionParseResult
 /// Builds AST for atom rule (delegates to subrules)
 fn build_atom_ast(pair: Pair<Rule>, source: &str) -> ExpressionParseResult {
     let pair_span = get_span(&pair);
-    let inner_expression = pair
-        .clone()
-        .into_inner()
-        .next()
-        .ok_or_else(|| SutraError::ParseEmpty {
-            src: NamedSource::new("sutra", source.to_string()),
-            span: to_source_span(pair_span),
-        })?;
+    let inner_expression =
+        pair.clone()
+            .into_inner()
+            .next()
+            .ok_or_else(|| SutraError::ParseEmpty {
+                src: NamedSource::new("sutra", source.to_string()),
+                span: to_source_span(pair_span),
+            })?;
     build_ast_from_rule(inner_expression, source)
 }
 
@@ -294,15 +289,15 @@ fn build_atom_ast(pair: Pair<Rule>, source: &str) -> ExpressionParseResult {
 fn build_number_ast(pair: Pair<Rule>, source: &str) -> ExpressionParseResult {
     let span = get_span(&pair);
     let number_text = pair.as_str();
-    let number_value = number_text.parse::<f64>().map_err(|e| {
-        SutraError::ParseInvalidValue {
+    let number_value = number_text
+        .parse::<f64>()
+        .map_err(|e| SutraError::ParseInvalidValue {
             item_type: "number".to_string(),
             value: e.to_string(),
             src: NamedSource::new("sutra", source.to_string()),
             span: to_source_span(span),
             suggestion: Some("Use valid decimal notation".to_string()),
-        }
-    })?;
+        })?;
     Ok(spanned_expr!(Expr::Number(number_value, span), span))
 }
 
@@ -587,11 +582,7 @@ fn extract_symbol(pair: &Pair<Rule>) -> SymbolParseResult {
 }
 
 /// Validates and builds path AST from symbol text
-fn validate_and_build_path(
-    symbol_text: &str,
-    span: Span,
-    source: &str,
-) -> ExpressionParseResult {
+fn validate_and_build_path(symbol_text: &str, span: Span, source: &str) -> ExpressionParseResult {
     let path_components: Vec<_> = symbol_text.split('.').collect();
     validate_path_components(&path_components, span, source)?;
     let path = Path(path_components.into_iter().map(String::from).collect());
@@ -632,22 +623,18 @@ fn extract_form_parts(
     let span = get_span(&pair);
     let mut form_pairs = pair.clone().into_inner();
 
-    let param_list_pair = form_pairs
-        .next()
-        .ok_or_else(|| SutraError::ParseMissing {
-            element: "parameter list".to_string(),
-            src: NamedSource::new("sutra", source.to_string()),
-            span: to_source_span(span),
-        })?;
+    let param_list_pair = form_pairs.next().ok_or_else(|| SutraError::ParseMissing {
+        element: "parameter list".to_string(),
+        src: NamedSource::new("sutra", source.to_string()),
+        span: to_source_span(span),
+    })?;
     let param_list = build_param_list_ast(param_list_pair, source)?;
 
-    let body_pair = form_pairs
-        .next()
-        .ok_or_else(|| SutraError::ParseMissing {
-            element: "function body".to_string(),
-            src: NamedSource::new("sutra", source.to_string()),
-            span: to_source_span(span),
-        })?;
+    let body_pair = form_pairs.next().ok_or_else(|| SutraError::ParseMissing {
+        element: "function body".to_string(),
+        src: NamedSource::new("sutra", source.to_string()),
+        span: to_source_span(span),
+    })?;
     let body = build_expression_ast(body_pair, source)?;
 
     Ok((param_list, body, span))

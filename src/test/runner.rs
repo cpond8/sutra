@@ -1,7 +1,7 @@
-use crate::prelude::*;
-use crate::{discovery::ASTDefinition, engine::ExecutionPipeline};
-use crate::syntax::parser::to_source_span;
 use crate::engine::EngineOutputBuffer;
+use crate::prelude::*;
+use crate::syntax::parser::to_source_span;
+use crate::{discovery::ASTDefinition, engine::ExecutionPipeline};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -41,7 +41,10 @@ impl TestRunner {
             };
             if actual_output_owned != *expected_output {
                 return Err(SutraError::TestAssertion {
-                    message: format!("Expected output {:?}, got {:?}", expected_output, actual_output_owned),
+                    message: format!(
+                        "Expected output {:?}, got {:?}",
+                        expected_output, actual_output_owned
+                    ),
                     src: test_form.source_file.as_ref().clone(),
                     span: to_source_span(test_form.span),
                     expected: Some(expected_output.clone()),
@@ -70,7 +73,10 @@ impl TestRunner {
             Expectation::Value(expected_value) if actual == *expected_value => Ok(()),
             // Failure case: actual doesn't match expected value
             Expectation::Value(expected_value) => Err(SutraError::TestAssertion {
-                message: format!("\"{}\"\nExpected {}, got {}", test_form.name, expected_value, actual),
+                message: format!(
+                    "\"{}\"\nExpected {}, got {}",
+                    test_form.name, expected_value, actual
+                ),
                 src: test_form.source_file.as_ref().clone(),
                 span: to_source_span(test_form.span),
                 expected: Some(expected_value.to_string()),
@@ -90,7 +96,9 @@ impl TestRunner {
                 test_name: test_form.name.clone(),
                 src: test_form.source_file.as_ref().clone(),
                 span: to_source_span(test_form.span),
-                suggestion: Some("Output expectations should be handled in the output test path".to_string()),
+                suggestion: Some(
+                    "Output expectations should be handled in the output test path".to_string(),
+                ),
             }),
         }
     }
@@ -102,10 +110,16 @@ impl TestRunner {
     ) -> Result<(), SutraError> {
         match expected {
             // Success case: error type matches expected
-            Expectation::Error(expected_type) if actual_error.error_type() == *expected_type => Ok(()),
+            Expectation::Error(expected_type) if actual_error.error_type() == *expected_type => {
+                Ok(())
+            }
             // Failure case: expected error but got different type
             Expectation::Error(expected_type) => Err(SutraError::TestStructure {
-                issue: format!("Expected error type {}, got {}", expected_type, actual_error.error_type()),
+                issue: format!(
+                    "Expected error type {}, got {}",
+                    expected_type,
+                    actual_error.error_type()
+                ),
                 test_name: test_form.name.clone(),
                 src: test_form.source_file.as_ref().clone(),
                 span: to_source_span(test_form.span),
@@ -119,7 +133,9 @@ impl TestRunner {
                 test_name: test_form.name.clone(),
                 src: test_form.source_file.as_ref().clone(),
                 span: to_source_span(test_form.span),
-                suggestion: Some("Output expectations should be handled in the output test path".to_string()),
+                suggestion: Some(
+                    "Output expectations should be handled in the output test path".to_string(),
+                ),
             }),
         }
     }
@@ -168,9 +184,15 @@ impl TestRunner {
         item: &AstNode,
         test_form: &ASTDefinition,
     ) -> Result<Option<Expectation>, SutraError> {
-        let Expr::List(items, _) = &*item.value else { return Ok(None); };
-        if items.len() != 2 { return Ok(None); }
-        let Expr::Symbol(keyword, _) = &*items[0].value else { return Ok(None); };
+        let Expr::List(items, _) = &*item.value else {
+            return Ok(None);
+        };
+        if items.len() != 2 {
+            return Ok(None);
+        }
+        let Expr::Symbol(keyword, _) = &*items[0].value else {
+            return Ok(None);
+        };
         if keyword == "value" {
             let v = Self::extract_value(&items[1], test_form)?;
             return Ok(Some(Expectation::Value(v)));
@@ -203,7 +225,10 @@ impl TestRunner {
         }
     }
 
-    fn extract_error_type(error_node: &AstNode, test_form: &ASTDefinition) -> Result<ErrorType, SutraError> {
+    fn extract_error_type(
+        error_node: &AstNode,
+        test_form: &ASTDefinition,
+    ) -> Result<ErrorType, SutraError> {
         // Extract error type symbol
         let Expr::Symbol(error_type, _) = &*error_node.value else {
             return Err(SutraError::TestStructure {
@@ -233,7 +258,10 @@ impl TestRunner {
         }
     }
 
-    fn extract_output(output_node: &AstNode, test_form: &ASTDefinition) -> Result<String, SutraError> {
+    fn extract_output(
+        output_node: &AstNode,
+        test_form: &ASTDefinition,
+    ) -> Result<String, SutraError> {
         let Expr::String(s, _) = &*output_node.value else {
             return Err(SutraError::TestStructure {
                 issue: "output expectation must be a string".to_string(),

@@ -14,8 +14,7 @@
 //! - **State Threading**: Proper world state propagation through execution
 
 use crate::prelude::*;
-use crate::{atoms::SpecialFormAtomFn, helpers, runtime::eval};
-use crate::syntax::parser::to_source_span;
+use crate::{atoms::SpecialFormAtomFn, helpers, runtime::eval, syntax::parser::to_source_span};
 use miette::NamedSource;
 
 // ============================================================================

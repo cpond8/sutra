@@ -16,19 +16,15 @@
 
 use std::collections::HashMap;
 
-// Core types via prelude
 use crate::prelude::*;
-
-// Domain modules with aliases
 use crate::{
     ast::ParamList,
     macros::{
         check_arity, MacroDefinition, MacroExpansionContext, MacroExpansionResult,
         MacroExpansionStep, MacroTemplate, MAX_MACRO_RECURSION_DEPTH,
     },
+    syntax::parser::to_source_span,
 };
-use crate::errors::SutraError;
-use crate::syntax::parser::to_source_span;
 
 // =============================
 // Type aliases to reduce verbosity
@@ -123,11 +119,7 @@ fn extract_macro_call_info(call: &AstNode) -> Result<(&str, &[AstNode], &Span), 
 
 /// Binds macro parameters to arguments for template substitution.
 /// Handles both regular and variadic parameters with proper list construction.
-pub fn bind_macro_params(
-    args: &[AstNode],
-    params: &ParamList,
-    span: &Span,
-) -> MacroBindings {
+pub fn bind_macro_params(args: &[AstNode], params: &ParamList, span: &Span) -> MacroBindings {
     let mut bindings = HashMap::new();
 
     // Bind regular parameters
@@ -255,13 +247,11 @@ fn try_expand_macro_once(
         return Ok(None);
     };
 
-    let first = items.first().ok_or_else(|| {
-        SutraError::MacroInvalidCall {
-            reason: "macro call cannot be empty".to_string(),
-            macro_name: None,
-            src: miette::NamedSource::new("macro call", format!("{:?}", node)),
-            span: to_source_span(node.span),
-        }
+    let first = items.first().ok_or_else(|| SutraError::MacroInvalidCall {
+        reason: "macro call cannot be empty".to_string(),
+        macro_name: None,
+        src: miette::NamedSource::new("macro call", format!("{:?}", node)),
+        span: to_source_span(node.span),
     })?;
 
     let Expr::Symbol(macro_name, _) = &*first.value else {
@@ -338,7 +328,10 @@ where
         }
         Expr::Quote(inner, span) => {
             let new_inner = f(inner.as_ref().clone(), env, depth + 1)?;
-            Ok(with_span(Expr::Quote(Box::new(new_inner), *span), &node.span))
+            Ok(with_span(
+                Expr::Quote(Box::new(new_inner), *span),
+                &node.span,
+            ))
         }
         Expr::Spread(inner) => {
             let new_inner = f(inner.as_ref().clone(), env, depth + 1)?;

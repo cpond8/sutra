@@ -101,15 +101,13 @@ fn register_test_atom(
     let source_file = match metadata.get(":source-file") {
         Some(Value::String(file_path)) => {
             let src_arc = NamedSource::new(file_path.clone(), String::new());
-            let source = std::fs::read_to_string(file_path).map_err(|e| {
-                SutraError::Internal {
-                    issue: "Failed to read source file".to_string(),
-                    details: e.to_string(),
-                    context: None,
-                    src: src_arc.clone().into(),
-                    span: Some(to_source_span(Span::default())),
-                    source: None,
-                }
+            let source = std::fs::read_to_string(file_path).map_err(|e| SutraError::Internal {
+                issue: "Failed to read source file".to_string(),
+                details: e.to_string(),
+                context: None,
+                src: src_arc.clone().into(),
+                span: Some(to_source_span(Span::default())),
+                source: None,
             })?;
             Arc::new(NamedSource::new(file_path.clone(), source))
         }
@@ -131,16 +129,14 @@ fn register_test_atom(
         source_file,
     };
 
-    let mut registry = TEST_REGISTRY
-        .lock()
-        .map_err(|_| SutraError::Internal {
-            issue: "Test registry mutex poisoned".to_string(),
-            details: "Mutex was poisoned during test registration".to_string(),
-            context: None,
-            src: ctx.source.as_ref().clone().into(),
-            span: Some(to_source_span(Span::default())),
-            source: None,
-        })?;
+    let mut registry = TEST_REGISTRY.lock().map_err(|_| SutraError::Internal {
+        issue: "Test registry mutex poisoned".to_string(),
+        details: "Mutex was poisoned during test registration".to_string(),
+        context: None,
+        src: ctx.source.as_ref().clone().into(),
+        span: Some(to_source_span(Span::default())),
+        source: None,
+    })?;
     registry.insert(name, test_def);
 
     Ok((Value::Nil, ctx.world.clone()))
@@ -430,7 +426,10 @@ fn assert_eq_atom(
 
     if expected != actual {
         return Err(SutraError::TestAssertion {
-            message: format!("Assertion failed: expected {:?}, got {:?}", expected, actual),
+            message: format!(
+                "Assertion failed: expected {:?}, got {:?}",
+                expected, actual
+            ),
             src: ctx.source.as_ref().clone(),
             span: to_source_span(*span),
             expected: Some(format!("{:?}", expected)),

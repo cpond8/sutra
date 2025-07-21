@@ -298,15 +298,12 @@ impl ExecutionPipeline {
 
     /// Reads a file with standardized error handling
     pub fn read_file(path: &Path) -> Result<String, SutraError> {
-        let filename = path
-            .to_str()
-            .ok_or_else(|| SutraError::internal_error("Invalid filename", "Could not convert path to string"))?;
+        let filename = path.to_str().ok_or_else(|| {
+            SutraError::internal_error("Invalid filename", "Could not convert path to string")
+        })?;
 
         std::fs::read_to_string(filename).map_err(|error| {
-            SutraError::internal_error(
-                "Failed to read file",
-                format!("{}", error),
-            )
+            SutraError::internal_error("Failed to read file", format!("{}", error))
         })
     }
 

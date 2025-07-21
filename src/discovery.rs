@@ -57,10 +57,7 @@ impl TestDiscoverer {
         let mut files = Vec::new();
         for entry in WalkDir::new(root) {
             let entry = entry.map_err(|e| {
-                SutraError::internal_error(
-                    "Failed to walk directory",
-                    e.to_string(),
-                )
+                SutraError::internal_error("Failed to walk directory", e.to_string())
             })?;
 
             if !entry.file_type().is_file() {
@@ -86,13 +83,8 @@ impl TestDiscoverer {
         file_path: P,
     ) -> Result<Vec<ASTDefinition>, SutraError> {
         let path_str = file_path.as_ref().display().to_string();
-        let source = fs::read_to_string(file_path.as_ref()).map_err(|e| {
-            SutraError::resource_error(
-                "read",
-                path_str.clone(),
-                e.to_string(),
-            )
-        })?;
+        let source = fs::read_to_string(file_path.as_ref())
+            .map_err(|e| SutraError::resource_error("read", path_str.clone(), e.to_string()))?;
 
         let ast = parser::parse(&source)?;
         let source_file = Arc::new(NamedSource::new(path_str, source));

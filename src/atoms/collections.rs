@@ -20,8 +20,8 @@ use crate::prelude::*;
 use crate::{
     atoms::{PureAtomFn, StatefulAtomFn},
     helpers,
+    syntax::parser::to_source_span,
 };
-use crate::syntax::parser::to_source_span;
 use miette::NamedSource;
 
 // ============================================================================
@@ -95,7 +95,10 @@ pub const ATOM_HAS: PureAtomFn = |args| {
         }
         _ => {
             return Err(SutraError::RuntimeGeneral {
-                message: format!("has? expects a List or Map as first argument, found {}", collection_val.to_string()),
+                message: format!(
+                    "has? expects a List or Map as first argument, found {}",
+                    collection_val.to_string()
+                ),
                 src: NamedSource::new("atoms/collections.rs".to_string(), "".to_string()),
                 span: to_source_span(Span::default()),
                 suggestion: None,
@@ -194,7 +197,10 @@ pub const ATOM_CORE_STR_PLUS: PureAtomFn = |args| {
     for val in args {
         let Value::String(s) = val else {
             return Err(SutraError::RuntimeGeneral {
-                message: format!("core/str+ expects all arguments to be Strings, found {}", val.to_string()),
+                message: format!(
+                    "core/str+ expects all arguments to be Strings, found {}",
+                    val.to_string()
+                ),
                 src: NamedSource::new("atoms/collections.rs".to_string(), "".to_string()),
                 span: to_source_span(Span::default()),
                 suggestion: None,
@@ -226,14 +232,12 @@ pub const ATOM_CAR: PureAtomFn = |args| {
     let list_val = &args[0];
     let items = helpers::validate_list_value(list_val, "car")?;
 
-    let first = items
-        .first()
-        .ok_or_else(|| SutraError::RuntimeGeneral {
-            message: "car: empty list".to_string(),
-            src: NamedSource::new("atoms/collections.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-            suggestion: None,
-        })?;
+    let first = items.first().ok_or_else(|| SutraError::RuntimeGeneral {
+        message: "car: empty list".to_string(),
+        src: NamedSource::new("atoms/collections.rs".to_string(), "".to_string()),
+        span: to_source_span(Span::default()),
+        suggestion: None,
+    })?;
 
     Ok(first.clone())
 };

@@ -4,10 +4,9 @@
 
 use std::{collections::HashSet, fs, path::Path};
 
-
 use crate::prelude::*;
-use crate::{ast::ParamList, errors::SutraError, syntax::parser, MacroTemplate};
 use crate::syntax::parser::to_source_span;
+use crate::{ast::ParamList, syntax::parser, MacroTemplate};
 
 /// Type alias for macro parsing results
 type MacroParseResult = Result<Vec<(String, MacroTemplate)>, SutraError>;
