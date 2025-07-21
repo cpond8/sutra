@@ -11,6 +11,7 @@
 
 use crate::prelude::*;
 use crate::runtime::eval::{evaluate_ast_node, EvaluationContext};
+use crate::error_messages::{ERROR_ARITY_ERROR, ERROR_TYPE_ERROR};
 
 // ============================================================================
 // TYPE ALIASES AND CORE TYPES
@@ -141,7 +142,7 @@ pub fn eval_n_args<const N: usize>(
     context: &mut EvaluationContext<'_>,
 ) -> ArrayResult<N> {
     if args.len() != N {
-        return Err(err_msg!(Eval, "Arity error"));
+        return Err(err_msg!(Eval, ERROR_ARITY_ERROR));
     }
 
     let mut values = Vec::with_capacity(N);
@@ -463,14 +464,14 @@ where
     F: Fn(f64, f64) -> f64,
 {
     if args.len() < 2 {
-        return Err(err_msg!(Eval, "Arity error"));
+        return Err(err_msg!(Eval, ERROR_ARITY_ERROR));
     }
 
     let (values, world) = eval_args(args, context)?;
     let mut acc = init;
 
     for v in values.iter() {
-        let n = v.extract().map_err(|_| err_msg!(TypeError, "Type error"))?;
+        let n = v.extract().map_err(|_| err_msg!(TypeError, ERROR_TYPE_ERROR))?;
         acc = fold(acc, n);
     }
 
@@ -817,7 +818,7 @@ pub fn eval_apply_list_arg(
     let mut sub_context = sub_eval_context!(context, context.world);
     let (list_val, world) = evaluate_ast_node(arg, &mut sub_context)?;
     let Value::List(items) = list_val else {
-        return Err(err_msg!(TypeError, "Type error"));
+        return Err(err_msg!(TypeError, ERROR_TYPE_ERROR));
     };
     let list_items = items
         .into_iter()

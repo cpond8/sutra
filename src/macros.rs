@@ -157,22 +157,26 @@ impl MacroValidationContext {
         definition: MacroDefinition,
         target: &mut HashMap<String, MacroDefinition>,
     ) -> Result<(), SutraError> {
+        // Step 1: Check for duplicates if validation is enabled
         if self.check_duplicates && target.contains_key(&name) {
             let error_msg = self.duplicate_error_template.replace("{}", &name);
 
+            // Step 2: Create error with source context if available
             if let Some(source) = &self.source_context {
                 return Err(err_ctx!(
                     Validation,
                     error_msg,
                     source,
                     Span::default(),
-                    "Duplicate macro name"
+                    ERROR_DUPLICATE_MACRO_NAME_CONTEXT
                 ));
-            } else {
-                return Err(err_msg!(Validation, error_msg));
             }
+
+            // Step 3: Create error without source context
+            return Err(err_msg!(Validation, error_msg));
         }
 
+        // Step 4: Insert the macro
         target.insert(name, definition);
         Ok(())
     }
@@ -261,40 +265,23 @@ impl MacroTemplate {
     /// # Errors
     /// Returns an error if duplicate parameter names are found.
     pub fn new(params: ParamList, body: Box<AstNode>) -> Result<Self, SutraError> {
-        // Collect all parameter names for validation
-        let mut all_names =
-            Vec::with_capacity(params.required.len() + params.rest.as_ref().map_or(0, |_| 1));
-        all_names.extend_from_slice(&params.required);
+        // Validate no duplicate parameters
+        let mut seen = HashSet::new();
 
-        if let Some(var) = &params.rest {
-            all_names.push(var.clone());
+        for name in &params.required {
+            if !seen.insert(name) {
+                return Err(err_msg!(Validation, ERROR_DUPLICATE_PARAMETER_NAME));
+            }
         }
 
-        // Validate no duplicate parameters
-        check_no_duplicate_params(&all_names)?;
+        if let Some(var) = &params.rest {
+            if !seen.insert(var) {
+                return Err(err_msg!(Validation, ERROR_DUPLICATE_PARAMETER_NAME));
+            }
+        }
 
         Ok(MacroTemplate { params, body })
     }
-}
-
-/// Validates that parameter names are not duplicated.
-///
-/// This is a helper function used by `MacroTemplate::new()` to ensure
-/// macro parameter lists don't contain duplicate names.
-///
-/// # Arguments
-/// * `all_names` - All parameter names (required + variadic)
-///
-/// # Errors
-/// Returns an error if any parameter name appears more than once.
-fn check_no_duplicate_params(all_names: &[String]) -> Result<(), SutraError> {
-    let mut seen = HashSet::new();
-    for name in all_names {
-        if !seen.insert(name) {
-            return Err(err_msg!(Validation, ERROR_DUPLICATE_PARAMETER_NAME));
-        }
-    }
-    Ok(())
 }
 
 /// A macro definition, either a native function or a template.
@@ -434,29 +421,6 @@ impl MacroRegistry {
         Self::default()
     }
 
-    /// Helper function to create a "macro already registered" error.
-    fn make_already_registered_error(name: &str) -> SutraError {
-        let src_arc = to_error_source(name);
-        err_ctx!(
-            Validation,
-            format!("Macro '{}' is already registered", name),
-            &src_arc,
-            Span::default(),
-            "Macro already registered"
-        )
-    }
-
-    /// Validates that a macro name is not empty.
-    ///
-    /// # Errors
-    /// Returns an error if the name is empty.
-    fn validate_macro_name(name: &str) -> Result<(), SutraError> {
-        if name.is_empty() {
-            return Err(err_msg!(Validation, ERROR_MACRO_NAME_CANNOT_BE_EMPTY));
-        }
-        Ok(())
-    }
-
     /// Validates macro registration according to configuration.
     ///
     /// # Errors
@@ -466,14 +430,24 @@ impl MacroRegistry {
         name: &str,
         config: &MacroRegistrationConfig,
     ) -> Result<(), SutraError> {
-        if config.validate_name {
-            Self::validate_macro_name(name)?;
+        // Step 1: Validate name is not empty (if name validation is enabled)
+        if config.validate_name && name.is_empty() {
+            return Err(err_msg!(Validation, ERROR_MACRO_NAME_CANNOT_BE_EMPTY));
         }
 
+        // Step 2: Check for duplicate names (if duplicate checking is enabled)
         if config.check_duplicates && self.macros.contains_key(name) {
-            return Err(Self::make_already_registered_error(name));
+            let src_arc = to_error_source(name);
+            return Err(err_ctx!(
+                Validation,
+                format!("Macro '{}' is already registered", name),
+                &src_arc,
+                Span::default(),
+                ERROR_MACRO_ALREADY_REGISTERED_CONTEXT
+            ));
         }
 
+        // Step 3: Validation successful
         Ok(())
     }
 
@@ -495,17 +469,23 @@ impl MacroRegistry {
         definition: MacroDefinition,
         config: MacroRegistrationConfig,
     ) -> MacroRegistrationResult {
+        // Step 1: Validate registration parameters
         self.validate_registration(name, &config)?;
 
-        let old_macro = if config.allow_overwrite {
-            self.macros.insert(name.to_string(), definition)
-        } else {
-            if self.macros.contains_key(name) {
-                return Err(Self::make_already_registered_error(name));
-            }
-            self.macros.insert(name.to_string(), definition)
-        };
+        // Step 2: Reject if macro exists and overwrites not allowed
+        if !config.allow_overwrite && self.macros.contains_key(name) {
+            let src_arc = to_error_source(name);
+            return Err(err_ctx!(
+                Validation,
+                format!("Macro '{}' is already registered", name),
+                &src_arc,
+                Span::default(),
+                ERROR_MACRO_ALREADY_REGISTERED_CONTEXT
+            ));
+        }
 
+        // Step 3: Insert macro and return any previous definition
+        let old_macro = self.macros.insert(name.to_string(), definition);
         Ok(old_macro)
     }
 

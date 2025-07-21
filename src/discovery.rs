@@ -6,10 +6,7 @@ use std::{
 use miette::NamedSource;
 use walkdir::WalkDir;
 
-// Core types via prelude
 use crate::prelude::*;
-
-// Domain modules with aliases
 use crate::syntax::parser;
 
 // =====================

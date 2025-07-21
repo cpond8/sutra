@@ -2,30 +2,62 @@
 
 ---
 
-## Core Principle: Always Iterate and Critique
+## Instructions: Plan, Iterate and Self-Critique
 
 Every solution should go through multiple iterations with rigorous self-critique. The goal is to arrive at the simplest, most effective solution. _Never settle for "good enough" -- push until you can go no farther._
 
 ---
 
-## Do Actual Iteration: Don't Just Talk About It
+## Core Principle: Clarity at All Levels
 
-- **Make multiple drafts** - create complete code examples, not mere descriptions of potential code
-- **Push each draft further** - each iteration should improve on the previous
-- **Keep going until you can go no farther** - don't stop at the first "good" version
+**Complexity begets complexity** - unnecessary abstraction layers create ecosystems of helper functions, detection logic, and conditional branches that hide the underlying simplicity.
+
+The goal is **composition of simple parts**, not complex abstractions.
+
+This applies to **all levels** of code, from architectural down to the individual line.
+
+### Clear code is like a recipe:
+
+* **It is direct.**
+  - It doesn't waste your time with cleverness or verbosity.
+  - It says exactly what is needed, nothing more.
+
+* **It is stepwise.**
+  - It doesn’t bundle several different tasks together.
+  - Each step does one thing, then moves on.
+
+* **It is ordered.**
+  - It doesn't force you to jump around to complete the task.
+  - Its logic flows linearly, top to bottom, start to finish.
+
+* **It is transparent.**
+  - It doesn’t hide complexity behind nebulous abstractions.
+  - It shows you what matters, even when it’s messy.
+
+* **It is consistent.**
+  - It doesn’t change terms or patterns partway through.
+  - It repeats what already works to make things clear.
+
+* **It is predictable.**
+  - It doesn’t assume or surprise.
+  - It makes all needs and effects clearly visible.
+
+* **It is considerate.**
+  - It was not written for just the author.
+  - It was written so anyone can follow along with confidence.
+
+---
+
+**Whether for a cook or a compiler, good instructions are the same: complete, clear, and easy to follow.**
+
 
 ---
 
 ## The Iteration Process
 
-## Warning Signs
-
-- Special-case handling for "different" types
-
-
 ### Step 1: Identify the Apparent Complexity
 
-**Look for:**
+**Look for things like:**
 
 - Long, deeply nested chain operations
 - Elaborate matching logic
@@ -43,6 +75,8 @@ Every solution should go through multiple iterations with rigorous self-critique
 - Examine actual data formats
 - Look at real usage patterns
 - Understand the core requirements
+- Note the subtleties of the logic
+- Consider the intentions behind the design
 
 ### Step 3: Ask "Why is this complex?"
 
@@ -52,13 +86,25 @@ Every solution should go through multiple iterations with rigorous self-critique
 - Is the abstraction actually helping?
 - Could this be done more directly?
 
+**But sometimes complexity serves a real purpose:**
+
+- Are these inconsistencies reflective of a real difference?
+- Is this logic shouldering work for other components?
+- Would a simplification here lead to complexity elsewhere?
+
+**Distinguish between needless overengineering and sophisticated design.**
+
 ### Step 4: Unwind the Layers
 
-**Remove abstraction layers to reveal the simple core:**
+**Remove abstraction layers to reveal the true core:**
 
-- Eliminate helper functions that are only used once
-- Combine similar operations
-- Straighten out the logic flow -- often this reveals deep flaws and redundancy hidden by the former complexity.
+- Straighten out the logic flow -- reveal the true redundancies hidden in the tangle
+- What is really being done here?
+- What is the intention behind this, its purpose?
+- What is this _supposed_ to do?
+- Do you really _need_ this to accomplish that?
+
+**You would be surprised at how much you can cut without changing anything.**
 
 ### Step 5: Let Context Determine Behavior
 
@@ -66,41 +112,23 @@ Every solution should go through multiple iterations with rigorous self-critique
 - Can this be reused?
 - Can this be replaced with something more appropriate for the system as a whole?
 
----
+**Stop and ask**: "What is this actually trying to do?"
 
-## Example: Macro Analysis
+**The answer is usually something much simpler than the code suggests.**
 
-### Draft 1: Surface-Level Analysis
+### Step 6: Synthesize Your Insights Into a Solution and Repeat
 
-**Problem**: Complex substitution logic with many functions
-**Solution**: Consolidate functions and use parameter structs
-
-**=> Self-critique**: This just hides complexity, doesn't eliminate it.
-
-### Draft 2: Deep Dive
-
-**Problem**: The functions themselves are complex
-**Solution**: Simplify the logic inside each function
-
-**=> Self-critique**: Still not addressing the core issue.
-
-### Draft 3: Root Cause Analysis
-
-**Problem**: The complexity was unnecessary - context already determined behavior
-**Solution**: Remove all special-casing and let context handle it
-
-**Self-critique =>**: Now I'm getting to the real issue!
-
-### Final Draft: Revelation
-
-**The complexity was artificial:**
-
-- The system was already simple, just over-engineered.
-- **Had you not kept pushing yourself to the very end, you would never have discovered the true solution.**
+**Optimal solutions are reached only through cycles of rigorous self-critique and iteration.**
 
 ---
 
 ## Key Questions for Self-Critique
+
+### Principles
+
+- The purpose of a critique is to identify flaws and weaknesses left unaddressed to improve the quality and robustness of your work.
+- A good critique provides actionable feedback and insights into things you might not have considered.
+- A critique that simply nods and affirms that everything "looks good" is _worthless_, the same as no critique at all.
 
 1. **"Is this really necessary?"**
    - Can I eliminate this complexity?
@@ -118,30 +146,6 @@ Every solution should go through multiple iterations with rigorous self-critique
    - Am I solving the right problem?
    - Is the real problem actually earlier down the pipeline?
    - Do I even need to solve this?
-
----
-
-## Benefits of This Process
-
-- **Readability**: Each step is obvious and isolated
-- **Maintainability**: Easy to modify individual validation steps
-- **Debugging**: Can easily add breakpoints at each validation point
-- **Consistency**: Same patterns throughout the codebase
-- **Reduced cognitive load**: Linear flow is easier to follow
-
----
-
-## Remember
-
-**Simplicity at all levels means**:
-
-- Each function has a single, clear purpose
-- No unnecessary abstraction layers
-- Let context determine behavior
-- Compose simple operations
-- If you need a helper function, the original function is too complex
-
-The goal is **composition of simple parts**, not complex abstractions.
 
 --
 

@@ -39,6 +39,9 @@ pub const ERROR_EXPECTED_LIST_FORM: &str = "Expected a list form for this macro"
 pub const ERROR_DUPLICATE_MACRO_NAME_STANDARD_LIBRARY: &str =
     "Duplicate macro name '{}' in standard macro library.";
 pub const ERROR_MACRO_NAME_CANNOT_BE_EMPTY: &str = "Macro name cannot be empty";
+pub const ERROR_MACRO_ALREADY_REGISTERED: &str = "Macro '{}' is already registered";
+pub const ERROR_DUPLICATE_MACRO_NAME_CONTEXT: &str = "Duplicate macro name";
+pub const ERROR_MACRO_ALREADY_REGISTERED_CONTEXT: &str = "Macro already registered";
 
 // ============================================================================
 // EVALUATION ERRORS
@@ -54,6 +57,14 @@ pub const ERROR_LET_BINDING_SYMBOL: &str = "let: binding name must be a symbol";
 pub const ERROR_SPECIAL_FORM_CALLABLE: &str =
     "Special Form atoms cannot be called through Callable interface - use direct dispatch instead";
 pub const ERROR_EXPECTS_STRING_ARGUMENT: &str = "error expects a String argument";
+
+// ============================================================================
+// TYPE EXTRACTION ERRORS
+// ============================================================================
+
+pub const ERROR_EXPECTED_NUMBER: &str = "Expected number, got {}";
+pub const ERROR_EXPECTED_BOOLEAN: &str = "Expected boolean, got {}";
+pub const ERROR_EXPECTED_PATH: &str = "Expected path, got {}";
 
 // ============================================================================
 // TEST ERRORS
