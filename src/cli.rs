@@ -12,6 +12,7 @@ use clap::{Parser, Subcommand};
 use crate::prelude::*;
 use crate::{
     engine::{print_error, EngineStdoutSink as StdoutSink, ExecutionPipeline},
+    test::runner::TestRunner,
     validation::grammar,
 };
 
@@ -77,10 +78,6 @@ pub enum ArgsCommand {
         file: PathBuf,
     },
 }
-
-// ============================================================================
-// OUTPUT TYPES - Re-export engine types for CLI
-// ============================================================================
 
 // ============================================================================
 // MAIN ENTRY POINT - Direct engine calls
@@ -203,7 +200,7 @@ fn run_test_suite(path: PathBuf) {
             );
         }
 
-        match crate::test::runner::TestRunner::run_single_test(test_form) {
+        match TestRunner::run_single_test(test_form) {
             Ok(()) => {
                 passed += 1;
                 println!("\x1b[32m✓\x1b[0m {}", test_form.name);
