@@ -96,7 +96,7 @@ impl TestRunner {
 
         // Look for value or error clause in expect form
         for item in items {
-            if let Some(expectation) = Self::extract_clause(&item, test_form)? {
+            if let Some(expectation) = Self::extract_clause(item, test_form)? {
                 return Ok(expectation);
             }
         }

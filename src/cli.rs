@@ -2,7 +2,7 @@
 //! This module is the main entry point for all CLI commands and orchestrates
 //! the core library functions.
 
-use std::{path::PathBuf, process};
+use std::{path::{Path, PathBuf}, process};
 
 use clap::{Parser, Subcommand};
 
@@ -161,7 +161,7 @@ fn run_test_suite(path: PathBuf) {
     let test_files = match TestDiscoverer::discover_test_files(path) {
         Ok(files) => files,
         Err(e) => {
-            eprintln!("Error discovering test files: {}", e);
+            eprintln!("Error discovering test files: {e}");
             return;
         }
     };
@@ -200,7 +200,7 @@ fn run_test_suite(path: PathBuf) {
             );
         }
 
-        match crate::test::runner::TestRunner::run_single_test(&test_form) {
+        match crate::test::runner::TestRunner::run_single_test(test_form) {
             Ok(()) => {
                 passed += 1;
                 println!("\x1b[32m✓\x1b[0m {}", test_form.name);
@@ -218,10 +218,10 @@ fn run_test_suite(path: PathBuf) {
     println!("\n\x1b[1m統 Test Summary\x1b[0m");
     println!("═══════════════");
     if passed > 0 {
-        println!("\x1b[32m✓ Passed:   {} tests\x1b[0m", passed);
+        println!("\x1b[32m✓ Passed:   {passed} tests\x1b[0m");
     }
     if failed > 0 {
-        println!("\x1b[31m✗ Failed:    {} tests\x1b[0m", failed);
+        println!("\x1b[31m✗ Failed:    {failed} tests\x1b[0m");
     }
 
     let total = passed + failed;
@@ -231,8 +231,7 @@ fn run_test_suite(path: PathBuf) {
         0.0
     };
     println!(
-        "\n\x1b[1m成 Success Rate: {:.1}% ({}/{})\x1b[0m\n",
-        rate, passed, total
+        "\n\x1b[1m成 Success Rate: {rate:.1}% ({passed}/{total})\x1b[0m\n"
     );
 }
 
@@ -240,14 +239,14 @@ fn run_test_suite(path: PathBuf) {
 // HELPER FUNCTIONS - Common patterns extracted
 // ============================================================================
 
-fn read_file_or_exit(path: &PathBuf) -> String {
+fn read_file_or_exit(path: &Path) -> String {
     ExecutionPipeline::read_file(path).unwrap_or_else(|e| {
         print_error(e);
         process::exit(1);
     })
 }
 
-fn process_file_with_pipeline<F>(file: &PathBuf, processor: F)
+fn process_file_with_pipeline<F>(file: &Path, processor: F)
 where
     F: FnOnce(&str) -> Result<String, SutraError>,
 {
@@ -256,7 +255,7 @@ where
         print_error(e);
         process::exit(1);
     });
-    println!("{}", result);
+    println!("{result}");
 }
 
 fn list_registry_items<F>(list_fn: F)
@@ -292,7 +291,7 @@ fn print_registry(items: &[String]) {
     }
 
     for item in items {
-        println!("  {}", item);
+        println!("  {item}");
     }
 }
 
@@ -302,7 +301,7 @@ fn print_validation(valid: bool, errors: Vec<String>) {
     } else {
         eprintln!("Grammar validation failed:");
         for err in errors {
-            eprintln!("• {}", err);
+            eprintln!("• {err}");
         }
     }
 }

@@ -116,9 +116,14 @@ This applies to **all levels** of code, from architectural down to the individua
 
 **The answer is usually something much simpler than the code suggests.**
 
-### Step 6: Synthesize Your Insights Into a Solution and Repeat
+### Step 6: Synthesize Your Insights into a Solution
 
-**Optimal solutions are reached only through cycles of rigorous self-critique and iteration.**
+- How does your proposed solution change existing behaviour?
+- If it does, is it for the better?
+- Weigh out the benefits and drawbacks
+- Could your solution be even better?
+
+**Optimal solutions can only be reached through cycles of rigorous self-critique and iteration.**
 
 ---
 

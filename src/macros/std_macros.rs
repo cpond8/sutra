@@ -244,7 +244,7 @@ fn create_unary_assignment_macro(expr: &AstNode, op_symbol: &str) -> macro_resul
     Ok(create_ast_list(
         vec![
             create_symbol(CORE_SET, &items[0].span),
-            items[1].clone(),
+            create_canonical_path(&items[1])?,
             inner_expr,
         ],
         *span,
