@@ -4,13 +4,13 @@ use crate::prelude::*;
 use crate::{
     ast::value::Lambda,
     atoms::{
-        helpers::{validate_special_form_arity, validate_special_form_min_arity},
+        helpers::{validate_special_form_arity, validate_special_form_min_arity, AtomResult},
         LazyAtomFn,
     },
     errors,
     runtime::{eval, world::Path},
 };
-use im::HashMap as ImHashMap;
+use std::collections::HashMap;
 
 /// Implements the (define ...) special form for global bindings.
 pub const ATOM_DEFINE: LazyAtomFn = |args, context, span| {
@@ -23,13 +23,13 @@ pub const ATOM_DEFINE: LazyAtomFn = |args, context, span| {
     // 2. Handle variable definition: (define my-var 100)
     if let Expr::Symbol(name, _) = &*name_expr.value {
         // Evaluate the value expression in the current context.
-        let (value, _) = eval::evaluate_ast_node(value_expr, context)?;
+        let value = eval::evaluate_ast_node(value_expr, context)?;
 
         // Create a path from the name and update the world state.
         let path = Path(vec![name.clone()]);
-        let new_world = context.world.set(&path, value.clone());
+        context.world.borrow_mut().set(&path, value.clone());
 
-        return Ok((value, new_world));
+        return Ok(value);
     }
 
     // 3. Handle function definition: (define (my-func x) (+ x 1))
@@ -95,7 +95,8 @@ pub const ATOM_DEFINE: LazyAtomFn = |args, context, span| {
         };
 
         // The value expression is the function body. Create the lambda.
-        let captured_env = context.lexical_env.iter().map(|frame| ImHashMap::from_iter(frame.iter().map(|(k, v)| (k.clone(), v.clone())))).collect();
+        // Capture the current lexical environment stack (deep clone).
+        let captured_env = context.lexical_env.clone();
         let lambda = Value::Lambda(Rc::new(Lambda {
             params,
             body: Box::new(value_expr.clone()),
@@ -104,9 +105,9 @@ pub const ATOM_DEFINE: LazyAtomFn = |args, context, span| {
 
         // Create a path from the function name and update the world state.
         let path = Path(vec![function_name.clone()]);
-        let new_world = context.world.set(&path, lambda.clone());
+        context.world.borrow_mut().set(&path, lambda.clone());
 
-        return Ok((lambda, new_world));
+        return Ok(lambda);
     }
 
     // 4. If the first argument is not a symbol or a list, it's an error.
@@ -125,12 +126,9 @@ pub const ATOM_IF: LazyAtomFn = |args, context, _span| {
     let then_branch = &args[1];
     let else_branch = &args[2];
 
-    let (is_true, next_world) = eval::evaluate_condition_as_bool(condition, context)?;
-    let mut sub_context = context.clone_with_new_lexical_frame();
-    sub_context.world = &next_world;
-
+    let is_true = eval::evaluate_condition_as_bool(condition, context)?;
     let branch = if is_true { then_branch } else { else_branch };
-    eval::evaluate_ast_node(branch, &mut sub_context)
+    eval::evaluate_ast_node(branch, context)
 };
 
 /// Implements the (lambda ...) special form.
@@ -196,15 +194,12 @@ pub const ATOM_LAMBDA: LazyAtomFn = |args, context, span| {
     };
 
     // Capture the current lexical environment stack (deep clone, convert to im::HashMap)
-    let captured_env = context.lexical_env.iter().map(|frame| ImHashMap::from_iter(frame.iter().map(|(k, v)| (k.clone(), v.clone())))).collect();
-    Ok((
-        Value::Lambda(Rc::new(Lambda {
-            params: param_list,
-            body,
-            captured_env,
-        })),
-        context.world.clone(),
-    ))
+    let captured_env = context.lexical_env.clone();
+    Ok(Value::Lambda(Rc::new(Lambda {
+        params: param_list,
+        body,
+        captured_env,
+    })))
 };
 
 /// Implements the (let ...) special form.
@@ -248,7 +243,7 @@ pub const ATOM_LET: LazyAtomFn = |args, context, span| {
                 ));
             }
         };
-        let (value, _) = eval::evaluate_ast_node(value_expr, &mut new_context)?;
+        let value = eval::evaluate_ast_node(value_expr, &mut new_context)?;
         new_context.set_lexical_var(&name, value);
     }
 
@@ -276,8 +271,7 @@ pub const ATOM_LET: LazyAtomFn = |args, context, span| {
         }
     };
 
-    let (result, world) = eval::evaluate_ast_node(body, &mut new_context)?;
-    Ok((result, world))
+    eval::evaluate_ast_node(body, &mut new_context)
 };
 
 /// Applies a Lambda value to arguments in the given evaluation context.
@@ -285,21 +279,20 @@ pub fn call_lambda(
     lambda: &Lambda,
     args: &[Value],
     context: &mut eval::EvaluationContext,
-) -> Result<(Value, World), SutraError> {
+) -> AtomResult {
     // Manually construct a new EvaluationContext with the captured lexical_env
     let mut new_context = eval::EvaluationContext {
-        world: context.world,
+        world: Rc::clone(&context.world),
         output: context.output.clone(),
         atom_registry: context.atom_registry,
         source: context.source.clone(),
         max_depth: context.max_depth,
         depth: context.depth,
-        lexical_env: lambda.captured_env.iter().map(|frame| frame.clone().into_iter().collect()).collect(),
+        lexical_env: lambda.captured_env.clone(),
         test_file: context.test_file.clone(),
         test_name: context.test_name.clone(),
     };
-    // Push a new frame for parameters (as im::HashMap, but convert to std::HashMap for context)
-    new_context.lexical_env.push(ImHashMap::new().into_iter().collect());
+    new_context.lexical_env.push(HashMap::new());
 
     // Bind parameters in the new top frame
     let fixed = lambda.params.required.len();
@@ -327,6 +320,5 @@ pub fn call_lambda(
     }
 
     // Evaluate body in new context
-    let (result, world) = eval::evaluate_ast_node(&lambda.body, &mut new_context)?;
-    Ok((result, world))
+    eval::evaluate_ast_node(&lambda.body, &mut new_context)
 }

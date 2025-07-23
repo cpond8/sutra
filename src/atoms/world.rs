@@ -30,8 +30,8 @@ pub const ATOM_CORE_SET: EagerAtomFn = |args, context| {
     helpers::validate_binary_arity(args, "core/set!")?;
     let path = &args[0].extract(Some(context))?;
     let value = args[1].clone();
-    let new_world = context.world.set(path, value);
-    Ok((Value::Nil, new_world))
+    context.world.borrow_mut().set(path, value);
+    Ok(Value::Nil)
 };
 
 /// Gets a value at a path in the world state.
@@ -39,8 +39,8 @@ pub const ATOM_CORE_SET: EagerAtomFn = |args, context| {
 pub const ATOM_CORE_GET: EagerAtomFn = |args, context| {
     helpers::validate_unary_arity(args, "core/get")?;
     let path = &args[0].extract(Some(context))?;
-    let value = context.world.get(path).cloned().unwrap_or_default();
-    Ok((value, context.world.clone()))
+    let value = context.world.borrow().get(path).cloned().unwrap_or_default();
+    Ok(value)
 };
 
 /// Deletes a value at a path in the world state.
@@ -48,8 +48,8 @@ pub const ATOM_CORE_GET: EagerAtomFn = |args, context| {
 pub const ATOM_CORE_DEL: EagerAtomFn = |args, context| {
     helpers::validate_unary_arity(args, "core/del!")?;
     let path = &args[0].extract(Some(context))?;
-    let new_world = context.world.del(path);
-    Ok((Value::Nil, new_world))
+    context.world.borrow_mut().del(path);
+    Ok(Value::Nil)
 };
 
 /// Returns true if a path exists in the world state.
@@ -57,8 +57,8 @@ pub const ATOM_CORE_DEL: EagerAtomFn = |args, context| {
 pub const ATOM_EXISTS: EagerAtomFn = |args, context| {
     helpers::validate_unary_arity(args, "core/exists?")?;
     let path = &args[0].extract(Some(context))?;
-    let exists = context.world.get(path).is_some();
-    Ok((Value::Bool(exists), context.world.clone()))
+    let exists = context.world.borrow().get(path).is_some();
+    Ok(Value::Bool(exists))
 };
 
 /// Creates a path from a string.
@@ -68,7 +68,7 @@ pub const ATOM_PATH: EagerAtomFn = |args, context| {
     match &args[0] {
         Value::String(s) => {
             let path = Path(vec![s.clone()]);
-            Ok((Value::Path(path), context.world.clone()))
+            Ok(Value::Path(path))
         }
         _ => Err(errors::type_mismatch(
             "String",

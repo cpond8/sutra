@@ -27,8 +27,13 @@ pub mod prelude {
         runtime::eval::EvaluationContext,
         runtime::world::World,
         MacroDefinition, Path,
-        syntax::parser::to_source_span
+        syntax::parser::to_source_span,
     };
+
+    // New canonical world type for shared, mutable state
+    pub use std::rc::Rc;
+    pub use std::cell::RefCell;
+    pub type CanonicalWorld = Rc<RefCell<crate::runtime::world::World>>;
 }
 
 pub mod ast;

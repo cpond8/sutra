@@ -34,9 +34,9 @@ impl TestRunner {
         processor.validate_expanded_ast(&expanded_node, &macro_env, &atom_registry, &source_context)?;
 
         // Use the builder for evaluation context
-        let (result, _) = evaluate(
+        let result = evaluate(
             &expanded_node,
-            &World::default(),
+            Rc::new(RefCell::new(World::default())),
             output.clone(),
             &atom_registry,
             source_context,

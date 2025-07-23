@@ -1,6 +1,5 @@
-use std::{collections::HashMap as StdHashMap, fmt, fs, sync::Arc};
+use std::{collections::HashMap, fmt, fs, sync::Arc};
 
-use im::HashMap;
 use miette::NamedSource;
 use rand::{RngCore, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
@@ -50,7 +49,9 @@ impl fmt::Display for Path {
 // WORLD STATE: Data container for Sutra's world
 // ============================================================================
 
-#[derive(Clone, Debug)]
+// WorldState is now a simple container for the root Value::Map.
+// All operations are mutable; cloning is disabled to enforce a single state.
+#[derive(Debug)]
 pub struct WorldState {
     data: Value,
 }
@@ -58,6 +59,7 @@ pub struct WorldState {
 impl WorldState {
     pub fn new() -> Self {
         Self {
+            // The root of the world is always a Map.
             data: Value::Map(HashMap::new()),
         }
     }
@@ -74,27 +76,30 @@ impl WorldState {
         Some(current)
     }
 
-    pub fn set(&self, path: &Path, val: Value) -> Self {
-        if path.0.is_empty() {
-            return self.clone();
+    pub fn get_mut(&mut self, path: &Path) -> Option<&mut Value> {
+        let mut current = &mut self.data;
+        for key in &path.0 {
+            let Value::Map(map) = current else {
+                return None;
+            };
+            current = map.entry(key.clone()).or_insert(Value::Map(HashMap::new()));
         }
-        let new_data = set_recursive(&self.data, &path.0, val);
-        Self { data: new_data }
+        Some(current)
     }
 
-    pub fn del(&self, path: &Path) -> Self {
+
+    pub fn set(&mut self, path: &Path, val: Value) {
         if path.0.is_empty() {
-            return self.clone();
+            return;
         }
-        let new_data = del_recursive(&self.data, &path.0);
-        Self { data: new_data }
+        set_recursive_mut(&mut self.data, &path.0, val);
     }
 
-    pub fn top_level_keys(&self) -> Vec<String> {
-        match &self.data {
-            Value::Map(m) => m.keys().cloned().collect(),
-            _ => vec![],
+    pub fn del(&mut self, path: &Path) {
+        if path.0.is_empty() {
+            return;
         }
+        del_recursive_mut(&mut self.data, &path.0);
     }
 }
 
@@ -108,7 +113,8 @@ impl Default for WorldState {
 // WORLD: Top-level container for all runtime state
 // ============================================================================
 
-#[derive(Clone, Debug)]
+// World is now mutable. Cloning is removed to enforce a single, canonical world.
+#[derive(Debug)]
 pub struct World {
     pub state: WorldState,
     pub prng: SmallRng,
@@ -138,26 +144,18 @@ impl World {
         self.state.get(path)
     }
 
-    pub fn set(&self, path: &Path, val: Value) -> Self {
-        Self {
-            state: self.state.set(path, val),
-            ..self.clone()
-        }
+    // `set` now mutates the world directly.
+    pub fn set(&mut self, path: &Path, val: Value) {
+        self.state.set(path, val);
     }
 
-    pub fn del(&self, path: &Path) -> Self {
-        Self {
-            state: self.state.del(path),
-            ..self.clone()
-        }
+    // `del` now mutates the world directly.
+    pub fn del(&mut self, path: &Path) {
+        self.state.del(path);
     }
 
     pub fn next_u32(&mut self) -> u32 {
         self.prng.next_u32()
-    }
-
-    pub fn with_macros(self, macros: MacroExpansionContext) -> Self {
-        Self { macros, ..self }
     }
 }
 
@@ -285,7 +283,7 @@ fn build_core_macro_registry() -> MacroRegistry {
 /// - Duplicate macro names are found within the file
 fn load_and_process_user_macros(
     path: &str,
-) -> Result<StdHashMap<String, MacroDefinition>, SutraError> {
+) -> Result<HashMap<String, MacroDefinition>, SutraError> {
     // Load macros from file with error logging
     let macros = load_macros_from_file(path).map_err(|e| {
         #[cfg(debug_assertions)]
@@ -294,7 +292,7 @@ fn load_and_process_user_macros(
     })?;
 
     // Process loaded macros with duplicate checking
-    let mut user_macros = StdHashMap::new();
+    let mut user_macros = HashMap::new();
     let mut ctx = MacroValidationContext::for_standard_library();
     ctx.source_context = Some(Arc::new(NamedSource::new(path.to_string(), String::new())));
 
@@ -303,60 +301,57 @@ fn load_and_process_user_macros(
 }
 
 // ============================================================================
-// IMMUTABLE HELPERS: set_recursive, del_recursive
+// MUTABLE HELPERS: set_recursive_mut, del_recursive_mut
 // ============================================================================
 
-// Recursive helper for immutable `set`.
-fn set_recursive(current: &Value, path_segments: &[String], val: Value) -> Value {
+/// Recursive helper for mutable `set`.
+fn set_recursive_mut(current: &mut Value, path_segments: &[String], val: Value) {
     let Some(key) = path_segments.first() else {
-        return current.clone();
+        return;
     };
 
     let remaining_segments = &path_segments[1..];
-    let mut map = match current {
-        Value::Map(m) => m.clone(),
-        _ => HashMap::new(),
+
+    // Ensure the current value is a map, upgrading if necessary.
+    if !matches!(current, Value::Map(_)) {
+        *current = Value::Map(HashMap::new());
+    }
+
+    let Value::Map(map) = current else {
+        unreachable!(); // Should have been upgraded above
     };
 
     if remaining_segments.is_empty() {
         map.insert(key.clone(), val);
     } else {
-        let child = map.get(key).unwrap_or(&Value::Nil);
-        let new_child = set_recursive(child, remaining_segments, val);
-        map.insert(key.clone(), new_child);
+        let child = map
+            .entry(key.clone())
+            .or_insert_with(|| Value::Map(HashMap::new()));
+        set_recursive_mut(child, remaining_segments, val);
     }
-
-    Value::Map(map)
 }
 
-// Recursive helper for immutable `del`.
-fn del_recursive(current: &Value, path_segments: &[String]) -> Value {
+/// Recursive helper for mutable `del`.
+fn del_recursive_mut(current: &mut Value, path_segments: &[String]) {
     let Some(key) = path_segments.first() else {
-        return current.clone();
+        return;
     };
 
-    let Value::Map(current_map) = current else {
-        return current.clone();
+    let Value::Map(map) = current else {
+        return; // Can't delete from a non-map value.
     };
-
-    let mut map = current_map.clone();
 
     if path_segments.len() == 1 {
         map.remove(key);
-    } else if let Some(child) = map.get(key) {
-        let new_child = del_recursive(child, &path_segments[1..]);
-        if let Value::Map(child_map) = &new_child {
+    } else if let Some(child) = map.get_mut(key) {
+        del_recursive_mut(child, &path_segments[1..]);
+        // Clean up empty maps after deletion
+        if let Value::Map(child_map) = child {
             if child_map.is_empty() {
                 map.remove(key);
-            } else {
-                map.insert(key.clone(), new_child);
             }
-        } else {
-            map.insert(key.clone(), new_child);
         }
     }
-
-    Value::Map(map)
 }
 
 // ============================================================================
@@ -368,18 +363,14 @@ impl StateContext for WorldState {
         self.get(path)
     }
 
+    // `set` now correctly uses the mutable implementation.
     fn set(&mut self, path: &Path, value: Value) {
-        if path.0.is_empty() {
-            return;
-        }
-        self.data = set_recursive(&self.data, &path.0, value);
+        set_recursive_mut(&mut self.data, &path.0, value);
     }
 
+    // `del` now correctly uses the mutable implementation.
     fn del(&mut self, path: &Path) {
-        if path.0.is_empty() {
-            return;
-        }
-        self.data = del_recursive(&self.data, &path.0);
+        del_recursive_mut(&mut self.data, &path.0);
     }
 
     fn exists(&self, path: &Path) -> bool {

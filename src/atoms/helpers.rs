@@ -21,7 +21,7 @@ use miette::SourceSpan;
 // ============================================================================
 
 /// Convenient type alias for atom return values - modern Rust idiom
-pub type AtomResult = Result<(Value, World), SutraError>;
+pub type AtomResult = Result<Value, SutraError>;
 
 /// Type alias for evaluation context to reduce verbosity
 pub type EvalContext<'a> = &'a mut EvaluationContext<'a>;
@@ -29,13 +29,13 @@ pub type EvalContext<'a> = &'a mut EvaluationContext<'a>;
 
 
 /// Type alias for functions that return multiple values with world state
-pub type MultiValueResult = Result<(Vec<Value>, World), SutraError>;
+pub type MultiValueResult = Result<Vec<Value>, SutraError>;
 
 /// Type alias for functions that return typed arrays with world state
-pub type ArrayResult<const N: usize> = Result<([Value; N], World), SutraError>;
+pub type ArrayResult<const N: usize> = Result<[Value; N], SutraError>;
 
 /// Type alias for binary operations returning two values and world
-pub type BinaryResult = Result<(Value, Value, World), SutraError>;
+pub type BinaryResult = Result<(Value, Value), SutraError>;
 
 /// Type alias for validation functions that return unit
 pub type ValidationResult = Result<(), SutraError>;
@@ -164,19 +164,11 @@ impl ExtractValue<Path> for Value {
 /// ```
 #[macro_export]
 macro_rules! sub_eval_context {
-    ($parent:expr, $world:expr) => {
-        $crate::eval::EvaluationContext {
-            world: $world,
-            output: $parent.output.clone(),
-            atom_registry: $parent.atom_registry,
-            source: $parent.source.clone(),
-            max_depth: $parent.max_depth,
-            depth: $parent.depth,
-            lexical_env: $parent.lexical_env.clone(),
-            test_file: $parent.test_file.clone(),
-            test_name: $parent.test_name.clone(),
-        }
-    };
+    ($parent:expr) => {{
+        let mut new_context = $parent.clone_with_new_lexical_frame();
+        new_context.depth += 1;
+        new_context
+    }};
 }
 
 // Re-export for use within this module
@@ -189,15 +181,12 @@ pub use sub_eval_context;
 /// Evaluates all arguments in sequence, threading world state through each evaluation.
 /// This is the fundamental building block for all multi-argument atom operations.
 pub fn eval_args(args: &[AstNode], context: &mut EvaluationContext<'_>) -> MultiValueResult {
-    args.iter().try_fold(
-        (Vec::with_capacity(args.len()), context.world.clone()),
-        |(mut values, world), arg| {
-            let mut sub_context = sub_eval_context!(context, &world);
-            let (val, next_world) = evaluate_ast_node(arg, &mut sub_context)?;
-            values.push(val);
-            Ok((values, next_world))
-        },
-    )
+    let mut values = Vec::with_capacity(args.len());
+    for arg in args {
+        let val = evaluate_ast_node(arg, context)?;
+        values.push(val);
+    }
+    Ok(values)
 }
 
 /// Generic argument evaluation with compile-time arity checking
@@ -213,20 +202,16 @@ pub fn eval_n_args<const N: usize>(
             context.current_source(),
             context.span_for_span(Span::default()),
         );
-        if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
-            err = err.with_test_context(tf.clone(), tn.clone());
+        if let (Some(tf), Some(tn)) = (context.test_file.as_deref(), context.test_name.as_deref()) {
+            err = err.with_test_context(tf.to_string(), tn.to_string());
         }
         return Err(err);
     }
 
     let mut values = Vec::with_capacity(N);
-    let mut world = context.world.clone();
-
     for arg in args.iter().take(N) {
-        let mut sub_context = sub_eval_context!(context, &world);
-        let (val, next_world) = evaluate_ast_node(arg, &mut sub_context)?;
+        let val = evaluate_ast_node(arg, context)?;
         values.push(val);
-        world = next_world;
     }
 
     // Convert Vec to array - this is safe because we checked length above
@@ -242,19 +227,19 @@ pub fn eval_n_args<const N: usize>(
             .with_suggestion("This is an internal engine error. Please report this as a bug.")
         })?;
 
-    Ok((values_array, world))
+    Ok(values_array)
 }
 
 /// Evaluates a single argument and returns the value and world
 pub fn eval_single_arg(args: &[AstNode], context: &mut EvaluationContext<'_>) -> AtomResult {
-    let ([val], world) = eval_n_args::<1>(args, context)?;
-    Ok((val, world))
+    let [val] = eval_n_args::<1>(args, context)?;
+    Ok(val)
 }
 
 /// Evaluates two arguments and returns both values and the final world
 pub fn eval_binary_args(args: &[AstNode], context: &mut EvaluationContext<'_>) -> BinaryResult {
-    let ([val1, val2], world) = eval_n_args::<2>(args, context)?;
-    Ok((val1, val2, world))
+    let [val1, val2] = eval_n_args::<2>(args, context)?;
+    Ok((val1, val2))
 }
 
 // ============================================================================
@@ -535,7 +520,7 @@ where
     F: Fn(f64, f64) -> Value,
     V: Fn(f64, f64) -> Result<(), &'static str>,
 {
-    let (val1, val2, world) = eval_binary_args(args, context)?;
+    let (val1, val2) = eval_binary_args(args, context)?;
     let (n1, n2) = extract_numbers(&val1, &val2, Some(context))?;
 
     if let Some(validate) = validator {
@@ -551,7 +536,7 @@ where
         })?;
     }
 
-    Ok((op(n1, n2), world))
+    Ok(op(n1, n2))
 }
 
 /// Evaluates an n-ary numeric operation (e.g., sum, product).
@@ -574,13 +559,13 @@ where
             context.span_for_span(Span::default()),
         );
 
-        if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
-            err = err.with_test_context(tf.clone(), tn.clone());
+        if let (Some(tf), Some(tn)) = (context.test_file.as_deref(), context.test_name.as_deref()) {
+            err = err.with_test_context(tf.to_string(), tn.to_string());
         }
         return Err(err);
     }
 
-    let (values, world) = eval_args(args, context)?;
+    let values = eval_args(args, context)?;
     let mut acc = init;
 
     for v in values.iter() {
@@ -588,7 +573,7 @@ where
         acc = fold(acc, n);
     }
 
-    Ok((Value::Number(acc), world))
+    Ok(Value::Number(acc))
 }
 
 /// Evaluates a unary boolean operation.
@@ -601,9 +586,9 @@ pub fn eval_unary_bool_template<F>(
 where
     F: Fn(bool) -> Value,
 {
-    let (val, world) = eval_single_arg(args, context)?;
+    let val = eval_single_arg(args, context)?;
     let b = val.extract(Some(context))?;
-    Ok((op(b), world))
+    Ok(op(b))
 }
 
 /// Evaluates a unary path operation (get, del).
@@ -614,11 +599,11 @@ pub fn eval_unary_path_template<F>(
     op: F,
 ) -> AtomResult
 where
-    F: Fn(Path, World) -> AtomResult,
+    F: Fn(&mut World, Path) -> AtomResult,
 {
-    let (val, world) = eval_single_arg(args, context)?;
+    let val = eval_single_arg(args, context)?;
     let path = val.extract(Some(context))?;
-    op(path, world)
+    op(&mut context.world.borrow_mut(), path)
 }
 
 /// Evaluates a binary path operation (set).
@@ -629,11 +614,11 @@ pub fn eval_binary_path_template<F>(
     op: F,
 ) -> AtomResult
 where
-    F: Fn(Path, Value, World) -> AtomResult,
+    F: Fn(&mut World, Path, Value) -> AtomResult,
 {
-    let (path_val, value, world) = eval_binary_args(args, context)?;
+    let (path_val, value) = eval_binary_args(args, context)?;
     let path = path_val.extract(Some(context))?;
-    op(path, value, world)
+    op(&mut context.world.borrow_mut(), path, value)
 }
 
 /// Evaluates a unary operation that takes any value.
@@ -644,10 +629,10 @@ pub fn eval_unary_value_template<F>(
     op: F,
 ) -> AtomResult
 where
-    F: Fn(Value, World, &mut EvaluationContext<'_>) -> AtomResult,
+    F: Fn(Value, &mut EvaluationContext<'_>) -> AtomResult,
 {
-    let (val, world) = eval_single_arg(args, context)?;
-    op(val, world, context)
+    let val = eval_single_arg(args, context)?;
+    op(val, context)
 }
 
 /// Evaluates a sequence comparison operation on numbers.
@@ -678,17 +663,17 @@ pub fn eval_numeric_sequence_comparison_template<F>(
 where
     F: Fn(f64, f64) -> bool,
 {
-    let (values, world) = eval_args(args, context)?;
+    let values = eval_args(args, context)?;
     validate_sequence_arity(&values, atom_name)?;
 
     for i in 0..values.len() - 1 {
         let a = values[i].extract(Some(context))?;
         let b = values[i + 1].extract(Some(context))?;
         if comparison(a, b) {
-            return Ok((Value::Bool(false), world));
+            return Ok(Value::Bool(false));
         }
     }
-    Ok((Value::Bool(true), world))
+    Ok(Value::Bool(true))
 }
 
 /// Evaluates an n-ary numeric operation with a custom initial value and fold function.
@@ -721,7 +706,7 @@ pub fn eval_nary_numeric_op_custom_template<F>(
 where
     F: Fn(f64, f64) -> f64,
 {
-    let (values, world) = eval_args(args, context)?;
+    let values = eval_args(args, context)?;
     validate_min_arity(&values, 1, atom_name)?;
 
     let mut result = init;
@@ -729,7 +714,7 @@ where
         let n = v.extract(Some(context))?;
         result = fold(result, n);
     }
-    Ok((Value::Number(result), world))
+    Ok(Value::Number(result))
 }
 
 /// Evaluates a unary operation with type checking using the ExtractValue trait.
@@ -761,9 +746,9 @@ where
     Value: ExtractValue<T>,
     F: Fn(T) -> Value,
 {
-    let (val, world) = eval_single_arg(args, context)?;
+    let val = eval_single_arg(args, context)?;
     let extracted = val.extract(Some(context))?;
-    Ok((op(extracted), world))
+    Ok(op(extracted))
 }
 
 
@@ -777,19 +762,16 @@ where
 pub fn eval_apply_normal_args(
     args: &[AstNode],
     context: &mut EvaluationContext<'_>,
-) -> Result<(Vec<AstNode>, World), SutraError> {
-    let mut evald_args = Vec::with_capacity(args.len());
-    let mut world = context.world.clone();
+) -> Result<Vec<AstNode>, SutraError> {
+    let mut evaluated_arg_nodes = Vec::with_capacity(args.len());
     for arg in args {
-        let mut sub_context = sub_eval_context!(context, &world);
-        let (val, next_world) = evaluate_ast_node(arg, &mut sub_context)?;
-        evald_args.push(Spanned {
+        let val = evaluate_ast_node(arg, context)?;
+        evaluated_arg_nodes.push(Spanned {
             value: Expr::from(val).into(),
             span: arg.span,
         });
-        world = next_world;
     }
-    Ok((evald_args, world))
+    Ok(evaluated_arg_nodes)
 }
 
 /// Evaluates the list argument for apply (the last argument).
@@ -798,9 +780,8 @@ pub fn eval_apply_list_arg(
     arg: &AstNode,
     context: &mut EvaluationContext<'_>,
     parent_span: &Span,
-) -> Result<(Vec<AstNode>, World), SutraError> {
-    let mut sub_context = sub_eval_context!(context, context.world);
-    let (list_val, world) = evaluate_ast_node(arg, &mut sub_context)?;
+) -> Result<Vec<AstNode>, SutraError> {
+    let list_val = evaluate_ast_node(arg, context)?;
     let Value::List(items) = list_val else {
         return Err(errors::type_mismatch(
             "List",
@@ -817,7 +798,7 @@ pub fn eval_apply_list_arg(
             span: *parent_span,
         })
         .collect();
-    Ok((list_items, world))
+    Ok(list_items)
 }
 
 /// Builds the call expression for apply by combining function, normal args, and list args.

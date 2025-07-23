@@ -56,14 +56,16 @@ This refactor aims to eliminate the complexity and fragility of Sutra's current 
      - Document the new model: “All global state is managed by a single, canonical world reference.”
      - Remove references to world threading and immutable world from docs and comments.
 - **Concrete, Actionable Checklist:**
-  - [ ] Introduce a canonical `Rc<RefCell<World>>` in the root context.
-  - [ ] Update all evaluation contexts to hold a reference to this world.
-  - [ ] Remove world parameters and return values from all evaluation and atom functions.
-  - [ ] Refactor all world reads/writes to use the canonical reference.
-  - [ ] Update test runner to use the canonical world.
-  - [ ] Remove all unnecessary world cloning.
-  - [ ] Update documentation and code comments to reflect the new model.
-  - [ ] Test thoroughly to ensure global state is always up-to-date and visible.
+  - [x] Introduce a canonical `Rc<RefCell<World>>` in the root context.
+  - [x] Update all evaluation contexts to hold a reference to this world.
+  - [x] Remove world parameters and return values from all evaluation and atom functions.
+  - [x] Refactor all world reads/writes to use the canonical reference.
+  - [x] Update test runner to use the canonical world.
+  - [x] Remove all unnecessary world cloning.
+  - [x] Update documentation and code comments to reflect the new model.
+  - [x] Test thoroughly to ensure global state is always up-to-date and visible.
+- **Implementation Summary:**
+  Phase 1 has been successfully completed. The core of this phase was the introduction of `pub type CanonicalWorld = Rc<RefCell<World>>;`. The `World` and `EvaluationContext` structs were refactored to use this new type, and the `Clone` trait was removed from `World` to enforce a single-owner pattern. All function signatures that previously passed `World` immutably (e.g., `Result<(Value, World), SutraError>`) were updated to return only `Result<Value, SutraError>`. Atom implementations and the evaluation engine now access the world state via `context.world.borrow()` and `context.world.borrow_mut()`. The `ExecutionPipeline` and `TestRunner` were updated to create and manage the single `CanonicalWorld` instance for each execution. Compiler-driven development was used to systematically address all borrow-checker and type errors. The entire codebase now compiles without errors or warnings, and all tests pass, confirming the refactor's success and that no regressions were introduced.
 
 ### Phase 2: Lexical Environment & Closures
 - **Objective:** Simplify lexical environment management and closure capture.

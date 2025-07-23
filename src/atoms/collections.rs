@@ -36,7 +36,7 @@ use crate::errors;
 ///
 /// Example:
 ///   (list 1 2 3) ; => (1 2 3)
-pub const ATOM_LIST: EagerAtomFn = |args, context| Ok((Value::List(args.to_vec()), context.world.clone()));
+pub const ATOM_LIST: EagerAtomFn = |args, _| Ok(Value::List(args.to_vec()));
 
 /// Returns the length of a list or string.
 ///
@@ -62,7 +62,7 @@ pub const ATOM_LEN: EagerAtomFn = |args, context| {
             context.span_for_span(Span::default()),
         )),
     };
-    Ok((Value::Number(len as f64), context.world.clone()))
+    Ok(Value::Number(len as f64))
 };
 
 /// Tests if a collection contains a value or key.
@@ -95,7 +95,7 @@ pub const ATOM_HAS: EagerAtomFn = |args, context| {
             context.span_for_span(Span::default()),
         )),
     };
-    Ok((Value::Bool(found), context.world.clone()))
+    Ok(Value::Bool(found))
 };
 
 /// Appends a value to a list at a path in the world state.
@@ -114,15 +114,18 @@ pub const ATOM_HAS: EagerAtomFn = |args, context| {
 pub const ATOM_CORE_PUSH: EagerAtomFn = |args, context| {
     helpers::validate_binary_arity(args, "core/push!")?;
     let path = helpers::validate_path_arg(args, "core/push!")?;
-    let mut list_val = context
-        .world
-        .get(path)
-        .cloned()
-        .unwrap_or(Value::List(vec![]));
-    let items = helpers::validate_list_value_mut(&mut list_val, "core/push!")?;
-    items.push(args[1].clone());
-    let new_world = context.world.set(path, list_val);
-    Ok((Value::Nil, new_world))
+    let value_to_push = args[1].clone();
+
+    let mut world = context.world.borrow_mut();
+    if world.state.get(path).is_none() {
+        world.state.set(path, Value::List(vec![]));
+    }
+    let list_val = world.state.get_mut(path).unwrap();
+
+    let items = helpers::validate_list_value_mut(list_val, "core/push!")?;
+    items.push(value_to_push);
+
+    Ok(Value::Nil)
 };
 
 /// Removes and returns the last element from a list at a path in the world state.
@@ -140,15 +143,17 @@ pub const ATOM_CORE_PUSH: EagerAtomFn = |args, context| {
 pub const ATOM_CORE_PULL: EagerAtomFn = |args, context| {
     helpers::validate_unary_arity(args, "core/pull!")?;
     let path = helpers::validate_path_arg(args, "core/pull!")?;
-    let mut list_val = context
-        .world
-        .get(path)
-        .cloned()
-        .unwrap_or(Value::List(vec![]));
-    let items = helpers::validate_list_value_mut(&mut list_val, "core/pull!")?;
-    let pulled_value = items.pop().unwrap_or(Value::Nil);
-    let new_world = context.world.set(path, list_val);
-    Ok((pulled_value, new_world))
+
+    let mut world = context.world.borrow_mut();
+    let list_val = world.state.get_mut(path);
+
+    if let Some(list_val) = list_val {
+        let items = helpers::validate_list_value_mut(list_val, "core/pull!")?;
+        let pulled_value = items.pop().unwrap_or(Value::Nil);
+        Ok(pulled_value)
+    } else {
+        Ok(Value::Nil)
+    }
 };
 
 // ============================================================================
@@ -166,7 +171,7 @@ pub const ATOM_CORE_PULL: EagerAtomFn = |args, context| {
 ///   (core/str+ "foo" "bar" "baz") ; => "foobarbaz"
 pub const ATOM_CORE_STR_PLUS: EagerAtomFn = |args, context| {
     if args.is_empty() {
-        return Ok((Value::String(String::new()), context.world.clone()));
+        return Ok(Value::String(String::new()));
     }
     let mut result = String::new();
     for val in args {
@@ -181,7 +186,7 @@ pub const ATOM_CORE_STR_PLUS: EagerAtomFn = |args, context| {
         };
         result.push_str(&s);
     }
-    Ok((Value::String(result), context.world.clone()))
+    Ok(Value::String(result))
 };
 
 // ============================================================================
@@ -198,14 +203,14 @@ pub const ATOM_CORE_STR_PLUS: EagerAtomFn = |args, context| {
 /// Example:
 ///   (car (list 1 2 3)) ; => 1
 ///   (car (list)) ; => Nil
-pub const ATOM_CAR: EagerAtomFn = |args, context| {
+pub const ATOM_CAR: EagerAtomFn = |args, _context| {
     helpers::validate_unary_arity(args, "car")?;
     let list_val = &args[0];
     let items = helpers::validate_list_value(list_val, "car")?;
     let Some(first) = items.first() else {
-        return Ok((Value::Nil, context.world.clone()));
+        return Ok(Value::Nil);
     };
-    Ok((first.clone(), context.world.clone()))
+    Ok(first.clone())
 };
 
 /// Returns all elements of a list except the first.
@@ -219,14 +224,14 @@ pub const ATOM_CAR: EagerAtomFn = |args, context| {
 ///   (cdr (list 1 2 3)) ; => (2 3)
 ///   (cdr (list 1)) ; => ()
 ///   (cdr (list)) ; => ()
-pub const ATOM_CDR: EagerAtomFn = |args, context| {
+pub const ATOM_CDR: EagerAtomFn = |args, _context| {
     helpers::validate_unary_arity(args, "cdr")?;
     let list_val = &args[0];
     let items = helpers::validate_list_value(list_val, "cdr")?;
     if items.is_empty() {
-        return Ok((Value::List(vec![]), context.world.clone()));
+        return Ok(Value::List(vec![]));
     }
-    Ok((Value::List(items[1..].to_vec()), context.world.clone()))
+    Ok(Value::List(items[1..].to_vec()))
 };
 
 /// Constructs a new list by prepending an element to an existing list.
@@ -240,7 +245,7 @@ pub const ATOM_CDR: EagerAtomFn = |args, context| {
 /// Example:
 ///   (cons 1 (list 2 3)) ; => (1 2 3)
 ///   (cons 1 (list)) ; => (1)
-pub const ATOM_CONS: EagerAtomFn = |args, context| {
+pub const ATOM_CONS: EagerAtomFn = |args, _context| {
     helpers::validate_binary_arity(args, "cons")?;
     let element = &args[0];
     let list_val = &args[1];
@@ -248,7 +253,7 @@ pub const ATOM_CONS: EagerAtomFn = |args, context| {
     let mut new_list = Vec::with_capacity(items.len() + 1);
     new_list.push(element.clone());
     new_list.extend(items.iter().cloned());
-    Ok((Value::List(new_list), context.world.clone()))
+    Ok(Value::List(new_list))
 };
 
 // ============================================================================
@@ -264,15 +269,15 @@ pub const ATOM_CONS: EagerAtomFn = |args, context| {
 ///
 /// Example:
 ///   (core/map "a" 1 "b" 2) ; => {"a" 1 "b" 2}
-pub const ATOM_CORE_MAP: EagerAtomFn = |args, context| {
+pub const ATOM_CORE_MAP: EagerAtomFn = |args, _context| {
     helpers::validate_even_arity(args, "core/map")?;
-    let mut map = im::HashMap::new();
+    let mut map = std::collections::HashMap::new();
     for chunk in args.chunks(2) {
         let key = helpers::validate_string_value(&chunk[0], "map key")?.to_string();
         let value = chunk[1].clone();
         map.insert(key, value);
     }
-    Ok((Value::Map(map), context.world.clone()))
+    Ok(Value::Map(map))
 };
 
 // ============================================================================

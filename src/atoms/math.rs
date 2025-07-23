@@ -28,7 +28,7 @@ pub const ATOM_ADD: EagerAtomFn = |args, context| {
         let n: f64 = arg.extract(Some(context))?;
         sum += n;
     }
-    Ok((Value::Number(sum), context.world.clone()))
+    Ok(Value::Number(sum))
 };
 
 /// Subtracts two numbers.
@@ -44,14 +44,14 @@ pub const ATOM_SUB: EagerAtomFn = |args, context| {
     helpers::validate_min_arity(args, 1, "-")?;
     let first: f64 = args[0].extract(Some(context))?;
     if args.len() == 1 {
-        return Ok((Value::Number(-first), context.world.clone()));
+        return Ok(Value::Number(-first));
     }
     let mut result = first;
     for arg in args.iter().skip(1) {
         let n: f64 = arg.extract(Some(context))?;
         result -= n;
     }
-    Ok((Value::Number(result), context.world.clone()))
+    Ok(Value::Number(result))
 };
 
 /// Multiplies numbers.
@@ -70,7 +70,7 @@ pub const ATOM_MUL: EagerAtomFn = |args, context| {
         let n: f64 = arg.extract(Some(context))?;
         product *= n;
     }
-    Ok((Value::Number(product), context.world.clone()))
+    Ok(Value::Number(product))
 };
 
 /// Divides two numbers.
@@ -97,7 +97,7 @@ pub const ATOM_DIV: EagerAtomFn = |args, context| {
                 context.span_for_span(Span::default()),
             ));
         }
-        return Ok((Value::Number(1.0 / first), context.world.clone()));
+        return Ok(Value::Number(1.0 / first));
     }
     let mut result = first;
     for arg in args.iter().skip(1) {
@@ -112,7 +112,7 @@ pub const ATOM_DIV: EagerAtomFn = |args, context| {
         }
         result /= n;
     }
-    Ok((Value::Number(result), context.world.clone()))
+    Ok(Value::Number(result))
 };
 
 /// Modulo operation.
@@ -138,7 +138,7 @@ pub const ATOM_MOD: EagerAtomFn = |args, context| {
             context.span_for_span(Span::default()),
         ));
     }
-    Ok((Value::Number(a % b), context.world.clone()))
+    Ok(Value::Number(a % b))
 };
 
 // ============================================================================
@@ -158,7 +158,7 @@ pub const ATOM_MOD: EagerAtomFn = |args, context| {
 pub const ATOM_ABS: EagerAtomFn = |args, context| {
     helpers::validate_unary_arity(args, "abs")?;
     let n: f64 = args[0].extract(Some(context))?;
-    Ok((Value::Number(n.abs()), context.world.clone()))
+    Ok(Value::Number(n.abs()))
 };
 
 /// Minimum of multiple numbers.
@@ -177,7 +177,7 @@ pub const ATOM_MIN: EagerAtomFn = |args, context| {
         let n: f64 = arg.extract(Some(context))?;
         min = min.min(n);
     }
-    Ok((Value::Number(min), context.world.clone()))
+    Ok(Value::Number(min))
 };
 
 /// Maximum of multiple numbers.
@@ -196,7 +196,7 @@ pub const ATOM_MAX: EagerAtomFn = |args, context| {
         let n: f64 = arg.extract(Some(context))?;
         max = max.max(n);
     }
-    Ok((Value::Number(max), context.world.clone()))
+    Ok(Value::Number(max))
 };
 
 // ============================================================================

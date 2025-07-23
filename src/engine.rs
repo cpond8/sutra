@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, path::Path, rc::Rc, sync::Arc};
 
 use miette::{NamedSource, Report};
 
@@ -75,7 +75,7 @@ pub fn print_error(error: SutraError) {
 type ExecutionResult = Result<(), SutraError>;
 
 /// Type alias for evaluation results with world state
-type EvaluationResult = Result<(Value, World), SutraError>;
+type EvaluationResult = Result<Value, SutraError>;
 
 /// Type alias for source context used in error reporting
 type SourceContext = Arc<NamedSource<String>>;
@@ -242,10 +242,10 @@ impl MacroProcessor {
         source_context: SourceContext,
         atom_registry: &AtomRegistry,
     ) -> EvaluationResult {
-        let world = World::default();
+        let world = Rc::new(RefCell::new(World::default()));
         eval::evaluate(
             expanded,
-            &world,
+            world,
             output,
             atom_registry,
             source_context,
@@ -263,10 +263,10 @@ impl MacroProcessor {
         source_context: Arc<NamedSource<String>>,
         atom_registry: &AtomRegistry,
     ) -> EvaluationResult {
-        let world = world::World::default();
+        let world = Rc::new(RefCell::new(world::World::default()));
         eval::evaluate(
             expanded,
-            &world,
+            world,
             output,
             atom_registry,
             source_context,
@@ -301,6 +301,8 @@ impl MacroProcessor {
 /// All code execution, including test harnesses, must use this pipeline. Bypassing is forbidden.
 pub struct ExecutionPipeline {
     /// Macro environment with canonical macros pre-loaded.
+    pub world: CanonicalWorld,
+    /// Macro environment with canonical macros pre-loaded.
     pub macro_env: MacroExpansionContext,
     /// Maximum recursion depth for evaluation
     pub max_depth: usize,
@@ -311,6 +313,7 @@ pub struct ExecutionPipeline {
 impl Default for ExecutionPipeline {
     fn default() -> Self {
         Self {
+            world: Rc::new(RefCell::new(World::default())),
             macro_env: world::build_canonical_macro_env()
                 .expect("Standard macro env should build"),
             max_depth: 100,
@@ -412,10 +415,10 @@ impl ExecutionPipeline {
         processor.validate_expanded_ast(&expanded, &env, &atom_registry, &source_context)?;
 
         // Step 3: Evaluate the expanded AST (CRITICAL: No macro expansion happens here)
-        let output = SharedOutput(std::rc::Rc::new(std::cell::RefCell::new(
+        let output = SharedOutput(Rc::new(RefCell::new(
             EngineOutputBuffer::new(),
         )));
-        let (result, _updated_world) =
+        let result =
             processor.evaluate_expanded_ast(&expanded, output, source_context, &atom_registry)?;
 
         Ok(result)
@@ -443,10 +446,10 @@ impl ExecutionPipeline {
     pub fn execute_expanded_ast(
         &self,
         expanded_ast: &AstNode,
-        world: &World,
+        world: CanonicalWorld,
         output: SharedOutput,
         source: SourceContext,
-    ) -> Result<(Value, World), SutraError> {
+    ) -> Result<Value, SutraError> {
         let atom_registry = world::build_default_atom_registry();
         eval::evaluate(
             expanded_ast,
@@ -462,14 +465,14 @@ impl ExecutionPipeline {
 
     /// Executes source code with a real NamedSource for error reporting
     pub fn execute_source_with_context(path: &str, source: &str, output: SharedOutput) -> Result<(), SutraError> {
-        let named_source = std::sync::Arc::new(NamedSource::new(path.to_string(), source.to_string()));
+        let named_source = Arc::new(NamedSource::new(path.to_string(), source.to_string()));
         let ast_nodes = parser::parse(source)?;
         let processor = MacroProcessor::default();
         let (atom_registry, mut macro_env) = MacroProcessor::build_standard_registries();
         let expanded_node = processor.process_with_existing_macros(ast_nodes, &mut macro_env)?;
         let source_context = Arc::new(NamedSource::new(path.to_string(), source.to_string()));
         processor.validate_expanded_ast(&expanded_node, &macro_env, &atom_registry, &source_context)?;
-        let (result, _) = processor.evaluate_expanded_ast_with_context(
+        let result = processor.evaluate_expanded_ast_with_context(
             &expanded_node,
             output.clone(),
             named_source.clone(),

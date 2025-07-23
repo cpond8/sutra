@@ -21,9 +21,9 @@ use crate::atoms::AtomResult;
 ///   - <value>: Any value
 ///
 /// Returns: A new String value.
-pub const ATOM_STR: EagerAtomFn = |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
+pub const ATOM_STR: EagerAtomFn = |args: &[Value], _| -> AtomResult {
     helpers::validate_unary_arity(args, "str")?;
-    Ok((Value::String(args[0].to_string()), context.world.clone()))
+    Ok(Value::String(args[0].to_string()))
 };
 
 /// Concatenates multiple values into a single string.
@@ -32,12 +32,12 @@ pub const ATOM_STR: EagerAtomFn = |args: &[Value], context: &mut EvaluationConte
 ///   - <value...>: Zero or more values to concatenate.
 ///
 /// Returns: A new String value. If no arguments are provided, returns an empty string.
-pub const ATOM_STR_PLUS: EagerAtomFn = |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
+pub const ATOM_STR_PLUS: EagerAtomFn = |args: &[Value], _| -> AtomResult {
     let mut result = String::new();
     for arg in args {
         result.push_str(&arg.to_string());
     }
-    Ok((Value::String(result), context.world.clone()))
+    Ok(Value::String(result))
 };
 
 // ============================================================================

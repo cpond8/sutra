@@ -24,7 +24,7 @@ use miette::NamedSource;
 
 // Use the public context helper macro
 use crate::prelude::*;
-use crate::atoms::LazyAtomFn;
+use crate::atoms::{AtomResult, LazyAtomFn};
 use crate::errors;
 use crate::{
     helpers, runtime::eval, sub_eval_context,
@@ -62,7 +62,7 @@ fn register_test_atom(
     args: &[AstNode],
     ctx: &mut EvaluationContext,
     span: &Span,
-) -> Result<(Value, World), SutraError> {
+) -> AtomResult {
     if args.len() < 4 {
         return Err(errors::validation_arity(
             "Expected at least 4 arguments (name, expect, metadata, and at least one body expression)",
@@ -89,7 +89,7 @@ fn register_test_atom(
     let expect = args[1].clone();
     let body = args[2..args.len() - 1].to_vec();
 
-    let (metadata_val, _) = eval::evaluate_ast_node(&args[args.len() - 1], ctx)?;
+    let metadata_val = eval::evaluate_ast_node(&args[args.len() - 1], ctx)?;
     let metadata = match metadata_val.as_map() {
         Some(m) => m,
         _ => {
@@ -143,7 +143,7 @@ fn register_test_atom(
     ).with_test_context(ctx.current_file(), ctx.test_name.clone().unwrap_or_default()))?;
     registry.insert(name, test_def);
 
-    Ok((Value::Nil, ctx.world.clone()))
+    Ok(Value::Nil)
 }
 
 /// Value atom for test assertions.
@@ -160,14 +160,13 @@ fn value_atom(
     args: &[AstNode],
     _ctx: &mut EvaluationContext,
     _span: &Span,
-) -> Result<(Value, World), SutraError> {
+) -> AtomResult {
     let Some(first) = args.first() else {
-        return Ok((Value::Nil, _ctx.world.clone()));
+        return Ok(Value::Nil);
     };
 
     // Evaluate the argument to get the actual value
-    let (val, world) = eval::evaluate_ast_node(first, _ctx)?;
-    Ok((val, world))
+    eval::evaluate_ast_node(first, _ctx)
 }
 
 /// Tags atom for test assertions.
@@ -184,16 +183,16 @@ fn tags_atom(
     args: &[AstNode],
     _ctx: &mut EvaluationContext,
     _span: &Span,
-) -> Result<(Value, World), SutraError> {
+) -> AtomResult {
     let mut tags = Vec::new();
     for arg in args {
-        let (val, _) = eval::evaluate_ast_node(arg, _ctx)?;
+        let val = eval::evaluate_ast_node(arg, _ctx)?;
         match val {
             Value::String(s) => tags.push(Value::String(s)),
             _ => tags.push(val),
         }
     }
-    Ok((Value::List(tags), _ctx.world.clone()))
+    Ok(Value::List(tags))
 }
 
 /// Simple echo atom that outputs its first argument.
@@ -211,20 +210,18 @@ fn test_echo_atom(
     args: &[AstNode],
     ctx: &mut EvaluationContext,
     span: &Span,
-) -> Result<(Value, World), SutraError> {
+) -> AtomResult {
     let Some(first) = args.first() else {
         let val = Value::String("".to_string());
-        let world = ctx.world.clone();
         ctx.output.borrow_mut().emit(&val.to_string(), Some(span));
-        return Ok((val, world));
+        return Ok(val);
     };
     let val = match &*first.value {
         Expr::String(s, _) => Value::String(s.clone()),
         _ => Value::String(format!("{}", first.value)),
     };
-    let world = ctx.world.clone();
     ctx.output.borrow_mut().emit(&val.to_string(), Some(span));
-    Ok((val, world))
+    Ok(val)
 }
 
 /// Borrow checker/context management stress test atom.
@@ -286,11 +283,11 @@ fn handle_borrow_stress_recursion(
     span: &Span,
     test_borrow_stress_atom: LazyAtomFn,
     test_echo_atom: LazyAtomFn,
-) -> Result<(Value, World), SutraError> {
+) -> AtomResult {
     if depth == 0 {
         return handle_borrow_stress_base_case(ctx, msg, span, test_echo_atom);
     }
-    let mut sub_context = sub_eval_context!(ctx, ctx.world);
+    let mut sub_context = sub_eval_context!(ctx);
     sub_context.depth = ctx.depth + 1; // Manually set incremented depth
     let nested_args = vec![
         Spanned {
@@ -311,8 +308,8 @@ fn handle_borrow_stress_base_case(
     msg: &str,
     span: &Span,
     test_echo_atom: LazyAtomFn,
-) -> Result<(Value, World), SutraError> {
-    let mut sub_context = sub_eval_context!(ctx, ctx.world);
+) -> AtomResult {
+    let mut sub_context = sub_eval_context!(ctx);
     sub_context.depth = ctx.depth + 1; // Manually set incremented depth
     let echo_arg = Spanned {
         value: Arc::new(Expr::String(msg.to_string(), *span)),
@@ -326,10 +323,10 @@ fn test_borrow_stress_atom(
     args: &[AstNode],
     ctx: &mut EvaluationContext,
     span: &Span,
-) -> Result<(Value, World), SutraError> {
+) -> AtomResult {
     let (depth, msg) = parse_borrow_stress_args(args);
     emit_borrow_stress_output(ctx, depth, &msg, span, "before");
-    let (_result, world) = handle_borrow_stress_recursion(
+    handle_borrow_stress_recursion(
         ctx,
         depth,
         &msg,
@@ -338,7 +335,7 @@ fn test_borrow_stress_atom(
         test_echo_atom,
     )?;
     emit_borrow_stress_output(ctx, depth, &msg, span, "after");
-    Ok((Value::String(format!("depth:{depth};msg:{msg}")), world))
+    Ok(Value::String(format!("depth:{depth};msg:{msg}")))
 }
 
 /// Registers all test atoms in the given registry.
@@ -378,10 +375,10 @@ fn assert_atom(
     args: &[AstNode],
     ctx: &mut EvaluationContext,
     _span: &Span,
-) -> Result<(Value, World), SutraError> {
+) -> AtomResult {
     helpers::validate_special_form_arity(args, 1, "assert")?;
 
-    let (value, world) = eval::evaluate_ast_node(&args[0], ctx)?;
+    let value = eval::evaluate_ast_node(&args[0], ctx)?;
     let is_truthy = match value {
         Value::Bool(b) => b,
         Value::Nil => false,
@@ -397,7 +394,7 @@ fn assert_atom(
         ).with_test_context(ctx.current_file(), ctx.test_name.clone().unwrap_or_default()));
     }
 
-    Ok((Value::Nil, world))
+    Ok(Value::Nil)
 }
 
 /// `assert-eq` atom - equality assertion that compares two values.
@@ -417,12 +414,12 @@ fn assert_eq_atom(
     args: &[AstNode],
     ctx: &mut EvaluationContext,
     span: &Span,
-) -> Result<(Value, World), SutraError> {
+) -> AtomResult {
     helpers::validate_special_form_arity(args, 2, "assert-eq")?;
 
-    let (expected, world1) = eval::evaluate_ast_node(&args[0], ctx)?;
-    let mut sub_context = sub_eval_context!(ctx, &world1);
-    let (actual, world2) = eval::evaluate_ast_node(&args[1], &mut sub_context)?;
+    let expected = eval::evaluate_ast_node(&args[0], ctx)?;
+    let actual = eval::evaluate_ast_node(&args[1], ctx)?;
+
 
     if expected != actual {
         return Err(errors::runtime_general(
@@ -433,5 +430,5 @@ fn assert_eq_atom(
         ).with_test_context(ctx.current_file(), ctx.test_name.clone().unwrap_or_default()));
     }
 
-    Ok((Value::Nil, world2))
+    Ok(Value::Nil)
 }

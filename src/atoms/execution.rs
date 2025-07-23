@@ -35,20 +35,16 @@ use crate::errors;
 /// May mutate world if inner expressions do.
 pub const ATOM_DO: LazyAtomFn = |args, context, _parent_span| {
     let mut last_value = Value::default();
-    let mut world = context.world.clone();
 
     for arg in args {
-        // Create a new evaluation context for the sub-expression, threading the world.
-        let mut sub_context = helpers::sub_eval_context!(context, &world);
-        // Evaluate the expression. `evaluate_ast_node` will return the result and the *new* world state.
-        let (val, new_world) = eval::evaluate_ast_node(arg, &mut sub_context)?;
-        last_value = val;
-        // Update our tracked world state for the next iteration.
-        world = new_world;
+        // Create a new evaluation context for the sub-expression.
+        let mut sub_context = helpers::sub_eval_context!(context);
+        // Evaluate the expression. The world is mutated via the shared context.
+        last_value = eval::evaluate_ast_node(arg, &mut sub_context)?;
     }
 
-    // The final world state is returned along with the last value.
-    Ok((last_value, world))
+    // Return the value of the last expression.
+    Ok(last_value)
 };
 
 /// Raises an error with a message.
@@ -64,7 +60,7 @@ pub const ATOM_DO: LazyAtomFn = |args, context, _parent_span| {
 /// # Safety
 /// Always errors. Does not mutate state.
 pub const ATOM_ERROR: LazyAtomFn = |args, context, _parent_span| {
-    let (val, _world) = helpers::eval_single_arg(args, context)?;
+    let val = helpers::eval_single_arg(args, context)?;
     let Value::String(msg) = val else {
         return Err(errors::type_mismatch(
             "String",
@@ -106,16 +102,14 @@ pub const ATOM_APPLY: LazyAtomFn = |args, context, parent_span| {
     let list_arg = &args[args.len() - 1];
 
     // Evaluate normal arguments
-    let (normal_args, world) = helpers::eval_apply_normal_args(normal_args_slice, context)?;
+    let normal_args = helpers::eval_apply_normal_args(normal_args_slice, context)?;
 
     // Evaluate list argument
-    let mut context_with_world = helpers::sub_eval_context!(context, &world);
-    let (list_args, world) =
-        helpers::eval_apply_list_arg(list_arg, &mut context_with_world, parent_span)?;
+    let list_args = helpers::eval_apply_list_arg(list_arg, context, parent_span)?;
 
-    // Build and evaluate the call expression
+    // Build and evaluate the call expression in a new sub-context for recursion depth.
     let call_expr = helpers::build_apply_call_expr(func_expr, normal_args, list_args, parent_span);
-    let mut sub_context = helpers::sub_eval_context!(context, &world);
+    let mut sub_context = helpers::sub_eval_context!(context);
     eval::evaluate_ast_node(&call_expr, &mut sub_context)
 };
 

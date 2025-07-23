@@ -5,9 +5,8 @@
 //! `Nil` represents the absence of a value and is the default for all uninitialized slots.
 //! `Path` is a first-class value, enabling explicit reference to locations in the world state.
 
-use std::{fmt, rc::Rc};
+use std::{collections::HashMap, fmt, rc::Rc};
 
-use im::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{AstNode, ParamList, Path};
@@ -39,7 +38,7 @@ pub enum Value {
 pub struct Lambda {
     pub params: ParamList,  // Parameter names, variadic info
     pub body: Box<AstNode>, // The function body (AST)
-    pub captured_env: Vec<im::HashMap<String, Value>>, // Full lexical environment stack (persistent)
+    pub captured_env: Vec<HashMap<String, Value>>,
 }
 
 impl Value {

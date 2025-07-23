@@ -17,7 +17,7 @@
 //! ```
 
 // The atom registry is a single source of truth and must be passed by reference to all validation and evaluation code. Never construct a local/hidden registry.
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, rc::Rc, sync::Arc};
 
 use miette::{NamedSource, SourceSpan};
 
@@ -34,7 +34,7 @@ use crate::errors;
 
 /// The context for a single evaluation, passed to atoms and all evaluation functions.
 pub struct EvaluationContext<'a> {
-    pub world: &'a World,
+    pub world: CanonicalWorld,
     pub output: SharedOutput,
     pub atom_registry: &'a AtomRegistry,
     pub source: Arc<NamedSource<String>>,
@@ -55,7 +55,7 @@ impl<'a> EvaluationContext<'a> {
     /// Clone the context with a new lexical frame (for let/lambda)
     pub fn clone_with_new_lexical_frame(&self) -> Self {
         let mut new = EvaluationContext {
-            world: self.world,
+            world: Rc::clone(&self.world),
             output: self.output.clone(),
             atom_registry: self.atom_registry,
             source: self.source.clone(),
@@ -69,21 +69,6 @@ impl<'a> EvaluationContext<'a> {
         new
     }
 
-    /// Clone the context with a new world state
-    pub fn clone_with_world(&self, world: &'a World) -> Self {
-        EvaluationContext {
-            world,
-            output: self.output.clone(),
-            atom_registry: self.atom_registry,
-            source: self.source.clone(),
-            max_depth: self.max_depth,
-            depth: self.depth,
-            lexical_env: self.lexical_env.clone(),
-            test_file: self.test_file.clone(),
-            test_name: self.test_name.clone(),
-        }
-    }
-
     /// Set a variable in the current lexical frame
     pub fn set_lexical_var(&mut self, name: &str, value: Value) {
         if let Some(frame) = self.lexical_env.last_mut() {
@@ -93,7 +78,7 @@ impl<'a> EvaluationContext<'a> {
 
     /// Get a variable from the lexical environment stack (innermost to outermost)
     pub fn get_lexical_var(&self, name: &str) -> Option<&Value> {
-        for (i, frame) in self.lexical_env.iter().rev().enumerate() {
+        for (_i, frame) in self.lexical_env.iter().rev().enumerate() {
             if let Some(val) = frame.get(name) {
                 return Some(val);
             }
@@ -204,16 +189,11 @@ impl<'a> EvaluationContext<'a> {
         args: &[AstNode],
         _parent_span: &Span,
     ) -> AtomResult {
-        // Evaluate arguments, threading the world state through the process.
-        let (evaluated_args, world_after_args) = evaluate_eager_args(args, self)?;
+        // Eagerly evaluate arguments. The world state is mutated directly.
+        let evaluated_args = evaluate_eager_args(args, self)?;
 
-        // Create a new evaluation context for the atom call, using the world state
-        // that resulted from argument evaluation.
-        let mut atom_context = self.clone_with_world(&world_after_args);
-
-        // Invoke the eager atom. It receives the full context and returns both
-        // the resulting value and the new world state directly.
-        eager_fn(&evaluated_args, &mut atom_context)
+        // Invoke the eager atom. It receives the current context and can mutate the world.
+        eager_fn(&evaluated_args, self)
     }
 }
 
@@ -223,7 +203,7 @@ impl<'a> EvaluationContext<'a> {
 
 pub struct EvaluationContextBuilder<'a> {
     source: Arc<NamedSource<String>>,
-    world: &'a World,
+    world: CanonicalWorld,
     output: SharedOutput,
     atom_registry: &'a AtomRegistry,
     max_depth: usize,
@@ -232,7 +212,7 @@ pub struct EvaluationContextBuilder<'a> {
 }
 
 impl<'a> EvaluationContextBuilder<'a> {
-    pub fn new(source: Arc<NamedSource<String>>, world: &'a World, output: SharedOutput, atom_registry: &'a AtomRegistry) -> Self {
+    pub fn new(source: Arc<NamedSource<String>>, world: CanonicalWorld, output: SharedOutput, atom_registry: &'a AtomRegistry) -> Self {
         Self {
             source,
             world,
@@ -266,7 +246,7 @@ impl<'a> EvaluationContextBuilder<'a> {
 // Update the main evaluate() function to use the builder
 pub fn evaluate(
     expr: &AstNode,
-    world: &World,
+    world: CanonicalWorld,
     output: SharedOutput,
     atom_registry: &AtomRegistry,
     source: Arc<NamedSource<String>>,
@@ -345,7 +325,7 @@ pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext)
 fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext) -> AtomResult {
     // Step 1: Early validation - check for empty list
     if items.is_empty() {
-        return wrap_value_with_world_state(Value::List(vec![]), context.world);
+        return Ok(Value::List(vec![]));
     }
 
     // Step 2: Evaluate the head (first element) as an expression
@@ -356,14 +336,13 @@ fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext
         return resolve_callable(symbol_name, head, tail, span, context);
     }
     // Otherwise, evaluate the head as an expression
-    let (head_val, world_after_head) = evaluate_ast_node(head, context)?;
-    let mut sub_context = context.clone_with_world(&world_after_head);
+    let head_val = evaluate_ast_node(head, context)?;
 
     match head_val {
         Value::Lambda(ref lambda) => {
-            // Eagerly evaluate arguments for lambda call
-            let (arg_values, world_after_args) = evaluate_eager_args(tail, &mut sub_context)?;
-            let mut lambda_context = sub_context.clone_with_world(&world_after_args);
+            // Eagerly evaluate arguments for lambda call, mutating world state.
+            let arg_values = evaluate_eager_args(tail, context)?;
+            let mut lambda_context = context.clone_with_new_lexical_frame();
             lambda_context.depth += 1;
             special_forms::call_lambda(lambda, &arg_values, &mut lambda_context)
         }
@@ -404,18 +383,22 @@ fn resolve_callable(
             Value::Lambda(lambda) => {
                 // Eagerly evaluate arguments for lambda call
                 let flat_args = flatten_spread_args(args, context)?;
-                let (arg_values, world_after_args) = evaluate_eager_args(&flat_args, context)?;
-                let mut lambda_context = context.clone_with_world(&world_after_args);
+                let arg_values = evaluate_eager_args(&flat_args, context)?;
+                let mut lambda_context = context.clone_with_new_lexical_frame();
                 lambda_context.depth += 1;
                 special_forms::call_lambda(&lambda, &arg_values, &mut lambda_context)
             }
             _ => {
                 let mut err = errors::runtime_general(
-                    format!("'{}' is not a callable entity (found in lexical environment but not a lambda)", symbol_name),
+                    format!(
+                        "'{}' is not a callable entity (found in lexical environment but not a lambda)",
+                        symbol_name
+                    ),
                     context.current_file(),
                     context.current_source(),
-                    context.span_for_node(head)
-                ).with_suggestion("Ensure the variable contains a lambda function");
+                    context.span_for_node(head),
+                )
+                .with_suggestion("Ensure the variable contains a lambda function");
 
                 if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
                     err = err.with_test_context(tf.clone(), tn.clone());
@@ -426,12 +409,11 @@ fn resolve_callable(
     }
 
     // 2. Atom registry (built-in functions and special forms)
+    // We clone the atom to release the borrow on the registry.
     if let Some(atom) = context.atom_registry.get(symbol_name).cloned() {
         return match atom {
             // Lazy atoms receive raw, unevaluated arguments
-            Atom::Lazy(_) => {
-                context.call_atom(symbol_name, head, args, span)
-            }
+            Atom::Lazy(_) => context.call_atom(symbol_name, head, args, span),
             // Eager atoms receive evaluated arguments, so we must flatten spreads first.
             Atom::Eager(_) => {
                 let flat_args = flatten_spread_args(args, context)?;
@@ -441,23 +423,32 @@ fn resolve_callable(
     }
 
     // 3. World state (global state paths)
+    // First, borrow immutably to check for existence and clone the value.
     let world_path = Path(vec![symbol_name.to_string()]);
-    if let Some(value) = context.world.state.get(&world_path).cloned() {
+    let value_from_world = context.world.borrow().state.get(&world_path).cloned();
+
+    // Now that the immutable borrow is dropped, we can proceed with operations
+    // that might require a mutable borrow of the world (e.g., evaluating arguments).
+    if let Some(value) = value_from_world {
         return match value {
             Value::Lambda(lambda) => {
                 let flat_args = flatten_spread_args(args, context)?;
-                let (arg_values, world_after_args) = evaluate_eager_args(&flat_args, context)?;
-                let mut lambda_context = context.clone_with_world(&world_after_args);
+                let arg_values = evaluate_eager_args(&flat_args, context)?;
+                let mut lambda_context = context.clone_with_new_lexical_frame();
                 lambda_context.depth += 1;
                 special_forms::call_lambda(&lambda, &arg_values, &mut lambda_context)
             }
             _ => {
                 let mut err = errors::runtime_general(
-                    format!("'{}' is not a callable entity (found in world state but not a lambda)", symbol_name),
+                    format!(
+                        "'{}' is not a callable entity (found in world state but not a lambda)",
+                        symbol_name
+                    ),
                     context.current_file(),
                     context.current_source(),
-                    context.span_for_node(head)
-                ).with_suggestion("Ensure the global variable contains a lambda function");
+                    context.span_for_node(head),
+                )
+                .with_suggestion("Ensure the global variable contains a lambda function");
 
                 if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
                     err = err.with_test_context(tf.clone(), tn.clone());
@@ -472,8 +463,9 @@ fn resolve_callable(
         symbol_name,
         context.current_file(),
         context.current_source(),
-        context.span_for_node(head)
-    ).with_suggestion(format!("Define '{}' before using it", symbol_name));
+        context.span_for_node(head),
+    )
+    .with_suggestion(format!("Define '{}' before using it", symbol_name));
 
     if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
         err = err.with_test_context(tf.clone(), tn.clone());
@@ -484,21 +476,19 @@ fn resolve_callable(
 /// Evaluates quote expressions (preserve content)
 fn evaluate_quote(inner: &AstNode, context: &mut EvaluationContext) -> AtomResult {
     match &*inner.value {
-        Expr::Symbol(s, _) => wrap_value_with_world_state(Value::String(s.clone()), context.world),
-        Expr::List(exprs, _) => {
-            wrap_value_with_world_state(evaluate_quoted_list(exprs, context)?, context.world)
-        }
-        Expr::Number(n, _) => wrap_value_with_world_state(Value::Number(*n), context.world),
-        Expr::Bool(b, _) => wrap_value_with_world_state(Value::Bool(*b), context.world),
-        Expr::String(s, _) => wrap_value_with_world_state(Value::String(s.clone()), context.world),
-        Expr::Path(p, _) => wrap_value_with_world_state(Value::Path(p.clone()), context.world),
+        Expr::Symbol(s, _) => Ok(Value::String(s.clone())),
+        Expr::List(exprs, _) => evaluate_quoted_list(exprs, context).map(Value::List),
+        Expr::Number(n, _) => Ok(Value::Number(*n)),
+        Expr::Bool(b, _) => Ok(Value::Bool(*b)),
+        Expr::String(s, _) => Ok(Value::String(s.clone())),
+        Expr::Path(p, _) => Ok(Value::Path(p.clone())),
         Expr::If {
             condition,
             then_branch,
             else_branch,
             ..
         } => evaluate_quoted_if(condition, then_branch, else_branch, context),
-        Expr::Quote(_, _) => wrap_value_with_world_state(Value::Nil, context.world),
+        Expr::Quote(_, _) => Ok(Value::Nil),
         Expr::ParamList(_) => {
             let mut err = errors::runtime_general(
                 "Cannot evaluate parameter list (ParamList AST node) at runtime",
@@ -546,7 +536,7 @@ fn evaluate_literal_value(expr: &AstNode, context: &mut EvaluationContext) -> At
             return Err(err);
         }
     };
-    wrap_value_with_world_state(value, context.world)
+    Ok(value)
 }
 
 /// Evaluates invalid expressions that cannot be evaluated at runtime
@@ -595,7 +585,7 @@ fn resolve_symbol(symbol_name: &str, span: &Span, context: &mut EvaluationContex
 
     // Step 1: Check lexical environment (let/lambda bindings)
     if let Some(value) = context.get_lexical_var(symbol_name) {
-        return wrap_value_with_world_state(value.clone(), context.world);
+        return Ok(value.clone());
     }
 
     // Step 2: Check if symbol is an atom (must be called, not evaluated)
@@ -615,8 +605,8 @@ fn resolve_symbol(symbol_name: &str, span: &Span, context: &mut EvaluationContex
 
     // Step 3: Check world state (global variables)
     let world_path = Path(vec![symbol_name.to_string()]);
-    if let Some(value) = context.world.state.get(&world_path) {
-        return wrap_value_with_world_state(value.clone(), context.world);
+    if let Some(value) = context.world.borrow().state.get(&world_path) {
+        return Ok(value.clone());
     }
 
     // Step 4: Symbol is undefined
@@ -678,12 +668,8 @@ fn evaluate_quoted_expr(expr: &AstNode, context: &EvaluationContext) -> Result<V
 fn evaluate_quoted_list(
     exprs: &[AstNode],
     context: &EvaluationContext,
-) -> Result<Value, SutraError> {
-    let vals: Result<Vec<_>, SutraError> = exprs
-        .iter()
-        .map(|e| evaluate_quoted_expr(e, context))
-        .collect();
-    Ok(Value::List(vals?))
+) -> Result<Vec<Value>, SutraError> {
+    exprs.iter().map(|e| evaluate_quoted_expr(e, context)).collect()
 }
 
 /// Evaluates a quoted if expression
@@ -693,19 +679,9 @@ fn evaluate_quoted_if(
     else_branch: &AstNode,
     context: &mut EvaluationContext,
 ) -> AtomResult {
-    let (is_true, next_world) = evaluate_condition_as_bool(condition, context)?;
-    let mut sub_context = EvaluationContext {
-        world: &next_world,
-        output: context.output.clone(),
-        atom_registry: context.atom_registry,
-        source: context.source.clone(),
-        max_depth: context.max_depth,
-        depth: context.depth + 1,
-        lexical_env: context.lexical_env.clone(),
-        test_file: context.test_file.clone(),
-        test_name: context.test_name.clone(),
-    };
-
+    let is_true = evaluate_condition_as_bool(condition, context)?;
+    let mut sub_context = context.clone_with_new_lexical_frame();
+    sub_context.depth += 1;
     let branch = if is_true { then_branch } else { else_branch };
     evaluate_ast_node(branch, &mut sub_context)
 }
@@ -714,25 +690,16 @@ fn evaluate_quoted_if(
 // ARGUMENT PROCESSING: Function Call Support
 // ===================================================================================================
 
-/// Evaluates arguments for eager atoms (Pure, Stateful), threading world state
+/// Evaluates arguments for eager atoms, directly mutating the shared world state.
 fn evaluate_eager_args(
     args: &[AstNode],
     context: &mut EvaluationContext,
-) -> Result<(Vec<Value>, World), SutraError> {
-    // Step 1: Evaluate each argument with proper context
-    let mut values = Vec::with_capacity(args.len());
-    let mut current_world = context.world.clone();
-
+) -> Result<Vec<Value>, SutraError> {
+    let mut values = Vec::new();
     for arg in args {
-        let (value, next_world) = {
-            let mut arg_context = context.clone_with_world(&current_world);
-            evaluate_ast_node(arg, &mut arg_context)?
-        };
-        values.push(value);
-        current_world = next_world;
+        values.push(evaluate_ast_node(arg, context)?);
     }
-
-    Ok((values, current_world))
+    Ok(values)
 }
 
 
@@ -762,7 +729,7 @@ fn process_single_argument(
     };
 
     // Evaluate spread expression
-    let (spread_value, _) = evaluate_ast_node(expr, context)?;
+    let spread_value = evaluate_ast_node(expr, context)?;
 
     // Validate and extract list items
     let list_items = extract_list_items(spread_value, expr, context)?;
@@ -807,17 +774,14 @@ fn convert_values_to_ast_nodes(values: Vec<Value>, span: Span) -> Vec<AstNode> {
 // UTILITY FUNCTIONS: Common Patterns
 // ===================================================================================================
 
-/// Wraps a value with the current world state in the standard (Value, World) result format
-fn wrap_value_with_world_state(value: Value, world: &World) -> AtomResult {
-    Ok((value, world.clone()))
-}
+// `wrap_value_with_world_state` is now removed.
 
 /// Helper to evaluate a conditional expression and return a boolean result
 pub fn evaluate_condition_as_bool(
     condition: &AstNode,
     context: &mut EvaluationContext,
-) -> Result<(bool, World), SutraError> {
-    let (cond_val, next_world) = evaluate_ast_node(condition, context)?;
+) -> Result<bool, SutraError> {
+    let cond_val = evaluate_ast_node(condition, context)?;
 
     // Guard clause: ensure condition evaluates to boolean
     let Value::Bool(b) = cond_val else {
@@ -835,16 +799,7 @@ pub fn evaluate_condition_as_bool(
         return Err(err);
     };
 
-    Ok((b, next_world))
+    Ok(b)
 }
 
-/// Captures the current lexical environment for lambda closures
-pub(crate) fn capture_lexical_env(lexical_env: &[HashMap<String, Value>]) -> HashMap<String, Value> {
-    let mut captured_env = HashMap::new();
-    for frame in lexical_env {
-        for (key, value) in frame {
-            captured_env.insert(key.clone(), value.clone());
-        }
-    }
-    captured_env
-}
+// The `capture_lexical_env` function was here, but is no longer used after the refactor.

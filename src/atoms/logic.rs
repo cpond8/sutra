@@ -33,14 +33,14 @@ use crate::helpers::ExtractValue;
 ///   (eq? 1 1) ; => true
 ///   (eq? 1 2) ; => false
 ///   (eq? 1 1 1) ; => true
-pub const ATOM_EQ: EagerAtomFn = |args: &[Value], context: &mut EvaluationContext| {
+pub const ATOM_EQ: EagerAtomFn = |args: &[Value], _| {
     helpers::validate_binary_arity(args, "eq?")?;
     for window in args.windows(2) {
         if window[0] != window[1] {
-            return Ok((Value::Bool(false), context.world.clone()));
+            return Ok(Value::Bool(false));
         }
     }
-    Ok((Value::Bool(true), context.world.clone()))
+    Ok(Value::Bool(true))
 };
 
 /// Returns true if a > b.
@@ -59,10 +59,10 @@ pub const ATOM_GT: EagerAtomFn = |args: &[Value], context: &mut EvaluationContex
         let a: f64 = args[i].extract(Some(context))?;
         let b: f64 = args[i + 1].extract(Some(context))?;
         if a <= b {
-            return Ok((Value::Bool(false), context.world.clone()));
+            return Ok(Value::Bool(false));
         }
     }
-    Ok((Value::Bool(true), context.world.clone()))
+    Ok(Value::Bool(true))
 };
 
 /// Returns true if a < b.
@@ -81,10 +81,10 @@ pub const ATOM_LT: EagerAtomFn = |args: &[Value], context: &mut EvaluationContex
         let a: f64 = args[i].extract(Some(context))?;
         let b: f64 = args[i + 1].extract(Some(context))?;
         if a >= b {
-            return Ok((Value::Bool(false), context.world.clone()));
+            return Ok(Value::Bool(false));
         }
     }
-    Ok((Value::Bool(true), context.world.clone()))
+    Ok(Value::Bool(true))
 };
 
 /// Returns true if a >= b.
@@ -103,10 +103,10 @@ pub const ATOM_GTE: EagerAtomFn = |args: &[Value], context: &mut EvaluationConte
         let a: f64 = args[i].extract(Some(context))?;
         let b: f64 = args[i + 1].extract(Some(context))?;
         if a < b {
-            return Ok((Value::Bool(false), context.world.clone()));
+            return Ok(Value::Bool(false));
         }
     }
-    Ok((Value::Bool(true), context.world.clone()))
+    Ok(Value::Bool(true))
 };
 
 /// Returns true if a <= b.
@@ -125,10 +125,10 @@ pub const ATOM_LTE: EagerAtomFn = |args: &[Value], context: &mut EvaluationConte
         let a: f64 = args[i].extract(Some(context))?;
         let b: f64 = args[i + 1].extract(Some(context))?;
         if a > b {
-            return Ok((Value::Bool(false), context.world.clone()));
+            return Ok(Value::Bool(false));
         }
     }
-    Ok((Value::Bool(true), context.world.clone()))
+    Ok(Value::Bool(true))
 };
 
 // ============================================================================
@@ -147,7 +147,7 @@ pub const ATOM_LTE: EagerAtomFn = |args: &[Value], context: &mut EvaluationConte
 pub const ATOM_NOT: EagerAtomFn = |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
     helpers::validate_unary_arity(args, "not")?;
     let b: bool = args[0].extract(Some(context))?;
-    Ok((Value::Bool(!b), context.world.clone()))
+    Ok(Value::Bool(!b))
 };
 
 // ============================================================================

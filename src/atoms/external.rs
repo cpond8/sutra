@@ -33,7 +33,7 @@ use crate::errors;
 pub const ATOM_PRINT: EagerAtomFn = |args, context| {
     helpers::validate_unary_arity(args, "print")?;
     context.output.borrow_mut().emit(&args[0].to_string(), None);
-    Ok((Value::Nil, context.world.clone()))
+    Ok(Value::Nil)
 };
 
 /// Emits output to the output sink (alias for print).
@@ -48,7 +48,7 @@ pub const ATOM_PRINT: EagerAtomFn = |args, context| {
 pub const ATOM_OUTPUT: EagerAtomFn = |args, context| {
     helpers::validate_unary_arity(args, "output")?;
     context.output.borrow_mut().emit(&args[0].to_string(), None);
-    Ok((Value::Nil, context.world.clone()))
+    Ok(Value::Nil)
 };
 
 // ============================================================================
