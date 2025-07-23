@@ -38,7 +38,7 @@ pub enum Value {
 pub struct Lambda {
     pub params: ParamList,  // Parameter names, variadic info
     pub body: Box<AstNode>, // The function body (AST)
-    pub captured_env: Vec<HashMap<String, Value>>,
+    pub captured_env: HashMap<String, Value>,
 }
 
 impl Value {

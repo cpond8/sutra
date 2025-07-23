@@ -342,9 +342,7 @@ fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext
         Value::Lambda(ref lambda) => {
             // Eagerly evaluate arguments for lambda call, mutating world state.
             let arg_values = evaluate_eager_args(tail, context)?;
-            let mut lambda_context = context.clone_with_new_lexical_frame();
-            lambda_context.depth += 1;
-            special_forms::call_lambda(lambda, &arg_values, &mut lambda_context)
+            special_forms::call_lambda(lambda, &arg_values, context)
         }
         _ => {
             let mut err = errors::runtime_general(
@@ -384,9 +382,7 @@ fn resolve_callable(
                 // Eagerly evaluate arguments for lambda call
                 let flat_args = flatten_spread_args(args, context)?;
                 let arg_values = evaluate_eager_args(&flat_args, context)?;
-                let mut lambda_context = context.clone_with_new_lexical_frame();
-                lambda_context.depth += 1;
-                special_forms::call_lambda(&lambda, &arg_values, &mut lambda_context)
+                special_forms::call_lambda(&lambda, &arg_values, context)
             }
             _ => {
                 let mut err = errors::runtime_general(
@@ -434,9 +430,7 @@ fn resolve_callable(
             Value::Lambda(lambda) => {
                 let flat_args = flatten_spread_args(args, context)?;
                 let arg_values = evaluate_eager_args(&flat_args, context)?;
-                let mut lambda_context = context.clone_with_new_lexical_frame();
-                lambda_context.depth += 1;
-                special_forms::call_lambda(&lambda, &arg_values, &mut lambda_context)
+                special_forms::call_lambda(&lambda, &arg_values, context)
             }
             _ => {
                 let mut err = errors::runtime_general(

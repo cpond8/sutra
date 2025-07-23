@@ -1,8 +1,10 @@
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::prelude::*;
 use crate::{
     ast::value::Lambda,
+    ast::ParamList,
     atoms::{
         helpers::{validate_special_form_arity, validate_special_form_min_arity, AtomResult},
         LazyAtomFn,
@@ -10,7 +12,64 @@ use crate::{
     errors,
     runtime::{eval, world::Path},
 };
-use std::collections::HashMap;
+
+fn find_and_capture_free_variables(
+    body: &AstNode,
+    params: &ParamList,
+    context: &eval::EvaluationContext,
+) -> HashMap<String, Value> {
+    fn collect_symbols(node: &AstNode, symbols: &mut HashSet<String>) {
+        match &*node.value {
+            Expr::Symbol(s, _) => {
+                symbols.insert(s.clone());
+            }
+            Expr::List(items, _) => {
+                if items
+                    .first()
+                    .is_some_and(|head| matches!(&*head.value, Expr::Symbol(s, _) if s == "quote"))
+                {
+                    // Do not descend into quoted expressions
+                    return;
+                }
+                for item in items {
+                    collect_symbols(item, symbols);
+                }
+            }
+            Expr::If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                collect_symbols(condition, symbols);
+                collect_symbols(then_branch, symbols);
+                collect_symbols(else_branch, symbols);
+            }
+            _ => {}
+        }
+    }
+
+    let mut symbols = HashSet::new();
+    collect_symbols(body, &mut symbols);
+
+    // Remove parameters from the set of symbols; the rest are free variables.
+    for p in &params.required {
+        symbols.remove(p);
+    }
+    if let Some(rest) = &params.rest {
+        symbols.remove(rest);
+    }
+
+    // Capture the values of the free variables from the current environment.
+    let mut captured_env = HashMap::new();
+    for symbol in symbols {
+        if let Some(value) = context.get_lexical_var(&symbol) {
+            captured_env.insert(symbol, value.clone());
+        }
+    }
+
+    captured_env
+}
 
 /// Implements the (define ...) special form for global bindings.
 pub const ATOM_DEFINE: LazyAtomFn = |args, context, span| {
@@ -94,12 +153,12 @@ pub const ATOM_DEFINE: LazyAtomFn = |args, context, span| {
             span: *list_span,
         };
 
-        // The value expression is the function body. Create the lambda.
-        // Capture the current lexical environment stack (deep clone).
-        let captured_env = context.lexical_env.clone();
+        let body = Box::new(value_expr.clone());
+        let captured_env = find_and_capture_free_variables(&body, &params, context);
+
         let lambda = Value::Lambda(Rc::new(Lambda {
             params,
-            body: Box::new(value_expr.clone()),
+            body,
             captured_env,
         }));
 
@@ -193,8 +252,8 @@ pub const ATOM_LAMBDA: LazyAtomFn = |args, context, span| {
         })
     };
 
-    // Capture the current lexical environment stack (deep clone, convert to im::HashMap)
-    let captured_env = context.lexical_env.clone();
+    let captured_env = find_and_capture_free_variables(&body, &param_list, context);
+
     Ok(Value::Lambda(Rc::new(Lambda {
         params: param_list,
         body,
@@ -280,15 +339,14 @@ pub fn call_lambda(
     args: &[Value],
     context: &mut eval::EvaluationContext,
 ) -> AtomResult {
-    // Manually construct a new EvaluationContext with the captured lexical_env
     let mut new_context = eval::EvaluationContext {
         world: Rc::clone(&context.world),
         output: context.output.clone(),
         atom_registry: context.atom_registry,
         source: context.source.clone(),
         max_depth: context.max_depth,
-        depth: context.depth,
-        lexical_env: lambda.captured_env.clone(),
+        depth: context.depth + 1,
+        lexical_env: vec![lambda.captured_env.clone()],
         test_file: context.test_file.clone(),
         test_name: context.test_name.clone(),
     };
