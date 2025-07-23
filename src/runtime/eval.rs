@@ -87,18 +87,22 @@ impl<'a> EvaluationContext<'a> {
     /// Set a variable in the current lexical frame
     pub fn set_lexical_var(&mut self, name: &str, value: Value) {
         if let Some(frame) = self.lexical_env.last_mut() {
-            frame.insert(name.to_string(), value);
+            frame.insert(name.to_string(), value.clone());
         }
     }
 
     /// Get a variable from the lexical environment stack (innermost to outermost)
     pub fn get_lexical_var(&self, name: &str) -> Option<&Value> {
-        for frame in self.lexical_env.iter().rev() {
+        for (i, frame) in self.lexical_env.iter().rev().enumerate() {
             if let Some(val) = frame.get(name) {
                 return Some(val);
             }
         }
         None
+    }
+
+    /// Print the current lexical environment stack for debugging
+    pub fn print_lexical_env(&self) {
     }
 }
 
@@ -243,6 +247,8 @@ impl<'a> EvaluationContextBuilder<'a> {
     pub fn with_test_name(mut self, test_name: Option<String>) -> Self { self.test_name = test_name; self }
     pub fn with_max_depth(mut self, max_depth: usize) -> Self { self.max_depth = max_depth; self }
     pub fn build(self) -> EvaluationContext<'a> {
+        let mut global_env = HashMap::new();
+        global_env.insert("nil".to_string(), Value::Nil);
         EvaluationContext {
             world: self.world,
             output: self.output,
@@ -250,7 +256,7 @@ impl<'a> EvaluationContextBuilder<'a> {
             source: self.source,
             max_depth: self.max_depth,
             depth: 0,
-            lexical_env: vec![HashMap::new()],
+            lexical_env: vec![global_env],
             test_file: self.test_file,
             test_name: self.test_name,
         }
@@ -342,27 +348,39 @@ fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext
         return wrap_value_with_world_state(Value::List(vec![]), context.world);
     }
 
-    // Step 2: Early validation - extract and validate head symbol
+    // Step 2: Evaluate the head (first element) as an expression
     let head = &items[0];
     let tail = &items[1..];
-    let Expr::Symbol(symbol_name, _) = &*head.value else {
-        let mut err = errors::runtime_general(
-            "first element must be a symbol naming a callable entity",
-            context.current_file(),
-            context.current_source(),
-            context.span_for_node(head)
-        ).with_suggestion("Use a symbol for the function name");
+    // If the head is a symbol, use resolve_callable as before
+    if let Expr::Symbol(symbol_name, _) = &*head.value {
+        return resolve_callable(symbol_name, head, tail, span, context);
+    }
+    // Otherwise, evaluate the head as an expression
+    let (head_val, world_after_head) = evaluate_ast_node(head, context)?;
+    let mut sub_context = context.clone_with_world(&world_after_head);
 
-        if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
-            err = err.with_test_context(tf.clone(), tn.clone());
+    match head_val {
+        Value::Lambda(ref lambda) => {
+            // Eagerly evaluate arguments for lambda call
+            let (arg_values, world_after_args) = evaluate_eager_args(tail, &mut sub_context)?;
+            let mut lambda_context = sub_context.clone_with_world(&world_after_args);
+            lambda_context.depth += 1;
+            special_forms::call_lambda(lambda, &arg_values, &mut lambda_context)
         }
-        return Err(err);
-    };
+        _ => {
+            let mut err = errors::runtime_general(
+                "first element must be a callable entity (lambda or symbol)",
+                context.current_file(),
+                context.current_source(),
+                context.span_for_node(head)
+            ).with_suggestion("Use a lambda or symbol as the function name");
 
-    // Step 3: Resolve callable entity using strict precedence order.
-    // Argument processing (e.g., spread flattening) is deferred to the callee
-    // because special forms have different argument handling rules.
-    resolve_callable(symbol_name, head, tail, span, context)
+            if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
+                err = err.with_test_context(tf.clone(), tn.clone());
+            }
+            Err(err)
+        }
+    }
 }
 
 /// Resolves a callable entity following strict precedence order.

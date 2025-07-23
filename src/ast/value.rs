@@ -39,7 +39,7 @@ pub enum Value {
 pub struct Lambda {
     pub params: ParamList,  // Parameter names, variadic info
     pub body: Box<AstNode>, // The function body (AST)
-    pub captured_env: std::collections::HashMap<String, Value>, // Captured lexical environment
+    pub captured_env: Vec<im::HashMap<String, Value>>, // Full lexical environment stack (persistent)
 }
 
 impl Value {

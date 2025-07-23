@@ -10,6 +10,7 @@ use crate::{
     errors,
     runtime::{eval, world::Path},
 };
+use im::HashMap as ImHashMap;
 
 /// Implements the (define ...) special form for global bindings.
 pub const ATOM_DEFINE: LazyAtomFn = |args, context, span| {
@@ -94,7 +95,7 @@ pub const ATOM_DEFINE: LazyAtomFn = |args, context, span| {
         };
 
         // The value expression is the function body. Create the lambda.
-        let captured_env = eval::capture_lexical_env(&context.lexical_env);
+        let captured_env = context.lexical_env.iter().map(|frame| ImHashMap::from_iter(frame.iter().map(|(k, v)| (k.clone(), v.clone())))).collect();
         let lambda = Value::Lambda(Rc::new(Lambda {
             params,
             body: Box::new(value_expr.clone()),
@@ -194,13 +195,8 @@ pub const ATOM_LAMBDA: LazyAtomFn = |args, context, span| {
         })
     };
 
-    // Capture the current lexical environment by flattening all frames
-    let mut captured_env = std::collections::HashMap::new();
-    for frame in &context.lexical_env {
-        for (key, value) in frame {
-            captured_env.insert(key.clone(), value.clone());
-        }
-    }
+    // Capture the current lexical environment stack (deep clone, convert to im::HashMap)
+    let captured_env = context.lexical_env.iter().map(|frame| ImHashMap::from_iter(frame.iter().map(|(k, v)| (k.clone(), v.clone())))).collect();
     Ok((
         Value::Lambda(Rc::new(Lambda {
             params: param_list,
@@ -290,14 +286,22 @@ pub fn call_lambda(
     args: &[Value],
     context: &mut eval::EvaluationContext,
 ) -> Result<(Value, World), SutraError> {
-    let mut new_context = context.clone_with_new_lexical_frame();
+    // Manually construct a new EvaluationContext with the captured lexical_env
+    let mut new_context = eval::EvaluationContext {
+        world: context.world,
+        output: context.output.clone(),
+        atom_registry: context.atom_registry,
+        source: context.source.clone(),
+        max_depth: context.max_depth,
+        depth: context.depth,
+        lexical_env: lambda.captured_env.iter().map(|frame| frame.clone().into_iter().collect()).collect(),
+        test_file: context.test_file.clone(),
+        test_name: context.test_name.clone(),
+    };
+    // Push a new frame for parameters (as im::HashMap, but convert to std::HashMap for context)
+    new_context.lexical_env.push(ImHashMap::new().into_iter().collect());
 
-    // Restore the captured lexical environment
-    for (key, value) in &lambda.captured_env {
-        new_context.set_lexical_var(key, value.clone());
-    }
-
-    // Bind parameters
+    // Bind parameters in the new top frame
     let fixed = lambda.params.required.len();
     let variadic = lambda.params.rest.is_some();
     if (!variadic && args.len() != fixed) || (variadic && args.len() < fixed) {
@@ -311,8 +315,6 @@ pub fn call_lambda(
             msg,
             context.current_file(),
             context.current_source(),
-            // Since we don't have a specific lambda node here, we default to the call site span.
-            // A future refactoring could thread the lambda's definition span to here.
             context.span_for_span(Span::default()),
         ));
     }
