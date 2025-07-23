@@ -717,14 +717,19 @@ Sutra uses a structured error system with specific error types for different fai
 | `Internal`       | Internal engine errors                            | System errors          |
 | `TestFailure`    | Test assertion failures                           | Test-time errors       |
 
-### Error Context
+### Error Context and Construction
 
-All errors include context information:
+All errors must be constructed using the canonical error API (e.g., `errors::runtime_general`, `errors::validation_arity`, `errors::type_mismatch`, etc.) with exactly the required arguments (typically 4: message, context, source, span). All extra fields and method chaining (e.g., `.with_*()`) are forbidden. Span information must be provided for precise location; use a real span whenever possible, or `SourceSpan::from(0..0)` with a comment if not.
 
-- **Source**: The source code that caused the error
-- **Span**: The exact location in the source code
-- **Help**: Optional help message
-- **Related**: Additional labeled spans for multi-label diagnostics
+**Example (Rust):**
+```rust
+return Err(errors::runtime_general(
+    "Division by zero".to_string(),
+    "math.sutra".to_string(),
+    source_code, // or a string describing the context/source
+    SourceSpan::new(offset, length),
+));
+```
 
 ### Error Examples
 
@@ -733,6 +738,16 @@ All errors include context information:
 (/ 10 0)         ; => DivisionByZero: division by zero
 (undefined-func) ; => Eval: undefined symbol: 'undefined-func'
 (+ 1)            ; => Eval: Arity error
+```
+
+### Diagnostics and Type Names
+
+For diagnostics and macro logic, the type of a runtime value can be obtained via `Value::type_name()`, and the type of an AST node can be obtained via `Expr::type_name()`. This is used for error reporting, macro expansion, and validation.
+
+**Example:**
+```rust
+let value_type = value.type_name(); // e.g., "Number", "String", etc.
+let expr_type = expr.type_name();   // e.g., "List", "Symbol", etc.
 ```
 
 ### Error Testing

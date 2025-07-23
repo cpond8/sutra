@@ -5,15 +5,120 @@ use crate::{
     ast::value::Lambda,
     atoms::{
         helpers::{validate_special_form_arity, validate_special_form_min_arity},
-        SpecialFormAtomFn,
+        LazyAtomFn,
     },
-    runtime::eval,
-    syntax::parser::to_source_span,
+    errors,
+    runtime::{eval, world::Path},
 };
-use miette::NamedSource;
+
+/// Implements the (define ...) special form for global bindings.
+pub const ATOM_DEFINE: LazyAtomFn = |args, context, span| {
+    // 1. Validate arity: (define <name> <value>)
+    validate_special_form_arity(args, 2, "define")?;
+
+    let name_expr = &args[0];
+    let value_expr = &args[1];
+
+    // 2. Handle variable definition: (define my-var 100)
+    if let Expr::Symbol(name, _) = &*name_expr.value {
+        // Evaluate the value expression in the current context.
+        let (value, _) = eval::evaluate_ast_node(value_expr, context)?;
+
+        // Create a path from the name and update the world state.
+        let path = Path(vec![name.clone()]);
+        let new_world = context.world.set(&path, value.clone());
+
+        return Ok((value, new_world));
+    }
+
+    // 3. Handle function definition: (define (my-func x) (+ x 1))
+    if let Expr::List(items, list_span) = &*name_expr.value {
+        if items.is_empty() {
+            return Err(errors::runtime_general(
+                "define: function definition requires a name",
+                context.current_file(),
+                context.current_source(),
+                context.span_for_span(*span),
+            ));
+        }
+
+        // The first item is the function name.
+        let function_name = match &*items[0].value {
+            Expr::Symbol(s, _) => s.clone(),
+            _ => {
+                return Err(errors::runtime_general(
+                    "define: function name must be a symbol",
+                    context.current_file(),
+                    context.current_source(),
+                    context.span_for_node(&items[0]),
+                ));
+            }
+        };
+
+        // The rest of the items are the parameters.
+        let params_nodes = &items[1..];
+        let mut required = vec![];
+        let mut rest = None;
+
+        for param_node in params_nodes {
+            match &*param_node.value {
+                Expr::Symbol(s, _) => required.push(s.clone()),
+                Expr::Spread(spread_expr) => {
+                    if let Expr::Symbol(s, _) = &*spread_expr.value {
+                        rest = Some(s.clone());
+                        break; // No params after a variadic parameter.
+                    } else {
+                        return Err(errors::runtime_general(
+                            "define: spread parameter must be a symbol",
+                            context.current_file(),
+                            context.current_source(),
+                            context.span_for_node(spread_expr),
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(errors::runtime_general(
+                        "define: function parameters must be symbols",
+                        context.current_file(),
+                        context.current_source(),
+                        context.span_for_node(param_node),
+                    ));
+                }
+            }
+        }
+
+        let params = crate::ast::ParamList {
+            required,
+            rest,
+            span: *list_span,
+        };
+
+        // The value expression is the function body. Create the lambda.
+        let captured_env = eval::capture_lexical_env(&context.lexical_env);
+        let lambda = Value::Lambda(Rc::new(Lambda {
+            params,
+            body: Box::new(value_expr.clone()),
+            captured_env,
+        }));
+
+        // Create a path from the function name and update the world state.
+        let path = Path(vec![function_name.clone()]);
+        let new_world = context.world.set(&path, lambda.clone());
+
+        return Ok((lambda, new_world));
+    }
+
+    // 4. If the first argument is not a symbol or a list, it's an error.
+    Err(errors::runtime_general(
+        "define: first argument must be a symbol or a list for function definition",
+        context.current_file(),
+        context.current_source(),
+        context.span_for_node(name_expr),
+    ))
+};
 
 /// Implements the (if ...) special form with lazy evaluation.
-pub const ATOM_IF: SpecialFormAtomFn = |args, context, _span| {
+pub const ATOM_IF: LazyAtomFn = |args, context, _span| {
     validate_special_form_arity(args, 3, "if")?;
     let condition = &args[0];
     let then_branch = &args[1];
@@ -28,18 +133,18 @@ pub const ATOM_IF: SpecialFormAtomFn = |args, context, _span| {
 };
 
 /// Implements the (lambda ...) special form.
-pub const ATOM_LAMBDA: SpecialFormAtomFn = |args, context, span| {
+pub const ATOM_LAMBDA: LazyAtomFn = |args, context, span| {
     validate_special_form_min_arity(args, 2, "lambda")?;
     // Parse parameter list
     let param_list = match &*args[0].value {
         Expr::ParamList(pl) => pl.clone(),
         _ => {
-            return Err(SutraError::RuntimeGeneral {
-                message: "lambda: first argument must be a parameter list".to_string(),
-                src: NamedSource::new("atoms/special_forms.rs".to_string(), "".to_string()),
-                span: to_source_span(*span),
-                suggestion: None,
-            });
+            return Err(errors::runtime_general(
+                "lambda: first argument must be a parameter list",
+                context.current_file(),
+                context.current_source(),
+                context.span_for_span(*span),
+            ));
         }
     };
 
@@ -47,22 +152,22 @@ pub const ATOM_LAMBDA: SpecialFormAtomFn = |args, context, span| {
     let mut seen = std::collections::HashSet::new();
     for name in &param_list.required {
         if !seen.insert(name) {
-            return Err(SutraError::RuntimeGeneral {
-                message: format!("lambda: duplicate parameter '{}'", name),
-                src: NamedSource::new("atoms/special_forms.rs".to_string(), "".to_string()),
-                span: to_source_span(*span),
-                suggestion: None,
-            });
+            return Err(errors::runtime_general(
+                format!("lambda: duplicate parameter '{}'", name),
+                context.current_file(),
+                context.current_source(),
+                context.span_for_span(*span),
+            ));
         }
     }
     if let Some(rest) = &param_list.rest {
         if !seen.insert(rest) {
-            return Err(SutraError::RuntimeGeneral {
-                message: format!("lambda: duplicate variadic parameter '{}'", rest),
-                src: NamedSource::new("atoms/special_forms.rs".to_string(), "".to_string()),
-                span: to_source_span(*span),
-                suggestion: None,
-            });
+            return Err(errors::runtime_general(
+                format!("lambda: duplicate variadic parameter '{}'", rest),
+                context.current_file(),
+                context.current_source(),
+                context.span_for_span(*span),
+            ));
         }
     }
 
@@ -107,18 +212,18 @@ pub const ATOM_LAMBDA: SpecialFormAtomFn = |args, context, span| {
 };
 
 /// Implements the (let ...) special form.
-pub const ATOM_LET: SpecialFormAtomFn = |args, context, span| {
+pub const ATOM_LET: LazyAtomFn = |args, context, span| {
     validate_special_form_min_arity(args, 2, "let")?;
     // Parse bindings
     let bindings = match &*args[0].value {
         Expr::List(pairs, _) => pairs,
         _ => {
-            return Err(SutraError::RuntimeGeneral {
-                message: "let: first argument must be a list of bindings".to_string(),
-                src: NamedSource::new("atoms/special_forms.rs".to_string(), "".to_string()),
-                span: to_source_span(*span),
-                suggestion: None,
-            });
+            return Err(errors::runtime_general(
+                "let: first argument must be a list of bindings",
+                context.current_file(),
+                context.current_source(),
+                context.span_for_span(*span),
+            ));
         }
     };
 
@@ -130,21 +235,21 @@ pub const ATOM_LET: SpecialFormAtomFn = |args, context, span| {
             Expr::List(items, _) if items.len() == 2 => match &*items[0].value {
                 Expr::Symbol(name, _) => (name.clone(), &items[1]),
                 _ => {
-                    return Err(SutraError::RuntimeGeneral {
-                        message: "let: binding name must be a symbol".to_string(),
-                        src: NamedSource::new("atoms/special_forms.rs".to_string(), "".to_string()),
-                        span: to_source_span(*span),
-                        suggestion: None,
-                    })
+                    return Err(errors::runtime_general(
+                        "let: binding name must be a symbol",
+                        context.current_file(),
+                        context.current_source(),
+                        context.span_for_span(*span),
+                    ));
                 }
             },
             _ => {
-                return Err(SutraError::RuntimeGeneral {
-                    message: "let: each binding must be a (name value) pair".to_string(),
-                    src: NamedSource::new("atoms/special_forms.rs".to_string(), "".to_string()),
-                    span: to_source_span(*span),
-                    suggestion: None,
-                });
+                return Err(errors::runtime_general(
+                    "let: each binding must be a (name value) pair",
+                    context.current_file(),
+                    context.current_source(),
+                    context.span_for_span(*span),
+                ));
             }
         };
         let (value, _) = eval::evaluate_ast_node(value_expr, &mut new_context)?;
@@ -202,12 +307,14 @@ pub fn call_lambda(
             if variadic { "+" } else { "" },
             args.len()
         );
-        return Err(SutraError::RuntimeGeneral {
-            message: msg,
-            src: NamedSource::new("atoms/special_forms.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-            suggestion: None,
-        });
+        return Err(errors::runtime_general(
+            msg,
+            context.current_file(),
+            context.current_source(),
+            // Since we don't have a specific lambda node here, we default to the call site span.
+            // A future refactoring could thread the lambda's definition span to here.
+            context.span_for_span(Span::default()),
+        ));
     }
     for (name, value) in lambda.params.required.iter().zip(args.iter()) {
         new_context.set_lexical_var(name, value.clone());

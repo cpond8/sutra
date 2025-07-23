@@ -2,6 +2,9 @@ use std::collections::{HashMap, HashSet};
 
 // Domain modules with aliases
 use crate::validation::{Rule, ValidationReporter, ValidationResult, GRAMMAR_CONSTANTS};
+use crate::errors;
+use crate::syntax::parser::to_source_span;
+use crate::ast::Span;
 
 /// Validates grammar rules for various correctness issues
 /// Each validator focuses on a single validation concern
@@ -17,11 +20,13 @@ impl GrammarValidators {
                 continue;
             }
 
-            result.report_warning(format!(
-                "Rule '{}' has duplicate pattern: {}",
-                rule.name,
-                rule.definition.trim()
-            ));
+            let warning = errors::runtime_general(
+                &format!("Rule '{}' has duplicate pattern: {}", rule.name, rule.definition.trim()),
+                "grammar_validation",
+                &rule.definition,
+                to_source_span(Span { start: 0, end: rule.definition.len() })
+            ).as_warning();
+            result.report_warning(warning);
         }
     }
 
@@ -48,10 +53,13 @@ impl GrammarValidators {
                 continue;
             }
 
-            result.report_error(format!(
-                "Rule '{}' references undefined rule '{}'",
-                rule.name, reference
-            ));
+            let error = errors::runtime_general(
+                &format!("Rule '{}' references undefined rule '{}'", rule.name, reference),
+                "grammar_validation",
+                &rule.definition,
+                to_source_span(Span { start: 0, end: rule.definition.len() })
+            );
+            result.report_error(error);
         }
     }
 
@@ -71,10 +79,13 @@ impl GrammarValidators {
                 continue;
             }
 
-            result.report_warning(format!(
-                "Rule '{}' uses '{}' as both inline pattern and reference",
-                rule.name, pattern
-            ));
+            let warning = errors::runtime_general(
+                &format!("Rule '{}' uses '{}' as both inline pattern and reference", rule.name, pattern),
+                "grammar_validation",
+                &rule.definition,
+                to_source_span(Span { start: 0, end: rule.definition.len() })
+            ).as_warning();
+            result.report_warning(warning);
         }
     }
 
@@ -88,9 +99,13 @@ impl GrammarValidators {
                 continue;
             }
 
-            result.report_error(format!(
-                "Critical rule '{critical}' is missing from the grammar"
-            ));
+            let error = errors::runtime_general(
+                &format!("Critical rule '{}' is missing from the grammar", critical),
+                "grammar_validation",
+                "// Grammar content",
+                to_source_span(Span { start: 0, end: 0 })
+            );
+            result.report_error(error);
         }
     }
 

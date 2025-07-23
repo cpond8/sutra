@@ -17,20 +17,16 @@
 //! ```
 
 // The atom registry is a single source of truth and must be passed by reference to all validation and evaluation code. Never construct a local/hidden registry.
-use std::{collections::HashMap, rc::Rc, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
-use miette::NamedSource;
+use miette::{NamedSource, SourceSpan};
 
 // Core types via prelude
 use crate::prelude::*;
 
 // Domain modules with aliases
-use crate::{
-    ast::{value::Lambda, ParamList},
-    atoms::{helpers::AtomResult, special_forms, Atom},
-};
-
-use crate::syntax::parser::to_source_span;
+use crate::atoms::{helpers::AtomResult, special_forms, Atom, EagerAtomFn};
+use crate::errors;
 
 // ===================================================================================================
 // CORE DATA STRUCTURES: Evaluation Context
@@ -46,6 +42,8 @@ pub struct EvaluationContext<'a> {
     pub depth: usize,
     /// Stack of lexical environments (for let/lambda scoping)
     pub lexical_env: Vec<HashMap<String, Value>>,
+    pub test_file: Option<String>,
+    pub test_name: Option<String>,
 }
 
 impl<'a> EvaluationContext<'a> {
@@ -64,9 +62,26 @@ impl<'a> EvaluationContext<'a> {
             max_depth: self.max_depth,
             depth: self.depth,
             lexical_env: self.lexical_env.clone(),
+            test_file: self.test_file.clone(),
+            test_name: self.test_name.clone(),
         };
         new.lexical_env.push(HashMap::new());
         new
+    }
+
+    /// Clone the context with a new world state
+    pub fn clone_with_world(&self, world: &'a World) -> Self {
+        EvaluationContext {
+            world,
+            output: self.output.clone(),
+            atom_registry: self.atom_registry,
+            source: self.source.clone(),
+            max_depth: self.max_depth,
+            depth: self.depth,
+            lexical_env: self.lexical_env.clone(),
+            test_file: self.test_file.clone(),
+            test_name: self.test_name.clone(),
+        }
     }
 
     /// Set a variable in the current lexical frame
@@ -88,6 +103,25 @@ impl<'a> EvaluationContext<'a> {
 }
 
 impl<'a> EvaluationContext<'a> {
+    /// Extract the current file name for error construction
+    pub fn current_file(&self) -> String {
+        self.source.name().to_string()
+    }
+
+    /// Extract the current source code for error construction
+    pub fn current_source(&self) -> String {
+        self.source.inner().clone()
+    }
+
+    /// Extract span information for a given AstNode
+    pub fn span_for_node(&self, node: &AstNode) -> SourceSpan {
+        to_source_span(node.span)
+    }
+
+    /// Extract span information for a given Span
+    pub fn span_for_span(&self, span: Span) -> SourceSpan {
+        to_source_span(span)
+    }
     /// Looks up and invokes an atom by name, handling errors for missing atoms.
     /// **CRITICAL**: This function does NOT handle macro expansion. Macros must be
     /// expanded before evaluation according to the strict layering principle.
@@ -112,11 +146,18 @@ impl<'a> EvaluationContext<'a> {
         self.atom_registry
             .get(symbol_name)
             .cloned()
-            .ok_or_else(|| SutraError::RuntimeGeneral {
-                message: format!("Undefined symbol: '{}'", symbol_name),
-                src: self.source.as_ref().clone(),
-                span: to_source_span(head.span),
-                suggestion: None,
+            .ok_or_else(|| {
+                let mut err = errors::runtime_undefined_symbol(
+                    symbol_name,
+                    self.current_file(),
+                    self.current_source(),
+                    self.span_for_node(head)
+                ).with_suggestion(format!("Define '{}' before using it", symbol_name));
+
+                if let (Some(ref tf), Some(ref tn)) = (&self.test_file, &self.test_name) {
+                    err = err.with_test_context(tf.clone(), tn.clone());
+                }
+                err
             })
     }
 
@@ -124,7 +165,6 @@ impl<'a> EvaluationContext<'a> {
         #[cfg(debug_assertions)]
         {
             const SPECIAL_FORM_NAMES: &[&str] = &[
-                "define",
                 "do",
                 "error",
                 "apply",
@@ -137,8 +177,8 @@ impl<'a> EvaluationContext<'a> {
 
             if SPECIAL_FORM_NAMES.contains(&symbol_name) {
                 assert!(
-                    matches!(atom, Atom::SpecialForm(_)),
-                    "CRITICAL: Atom '{symbol_name}' is a special form and MUST be registered as Atom::SpecialForm."
+                    matches!(atom, Atom::Lazy(_)),
+                    "CRITICAL: Atom '{symbol_name}' is a special form and MUST be registered as Atom::Lazy."
                 );
             }
         }
@@ -146,41 +186,30 @@ impl<'a> EvaluationContext<'a> {
 
     fn dispatch_atom(&mut self, atom: Atom, args: &[AstNode], span: &Span) -> AtomResult {
         match atom {
-            // Special forms control their own evaluation
-            Atom::SpecialForm(special_form_fn) => special_form_fn(args, self, span),
+            // Lazily evaluated atoms (formerly special forms) control their own evaluation
+            Atom::Lazy(lazy_fn) => lazy_fn(args, self, span),
 
-            // Eagerly evaluated atoms
-            Atom::Stateful(stateful_fn) => self.call_eager_atom_with_state(stateful_fn, args),
-            Atom::Pure(pure_fn) => self.call_eager_atom_without_state(pure_fn, args),
+            // Eagerly evaluated atoms now use a single calling convention
+            Atom::Eager(eager_fn) => self.call_eager_atom(eager_fn, args, span),
         }
     }
 
-    fn call_eager_atom_with_state(
+    fn call_eager_atom(
         &mut self,
-        stateful_fn: fn(&[Value], &mut AtomExecutionContext) -> Result<Value, SutraError>,
+        eager_fn: EagerAtomFn,
         args: &[AstNode],
+        _parent_span: &Span,
     ) -> AtomResult {
-        let (values, world_after_args) = evaluate_eager_args(args, self)?;
-        let mut world_context = world_after_args;
-        let result = {
-            let mut exec_context = AtomExecutionContext {
-                state: &mut world_context.state,
-                output: self.output.clone(),
-                rng: &mut world_context.prng,
-            };
-            stateful_fn(&values, &mut exec_context)?
-        };
-        Ok((result, world_context))
-    }
+        // Evaluate arguments, threading the world state through the process.
+        let (evaluated_args, world_after_args) = evaluate_eager_args(args, self)?;
 
-    fn call_eager_atom_without_state(
-        &mut self,
-        pure_fn: fn(&[Value]) -> Result<Value, SutraError>,
-        args: &[AstNode],
-    ) -> AtomResult {
-        let (values, world_after_args) = evaluate_eager_args(args, self)?;
-        let result = pure_fn(&values)?;
-        Ok((result, world_after_args))
+        // Create a new evaluation context for the atom call, using the world state
+        // that resulted from argument evaluation.
+        let mut atom_context = self.clone_with_world(&world_after_args);
+
+        // Invoke the eager atom. It receives the full context and returns both
+        // the resulting value and the new world state directly.
+        eager_fn(&evaluated_args, &mut atom_context)
     }
 }
 
@@ -188,15 +217,47 @@ impl<'a> EvaluationContext<'a> {
 // PUBLIC API: Main Evaluation Interface
 // ===================================================================================================
 
-/// Evaluates a Sutra expression with world state and context.
-///
-/// **CRITICAL**: Macros must be expanded before evaluation. Use `ExecutionPipeline::execute`
-/// for most use cases to ensure proper validation and macro expansion.
-///
-/// # Safety Requirements
-/// - All macros expanded before calling
-/// - Atom registry consistent with validation
-/// - World state properly initialized
+pub struct EvaluationContextBuilder<'a> {
+    source: Arc<NamedSource<String>>,
+    world: &'a World,
+    output: SharedOutput,
+    atom_registry: &'a AtomRegistry,
+    max_depth: usize,
+    test_file: Option<String>,
+    test_name: Option<String>,
+}
+
+impl<'a> EvaluationContextBuilder<'a> {
+    pub fn new(source: Arc<NamedSource<String>>, world: &'a World, output: SharedOutput, atom_registry: &'a AtomRegistry) -> Self {
+        Self {
+            source,
+            world,
+            output,
+            atom_registry,
+            max_depth: 1000,
+            test_file: None,
+            test_name: None,
+        }
+    }
+    pub fn with_test_file(mut self, test_file: Option<String>) -> Self { self.test_file = test_file; self }
+    pub fn with_test_name(mut self, test_name: Option<String>) -> Self { self.test_name = test_name; self }
+    pub fn with_max_depth(mut self, max_depth: usize) -> Self { self.max_depth = max_depth; self }
+    pub fn build(self) -> EvaluationContext<'a> {
+        EvaluationContext {
+            world: self.world,
+            output: self.output,
+            atom_registry: self.atom_registry,
+            source: self.source,
+            max_depth: self.max_depth,
+            depth: 0,
+            lexical_env: vec![HashMap::new()],
+            test_file: self.test_file,
+            test_name: self.test_name,
+        }
+    }
+}
+
+// Update the main evaluate() function to use the builder
 pub fn evaluate(
     expr: &AstNode,
     world: &World,
@@ -204,16 +265,14 @@ pub fn evaluate(
     atom_registry: &AtomRegistry,
     source: Arc<NamedSource<String>>,
     max_depth: usize,
+    test_file: Option<String>,
+    test_name: Option<String>,
 ) -> AtomResult {
-    let mut context = EvaluationContext {
-        world,
-        output,
-        atom_registry,
-        source,
-        max_depth,
-        depth: 0,
-        lexical_env: vec![HashMap::new()],
-    };
+    let mut context = EvaluationContextBuilder::new(source, world, output, atom_registry)
+        .with_max_depth(max_depth)
+        .with_test_file(test_file)
+        .with_test_name(test_name)
+        .build();
     evaluate_ast_node(expr, &mut context)
 }
 
@@ -224,14 +283,17 @@ pub fn evaluate(
 pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext) -> AtomResult {
     // Step 1: Check recursion limit
     if context.depth > context.max_depth {
-        return Err(SutraError::Internal {
-            issue: "Recursion limit exceeded".to_string(),
-            details: "Evaluation exceeded maximum recursion depth".to_string(),
-            context: None,
-            src: context.source.as_ref().clone().into(),
-            span: Some(to_source_span(expr.span)),
-            source: None,
-        });
+        let mut err = errors::runtime_general(
+            "Recursion limit exceeded",
+            context.current_file(),
+            context.current_source(),
+            context.span_for_node(expr)
+        ).with_suggestion("Reduce recursion depth or increase the limit");
+
+        if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
+            err = err.with_test_context(tf.clone(), tn.clone());
+        }
+        return Err(err);
     }
 
     // Step 2: Handle each expression type based on its structure
@@ -241,30 +303,6 @@ pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext)
 
         // Quotes preserve their content - delegate to quote evaluator
         Expr::Quote(inner, _) => evaluate_quote(inner, context),
-
-        // Define expressions create bindings in the world
-        Expr::Define {
-            name, params, body, ..
-        } => {
-            // Function definition: create a lambda and store it
-            if !params.required.is_empty() || params.rest.is_some() {
-                let captured_env = capture_lexical_env(&context.lexical_env);
-                let lambda = Value::Lambda(Rc::new(Lambda {
-                    params: params.clone(),
-                    body: body.clone(),
-                    captured_env,
-                }));
-                let path = Path(vec![name.clone()]);
-                let new_world = context.world.set(&path, lambda);
-                Ok((Value::Nil, new_world))
-            } else {
-                // Variable definition: evaluate the body and store the result
-                let (value, world) = evaluate_ast_node(body, context)?;
-                let path = Path(vec![name.clone()]);
-                let new_world = world.set(&path, value.clone());
-                Ok((value, new_world))
-            }
-        }
 
         // Literal values can be evaluated directly
         Expr::Path(..) | Expr::String(..) | Expr::Number(..) | Expr::Bool(..) => {
@@ -277,13 +315,19 @@ pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext)
         }
 
         // If expressions must be handled as special forms, not direct evaluation
-        Expr::If { .. } => Err(SutraError::RuntimeGeneral {
-            message: "If expressions should be evaluated as special forms, not as AST nodes"
-                .to_string(),
-            src: context.source.as_ref().clone(),
-            span: to_source_span(expr.span),
-            suggestion: None,
-        }),
+        Expr::If { .. } => {
+            let mut err = errors::runtime_general(
+                "If expressions should be evaluated as special forms, not as AST nodes",
+                context.current_file(),
+                context.current_source(),
+                context.span_for_node(expr)
+            ).with_suggestion("Use the 'if' special form instead");
+
+            if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
+                err = err.with_test_context(tf.clone(), tn.clone());
+            }
+            Err(err)
+        }
     }
 }
 
@@ -302,63 +346,121 @@ fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext
     let head = &items[0];
     let tail = &items[1..];
     let Expr::Symbol(symbol_name, _) = &*head.value else {
-        return Err(SutraError::RuntimeGeneral {
-            message: "first element must be a symbol naming a callable entity".to_string(),
-            src: context.source.as_ref().clone(),
-            span: to_source_span(head.span),
-            suggestion: None,
-        });
+        let mut err = errors::runtime_general(
+            "first element must be a symbol naming a callable entity",
+            context.current_file(),
+            context.current_source(),
+            context.span_for_node(head)
+        ).with_suggestion("Use a symbol for the function name");
+
+        if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
+            err = err.with_test_context(tf.clone(), tn.clone());
+        }
+        return Err(err);
     };
 
-    // Step 3: Process arguments (flatten spreads)
-    let flat_tail = flatten_spread_args(tail, context)?;
+    // Step 3: Resolve callable entity using strict precedence order.
+    // Argument processing (e.g., spread flattening) is deferred to the callee
+    // because special forms have different argument handling rules.
+    resolve_callable(symbol_name, head, tail, span, context)
+}
 
-    // Step 4: Handle special form "define" (early return)
-    if symbol_name == "define" {
-        return handle_define_special_form(&flat_tail, span, context, head);
-    }
+/// Resolves a callable entity following strict precedence order.
+/// This is the single source of truth for function call resolution.
+///
+/// Resolution order (per language specification):
+/// 1. Lexical environment (let/lambda bindings)
+/// 2. Atom registry (built-in functions and special forms)
+/// 3. World state (global state paths)
+fn resolve_callable(
+    symbol_name: &str,
+    head: &AstNode,
+    args: &[AstNode], // Raw, unevaluated arguments
+    span: &Span,
+    context: &mut EvaluationContext,
+) -> AtomResult {
+    // Resolution order (per language specification):
+    // 1. Lexical environment (let/lambda bindings)
+    if let Some(value) = context.get_lexical_var(symbol_name).cloned() {
+        return match value {
+            Value::Lambda(lambda) => {
+                // Eagerly evaluate arguments for lambda call
+                let flat_args = flatten_spread_args(args, context)?;
+                let (arg_values, world_after_args) = evaluate_eager_args(&flat_args, context)?;
+                let mut lambda_context = context.clone_with_world(&world_after_args);
+                lambda_context.depth += 1;
+                special_forms::call_lambda(&lambda, &arg_values, &mut lambda_context)
+            }
+            _ => {
+                let mut err = errors::runtime_general(
+                    format!("'{}' is not a callable entity (found in lexical environment but not a lambda)", symbol_name),
+                    context.current_file(),
+                    context.current_source(),
+                    context.span_for_node(head)
+                ).with_suggestion("Ensure the variable contains a lambda function");
 
-    // Step 5: Handle special form atoms (early return)
-    if let Some(atom) = context.atom_registry.get(symbol_name) {
-        if matches!(atom, Atom::SpecialForm(_)) {
-            return context.call_atom(symbol_name, head, &flat_tail, span);
-        }
-    }
-
-    // Step 6: Evaluate arguments for eager atoms
-    let (arg_values, world_after_args) = evaluate_eager_args(&flat_tail, context)?;
-
-    // Step 7: Try lexical environment lambda lookup (early return)
-    if let Some(Value::Lambda(lambda)) = context.get_lexical_var(symbol_name) {
-        let mut lambda_context = EvaluationContext {
-            world: &world_after_args,
-            output: context.output.clone(),
-            atom_registry: context.atom_registry,
-            source: context.source.clone(),
-            max_depth: context.max_depth,
-            depth: context.depth + 1,
-            lexical_env: context.lexical_env.clone(),
+                if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
+                    err = err.with_test_context(tf.clone(), tn.clone());
+                }
+                Err(err)
+            }
         };
-        return special_forms::call_lambda(lambda, &arg_values, &mut lambda_context);
     }
 
-    // Step 8: Try world state lambda lookup (early return)
+    // 2. Atom registry (built-in functions and special forms)
+    if let Some(atom) = context.atom_registry.get(symbol_name).cloned() {
+        return match atom {
+            // Lazy atoms receive raw, unevaluated arguments
+            Atom::Lazy(_) => {
+                context.call_atom(symbol_name, head, args, span)
+            }
+            // Eager atoms receive evaluated arguments, so we must flatten spreads first.
+            Atom::Eager(_) => {
+                let flat_args = flatten_spread_args(args, context)?;
+                context.call_atom(symbol_name, head, &flat_args, span)
+            }
+        };
+    }
+
+    // 3. World state (global state paths)
     let world_path = Path(vec![symbol_name.to_string()]);
-    if let Some(Value::Lambda(lambda)) = context.world.state.get(&world_path) {
-        let mut lambda_context = EvaluationContext {
-            world: &world_after_args,
-            output: context.output.clone(),
-            atom_registry: context.atom_registry,
-            source: context.source.clone(),
-            max_depth: context.max_depth,
-            depth: context.depth + 1,
-            lexical_env: context.lexical_env.clone(),
+    if let Some(value) = context.world.state.get(&world_path).cloned() {
+        return match value {
+            Value::Lambda(lambda) => {
+                let flat_args = flatten_spread_args(args, context)?;
+                let (arg_values, world_after_args) = evaluate_eager_args(&flat_args, context)?;
+                let mut lambda_context = context.clone_with_world(&world_after_args);
+                lambda_context.depth += 1;
+                special_forms::call_lambda(&lambda, &arg_values, &mut lambda_context)
+            }
+            _ => {
+                let mut err = errors::runtime_general(
+                    format!("'{}' is not a callable entity (found in world state but not a lambda)", symbol_name),
+                    context.current_file(),
+                    context.current_source(),
+                    context.span_for_node(head)
+                ).with_suggestion("Ensure the global variable contains a lambda function");
+
+                if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
+                    err = err.with_test_context(tf.clone(), tn.clone());
+                }
+                Err(err)
+            }
         };
-        return special_forms::call_lambda(lambda, &arg_values, &mut lambda_context);
     }
 
-    // Step 9: Fall back to atom registry
-    context.call_atom(symbol_name, head, &flat_tail, span)
+    // 4. Symbol not found anywhere
+    let mut err = errors::runtime_undefined_symbol(
+        symbol_name,
+        context.current_file(),
+        context.current_source(),
+        context.span_for_node(head)
+    ).with_suggestion(format!("Define '{}' before using it", symbol_name));
+
+    if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
+        err = err.with_test_context(tf.clone(), tn.clone());
+    }
+    Err(err)
 }
 
 /// Evaluates quote expressions (preserve content)
@@ -379,137 +481,35 @@ fn evaluate_quote(inner: &AstNode, context: &mut EvaluationContext) -> AtomResul
             ..
         } => evaluate_quoted_if(condition, then_branch, else_branch, context),
         Expr::Quote(_, _) => wrap_value_with_world_state(Value::Nil, context.world),
-        Expr::Define { .. } => Err(SutraError::RuntimeGeneral {
-            message: "Cannot quote define expressions".to_string(),
-            src: context.source.as_ref().clone(),
-            span: to_source_span(inner.span),
-            suggestion: None,
-        }),
-        Expr::ParamList(_) => Err(SutraError::RuntimeGeneral {
-            message: "Cannot evaluate parameter list (ParamList AST node) at runtime".to_string(),
-            src: context.source.as_ref().clone(),
-            span: to_source_span(inner.span),
-            suggestion: None,
-        }),
-        Expr::Spread(_) => Err(SutraError::RuntimeGeneral {
-            message: "Spread argument not allowed inside quote".to_string(),
-            src: context.source.as_ref().clone(),
-            span: to_source_span(inner.span),
-            suggestion: None,
-        }),
+        Expr::ParamList(_) => {
+            let mut err = errors::runtime_general(
+                "Cannot evaluate parameter list (ParamList AST node) at runtime",
+                context.current_file(),
+                context.current_source(),
+                context.span_for_node(inner)
+            ).with_suggestion("Parameter lists are only valid in lambda definitions");
+
+            if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
+                err = err.with_test_context(tf.clone(), tn.clone());
+            }
+            Err(err)
+        }
+        Expr::Spread(_) => {
+            let mut err = errors::runtime_general(
+                "Spread argument not allowed inside quote",
+                context.current_file(),
+                context.current_source(),
+                context.span_for_node(inner)
+            ).with_suggestion("Remove the spread operator inside quotes");
+
+            if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
+                err = err.with_test_context(tf.clone(), tn.clone());
+            }
+            Err(err)
+        }
     }
 }
 
-/// Evaluates define expressions (create bindings)
-fn handle_define_special_form(
-    flat_tail: &[AstNode],
-    span: &Span,
-    context: &mut EvaluationContext,
-    head: &AstNode,
-) -> AtomResult {
-    // Step 1: Validate argument count
-    if flat_tail.len() != 2 {
-        return Err(SutraError::RuntimeGeneral {
-            message: "define expects exactly 2 arguments: (define name value) or (define (name params...) body)".to_string(),
-            src: context.source.as_ref().clone(),
-            span: to_source_span(head.span),
-            suggestion: None,
-        });
-    }
-
-    let name_expr = &flat_tail[0];
-    let value_expr = &flat_tail[1];
-
-    // Step 2: Parse definition and create AST node
-    let define_ast = parse_define_definition(name_expr, value_expr, span, context)?;
-
-    // Step 3: Evaluate the definition
-    evaluate_ast_node(&define_ast, context)
-}
-
-fn parse_define_definition(
-    name_expr: &AstNode,
-    value_expr: &AstNode,
-    span: &Span,
-    context: &mut EvaluationContext,
-) -> Result<AstNode, SutraError> {
-    // Step 1: Parse function definition (early return)
-    if let Expr::ParamList(param_list) = &*name_expr.value {
-        let (function_name, function_params) =
-            parse_function_definition(param_list, name_expr, context)?;
-        return create_define_ast_node(function_name, function_params, value_expr, span);
-    }
-
-    // Step 2: Parse variable definition (early return)
-    if let Expr::Symbol(variable_name, _) = &*name_expr.value {
-        let empty_params = create_empty_param_list(*span);
-        return create_define_ast_node(variable_name.clone(), empty_params, value_expr, span);
-    }
-
-    // Step 3: Invalid definition type (early return with error)
-    Err(SutraError::RuntimeGeneral {
-        message: "define: first argument must be a symbol or parameter list".to_string(),
-        src: context.source.as_ref().clone(),
-        span: to_source_span(name_expr.span),
-        suggestion: None,
-    })
-}
-
-/// Parses function definition from parameter list
-fn parse_function_definition(
-    param_list: &ParamList,
-    name_expr: &AstNode,
-    context: &mut EvaluationContext,
-) -> Result<(String, ParamList), SutraError> {
-    // Step 1: Extract function name (early validation)
-    let function_name =
-        param_list
-            .required
-            .first()
-            .cloned()
-            .ok_or_else(|| SutraError::RuntimeGeneral {
-                message: "define: function name missing in parameter list".to_string(),
-                src: context.source.as_ref().clone(),
-                span: to_source_span(name_expr.span),
-                suggestion: None,
-            })?;
-
-    // Step 2: Build function parameters
-    let function_parameters = ParamList {
-        required: param_list.required[1..].to_vec(),
-        rest: param_list.rest.clone(),
-        span: param_list.span,
-    };
-
-    Ok((function_name, function_parameters))
-}
-
-/// Creates empty parameter list for variable definitions
-fn create_empty_param_list(span: Span) -> ParamList {
-    ParamList {
-        required: vec![],
-        rest: None,
-        span,
-    }
-}
-
-/// Creates define AST node with given name, parameters, and body
-fn create_define_ast_node(
-    name: String,
-    params: ParamList,
-    value_expr: &AstNode,
-    span: &Span,
-) -> Result<AstNode, SutraError> {
-    Ok(AstNode {
-        value: Arc::new(Expr::Define {
-            name,
-            params,
-            body: Box::new(value_expr.clone()),
-            span: *span,
-        }),
-        span: *span,
-    })
-}
 
 /// Evaluates literal value expressions (Path, String, Number, Bool)
 fn evaluate_literal_value(expr: &AstNode, context: &mut EvaluationContext) -> AtomResult {
@@ -519,14 +519,13 @@ fn evaluate_literal_value(expr: &AstNode, context: &mut EvaluationContext) -> At
         Expr::Number(n, _) => Value::Number(*n),
         Expr::Bool(b, _) => Value::Bool(*b),
         _ => {
-            return Err(SutraError::Internal {
-                issue: "eval_literal_value called with non-literal expression".to_string(),
-                details: "Tried to evaluate a non-literal as a literal value".to_string(),
-                context: None,
-                src: context.source.as_ref().clone().into(),
-                span: Some(to_source_span(expr.span)),
-                source: None,
-            })
+            let err = errors::runtime_general(
+                "eval_literal_value called with non-literal expression",
+                context.current_file(),
+                context.current_source(),
+                context.span_for_node(expr)
+            ).with_suggestion("This should not happen - please report as a bug");
+            return Err(err);
         }
     };
     wrap_value_with_world_state(value, context.world)
@@ -536,24 +535,37 @@ fn evaluate_literal_value(expr: &AstNode, context: &mut EvaluationContext) -> At
 fn evaluate_invalid_expr(expr: &AstNode, context: &mut EvaluationContext) -> AtomResult {
     match &*expr.value {
         // Parameter lists cannot be evaluated at runtime
-        Expr::ParamList(_) => Err(SutraError::RuntimeGeneral {
-            message: "Cannot evaluate parameter list (ParamList AST node) at runtime".to_string(),
-            src: context.source.as_ref().clone(),
-            span: to_source_span(expr.span),
-            suggestion: None,
-        }),
+        Expr::ParamList(_) => {
+            let mut err = errors::runtime_general(
+                "Cannot evaluate parameter list (ParamList AST node) at runtime",
+                context.current_file(),
+                context.current_source(),
+                context.span_for_node(expr)
+            ).with_suggestion("Parameter lists are only valid in lambda definitions");
+
+            if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
+                err = err.with_test_context(tf.clone(), tn.clone());
+            }
+            Err(err)
+        }
 
         // Symbols need resolution - may succeed or fail
         Expr::Symbol(symbol_name, span) => resolve_symbol(symbol_name, span, context),
 
         // Spread arguments are only valid in function calls
-        Expr::Spread(_) => Err(SutraError::RuntimeGeneral {
-            message: "Spread argument not allowed outside of call position (list context)"
-                .to_string(),
-            src: context.source.as_ref().clone(),
-            span: to_source_span(expr.span),
-            suggestion: None,
-        }),
+        Expr::Spread(_) => {
+            let mut err = errors::runtime_general(
+                "Spread argument not allowed outside of call position (list context)",
+                context.current_file(),
+                context.current_source(),
+                context.span_for_node(expr)
+            ).with_suggestion("Use spread only in function call arguments");
+
+            if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
+                err = err.with_test_context(tf.clone(), tn.clone());
+            }
+            Err(err)
+        }
 
         // This should never happen with valid expressions
         _ => unreachable!("evaluate_invalid_expr called with valid expression type"),
@@ -570,12 +582,17 @@ fn resolve_symbol(symbol_name: &str, span: &Span, context: &mut EvaluationContex
 
     // Step 2: Check if symbol is an atom (must be called, not evaluated)
     if context.atom_registry.has(symbol_name) {
-        return Err(SutraError::RuntimeGeneral {
-            message: format!("'{symbol_name}' is an atom and must be called with arguments (e.g., ({symbol_name} ...))"),
-            src: context.source.as_ref().clone(),
-            span: to_source_span(*span),
-            suggestion: None,
-        });
+        let mut err = errors::runtime_general(
+            format!("'{}' is an atom and must be called with arguments (e.g., ({} ...))", symbol_name, symbol_name),
+            context.current_file(),
+            context.current_source(),
+            context.span_for_span(*span)
+        ).with_suggestion(format!("Use '({} ...)' to call the atom", symbol_name));
+
+        if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
+            err = err.with_test_context(tf.clone(), tn.clone());
+        }
+        return Err(err);
     }
 
     // Step 3: Check world state (global variables)
@@ -585,12 +602,17 @@ fn resolve_symbol(symbol_name: &str, span: &Span, context: &mut EvaluationContex
     }
 
     // Step 4: Symbol is undefined
-    Err(SutraError::RuntimeGeneral {
-        message: format!("undefined symbol: '{symbol_name}'"),
-        src: context.source.as_ref().clone(),
-        span: to_source_span(*span),
-        suggestion: None,
-    })
+    let mut err = errors::runtime_undefined_symbol(
+        symbol_name,
+        context.current_file(),
+        context.current_source(),
+        context.span_for_span(*span)
+    ).with_suggestion(format!("Define '{}' before using it", symbol_name));
+
+    if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
+        err = err.with_test_context(tf.clone(), tn.clone());
+    }
+    Err(err)
 }
 
 // ===================================================================================================
@@ -604,18 +626,32 @@ fn evaluate_quoted_expr(expr: &AstNode, context: &EvaluationContext) -> Result<V
         Expr::Number(n, _) => Ok(Value::Number(*n)),
         Expr::Bool(b, _) => Ok(Value::Bool(*b)),
         Expr::String(s, _) => Ok(Value::String(s.clone())),
-        Expr::ParamList(_) => Err(SutraError::RuntimeGeneral {
-            message: "Cannot evaluate parameter list (ParamList AST node) inside quote".to_string(),
-            src: context.source.as_ref().clone(),
-            span: to_source_span(expr.span),
-            suggestion: None,
-        }),
-        Expr::Spread(_) => Err(SutraError::RuntimeGeneral {
-            message: "Spread argument not allowed inside quote".to_string(),
-            src: context.source.as_ref().clone(),
-            span: to_source_span(expr.span),
-            suggestion: None,
-        }),
+        Expr::ParamList(_) => {
+            let mut err = errors::runtime_general(
+                "Cannot evaluate parameter list (ParamList AST node) inside quote",
+                context.current_file(),
+                context.current_source(),
+                context.span_for_node(expr)
+            ).with_suggestion("Parameter lists are not allowed in quotes");
+
+            if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
+                err = err.with_test_context(tf.clone(), tn.clone());
+            }
+            Err(err)
+        }
+        Expr::Spread(_) => {
+            let mut err = errors::runtime_general(
+                "Spread argument not allowed inside quote",
+                context.current_file(),
+                context.current_source(),
+                context.span_for_node(expr)
+            ).with_suggestion("Remove the spread operator inside quotes");
+
+            if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
+                err = err.with_test_context(tf.clone(), tn.clone());
+            }
+            Err(err)
+        }
         _ => Ok(Value::Nil),
     }
 }
@@ -648,6 +684,8 @@ fn evaluate_quoted_if(
         max_depth: context.max_depth,
         depth: context.depth + 1,
         lexical_env: context.lexical_env.clone(),
+        test_file: context.test_file.clone(),
+        test_name: context.test_name.clone(),
     };
 
     let branch = if is_true { then_branch } else { else_branch };
@@ -668,7 +706,10 @@ fn evaluate_eager_args(
     let mut current_world = context.world.clone();
 
     for arg in args {
-        let (value, next_world) = evaluate_single_argument(arg, &current_world, context)?;
+        let (value, next_world) = {
+            let mut arg_context = context.clone_with_world(&current_world);
+            evaluate_ast_node(arg, &mut arg_context)?
+        };
         values.push(value);
         current_world = next_world;
     }
@@ -676,29 +717,6 @@ fn evaluate_eager_args(
     Ok((values, current_world))
 }
 
-fn evaluate_single_argument(
-    arg: &AstNode,
-    current_world: &World,
-    context: &mut EvaluationContext,
-) -> AtomResult {
-    let mut arg_context = create_argument_context(current_world, context);
-    evaluate_ast_node(arg, &mut arg_context)
-}
-
-fn create_argument_context<'a>(
-    world: &'a World,
-    context: &'a mut EvaluationContext,
-) -> EvaluationContext<'a> {
-    EvaluationContext {
-        world,
-        output: context.output.clone(),
-        atom_registry: context.atom_registry,
-        source: context.source.clone(),
-        max_depth: context.max_depth,
-        depth: context.next_depth(),
-        lexical_env: context.lexical_env.clone(),
-    }
-}
 
 /// Flattens spread arguments in function call arguments
 fn flatten_spread_args(
@@ -741,12 +759,18 @@ fn extract_list_items(
     context: &mut EvaluationContext,
 ) -> Result<Vec<Value>, SutraError> {
     let Value::List(items) = value else {
-        return Err(SutraError::TypeMismatch {
-            expected: "list".to_string(),
-            actual: format!("{:?}", value),
-            src: context.source.as_ref().clone(),
-            span: to_source_span(expr.span),
-        });
+        let mut err = errors::type_mismatch(
+            "list",
+            value.type_name(),
+            context.current_file(),
+            context.current_source(),
+            context.span_for_node(expr)
+        ).with_suggestion("Use a list for spread operations");
+
+        if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
+            err = err.with_test_context(tf.clone(), tn.clone());
+        }
+        return Err(err);
     };
     Ok(items)
 }
@@ -779,19 +803,25 @@ pub fn evaluate_condition_as_bool(
 
     // Guard clause: ensure condition evaluates to boolean
     let Value::Bool(b) = cond_val else {
-        return Err(SutraError::TypeMismatch {
-            expected: "bool".to_string(),
-            actual: format!("{:?}", cond_val),
-            src: context.source.as_ref().clone(),
-            span: to_source_span(condition.span),
-        });
+        let mut err = errors::type_mismatch(
+            "bool",
+            cond_val.type_name(),
+            context.current_file(),
+            context.current_source(),
+            context.span_for_node(condition)
+        ).with_suggestion("Use a boolean value for conditions");
+
+        if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
+            err = err.with_test_context(tf.clone(), tn.clone());
+        }
+        return Err(err);
     };
 
     Ok((b, next_world))
 }
 
 /// Captures the current lexical environment for lambda closures
-fn capture_lexical_env(lexical_env: &[HashMap<String, Value>]) -> HashMap<String, Value> {
+pub(crate) fn capture_lexical_env(lexical_env: &[HashMap<String, Value>]) -> HashMap<String, Value> {
     let mut captured_env = HashMap::new();
     for frame in lexical_env {
         for (key, value) in frame {

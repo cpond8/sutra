@@ -43,11 +43,13 @@ use std::{
 };
 
 // External crate imports
-use miette::NamedSource;
+use miette::{NamedSource};
 use serde::{Deserialize, Serialize};
 
 use crate::prelude::*;
-use crate::{ast::ParamList, atoms, syntax::parser::to_source_span};
+use crate::{ast::ParamList, runtime::source::SourceContext, syntax::parser::to_source_span};
+
+use crate::errors;
 
 // ============================================================================
 // MODULE DECLARATIONS
@@ -159,23 +161,12 @@ impl MacroValidationContext {
     ) -> Result<(), SutraError> {
         // Step 1: Check for duplicates if validation is enabled
         if self.check_duplicates && target.contains_key(&name) {
-            // Step 2: Create error with source context if available
-            if let Some(source) = &self.source_context {
-                return Err(SutraError::ValidationGeneral {
-                    message: format!("duplicate macro name '{}'", name),
-                    src: (**source).clone(),
-                    span: to_source_span(Span::default()),
-                    suggestion: Some("Use unique names for macro definitions".to_string()),
-                });
-            }
-
-            // Step 3: Create error without source context
-            return Err(SutraError::ValidationGeneral {
-                message: format!("duplicate macro name '{}'", name),
-                src: NamedSource::new("macros.rs".to_string(), "".to_string()),
-                span: to_source_span(Span::default()),
-                suggestion: Some("Use unique names for macro definitions".to_string()),
-            });
+            return Err(errors::runtime_general(
+                format!("duplicate macro name '{}'", name),
+                "MacroValidationContext::validate_and_insert".to_string(),
+                file!().to_string(),
+                to_source_span(Span::default()), // No precise span available for macro registration error.
+            ));
         }
 
         // Step 4: Insert the macro
@@ -272,23 +263,27 @@ impl MacroTemplate {
 
         for name in &params.required {
             if !seen.insert(name) {
-                return Err(SutraError::ValidationGeneral {
-                    message: format!("duplicate parameter name '{}'", name),
-                    src: NamedSource::new("macros.rs".to_string(), "".to_string()),
-                    span: to_source_span(Span::default()),
-                    suggestion: Some("Each parameter must have a unique name".to_string()),
-                });
+                return Err(
+                    errors::runtime_general(
+                        format!("duplicate parameter name '{}'", name),
+                        "MacroTemplate::new".to_string(),
+                        "macros.rs".to_string(),
+                        to_source_span(Span::default()),
+                    )
+                );
             }
         }
 
         if let Some(var) = &params.rest {
             if !seen.insert(var) {
-                return Err(SutraError::ValidationGeneral {
-                    message: format!("duplicate parameter name '{}'", var),
-                    src: NamedSource::new("macros.rs".to_string(), "".to_string()),
-                    span: to_source_span(Span::default()),
-                    suggestion: Some("Each parameter must have a unique name".to_string()),
-                });
+                return Err(
+                    errors::runtime_general(
+                        format!("duplicate parameter name '{}'", var),
+                        "MacroTemplate::new".to_string(),
+                        "macros.rs".to_string(),
+                        to_source_span(Span::default()),
+                    )
+                );
             }
         }
 
@@ -356,7 +351,7 @@ impl Default for MacroExpansionContext {
             user_macros: HashMap::new(),
             core_macros: HashMap::new(),
             trace: Vec::new(),
-            source: Arc::new(NamedSource::new("default", String::new())),
+            source: SourceContext::fallback("macro expansion").to_named_source(),
         }
     }
 }
@@ -444,24 +439,22 @@ impl MacroRegistry {
     ) -> Result<(), SutraError> {
         // Step 1: Validate name is not empty (if name validation is enabled)
         if config.validate_name && name.is_empty() {
-            return Err(SutraError::ValidationGeneral {
-                message: "macro name cannot be empty".to_string(),
-                src: NamedSource::new("macros.rs".to_string(), "".to_string()),
-                span: to_source_span(Span::default()),
-                suggestion: Some("Provide a non-empty macro name".to_string()),
-            });
+            return Err(errors::runtime_general(
+                "macro name cannot be empty".to_string(),
+                "MacroRegistry::validate_registration".to_string(),
+                file!().to_string(),
+                to_source_span(Span::default()), // No precise span available for macro registration error.
+            ));
         }
 
         // Step 2: Check for duplicate names (if duplicate checking is enabled)
         if config.check_duplicates && self.macros.contains_key(name) {
-            return Err(SutraError::ValidationGeneral {
-                message: format!("macro '{}' is already registered", name),
-                src: NamedSource::new(name.to_string(), String::new()),
-                span: to_source_span(Span::default()),
-                suggestion: Some(
-                    "Use a different name or unregister the existing macro".to_string(),
-                ),
-            });
+            return Err(errors::runtime_general(
+                format!("macro '{}' is already registered", name),
+                "MacroRegistry::validate_registration".to_string(),
+                file!().to_string(),
+                to_source_span(Span::default()), // No precise span available for macro registration error.
+            ));
         }
 
         // Step 3: Validation successful
@@ -491,14 +484,12 @@ impl MacroRegistry {
 
         // Step 2: Reject if macro exists and overwrites not allowed
         if !config.allow_overwrite && self.macros.contains_key(name) {
-            return Err(SutraError::ValidationGeneral {
-                message: format!("macro '{}' is already registered", name),
-                src: NamedSource::new(name.to_string(), String::new()),
-                span: to_source_span(Span::default()),
-                suggestion: Some(
-                    "Use a different name or unregister the existing macro".to_string(),
-                ),
-            });
+            return Err(errors::runtime_general(
+                format!("macro '{}' is already registered", name),
+                "MacroRegistry::register_with_config".to_string(),
+                file!().to_string(),
+                to_source_span(Span::default()), // No precise span available for macro registration error.
+            ));
         }
 
         // Step 3: Insert macro and return any previous definition
@@ -636,23 +627,9 @@ impl MacroRegistry {
 // CALLABLE TRAIT IMPLEMENTATION
 // ============================================================================
 
-impl atoms::Callable for MacroDefinition {
-    fn call(
-        &self,
-        _args: &[Value],
-        _context: &mut AtomExecutionContext,
-        _current_world: &World,
-    ) -> Result<(Value, World), SutraError> {
-        // Macros operate on AST nodes, not Values, so they cannot be called through the Callable interface
-        // This is a design limitation - macros need syntax transformation, not evaluation
-        Err(SutraError::ValidationGeneral {
-            message: "macros require AST transformation, not evaluation".to_string(),
-            src: NamedSource::new("macros.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-            suggestion: Some("Use direct macro expansion instead".to_string()),
-        })
-    }
-}
+// The `Callable` trait has been removed from the engine. Macros are dispatched
+// through a separate path in the macro expander and are not part of the runtime
+// evaluation call chain.
 
 // ============================================================================
 // PUBLIC API RE-EXPORTS

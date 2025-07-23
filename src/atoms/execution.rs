@@ -14,8 +14,8 @@
 //! - **State Threading**: Proper world state propagation through execution
 
 use crate::prelude::*;
-use crate::{atoms::SpecialFormAtomFn, helpers, runtime::eval, syntax::parser::to_source_span};
-use miette::NamedSource;
+use crate::{atoms::LazyAtomFn, helpers, runtime::eval};
+use crate::errors;
 
 // ============================================================================
 // CONTROL FLOW OPERATIONS
@@ -33,7 +33,7 @@ use miette::NamedSource;
 ///
 /// # Safety
 /// May mutate world if inner expressions do.
-pub const ATOM_DO: SpecialFormAtomFn = |args, context, _parent_span| {
+pub const ATOM_DO: LazyAtomFn = |args, context, _parent_span| {
     let mut last_value = Value::default();
     let mut world = context.world.clone();
 
@@ -63,22 +63,23 @@ pub const ATOM_DO: SpecialFormAtomFn = |args, context, _parent_span| {
 ///
 /// # Safety
 /// Always errors. Does not mutate state.
-pub const ATOM_ERROR: SpecialFormAtomFn = |args, context, _parent_span| {
+pub const ATOM_ERROR: LazyAtomFn = |args, context, _parent_span| {
     let (val, _world) = helpers::eval_single_arg(args, context)?;
     let Value::String(msg) = val else {
-        return Err(SutraError::TypeMismatch {
-            expected: "String".to_string(),
-            actual: val.type_name().to_string(),
-            src: NamedSource::new("atoms/execution.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-        });
+        return Err(errors::type_mismatch(
+            "String",
+            val.type_name(),
+            context.current_file(),
+            context.current_source(),
+            context.span_for_span(Span::default()),
+        ));
     };
-    Err(SutraError::RuntimeGeneral {
-        message: msg,
-        src: NamedSource::new("atoms/execution.rs".to_string(), "".to_string()),
-        span: to_source_span(Span::default()),
-        suggestion: None,
-    })
+    Err(errors::runtime_general(
+        msg,
+        context.current_file(),
+        context.current_source(),
+        context.span_for_span(Span::default()),
+    ))
 };
 
 // ============================================================================
@@ -97,7 +98,7 @@ pub const ATOM_ERROR: SpecialFormAtomFn = |args, context, _parent_span| {
 /// Example:
 ///   (apply + 1 2 (list 3 4)) ; => 10
 ///   (apply core/str+ (list "a" "b" "c")) ; => "abc"
-pub const ATOM_APPLY: SpecialFormAtomFn = |args, context, parent_span| {
+pub const ATOM_APPLY: LazyAtomFn = |args, context, parent_span| {
     helpers::validate_special_form_min_arity(args, 2, "apply")?;
 
     let func_expr = &args[0];
@@ -125,9 +126,9 @@ pub const ATOM_APPLY: SpecialFormAtomFn = |args, context, parent_span| {
 /// Registers all execution control atoms with the given registry.
 pub fn register_execution_atoms(registry: &mut AtomRegistry) {
     // Control flow
-    registry.register_special_form("do", ATOM_DO);
-    registry.register_special_form("error", ATOM_ERROR);
+    registry.register_lazy("do", ATOM_DO);
+    registry.register_lazy("error", ATOM_ERROR);
 
     // Higher-order functions
-    registry.register_special_form("apply", ATOM_APPLY);
+    registry.register_lazy("apply", ATOM_APPLY);
 }

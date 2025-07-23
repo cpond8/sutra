@@ -27,8 +27,7 @@ spread_arg = { "..." ~ symbol }
 
 // `list` and `block` are the two equivalent forms for collections of expressions.
 // List elements can be expr or spread_arg.
-list  = { "(" ~ list_elem* ~ ")" } // Only proper lists are supported; improper/dotted lists are not allowed.
-list_elem = { expr | spread_arg }
+list  = { "(" ~ expr* ~ ")" } // Only proper lists are supported; improper/dotted lists are not allowed.
 block = { "{" ~ expr* ~ "}" }
 
 // An `atom` is any primitive, non-recursive value. The order of rules inside
@@ -56,13 +55,15 @@ string = @{ "\"" ~ inner ~ "\"" }
 // `inner` contains the actual content of the string.
 inner = { (str_char | escape_sequence)* }
 // `str_char` is any single character that is not a quote or a backslash.
-str_char = @{ !("\"" | "\\") ~ ANY }
-// `escape_sequence` explicitly defines the valid escape sequences.
-// TODO: The parser should produce a specific error if a `\` is followed by
-// an invalid character (e.g., `\q`). The current grammar doesn't parse invalid
-// escapes, which `pest` will report as a generic "expected..." error. A future
-// improvement could be to allow `\\ ~ ANY` and validate it in the AST-building step.
-escape_sequence = @{ "\\" ~ ("\"" | "\\" | "n" | "t") }
+str_char = @{ !("\"" | "\\" | "\n" | "\r") ~ ANY }
+// `escape_sequence` explicitly defines the valid escape sequences. Any other
+// backslash sequence is an error.
+escape_sequence = @{ "\\" ~ ("\"" | "\\" | "n" | "t" | "r") }
+
+// This rule is not used in the grammar itself, but serves as a clear
+// declaration of what we consider an invalid escape sequence. The parser will
+// fail on these because they are not part of the `inner` rule for strings.
+invalid_escape = @{ "\\" ~ !("b" | "f" | "n" | "r" | "t" | "\"" | "\\") ~ ANY }
 
 // `symbol` definition is carefully crafted for Sutra's needs.
 // It uses helper rules for clarity and maintainability.
@@ -88,7 +89,7 @@ param_list = { "(" ~ param_items ~ ")" }
 param_items = { symbol* ~ spread_arg? } // Only ...rest is supported for variadics.
 
 // Macro/function definition: (define (name ... [ ...rest ]) body)
-define_form = { "(" ~ "define" ~ param_list ~ expr ~ ")" }
 
 // Lambda function: (lambda (params...) body)
 lambda_form = { "(" ~ "lambda" ~ param_list ~ expr ~ ")" }
+define_form = { "(" ~ "define" ~ param_list ~ expr ~ ")" }

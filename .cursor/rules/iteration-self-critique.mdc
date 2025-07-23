@@ -48,11 +48,6 @@ This applies to **all levels** of code, from architectural down to the individua
 
 ---
 
-**Whether for a cook or a compiler, good instructions are the same: complete, clear, and easy to follow.**
-
-
----
-
 ## The Iteration Process
 
 ### Step 1: Identify the Apparent Complexity
@@ -118,12 +113,19 @@ This applies to **all levels** of code, from architectural down to the individua
 
 ### Step 6: Synthesize Your Insights into a Solution
 
-- How does your proposed solution change existing behaviour?
+**Verify: how does your proposed solution change existing behaviour?**
+
 - If it does, is it for the better?
 - Weigh out the benefits and drawbacks
 - Could your solution be even better?
 
 **Optimal solutions can only be reached through cycles of rigorous self-critique and iteration.**
+
+- All changes in behaviour should be _intentional_
+- _Document_ them for proper review as part of your proposal
+- _Justify_ each one, elaborating on both expected benefits as well as drawbacks
+
+**Be honest in your self-critique**
 
 ---
 

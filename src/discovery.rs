@@ -10,6 +10,9 @@ use walkdir::WalkDir;
 use crate::prelude::*;
 use crate::syntax::parser;
 
+use miette::SourceSpan;
+use crate::errors;
+
 // =====================
 // Type Aliases for Complex Types
 // =====================
@@ -57,7 +60,12 @@ impl TestDiscoverer {
         let mut files = Vec::new();
         for entry in WalkDir::new(root) {
             let entry = entry.map_err(|e| {
-                SutraError::internal_error("Failed to walk directory", e.to_string())
+                errors::runtime_general(
+                    format!("Failed to walk directory: {}", e),
+                    "TestDiscoverer::discover_test_files".to_string(),
+                    file!().to_string(),
+                    SourceSpan::from(0..0), // No precise span available in file system error context.
+                )
             })?;
 
             if !entry.file_type().is_file() {
@@ -84,7 +92,12 @@ impl TestDiscoverer {
     ) -> Result<Vec<ASTDefinition>, SutraError> {
         let path_str = file_path.as_ref().display().to_string();
         let source = fs::read_to_string(file_path.as_ref())
-            .map_err(|e| SutraError::resource_error("read", path_str.clone(), e.to_string()))?;
+            .map_err(|e| errors::runtime_general(
+                format!("Failed to read file '{}': {}", path_str, e),
+                "TestDiscoverer::extract_tests_from_file".to_string(),
+                file!().to_string(),
+                SourceSpan::from(0..0), // No precise span available in file system error context.
+            ))?;
 
         let ast = parser::parse(&source)?;
         let source_file = Arc::new(NamedSource::new(path_str, source));
@@ -149,12 +162,12 @@ impl TestDiscoverer {
         source_file: SourceFile,
     ) -> Result<ASTDefinition, SutraError> {
         if items.len() < 2 {
-            return Err(SutraError::ValidationGeneral {
-                message: "Invalid test form: expected at least a name".to_string(),
-                src: source_file.as_ref().clone(),
-                span: parser::to_source_span(span),
-                suggestion: None,
-            });
+            return Err(errors::runtime_general(
+                "Invalid test form: expected at least a name".to_string(),
+                "TestDiscoverer::parse_test_form_structure".to_string(),
+                format!("{:?}", source_file),
+                parser::to_source_span(span), // Real span available from AST node.
+            ));
         }
 
         let name = Self::extract_and_validate_test_name(&items[1], &source_file)?;
@@ -177,12 +190,12 @@ impl TestDiscoverer {
         source_file: &SourceFile,
     ) -> Result<String, SutraError> {
         let Expr::String(s, _) = &*name_node.value else {
-            return Err(SutraError::ValidationGeneral {
-                message: "Invalid test form: test name must be a string".to_string(),
-                src: source_file.as_ref().clone(),
-                span: parser::to_source_span(name_node.span),
-                suggestion: None,
-            });
+            return Err(errors::runtime_general(
+                "Invalid test form: test name must be a string".to_string(),
+                "TestDiscoverer::extract_and_validate_test_name".to_string(),
+                format!("{:?}", source_file),
+                parser::to_source_span(name_node.span), // Real span available from AST node.
+            ));
         };
         Ok(s.clone())
     }
@@ -191,7 +204,7 @@ impl TestDiscoverer {
     ///
     /// Test forms can have two structures:
     /// - `(test "name" body...)` - no expect form
-    /// - `(test "name" (expect ...) body...)` - with expect form
+    /// - `(test "name" (expect ...) body...)`
     fn extract_expect_form_and_body(items: &[AstNode]) -> Result<TestFormComponents, SutraError> {
         let Some(second_item) = items.get(2) else {
             let body = items.get(2..).unwrap_or_default().to_vec();

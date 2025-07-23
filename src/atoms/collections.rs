@@ -18,11 +18,10 @@
 
 use crate::prelude::*;
 use crate::{
-    atoms::{PureAtomFn, StatefulAtomFn},
+    atoms::EagerAtomFn,
     helpers,
-    syntax::parser::to_source_span,
 };
-use miette::NamedSource;
+use crate::errors;
 
 // ============================================================================
 // LIST OPERATIONS
@@ -37,7 +36,7 @@ use miette::NamedSource;
 ///
 /// Example:
 ///   (list 1 2 3) ; => (1 2 3)
-pub const ATOM_LIST: PureAtomFn = |args| Ok(Value::List(args.to_vec()));
+pub const ATOM_LIST: EagerAtomFn = |args, context| Ok((Value::List(args.to_vec()), context.world.clone()));
 
 /// Returns the length of a list or string.
 ///
@@ -49,24 +48,21 @@ pub const ATOM_LIST: PureAtomFn = |args| Ok(Value::List(args.to_vec()));
 /// Example:
 ///   (len (list 1 2 3)) ; => 3
 ///   (len "abc") ; => 3
-pub const ATOM_LEN: PureAtomFn = |args| {
+pub const ATOM_LEN: EagerAtomFn = |args, context| {
     helpers::validate_unary_arity(args, "len")?;
-
     let val = &args[0];
     let len = match val {
         Value::List(items) => items.len(),
         Value::String(s) => s.len(),
-        _ => {
-            return Err(SutraError::RuntimeGeneral {
-                message: format!("len expects a List or String, found {}", val.to_string()),
-                src: NamedSource::new("atoms/collections.rs".to_string(), "".to_string()),
-                span: to_source_span(Span::default()),
-                suggestion: None,
-            });
-        }
+        _ => return Err(errors::type_mismatch(
+            "List or String",
+            val.type_name(),
+            context.current_file(),
+            context.current_source(),
+            context.span_for_span(Span::default()),
+        )),
     };
-
-    Ok(Value::Number(len as f64))
+    Ok((Value::Number(len as f64), context.world.clone()))
 };
 
 /// Tests if a collection contains a value or key.
@@ -81,32 +77,25 @@ pub const ATOM_LEN: PureAtomFn = |args| {
 ///   (has? (list 1 2 3) 2) ; => true
 ///   (has? {"key" "value"} "key") ; => true
 ///   (has? (list 1 2 3) 4) ; => false
-pub const ATOM_HAS: PureAtomFn = |args| {
+pub const ATOM_HAS: EagerAtomFn = |args, context| {
     helpers::validate_binary_arity(args, "has?")?;
-
     let collection_val = &args[0];
     let search_val = &args[1];
-
     let found = match collection_val {
         Value::List(items) => items.contains(search_val),
         Value::Map(map) => {
             let key = helpers::validate_string_value(search_val, "map key")?;
             map.contains_key(key)
         }
-        _ => {
-            return Err(SutraError::RuntimeGeneral {
-                message: format!(
-                    "has? expects a List or Map as first argument, found {}",
-                    collection_val.to_string()
-                ),
-                src: NamedSource::new("atoms/collections.rs".to_string(), "".to_string()),
-                span: to_source_span(Span::default()),
-                suggestion: None,
-            });
-        }
+        _ => return Err(errors::type_mismatch(
+            "List or Map",
+            collection_val.type_name(),
+            context.current_file(),
+            context.current_source(),
+            context.span_for_span(Span::default()),
+        )),
     };
-
-    Ok(Value::Bool(found))
+    Ok((Value::Bool(found), context.world.clone()))
 };
 
 /// Appends a value to a list at a path in the world state.
@@ -122,24 +111,18 @@ pub const ATOM_HAS: PureAtomFn = |args| {
 ///
 /// # Safety
 /// Mutates the world at the given path. **Creates a new empty list if the path doesn't exist.**
-pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
+pub const ATOM_CORE_PUSH: EagerAtomFn = |args, context| {
     helpers::validate_binary_arity(args, "core/push!")?;
-
     let path = helpers::validate_path_arg(args, "core/push!")?;
-
-    // Get existing list or create new one
     let mut list_val = context
-        .state
+        .world
         .get(path)
         .cloned()
         .unwrap_or(Value::List(vec![]));
-
-    // Validate and modify list
     let items = helpers::validate_list_value_mut(&mut list_val, "core/push!")?;
     items.push(args[1].clone());
-
-    context.state.set(path, list_val);
-    Ok(Value::Nil)
+    let new_world = context.world.set(path, list_val);
+    Ok((Value::Nil, new_world))
 };
 
 /// Removes and returns the last element from a list at a path in the world state.
@@ -154,24 +137,18 @@ pub const ATOM_CORE_PUSH: StatefulAtomFn = |args, context| {
 ///
 /// # Safety
 /// Mutates the world at the given path. **Creates a new empty list if the path doesn't exist.**
-pub const ATOM_CORE_PULL: StatefulAtomFn = |args, context| {
+pub const ATOM_CORE_PULL: EagerAtomFn = |args, context| {
     helpers::validate_unary_arity(args, "core/pull!")?;
-
     let path = helpers::validate_path_arg(args, "core/pull!")?;
-
-    // Get existing list or create new one
     let mut list_val = context
-        .state
+        .world
         .get(path)
         .cloned()
         .unwrap_or(Value::List(vec![]));
-
-    // Validate and modify list
     let items = helpers::validate_list_value_mut(&mut list_val, "core/pull!")?;
     let pulled_value = items.pop().unwrap_or(Value::Nil);
-
-    context.state.set(path, list_val);
-    Ok(pulled_value)
+    let new_world = context.world.set(path, list_val);
+    Ok((pulled_value, new_world))
 };
 
 // ============================================================================
@@ -187,29 +164,24 @@ pub const ATOM_CORE_PULL: StatefulAtomFn = |args, context| {
 ///
 /// Example:
 ///   (core/str+ "foo" "bar" "baz") ; => "foobarbaz"
-pub const ATOM_CORE_STR_PLUS: PureAtomFn = |args| {
+pub const ATOM_CORE_STR_PLUS: EagerAtomFn = |args, context| {
     if args.is_empty() {
-        return Ok(Value::String(String::new()));
+        return Ok((Value::String(String::new()), context.world.clone()));
     }
-
     let mut result = String::new();
-
     for val in args {
         let Value::String(s) = val else {
-            return Err(SutraError::RuntimeGeneral {
-                message: format!(
-                    "core/str+ expects all arguments to be Strings, found {}",
-                    val.to_string()
-                ),
-                src: NamedSource::new("atoms/collections.rs".to_string(), "".to_string()),
-                span: to_source_span(Span::default()),
-                suggestion: None,
-            });
+            return Err(errors::type_mismatch(
+                "String",
+                val.type_name(),
+                context.current_file(),
+                context.current_source(),
+                context.span_for_span(Span::default()),
+            ));
         };
-        result.push_str(s);
+        result.push_str(&s);
     }
-
-    Ok(Value::String(result))
+    Ok((Value::String(result), context.world.clone()))
 };
 
 // ============================================================================
@@ -226,20 +198,14 @@ pub const ATOM_CORE_STR_PLUS: PureAtomFn = |args| {
 /// Example:
 ///   (car (list 1 2 3)) ; => 1
 ///   (car (list)) ; => Nil
-pub const ATOM_CAR: PureAtomFn = |args| {
+pub const ATOM_CAR: EagerAtomFn = |args, context| {
     helpers::validate_unary_arity(args, "car")?;
-
     let list_val = &args[0];
     let items = helpers::validate_list_value(list_val, "car")?;
-
-    let first = items.first().ok_or_else(|| SutraError::RuntimeGeneral {
-        message: "car: empty list".to_string(),
-        src: NamedSource::new("atoms/collections.rs".to_string(), "".to_string()),
-        span: to_source_span(Span::default()),
-        suggestion: None,
-    })?;
-
-    Ok(first.clone())
+    let Some(first) = items.first() else {
+        return Ok((Value::Nil, context.world.clone()));
+    };
+    Ok((first.clone(), context.world.clone()))
 };
 
 /// Returns all elements of a list except the first.
@@ -253,23 +219,14 @@ pub const ATOM_CAR: PureAtomFn = |args| {
 ///   (cdr (list 1 2 3)) ; => (2 3)
 ///   (cdr (list 1)) ; => ()
 ///   (cdr (list)) ; => ()
-pub const ATOM_CDR: PureAtomFn = |args| {
+pub const ATOM_CDR: EagerAtomFn = |args, context| {
     helpers::validate_unary_arity(args, "cdr")?;
-
     let list_val = &args[0];
     let items = helpers::validate_list_value(list_val, "cdr")?;
-
     if items.is_empty() {
-        return Err(SutraError::RuntimeGeneral {
-            message: "cdr: empty list".to_string(),
-            src: NamedSource::new("atoms/collections.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-            suggestion: None,
-        });
+        return Ok((Value::List(vec![]), context.world.clone()));
     }
-
-    let rest = items[1..].to_vec();
-    Ok(Value::List(rest))
+    Ok((Value::List(items[1..].to_vec()), context.world.clone()))
 };
 
 /// Constructs a new list by prepending an element to an existing list.
@@ -283,17 +240,15 @@ pub const ATOM_CDR: PureAtomFn = |args| {
 /// Example:
 ///   (cons 1 (list 2 3)) ; => (1 2 3)
 ///   (cons 1 (list)) ; => (1)
-pub const ATOM_CONS: PureAtomFn = |args| {
+pub const ATOM_CONS: EagerAtomFn = |args, context| {
     helpers::validate_binary_arity(args, "cons")?;
-
     let element = &args[0];
     let list_val = &args[1];
     let items = helpers::validate_list_value(list_val, "cons")?;
-
-    let mut new_list = vec![element.clone()];
+    let mut new_list = Vec::with_capacity(items.len() + 1);
+    new_list.push(element.clone());
     new_list.extend(items.iter().cloned());
-
-    Ok(Value::List(new_list))
+    Ok((Value::List(new_list), context.world.clone()))
 };
 
 // ============================================================================
@@ -309,17 +264,15 @@ pub const ATOM_CONS: PureAtomFn = |args| {
 ///
 /// Example:
 ///   (core/map "a" 1 "b" 2) ; => {"a" 1 "b" 2}
-pub const ATOM_CORE_MAP: PureAtomFn = |args| {
+pub const ATOM_CORE_MAP: EagerAtomFn = |args, context| {
     helpers::validate_even_arity(args, "core/map")?;
-
     let mut map = im::HashMap::new();
     for chunk in args.chunks(2) {
         let key = helpers::validate_string_value(&chunk[0], "map key")?.to_string();
         let value = chunk[1].clone();
         map.insert(key, value);
     }
-
-    Ok(Value::Map(map))
+    Ok((Value::Map(map), context.world.clone()))
 };
 
 // ============================================================================
@@ -329,20 +282,17 @@ pub const ATOM_CORE_MAP: PureAtomFn = |args| {
 /// Registers all collection atoms with the given registry.
 pub fn register_collection_atoms(registry: &mut AtomRegistry) {
     // List operations
-    registry.register_pure("list", ATOM_LIST);
-    registry.register_pure("len", ATOM_LEN);
-    registry.register_pure("has?", ATOM_HAS);
-    registry.register_pure("car", ATOM_CAR);
-    registry.register_pure("cdr", ATOM_CDR);
-    registry.register_pure("cons", ATOM_CONS);
-
+    registry.register_eager("list", ATOM_LIST);
+    registry.register_eager("len", ATOM_LEN);
+    registry.register_eager("has?", ATOM_HAS);
+    registry.register_eager("car", ATOM_CAR);
+    registry.register_eager("cdr", ATOM_CDR);
+    registry.register_eager("cons", ATOM_CONS);
     // Mutable list operations
-    registry.register_stateful("core/push!", ATOM_CORE_PUSH);
-    registry.register_stateful("core/pull!", ATOM_CORE_PULL);
-
+    registry.register_eager("core/push!", ATOM_CORE_PUSH);
+    registry.register_eager("core/pull!", ATOM_CORE_PULL);
     // String operations
-    registry.register_pure("core/str+", ATOM_CORE_STR_PLUS);
-
+    registry.register_eager("core/str+", ATOM_CORE_STR_PLUS);
     // Map operations
-    registry.register_pure("core/map", ATOM_CORE_MAP);
+    registry.register_eager("core/map", ATOM_CORE_MAP);
 }

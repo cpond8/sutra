@@ -9,10 +9,13 @@ use crate::{
         expand_macros_recursively, parse_macro_definition, MacroDefinition, MacroExpansionContext,
         MacroValidationContext,
     },
-    runtime::{eval, world},
+    runtime::{eval, world, source::SourceContext as RuntimeSourceContext},
     syntax::parser,
     validation::semantic,
 };
+
+use miette::SourceSpan;
+use crate::errors;
 
 // ============================================================================
 // OUTPUT TYPES - Generic output handling for CLI and testing
@@ -130,6 +133,27 @@ impl MacroProcessor {
         Ok((expanded, env))
     }
 
+    /// Process with existing macro environment, expanding macros and returning the result.
+    /// This is ideal for test runners or other contexts where a pre-configured macro
+    /// environment is available.
+    pub fn process_with_existing_macros(
+        &self,
+        ast_nodes: Vec<AstNode>,
+        env: &mut MacroExpansionContext,
+    ) -> Result<AstNode, SutraError> {
+        // Step 1: Partition AST nodes into macro definitions and user code
+        let (macro_defs, user_code) = self.partition_ast_nodes(ast_nodes);
+
+        // Step 2: Process user-defined macros into the existing environment
+        self.process_macro_definitions(macro_defs, env)?;
+
+        // Step 3: Wrap user code in a (do ...) block if needed
+        let program = parser::wrap_in_do(user_code);
+
+        // Step 4: Expand macros recursively
+        expand_macros_recursively(program, env)
+    }
+
     /// Partitions AST nodes into macro definitions and user code
     fn partition_ast_nodes(&self, ast_nodes: Vec<AstNode>) -> (Vec<AstNode>, Vec<AstNode>) {
         // Note: define forms are special forms that should be evaluated, not treated as macros
@@ -197,13 +221,13 @@ impl MacroProcessor {
 
         // Step 4: Handle validation results (early return on failure)
         if !validation_result.is_valid() {
-            let error_message = validation_result.errors.join("\n");
-            return Err(SutraError::ValidationGeneral {
-                message: format!("Semantic validation failed:\n{}", error_message),
-                src: source_context.as_ref().clone(),
-                span: parser::to_source_span(expanded.span),
-                suggestion: Some("Check for undefined symbols, type errors, or invalid macro usage in your code.".to_string()),
-            });
+            let error_message = validation_result.errors.iter().map(|e| e.to_string()).collect::<Vec<_>>().join("\n");
+            return Err(errors::runtime_general(
+                format!("Semantic validation failed:\n{}", error_message),
+                "MacroProcessor::validate_expanded_ast".to_string(),
+                format!("{:?}", source_context),
+                parser::to_source_span(expanded.span),
+            ));
         }
 
         // Step 5: Validation successful
@@ -226,6 +250,29 @@ impl MacroProcessor {
             atom_registry,
             source_context,
             self.max_depth,
+            None,
+            None,
+        )
+    }
+
+    /// Evaluates an expanded AST with a provided source context
+    pub fn evaluate_expanded_ast_with_context(
+        &self,
+        expanded: &AstNode,
+        output: SharedOutput,
+        source_context: Arc<NamedSource<String>>,
+        atom_registry: &AtomRegistry,
+    ) -> EvaluationResult {
+        let world = world::World::default();
+        eval::evaluate(
+            expanded,
+            &world,
+            output,
+            atom_registry,
+            source_context,
+            self.max_depth,
+            None,
+            None,
         )
     }
 
@@ -243,11 +290,6 @@ impl MacroProcessor {
             world::build_canonical_macro_env().expect("Standard macro env should build");
         (atom_registry, macro_env)
     }
-
-    /// Creates a source context for error reporting
-    pub fn create_source_context(&self, name: &str, content: &str) -> SourceContext {
-        Arc::new(NamedSource::new(name, content.to_string()))
-    }
 }
 
 // ============================================================================
@@ -258,6 +300,8 @@ impl MacroProcessor {
 /// This is the single source of truth for all Sutra execution paths, including tests and production.
 /// All code execution, including test harnesses, must use this pipeline. Bypassing is forbidden.
 pub struct ExecutionPipeline {
+    /// Macro environment with canonical macros pre-loaded.
+    pub macro_env: MacroExpansionContext,
     /// Maximum recursion depth for evaluation
     pub max_depth: usize,
     /// Whether to validate expanded AST before evaluation
@@ -267,6 +311,8 @@ pub struct ExecutionPipeline {
 impl Default for ExecutionPipeline {
     fn default() -> Self {
         Self {
+            macro_env: world::build_canonical_macro_env()
+                .expect("Standard macro env should build"),
             max_depth: 100,
             validate: true,
         }
@@ -298,11 +344,21 @@ impl ExecutionPipeline {
     /// Reads a file with standardized error handling
     pub fn read_file(path: &Path) -> Result<String, SutraError> {
         let filename = path.to_str().ok_or_else(|| {
-            SutraError::internal_error("Invalid filename", "Could not convert path to string")
+            errors::runtime_general(
+                "Invalid filename: Could not convert path to string".to_string(),
+                "ExecutionPipeline::read_file".to_string(),
+                file!().to_string(),
+                SourceSpan::from(0..0), // No precise span available in file system error context.
+            )
         })?;
 
         std::fs::read_to_string(filename).map_err(|error| {
-            SutraError::internal_error("Failed to read file", format!("{}", error))
+            errors::runtime_general(
+                format!("Failed to read file: {}", error),
+                "ExecutionPipeline::read_file".to_string(),
+                file!().to_string(),
+                SourceSpan::from(0..0), // No precise span available in file system error context.
+            )
         })
     }
 
@@ -345,13 +401,14 @@ impl ExecutionPipeline {
     pub fn execute_nodes(&self, nodes: &[AstNode]) -> Result<Value, SutraError> {
         // Create macro processor with same configuration
         let processor = MacroProcessor::new(self.validate, self.max_depth);
+        let mut env = self.macro_env.clone(); // Clone to allow mutation
 
-        // Step 1: Use MacroProcessor's unified partition and process pipeline
-        let (expanded, env) = processor.partition_and_process_macros(nodes.to_vec())?;
+        // Step 1: Use MacroProcessor to expand with the pre-configured environment
+        let expanded = processor.process_with_existing_macros(nodes.to_vec(), &mut env)?;
 
         // Step 2: Validation step (optional but recommended)
         let (atom_registry, _) = MacroProcessor::build_standard_registries();
-        let source_context = processor.create_source_context("ast_execution", "");
+        let source_context = RuntimeSourceContext::fallback("engine execution").to_named_source();
         processor.validate_expanded_ast(&expanded, &env, &atom_registry, &source_context)?;
 
         // Step 3: Evaluate the expanded AST (CRITICAL: No macro expansion happens here)
@@ -398,6 +455,29 @@ impl ExecutionPipeline {
             &atom_registry,
             source,
             self.max_depth,
+            None,
+            None,
         )
+    }
+
+    /// Executes source code with a real NamedSource for error reporting
+    pub fn execute_source_with_context(path: &str, source: &str, output: SharedOutput) -> Result<(), SutraError> {
+        let named_source = std::sync::Arc::new(NamedSource::new(path.to_string(), source.to_string()));
+        let ast_nodes = parser::parse(source)?;
+        let processor = MacroProcessor::default();
+        let (atom_registry, mut macro_env) = MacroProcessor::build_standard_registries();
+        let expanded_node = processor.process_with_existing_macros(ast_nodes, &mut macro_env)?;
+        let source_context = Arc::new(NamedSource::new(path.to_string(), source.to_string()));
+        processor.validate_expanded_ast(&expanded_node, &macro_env, &atom_registry, &source_context)?;
+        let (result, _) = processor.evaluate_expanded_ast_with_context(
+            &expanded_node,
+            output.clone(),
+            named_source.clone(),
+            &atom_registry,
+        )?;
+        if !result.is_nil() {
+            output.emit(&result.to_string(), None);
+        }
+        Ok(())
     }
 }

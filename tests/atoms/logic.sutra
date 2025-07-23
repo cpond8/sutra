@@ -27,9 +27,9 @@
       (not nil))
 
 (test "logic: not - arity error (too few)"
-      (expect (error Eval) (tags "logic"))
+      (expect (error Validation) (tags "logic"))
       (not))
 
 (test "logic: not - arity error (too many)"
-      (expect (error Eval) (tags "logic"))
+      (expect (error Validation) (tags "logic"))
       (not true false))

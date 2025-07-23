@@ -6,7 +6,7 @@ pub use crate::{
         expand_macros_recursively, MacroDefinition, MacroExpansionContext, MacroRegistry,
         MacroTemplate,
     },
-    runtime::world::{AtomExecutionContext, Path, World},
+    runtime::world::{Path, World},
     test::{Expectation, TestResult, TestSummary},
 };
 
@@ -25,9 +25,9 @@ pub mod prelude {
         errors::{ErrorType, SutraError},
         macros::MacroRegistry,
         runtime::eval::EvaluationContext,
-        runtime::world::AtomExecutionContext,
         runtime::world::World,
         MacroDefinition, Path,
+        syntax::parser::to_source_span
     };
 }
 

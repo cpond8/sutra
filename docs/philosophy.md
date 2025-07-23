@@ -1,6 +1,6 @@
 ---
 status: authoritative
-last-reviewed: 2025-07-16
+last-reviewed: 2025-07-21
 summary: Design philosophy and guiding principles for the Sutra Engine.
 ---
 
@@ -226,10 +226,22 @@ storylet "find-key" {
 ### Error Handling
 
 **Unified Error Construction:**
-- All errors use `err_msg!` or `err_ctx!` macros
-- Consistent formatting and context
-- Span information for precise location
-- **Rationale:** Uniform, helpful error experience
+- All errors must be constructed using the canonical error API (e.g., `errors::runtime_general`, `errors::validation_arity`, `errors::type_mismatch`, etc.)
+- All error constructors must be called with exactly the required arguments (typically 4: message, context, source, span).
+- All extra fields and method chaining (e.g., `.with_*()`) are forbidden.
+- Span information must be provided for precise location; use a real span whenever possible, or `SourceSpan::from(0..0)` with a comment if not.
+- **Rationale:** Uniform, helpful error experience, and maintainability.
+
+**Example:**
+```rust
+// Canonical pattern (required)
+return Err(errors::runtime_general(
+    "Division by zero".to_string(),
+    "math.sutra".to_string(),
+    source_code, // or a string describing the context/source
+    SourceSpan::new(offset, length),
+));
+```
 
 **Graceful Degradation:**
 - Validation errors don't crash the system

@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use crate::prelude::*;
 use crate::{
     ast::ParamList,
+    errors,
     macros::{
         check_arity, MacroDefinition, MacroExpansionContext, MacroExpansionResult,
         MacroExpansionStep, MacroTemplate, MAX_MACRO_RECURSION_DEPTH,
@@ -87,31 +88,24 @@ pub fn expand_template(
 /// Extracts macro name and arguments from a macro call
 fn extract_macro_call_info(call: &AstNode) -> Result<(&str, &[AstNode], &Span), SutraError> {
     let Expr::List(items, span) = &*call.value else {
-        return Err(SutraError::MacroInvalidCall {
-            reason: "macro call must be a list expression".to_string(),
-            macro_name: None,
-            src: miette::NamedSource::new("macro call", format!("{:?}", call)),
-            span: to_source_span(call.span),
-        });
+        return Err(
+            errors::runtime_general("Macro call must be a list expression", "macro call", format!("{:?}", call), to_source_span(call.span))
+                .with_suggestion("Macros must be called using list syntax, like `(my-macro ...)`.")
+        );
     };
 
     if items.is_empty() {
-        return Err(SutraError::MacroInvalidCall {
-            reason: "macro call cannot be empty".to_string(),
-            macro_name: None,
-            src: miette::NamedSource::new("macro call", format!("{:?}", call)),
-            span: to_source_span(*span),
-        });
+        return Err(
+            errors::runtime_general("Macro call cannot be empty", "macro call", format!("{:?}", call), to_source_span(*span))
+        );
     }
 
     let first = &items[0];
     let Expr::Symbol(macro_name, _) = &*first.value else {
-        return Err(SutraError::MacroInvalidCall {
-            reason: "macro call head must be a symbol".to_string(),
-            macro_name: None,
-            src: miette::NamedSource::new("macro call", format!("{:?}", call)),
-            span: to_source_span(first.span),
-        });
+        return Err(
+            errors::runtime_general("Macro call head must be a symbol", "macro call", format!("{:?}", call), to_source_span(first.span))
+                .with_suggestion("The first element of a macro call must be the macro's name.")
+        );
     };
 
     Ok((macro_name, &items[1..], span))
@@ -172,12 +166,14 @@ pub fn substitute_template(
             if let Expr::Spread(inner) = &*item.value {
                 let substituted = substitute_template(inner, bindings, env, depth + 1)?;
                 let Expr::List(elements, _) = &*substituted.value else {
-                    return Err(SutraError::MacroExpansionFailed {
-                        macro_name: "spread".to_string(),
-                        details: "Spread expression must evaluate to a list".to_string(),
-                        src: (*env.source).clone(),
-                        span: to_source_span(inner.span),
-                    });
+                    return Err(errors::type_mismatch(
+                        "list",
+                        substituted.type_name(),
+                        env.source.name().to_string(),
+                        env.source.inner().clone(),
+                        to_source_span(inner.span),
+                    )
+                    .with_suggestion("Spread expressions (...) in macros must be bound to a list value."));
                 };
                 new_items.extend(elements.clone());
                 continue;
@@ -247,11 +243,13 @@ fn try_expand_macro_once(
         return Ok(None);
     };
 
-    let first = items.first().ok_or_else(|| SutraError::MacroInvalidCall {
-        reason: "macro call cannot be empty".to_string(),
-        macro_name: None,
-        src: miette::NamedSource::new("macro call", format!("{:?}", node)),
-        span: to_source_span(node.span),
+    let first = items.first().ok_or_else(|| {
+        errors::runtime_general(
+            "Unexpected empty list in macro expansion check",
+            "macro expansion",
+            format!("{:?}", node),
+            to_source_span(node.span)
+        )
     })?;
 
     let Expr::Symbol(macro_name, _) = &*first.value else {
@@ -356,12 +354,13 @@ fn check_recursion_depth(
     if depth <= MAX_MACRO_RECURSION_DEPTH {
         return Ok(());
     }
-    Err(SutraError::MacroExpansionFailed {
-        macro_name: macro_name.to_string(),
-        details: format!("Macro recursion limit exceeded in '{}'", macro_name),
-        src: (*env.source).clone(),
-        span: to_source_span(*span),
-    })
+    Err(errors::runtime_general(
+        format!("Macro recursion limit of {} exceeded", MAX_MACRO_RECURSION_DEPTH),
+        env.source.name().to_string(),
+        env.source.inner().clone(),
+        to_source_span(*span),
+    )
+    .with_suggestion(format!("Check for infinite recursion in macro '{}'", macro_name)))
 }
 
 /// Creates a Spanned wrapper with consistent span handling.

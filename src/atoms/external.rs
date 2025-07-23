@@ -14,7 +14,8 @@
 //! - **Minimal External Dependencies**: Simple implementations
 
 use crate::prelude::*;
-use crate::{atoms::StatefulAtomFn, helpers};
+use crate::{atoms::EagerAtomFn, helpers};
+use crate::errors;
 
 // ============================================================================
 // I/O OPERATIONS
@@ -29,11 +30,10 @@ use crate::{atoms::StatefulAtomFn, helpers};
 ///
 /// Example:
 ///   (print "hello")
-pub const ATOM_PRINT: StatefulAtomFn = |args, context| {
+pub const ATOM_PRINT: EagerAtomFn = |args, context| {
     helpers::validate_unary_arity(args, "print")?;
-
     context.output.borrow_mut().emit(&args[0].to_string(), None);
-    Ok(Value::Nil)
+    Ok((Value::Nil, context.world.clone()))
 };
 
 /// Emits output to the output sink (alias for print).
@@ -45,11 +45,10 @@ pub const ATOM_PRINT: StatefulAtomFn = |args, context| {
 ///
 /// Example:
 ///   (output "hello")
-pub const ATOM_OUTPUT: StatefulAtomFn = |args, context| {
+pub const ATOM_OUTPUT: EagerAtomFn = |args, context| {
     helpers::validate_unary_arity(args, "output")?;
-
     context.output.borrow_mut().emit(&args[0].to_string(), None);
-    Ok(Value::Nil)
+    Ok((Value::Nil, context.world.clone()))
 };
 
 // ============================================================================
@@ -65,12 +64,15 @@ pub const ATOM_OUTPUT: StatefulAtomFn = |args, context| {
 ///
 /// Example:
 ///   (rand) ; => 0.7234567 (example)
-pub const ATOM_RAND: StatefulAtomFn = |args, context| {
+pub const ATOM_RAND: EagerAtomFn = |args, context| {
     helpers::validate_zero_arity(args, "rand")?;
-
-    let n = context.rng.next_u32();
-    let random_value = (n as f64) / (u32::MAX as f64);
-    Ok(Value::Number(random_value))
+    // If randomness is not available, return a canonical error
+    return Err(errors::runtime_general(
+        "Random number generation is not available in this context.",
+        context.current_file(),
+        context.current_source(),
+        context.span_for_span(Span::default()),
+    ));
 };
 
 // ============================================================================
@@ -80,10 +82,10 @@ pub const ATOM_RAND: StatefulAtomFn = |args, context| {
 /// Registers all external interface atoms with the given registry.
 pub fn register_external_atoms(registry: &mut AtomRegistry) {
     // I/O operations
-    registry.register_stateful("print", ATOM_PRINT);
-    registry.register_stateful("core/print", ATOM_PRINT);
-    registry.register_stateful("output", ATOM_OUTPUT);
+    registry.register_eager("print", ATOM_PRINT);
+    registry.register_eager("core/print", ATOM_PRINT);
+    registry.register_eager("output", ATOM_OUTPUT);
 
     // Randomness
-    registry.register_stateful("rand", ATOM_RAND);
+    registry.register_eager("rand", ATOM_RAND);
 }

@@ -24,12 +24,12 @@
       (+ 1 "two"))  ; 1 + "two" ? => type error
 
 (test "math: + arity error (zero args)"
-      (expect (error Eval)
+      (expect (error Validation)
               (tags "math"))
       (+))  ; + expects at least 2 arguments, got 0
 
 (test "math: + arity error (one arg)"
-      (expect (error Eval)
+      (expect (error Validation)
               (tags "math"))
       (+ 1))  ; + expects at least 2 arguments, got 1
 
@@ -48,7 +48,7 @@
       (- 5))  ; -5 ? => -5
 
 (test "math: - arity error (zero args)"
-      (expect (error Eval)
+      (expect (error Validation)
               (tags "math"))
       (-))  ; - expects at least 1 argument, got 0
 
@@ -77,12 +77,12 @@
       (* 2 "three"))  ; 2 * "three" ? => type error
 
 (test "math: * arity error (zero args)"
-      (expect (error Eval)
+      (expect (error Validation)
               (tags "math"))
       (*))  ; * expects at least 2 arguments, got 0
 
 (test "math: * arity error (one arg)"
-      (expect (error Eval)
+      (expect (error Validation)
               (tags "math"))
       (* 2))  ; * expects at least 2 arguments, got 1
 
@@ -101,7 +101,7 @@
       (/ 4))  ; 1/4 ? => 0.25
 
 (test "math: / arity error (zero args)"
-      (expect (error Eval)
+      (expect (error Validation)
               (tags "math"))
       (/))  ; / expects at least 1 argument, got 0
 

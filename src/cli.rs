@@ -16,6 +16,9 @@ use crate::{
     validation::grammar,
 };
 
+use miette::SourceSpan;
+use crate::errors;
+
 // ============================================================================
 // CLI ARGUMENTS - Command-line argument definitions
 // ============================================================================
@@ -91,7 +94,7 @@ pub fn run() {
         ArgsCommand::Run { file } => {
             let source = read_file_or_exit(&file);
             let output = SharedOutput::new(StdoutSink);
-            if let Err(e) = ExecutionPipeline::execute_source(&source, output) {
+            if let Err(e) = ExecutionPipeline::execute_source_with_context(&file.to_string_lossy(), &source, output) {
                 print_error(e);
                 process::exit(1);
             }
@@ -130,9 +133,11 @@ pub fn run() {
         ArgsCommand::ValidateGrammar => {
             let validation_result = grammar::validate_grammar("src/syntax/grammar.pest")
                 .unwrap_or_else(|e| {
-                    print_error(SutraError::internal_error(
-                        "Failed to validate grammar",
-                        e.to_string(),
+                    print_error(errors::runtime_general(
+                        format!("Failed to validate grammar: {}", e),
+                        "sutra-cli".to_string(),
+                        file!().to_string(),
+                        SourceSpan::from(0..0), // No precise span available in CLI context.
                     ));
                     process::exit(1);
                 });

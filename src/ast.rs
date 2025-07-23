@@ -42,12 +42,6 @@ pub enum Expr {
     },
     Quote(Box<AstNode>, Span),
     ParamList(ParamList),
-    Define {
-        name: String,
-        params: ParamList,
-        body: Box<AstNode>,
-        span: Span,
-    },
     Spread(Box<AstNode>),
 }
 
@@ -62,93 +56,67 @@ pub struct ParamList {
 impl Expr {
     /// Returns the span of this expression.
     pub fn span(&self) -> Span {
+        use Expr::*;
         match self {
-            Expr::List(_, span) => *span,
-            Expr::Symbol(_, span) => *span,
-            Expr::Path(_, span) => *span,
-            Expr::String(_, span) => *span,
-            Expr::Number(_, span) => *span,
-            Expr::Bool(_, span) => *span,
-            Expr::If { span, .. } => *span,
-            Expr::Quote(_, span) => *span,
-            Expr::ParamList(param_list) => param_list.span,
-            Expr::Define { span, .. } => *span,
-            Expr::Spread(expr) => expr.span,
+            List(_, span)
+            | Symbol(_, span)
+            | Path(_, span)
+            | String(_, span)
+            | Number(_, span)
+            | Bool(_, span)
+            | If { span, .. }
+            | Quote(_, span) => *span,
+            ParamList(param_list) => param_list.span,
+            Spread(expr) => expr.span,
         }
     }
 
     /// Converts this expression into a list of expressions if it is a list.
     pub fn into_list(self) -> Option<Vec<AstNode>> {
         if let Expr::List(items, _) = self {
-            Some(items)
-        } else {
-            None
+            return Some(items);
         }
+        None
     }
 
     /// Pretty-prints the expression as a string.
     pub fn pretty(&self) -> String {
+        use Expr::*;
         match self {
-            Expr::List(exprs, _) => Self::pretty_list(exprs),
-            Expr::Symbol(s, _) => s.clone(),
-            Expr::Path(p, _) => format!("(path {})", p.0.join(" ")),
-            Expr::String(s, _) => format!("\"{s}\""),
-            Expr::Number(n, _) => n.to_string(),
-            Expr::Bool(b, _) => b.to_string(),
-            Expr::If {
-                condition,
-                then_branch,
-                else_branch,
-                ..
-            } => Self::pretty_if(condition, then_branch, else_branch),
-            Expr::Quote(expr, _) => format!("'{}", expr.value.pretty()),
-            Expr::ParamList(param_list) => Self::pretty_param_list(param_list),
-            Expr::Define {
-                name, params, body, ..
-            } => {
-                // Reconstruct the original define syntax: (define (name params...) body)
-                let mut param_list_str = String::from("(");
-                param_list_str.push_str(name);
-                for param in &params.required {
-                    param_list_str.push(' ');
-                    param_list_str.push_str(param);
-                }
-                if let Some(rest) = &params.rest {
-                    param_list_str.push_str(" ...");
-                    param_list_str.push_str(rest);
-                }
-                param_list_str.push(')');
-                format!("(define {} {})", param_list_str, body.value.pretty())
+            List(exprs, _) => Self::pretty_list(exprs),
+            Symbol(s, _) => s.clone(),
+            Path(p, _) => format!("(path {})", p.0.join(" ")),
+            String(s, _) => format!("\"{}\"", s),
+            Number(n, _) => n.to_string(),
+            Bool(b, _) => b.to_string(),
+            If { condition, then_branch, else_branch, .. } => {
+                format!(
+                    "(if {} {} {})",
+                    condition.value.pretty(),
+                    then_branch.value.pretty(),
+                    else_branch.value.pretty()
+                )
             }
-            Expr::Spread(expr) => format!("...{}", expr.value.pretty()),
+            Quote(expr, _) => format!("'{}", expr.value.pretty()),
+            ParamList(param_list) => Self::pretty_param_list(param_list),
+            Spread(expr) => format!("...{}", expr.value.pretty()),
         }
     }
 
     fn pretty_list(exprs: &[AstNode]) -> String {
-        let inner = exprs
-            .iter()
-            .map(|e| e.value.pretty())
-            .collect::<Vec<_>>()
-            .join(" ");
-        format!("({inner})")
-    }
-
-    fn pretty_if(condition: &AstNode, then_branch: &AstNode, else_branch: &AstNode) -> String {
-        format!(
-            "(if {} {} {})",
-            condition.value.pretty(),
-            then_branch.value.pretty(),
-            else_branch.value.pretty()
-        )
+        let inner = exprs.iter().map(|e| e.value.pretty()).collect::<Vec<_>>().join(" ");
+        format!("({})", inner)
     }
 
     fn pretty_param_list(param_list: &ParamList) -> String {
         let mut s = String::from("(");
-        for (i, req) in param_list.required.iter().enumerate() {
-            if i > 0 {
+        let mut first = true;
+        for req in &param_list.required {
+            if !first {
                 s.push(' ');
             }
             s.push_str(req);
+            first = false;
         }
         if let Some(rest) = &param_list.rest {
             if !param_list.required.is_empty() {
@@ -158,6 +126,22 @@ impl Expr {
         }
         s.push(')');
         s
+    }
+
+    /// Returns the type name of this AST node as a string (for diagnostics, debugging, and macro logic).
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Expr::List(_, _) => "List",
+            Expr::Symbol(_, _) => "Symbol",
+            Expr::Path(_, _) => "Path",
+            Expr::String(_, _) => "String",
+            Expr::Number(_, _) => "Number",
+            Expr::Bool(_, _) => "Bool",
+            Expr::If { .. } => "If",
+            Expr::Quote(_, _) => "Quote",
+            Expr::ParamList(_) => "ParamList",
+            Expr::Spread(_) => "Spread",
+        }
     }
 }
 
@@ -169,13 +153,13 @@ impl std::fmt::Display for Expr {
 
 impl From<Value> for Expr {
     fn from(val: Value) -> Self {
-        use Value;
+        use Value::*;
         match val {
-            Value::Nil => Expr::List(vec![], Span::default()),
-            Value::Number(n) => Expr::Number(n, Span::default()),
-            Value::String(s) => Expr::String(s, Span::default()),
-            Value::Bool(b) => Expr::Bool(b, Span::default()),
-            Value::List(items) => Expr::List(
+            Nil | Map(_) => Expr::List(vec![], Span::default()),
+            Number(n) => Expr::Number(n, Span::default()),
+            String(s) => Expr::String(s, Span::default()),
+            Bool(b) => Expr::Bool(b, Span::default()),
+            List(items) => Expr::List(
                 items
                     .into_iter()
                     .map(|v| Spanned {
@@ -185,10 +169,31 @@ impl From<Value> for Expr {
                     .collect(),
                 Span::default(),
             ),
-            Value::Map(_) => Expr::List(vec![], Span::default()),
-            Value::Path(p) => Expr::Path(p, Span::default()),
-            Value::Lambda(_) => Expr::Symbol("<lambda>".to_string(), Span::default()),
+            Path(p) => Expr::Path(p, Span::default()),
+            Lambda(_) => Expr::Symbol("<lambda>".to_string(), Span::default()),
         }
+    }
+}
+
+impl<T> Spanned<T> {
+    /// Returns the type name of the inner value if it has a type_name() method.
+    pub fn type_name(&self) -> &'static str
+    where
+        T: std::ops::Deref,
+        <T as std::ops::Deref>::Target: TypeNameTrait,
+    {
+        self.value.type_name()
+    }
+}
+
+/// Trait for types that provide a type_name method.
+pub trait TypeNameTrait {
+    fn type_name(&self) -> &'static str;
+}
+
+impl TypeNameTrait for Expr {
+    fn type_name(&self) -> &'static str {
+        self.type_name()
     }
 }
 

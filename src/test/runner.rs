@@ -1,18 +1,51 @@
-use crate::engine::EngineOutputBuffer;
+use std::{cell::RefCell, rc::Rc};
+use std::sync::Arc;
+use miette::NamedSource;
+
 use crate::prelude::*;
-use crate::syntax::parser::to_source_span;
-use crate::{discovery::ASTDefinition, engine::ExecutionPipeline};
-use std::cell::RefCell;
-use std::rc::Rc;
+use crate::{
+    atoms::SharedOutput,
+    discovery::ASTDefinition,
+    engine::{EngineOutputBuffer, ExecutionPipeline, MacroProcessor},
+    runtime::eval::evaluate,
+};
+
+use crate::errors;
 
 /// Executes test code with proper macro expansion and special form preservation.
 pub struct TestRunner;
 
 impl TestRunner {
-    pub fn execute_test(test_body: &AstNode, output: SharedOutput) -> Result<(), SutraError> {
-        let pipeline = ExecutionPipeline::default();
-        let result = pipeline.execute_nodes(&[test_body.clone()])?;
+    pub fn execute_test(test_body: &[AstNode], output: SharedOutput, test_file: Option<String>, test_name: Option<String>, source_file: Arc<NamedSource<String>>) -> Result<(), SutraError> {
+        // Use a macro processor to handle expansion and evaluation correctly
+        let processor = MacroProcessor::default();
+        let (atom_registry, mut macro_env) =
+            MacroProcessor::build_standard_registries();
 
+        // Correctly process the nodes by passing the whole slice.
+        // This replicates the behavior of the full execution pipeline.
+        let expanded_node =
+            processor.process_with_existing_macros(test_body.to_vec(), &mut macro_env)?;
+
+        // Use the actual test file source for error reporting
+        let source_context = source_file;
+
+        // Validate the expanded AST
+        processor.validate_expanded_ast(&expanded_node, &macro_env, &atom_registry, &source_context)?;
+
+        // Use the builder for evaluation context
+        let (result, _) = evaluate(
+            &expanded_node,
+            &World::default(),
+            output.clone(),
+            &atom_registry,
+            source_context,
+            1000,
+            test_file,
+            test_name,
+        )?;
+
+        // If the result is not nil, emit it to the output buffer
         if !result.is_nil() {
             output.emit(&result.to_string(), None);
         }
@@ -33,23 +66,28 @@ impl TestRunner {
         if let Expectation::Output(ref expected_output) = expected {
             // Output expectation: capture output and compare
             let output_buffer = Rc::new(RefCell::new(EngineOutputBuffer::new()));
-            let shared_output = crate::atoms::SharedOutput(output_buffer.clone());
-            let result = Self::execute_test(&test_form.body[0], shared_output);
+            let shared_output = SharedOutput(output_buffer.clone());
+            let result = Self::execute_test(
+                &test_form.body,
+                shared_output,
+                Some(test_form.source_file.name().to_string()),
+                Some(test_form.name.clone()),
+                test_form.source_file.clone(),
+            );
             let actual_output_owned = {
                 let buf_ref = output_buffer.borrow();
                 buf_ref.as_str().to_owned()
             };
             if actual_output_owned != *expected_output {
-                return Err(SutraError::TestAssertion {
-                    message: format!(
+                return Err(errors::runtime_general(
+                    format!(
                         "Expected output {:?}, got {:?}",
                         expected_output, actual_output_owned
                     ),
-                    src: test_form.source_file.as_ref().clone(),
-                    span: to_source_span(test_form.span),
-                    expected: Some(expected_output.clone()),
-                    actual: Some(actual_output_owned),
-                });
+                    test_form.name.clone(),
+                    format!("{:?}", test_form.source_file),
+                    to_source_span(test_form.span),
+                ));
             }
             if let Err(e) = result {
                 return Err(e);
@@ -72,34 +110,29 @@ impl TestRunner {
             // Success case: actual matches expected value
             Expectation::Value(expected_value) if actual == *expected_value => Ok(()),
             // Failure case: actual doesn't match expected value
-            Expectation::Value(expected_value) => Err(SutraError::TestAssertion {
-                message: format!(
+            Expectation::Value(expected_value) => Err(errors::runtime_general(
+                format!(
                     "\"{}\"\nExpected {}, got {}",
                     test_form.name, expected_value, actual
                 ),
-                src: test_form.source_file.as_ref().clone(),
-                span: to_source_span(test_form.span),
-                expected: Some(expected_value.to_string()),
-                actual: Some(actual.to_string()),
-            }),
+                test_form.name.clone(),
+                format!("{:?}", test_form.source_file),
+                to_source_span(test_form.span),
+            )),
             // Failure case: expected error but got success
-            Expectation::Error(_) => Err(SutraError::TestStructure {
-                issue: "Expected error, but test succeeded".to_string(),
-                test_name: test_form.name.clone(),
-                src: test_form.source_file.as_ref().clone(),
-                span: to_source_span(test_form.span),
-                suggestion: None,
-            }),
+            Expectation::Error(_) => Err(errors::runtime_general(
+                "Expected error, but test succeeded".to_string(),
+                test_form.name.clone(),
+                format!("{:?}", test_form.source_file),
+                to_source_span(test_form.span),
+            )),
             // Failure case: output expectation in value test path
-            Expectation::Output(_) => Err(SutraError::TestStructure {
-                issue: "Output expectation not handled in value test path".to_string(),
-                test_name: test_form.name.clone(),
-                src: test_form.source_file.as_ref().clone(),
-                span: to_source_span(test_form.span),
-                suggestion: Some(
-                    "Output expectations should be handled in the output test path".to_string(),
-                ),
-            }),
+            Expectation::Output(_) => Err(errors::runtime_general(
+                "Output expectation not handled in value test path. Output expectations should be handled in the output test path".to_string(),
+                test_form.name.clone(),
+                format!("{:?}", test_form.source_file),
+                to_source_span(test_form.span),
+            )),
         }
     }
 
@@ -114,29 +147,25 @@ impl TestRunner {
                 Ok(())
             }
             // Failure case: expected error but got different type
-            Expectation::Error(expected_type) => Err(SutraError::TestStructure {
-                issue: format!(
-                    "Expected error type {}, got {}",
+            Expectation::Error(expected_type) => Err(errors::runtime_general(
+                format!(
+                    "Expected error type {:?}, got {:?}",
                     expected_type,
                     actual_error.error_type()
                 ),
-                test_name: test_form.name.clone(),
-                src: test_form.source_file.as_ref().clone(),
-                span: to_source_span(test_form.span),
-                suggestion: None,
-            }),
+                test_form.name.clone(),
+                format!("{:?}", test_form.source_file),
+                to_source_span(test_form.span),
+            )),
             // Failure case: expected success but got error
             Expectation::Value(_) => Err(actual_error),
             // Failure case: output expectation in error test path
-            Expectation::Output(_) => Err(SutraError::TestStructure {
-                issue: "Output expectation not handled in error test path".to_string(),
-                test_name: test_form.name.clone(),
-                src: test_form.source_file.as_ref().clone(),
-                span: to_source_span(test_form.span),
-                suggestion: Some(
-                    "Output expectations should be handled in the output test path".to_string(),
-                ),
-            }),
+            Expectation::Output(_) => Err(errors::runtime_general(
+                "Output expectation not handled in error test path. Output expectations should be handled in the output test path".to_string(),
+                test_form.name.clone(),
+                format!("{:?}", test_form.source_file),
+                to_source_span(test_form.span),
+            )),
         }
     }
 
@@ -145,23 +174,21 @@ impl TestRunner {
         let expect = test_form
             .expect_form
             .as_ref()
-            .ok_or_else(|| SutraError::TestStructure {
-                issue: "Test is missing expect form".to_string(),
-                test_name: test_form.name.clone(),
-                src: test_form.source_file.as_ref().clone(),
-                span: to_source_span(test_form.span),
-                suggestion: None,
-            })?;
+            .ok_or_else(|| errors::runtime_general(
+                "Test is missing expect form".to_string(),
+                test_form.name.clone(),
+                format!("{:?}", test_form.source_file),
+                to_source_span(test_form.span),
+            ))?;
 
         // Validate expect form is a list
         let Expr::List(items, _) = &*expect.value else {
-            return Err(SutraError::TestStructure {
-                issue: "expect form must be a list".to_string(),
-                test_name: test_form.name.clone(),
-                src: test_form.source_file.as_ref().clone(),
-                span: to_source_span(test_form.span),
-                suggestion: None,
-            });
+            return Err(errors::runtime_general(
+                "expect form must be a list".to_string(),
+                test_form.name.clone(),
+                format!("{:?}", test_form.source_file),
+                to_source_span(test_form.span),
+            ));
         };
 
         // Look for value or error clause in expect form
@@ -171,13 +198,12 @@ impl TestRunner {
             }
         }
 
-        Err(SutraError::TestStructure {
-            issue: "missing (value <expected>) or (error <type>) in expect form".to_string(),
-            test_name: test_form.name.clone(),
-            src: test_form.source_file.as_ref().clone(),
-            span: to_source_span(test_form.span),
-            suggestion: None,
-        })
+        Err(errors::runtime_general(
+            "missing (value <expected>) or (error <type>) in expect form".to_string(),
+            test_form.name.clone(),
+            format!("{:?}", test_form.source_file),
+            to_source_span(test_form.span),
+        ))
     }
 
     fn extract_clause(
@@ -215,13 +241,12 @@ impl TestRunner {
             Expr::String(s, _) => Ok(Value::String(s.clone())),
             Expr::Bool(b, _) => Ok(Value::Bool(*b)),
             Expr::Symbol(s, _) if s == "nil" => Ok(Value::Nil),
-            _ => Err(SutraError::TestStructure {
-                issue: "unsupported expected value type".to_string(),
-                test_name: test_form.name.clone(),
-                src: test_form.source_file.as_ref().clone(),
-                span: to_source_span(test_form.span),
-                suggestion: None,
-            }),
+            _ => Err(errors::runtime_general(
+                "unsupported expected value type".to_string(),
+                test_form.name.clone(),
+                format!("{:?}", test_form.source_file),
+                to_source_span(test_form.span),
+            )),
         }
     }
 
@@ -231,13 +256,12 @@ impl TestRunner {
     ) -> Result<ErrorType, SutraError> {
         // Extract error type symbol
         let Expr::Symbol(error_type, _) = &*error_node.value else {
-            return Err(SutraError::TestStructure {
-                issue: "error type must be a symbol".to_string(),
-                test_name: test_form.name.clone(),
-                src: test_form.source_file.as_ref().clone(),
-                span: to_source_span(test_form.span),
-                suggestion: None,
-            });
+            return Err(errors::runtime_general(
+                "error type must be a symbol".to_string(),
+                test_form.name.clone(),
+                format!("{:?}", test_form.source_file),
+                to_source_span(test_form.span),
+            ));
         };
 
         // Map symbol to ErrorType enum
@@ -248,13 +272,12 @@ impl TestRunner {
             "TypeError" => Ok(ErrorType::TypeError),
             "Internal" => Ok(ErrorType::Internal),
             "TestFailure" => Ok(ErrorType::TestFailure),
-            _ => Err(SutraError::TestStructure {
-                issue: format!("unknown error type: {}", error_type),
-                test_name: test_form.name.clone(),
-                src: test_form.source_file.as_ref().clone(),
-                span: to_source_span(test_form.span),
-                suggestion: None,
-            }),
+            _ => Err(errors::runtime_general(
+                format!("unknown error type: {}", error_type),
+                test_form.name.clone(),
+                format!("{:?}", test_form.source_file),
+                to_source_span(test_form.span),
+            )),
         }
     }
 
@@ -263,13 +286,12 @@ impl TestRunner {
         test_form: &ASTDefinition,
     ) -> Result<String, SutraError> {
         let Expr::String(s, _) = &*output_node.value else {
-            return Err(SutraError::TestStructure {
-                issue: "output expectation must be a string".to_string(),
-                test_name: test_form.name.clone(),
-                src: test_form.source_file.as_ref().clone(),
-                span: to_source_span(test_form.span),
-                suggestion: None,
-            });
+            return Err(errors::runtime_general(
+                "output expectation must be a string".to_string(),
+                test_form.name.clone(),
+                format!("{:?}", test_form.source_file),
+                to_source_span(test_form.span),
+            ));
         };
         Ok(s.clone())
     }

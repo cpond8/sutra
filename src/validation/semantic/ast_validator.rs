@@ -5,6 +5,8 @@ use crate::prelude::*;
 use crate::{
     validation::grammar::{ValidationReporter, ValidationResult},
     MacroDefinition, MacroRegistry, MacroTemplate,
+    errors,
+    syntax::parser::to_source_span,
 };
 
 /// Validates AST nodes for semantic correctness
@@ -19,10 +21,11 @@ impl AstValidator {
         macros: &MacroRegistry,
         atoms: &AtomRegistry,
         result: &mut ValidationResult,
+        source_context: Option<(&str, &str)>, // (file_name, source_code)
     ) {
         match &*node.value {
             Expr::List(nodes, _) => {
-                Self::validate_list_expression(nodes, macros, atoms, result);
+                Self::validate_list_expression(nodes, macros, atoms, result, source_context);
             }
             Expr::If {
                 condition,
@@ -37,10 +40,8 @@ impl AstValidator {
                     macros,
                     atoms,
                     result,
+                    source_context,
                 );
-            }
-            Expr::Define { body, .. } => {
-                Self::validate_define_expression(body, macros, atoms, result);
             }
             _ => {}
         }
@@ -51,6 +52,7 @@ impl AstValidator {
         macros: &MacroRegistry,
         atoms: &AtomRegistry,
         result: &mut ValidationResult,
+        source_context: Option<(&str, &str)>,
     ) {
         if nodes.is_empty() {
             return;
@@ -60,17 +62,17 @@ impl AstValidator {
         let Expr::Symbol(name, _) = &*first.value else {
             // Not a function call, validate all sub-nodes
             for sub_node in nodes {
-                Self::validate_node(sub_node, macros, atoms, result);
+                Self::validate_node(sub_node, macros, atoms, result, source_context);
             }
             return;
         };
 
         // Validate function call
-        Self::validate_function_call(name, nodes, macros, atoms, result);
+        Self::validate_function_call(name, nodes, macros, atoms, result, source_context);
 
         // Validate all arguments
         for sub_node in nodes {
-            Self::validate_node(sub_node, macros, atoms, result);
+            Self::validate_node(sub_node, macros, atoms, result, source_context);
         }
     }
 
@@ -80,6 +82,7 @@ impl AstValidator {
         macros: &MacroRegistry,
         atoms: &AtomRegistry,
         result: &mut ValidationResult,
+        source_context: Option<(&str, &str)>,
     ) {
         // Check if it's a special form that doesn't need validation
         if ["define", "if", "lambda", "let", "do", "error", "apply"].contains(&name) {
@@ -89,13 +92,18 @@ impl AstValidator {
 
         if let Some(macro_def) = macros.lookup(name) {
             if let MacroDefinition::Template(template) = macro_def {
-                Self::validate_macro_args(name, template, nodes.len() - 1, result);
+                Self::validate_macro_args(name, template, nodes.len() - 1, result, &nodes[0], source_context);
             }
         } else if !atoms.has(name) {
-            // For now, assume user-defined functions are valid
-            // TODO: Track user-defined functions in validation context
-            // This is a temporary fix - the proper solution is to track
-            // user-defined functions during validation
+            // Report undefined symbol with proper error
+            let (file_name, source_code) = source_context.unwrap_or(("validation", "// validation context"));
+            let error = errors::runtime_undefined_symbol(
+                name,
+                file_name,
+                source_code,
+                to_source_span(nodes[0].span)
+            ).with_suggestion(format!("Define '{}' before using it, or check if it's a built-in atom", name));
+            result.report_error(error);
         }
     }
 
@@ -106,19 +114,11 @@ impl AstValidator {
         macros: &MacroRegistry,
         atoms: &AtomRegistry,
         result: &mut ValidationResult,
+        source_context: Option<(&str, &str)>,
     ) {
-        Self::validate_node(condition, macros, atoms, result);
-        Self::validate_node(then_branch, macros, atoms, result);
-        Self::validate_node(else_branch, macros, atoms, result);
-    }
-
-    fn validate_define_expression(
-        body: &AstNode,
-        macros: &MacroRegistry,
-        atoms: &AtomRegistry,
-        result: &mut ValidationResult,
-    ) {
-        Self::validate_node(body, macros, atoms, result);
+        Self::validate_node(condition, macros, atoms, result, source_context);
+        Self::validate_node(then_branch, macros, atoms, result, source_context);
+        Self::validate_node(else_branch, macros, atoms, result, source_context);
     }
 
     fn validate_macro_args(
@@ -126,18 +126,32 @@ impl AstValidator {
         template: &MacroTemplate,
         actual_args: usize,
         result: &mut ValidationResult,
+        call_node: &AstNode,
+        source_context: Option<(&str, &str)>,
     ) {
         let required_args = template.params.required.len();
         let has_rest = template.params.rest.is_some();
 
+        let (file_name, source_code) = source_context.unwrap_or(("validation", "// validation context"));
+
         if !has_rest && actual_args != required_args {
-            result.report_error(format!(
-                "Macro '{name}' expects {required_args} arguments, but got {actual_args}"
-            ));
+            let error = errors::validation_arity(
+                &required_args.to_string(),
+                actual_args,
+                file_name,
+                source_code,
+                to_source_span(call_node.span)
+            ).with_suggestion(format!("Macro '{}' requires exactly {} arguments", name, required_args));
+            result.report_error(error);
         } else if has_rest && actual_args < required_args {
-            result.report_error(format!(
-                "Macro '{name}' expects at least {required_args} arguments, but got {actual_args}"
-            ));
+            let error = errors::validation_arity(
+                &format!("at least {}", required_args),
+                actual_args,
+                file_name,
+                source_code,
+                to_source_span(call_node.span)
+            ).with_suggestion(format!("Macro '{}' requires at least {} arguments", name, required_args));
+            result.report_error(error);
         }
     }
 }

@@ -8,7 +8,8 @@
 //! - **`str+`**: Concatenates multiple values into a single string.
 
 use crate::prelude::*;
-use crate::{atoms::PureAtomFn, helpers};
+use crate::{atoms::EagerAtomFn, helpers};
+use crate::atoms::AtomResult;
 
 // ============================================================================
 // STRING OPERATIONS
@@ -20,9 +21,9 @@ use crate::{atoms::PureAtomFn, helpers};
 ///   - <value>: Any value
 ///
 /// Returns: A new String value.
-pub const ATOM_STR: PureAtomFn = |args| {
+pub const ATOM_STR: EagerAtomFn = |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
     helpers::validate_unary_arity(args, "str")?;
-    Ok(Value::String(args[0].to_string()))
+    Ok((Value::String(args[0].to_string()), context.world.clone()))
 };
 
 /// Concatenates multiple values into a single string.
@@ -31,7 +32,13 @@ pub const ATOM_STR: PureAtomFn = |args| {
 ///   - <value...>: Zero or more values to concatenate.
 ///
 /// Returns: A new String value. If no arguments are provided, returns an empty string.
-pub const ATOM_STR_PLUS: PureAtomFn = |args| helpers::pure_eval_string_concat(args, "str+");
+pub const ATOM_STR_PLUS: EagerAtomFn = |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
+    let mut result = String::new();
+    for arg in args {
+        result.push_str(&arg.to_string());
+    }
+    Ok((Value::String(result), context.world.clone()))
+};
 
 // ============================================================================
 // REGISTRATION FUNCTION
@@ -39,6 +46,6 @@ pub const ATOM_STR_PLUS: PureAtomFn = |args| helpers::pure_eval_string_concat(ar
 
 /// Registers all string manipulation atoms with the given registry.
 pub fn register_string_atoms(registry: &mut AtomRegistry) {
-    registry.register_pure("str", ATOM_STR);
-    registry.register_pure("str+", ATOM_STR_PLUS);
+    registry.register_eager("str", ATOM_STR);
+    registry.register_eager("str+", ATOM_STR_PLUS);
 }

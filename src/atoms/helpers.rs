@@ -11,10 +11,10 @@
 
 use crate::prelude::*;
 use crate::{
+    errors,
     runtime::eval::{evaluate_ast_node, EvaluationContext},
-    syntax::parser::to_source_span,
 };
-use miette::NamedSource;
+use miette::SourceSpan;
 
 // ============================================================================
 // TYPE ALIASES AND CORE TYPES
@@ -26,8 +26,7 @@ pub type AtomResult = Result<(Value, World), SutraError>;
 /// Type alias for evaluation context to reduce verbosity
 pub type EvalContext<'a> = &'a mut EvaluationContext<'a>;
 
-/// Type alias for pure atom functions that only return values
-pub type PureResult = Result<Value, SutraError>;
+
 
 /// Type alias for functions that return multiple values with world state
 pub type MultiValueResult = Result<(Vec<Value>, World), SutraError>;
@@ -49,47 +48,104 @@ pub type ValidationResult = Result<(), SutraError>;
 /// This provides a unified interface for type checking and extraction across all atoms.
 pub trait ExtractValue<T> {
     /// Extracts a value of type T from this Value.
-    fn extract(&self) -> Result<T, SutraError>;
+    /// The `context` is optional to support both eager and lazy evaluation patterns.
+    fn extract(&self, context: Option<&EvaluationContext<'_>>) -> Result<T, SutraError>;
 }
 
 impl ExtractValue<f64> for Value {
-    fn extract(&self) -> Result<f64, SutraError> {
+    fn extract(&self, context: Option<&EvaluationContext<'_>>) -> Result<f64, SutraError> {
+        let (file, source, span) = if let Some(ctx) = context {
+            (
+                ctx.current_file(),
+                ctx.current_source(),
+                // It is not currently possible to propagate a proper span to `extract`.
+                // This is a known limitation that should be addressed in a future refactoring.
+                ctx.span_for_span(Span::default()),
+            )
+        } else {
+            // This branch is used by legacy `PureAtomFn` call sites that do not have
+            // access to an `EvaluationContext`. A dummy span is used.
+            (
+                "<runtime>".to_string(),
+                "// type extraction from legacy context".to_string(),
+                SourceSpan::from(0..0),
+            )
+        };
+
         match self {
             Value::Number(n) => Ok(*n),
-            _ => Err(SutraError::TypeMismatch {
-                expected: "number".to_string(),
-                actual: self.type_name().to_string(),
-                src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
-                span: to_source_span(Span::default()),
-            }),
+            _ => Err(errors::type_mismatch(
+                "Number",
+                self.type_name(),
+                file,
+                source,
+                span,
+            )),
         }
     }
 }
 
 impl ExtractValue<bool> for Value {
-    fn extract(&self) -> Result<bool, SutraError> {
+    fn extract(&self, context: Option<&EvaluationContext<'_>>) -> Result<bool, SutraError> {
+        let (file, source, span) = if let Some(ctx) = context {
+            (
+                ctx.current_file(),
+                ctx.current_source(),
+                // It is not currently possible to propagate a proper span to `extract`.
+                // This is a known limitation that should be addressed in a future refactoring.
+                ctx.span_for_span(Span::default()),
+            )
+        } else {
+            // This branch is used by legacy `PureAtomFn` call sites that do not have
+            // access to an `EvaluationContext`. A dummy span is used.
+            (
+                "<runtime>".to_string(),
+                "// type extraction from legacy context".to_string(),
+                SourceSpan::from(0..0),
+            )
+        };
+
         match self {
             Value::Bool(b) => Ok(*b),
-            _ => Err(SutraError::TypeMismatch {
-                expected: "boolean".to_string(),
-                actual: self.type_name().to_string(),
-                src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
-                span: to_source_span(Span::default()),
-            }),
+            _ => Err(errors::type_mismatch(
+                "Boolean",
+                self.type_name(),
+                file,
+                source,
+                span,
+            )),
         }
     }
 }
 
 impl ExtractValue<Path> for Value {
-    fn extract(&self) -> Result<Path, SutraError> {
+    fn extract(&self, context: Option<&EvaluationContext<'_>>) -> Result<Path, SutraError> {
+        let (file, source, span) = if let Some(ctx) = context {
+            (
+                ctx.current_file(),
+                ctx.current_source(),
+                // It is not currently possible to propagate a proper span to `extract`.
+                // This is a known limitation that should be addressed in a future refactoring.
+                ctx.span_for_span(Span::default()),
+            )
+        } else {
+            // This branch is used by legacy `PureAtomFn` call sites that do not have
+            // access to an `EvaluationContext`. A dummy span is used.
+            (
+                "<runtime>".to_string(),
+                "// type extraction from legacy context".to_string(),
+                SourceSpan::from(0..0),
+            )
+        };
         match self {
             Value::Path(path) => Ok(path.clone()),
-            _ => Err(SutraError::TypeMismatch {
-                expected: "path".to_string(),
-                actual: self.type_name().to_string(),
-                src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
-                span: to_source_span(Span::default()),
-            }),
+            _ => Err(errors::type_mismatch(
+                "Path",
+                self.type_name(),
+                file,
+                source,
+                span,
+            )),
         }
     }
 }
@@ -117,6 +173,8 @@ macro_rules! sub_eval_context {
             max_depth: $parent.max_depth,
             depth: $parent.depth,
             lexical_env: $parent.lexical_env.clone(),
+            test_file: $parent.test_file.clone(),
+            test_name: $parent.test_name.clone(),
         }
     };
 }
@@ -148,12 +206,17 @@ pub fn eval_n_args<const N: usize>(
     context: &mut EvaluationContext<'_>,
 ) -> ArrayResult<N> {
     if args.len() != N {
-        return Err(SutraError::RuntimeGeneral {
-            message: format!("expected {} arguments, got {}", N, args.len()),
-            src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-            suggestion: None,
-        });
+        let mut err = errors::validation_arity(
+            N.to_string(),
+            args.len(),
+            context.current_file(),
+            context.current_source(),
+            context.span_for_span(Span::default()),
+        );
+        if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
+            err = err.with_test_context(tf.clone(), tn.clone());
+        }
+        return Err(err);
     }
 
     let mut values = Vec::with_capacity(N);
@@ -168,15 +231,16 @@ pub fn eval_n_args<const N: usize>(
 
     // Convert Vec to array - this is safe because we checked length above
     // The try_into() should never fail given the length check, but we handle it defensively
-    let values_array: [Value; N] = values.try_into().map_err(|_| SutraError::Internal {
-        issue: "Failed to convert evaluated arguments to array - this should never happen"
-            .to_string(),
-        details: "eval_n_args failed Vec->array conversion".to_string(),
-        context: None,
-        src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()).into(),
-        span: Some(to_source_span(Span::default())),
-        source: None,
-    })?;
+    let values_array: [Value; N] =
+        values.try_into().map_err(|_| {
+            errors::runtime_general(
+                "Failed to convert evaluated arguments to array",
+                "<runtime>",
+                "// eval_n_args failed Vec->array conversion",
+                SourceSpan::from(0..0),
+            )
+            .with_suggestion("This is an internal engine error. Please report this as a bug.")
+        })?;
 
     Ok((values_array, world))
 }
@@ -199,9 +263,13 @@ pub fn eval_binary_args(args: &[AstNode], context: &mut EvaluationContext<'_>) -
 
 /// Extracts two numbers from values with type checking using the trait.
 /// For single value extraction, use val.extract() directly.
-pub fn extract_numbers(val1: &Value, val2: &Value) -> Result<(f64, f64), SutraError> {
-    let n1 = val1.extract()?;
-    let n2 = val2.extract()?;
+pub fn extract_numbers(
+    val1: &Value,
+    val2: &Value,
+    context: Option<&EvaluationContext>,
+) -> Result<(f64, f64), SutraError> {
+    let n1 = val1.extract(context)?;
+    let n2 = val2.extract(context)?;
     Ok((n1, n2))
 }
 
@@ -223,18 +291,14 @@ pub fn extract_numbers(val1: &Value, val2: &Value) -> Result<(f64, f64), SutraEr
 /// ```
 pub fn validate_arity(args: &[Value], expected: usize, atom_name: &str) -> ValidationResult {
     if args.len() != expected {
-        let msg = format!(
-            "{} expects {} arguments, got {}",
-            atom_name,
-            expected,
-            args.len()
-        );
-        return Err(SutraError::RuntimeGeneral {
-            message: msg,
-            src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-            suggestion: None,
-        });
+        return Err(errors::validation_arity(
+            expected.to_string(),
+            args.len(),
+            "<runtime>",
+            "// arity validation from runtime",
+            SourceSpan::from(0..0),
+        )
+        .with_suggestion(format!("{} expects {} arguments", atom_name, expected)));
     }
     Ok(())
 }
@@ -261,18 +325,17 @@ pub fn validate_min_arity(
     atom_name: &str,
 ) -> ValidationResult {
     if args.len() < min_expected {
-        let msg = format!(
-            "{} expects at least {} arguments, got {}",
-            atom_name,
-            min_expected,
-            args.len()
-        );
-        return Err(SutraError::RuntimeGeneral {
-            message: msg,
-            src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-            suggestion: None,
-        });
+        return Err(errors::validation_arity(
+            format!("at least {}", min_expected),
+            args.len(),
+            "<runtime>",
+            "// arity validation from runtime",
+            SourceSpan::from(0..0),
+        )
+        .with_suggestion(format!(
+            "{} expects at least {} arguments",
+            atom_name, min_expected
+        )));
     }
     Ok(())
 }
@@ -351,17 +414,17 @@ pub fn validate_sequence_arity(args: &[Value], atom_name: &str) -> ValidationRes
 /// ```
 pub fn validate_even_arity(args: &[Value], atom_name: &str) -> ValidationResult {
     if args.len() % 2 != 0 {
-        let msg = format!(
+        return Err(errors::validation_arity(
+            "even number".to_string(),
+            args.len(),
+            "<runtime>",
+            "// arity validation",
+            SourceSpan::from(0..0),
+        )
+        .with_suggestion(format!(
             "{} expects an even number of arguments, got {}",
-            atom_name,
-            args.len()
-        );
-        return Err(SutraError::RuntimeGeneral {
-            message: msg,
-            src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-            suggestion: None,
-        });
+            atom_name, args.len()
+        )));
     }
     Ok(())
 }
@@ -382,16 +445,7 @@ pub fn validate_even_arity(args: &[Value], atom_name: &str) -> ValidationResult 
 /// validate_zero_arity(args, "rand")?;
 /// ```
 pub fn validate_zero_arity(args: &[Value], atom_name: &str) -> ValidationResult {
-    if !args.is_empty() {
-        let msg = format!("{} expects 0 arguments, got {}", atom_name, args.len());
-        return Err(SutraError::RuntimeGeneral {
-            message: msg,
-            src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-            suggestion: None,
-        });
-    }
-    Ok(())
+    validate_arity(args, 0, atom_name)
 }
 
 /// Validates that the number of AstNode arguments matches the expected count.
@@ -416,18 +470,14 @@ pub fn validate_special_form_arity(
     atom_name: &str,
 ) -> ValidationResult {
     if args.len() != expected {
-        let msg = format!(
-            "{} expects exactly {} arguments, got {}",
-            atom_name,
-            expected,
-            args.len()
-        );
-        return Err(SutraError::RuntimeGeneral {
-            message: msg,
-            src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-            suggestion: None,
-        });
+        return Err(errors::validation_arity(
+            expected.to_string(),
+            args.len(),
+            "<runtime>",
+            "// arity validation",
+            SourceSpan::from(0..0),
+        )
+        .with_suggestion(format!("{} expects {} arguments", atom_name, expected)));
     }
     Ok(())
 }
@@ -454,18 +504,17 @@ pub fn validate_special_form_min_arity(
     atom_name: &str,
 ) -> ValidationResult {
     if args.len() < min_expected {
-        let msg = format!(
-            "{} expects at least {} arguments, got {}",
-            atom_name,
-            min_expected,
-            args.len()
-        );
-        return Err(SutraError::RuntimeGeneral {
-            message: msg,
-            src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-            suggestion: None,
-        });
+        return Err(errors::validation_arity(
+            format!("at least {}", min_expected),
+            args.len(),
+            "<runtime>",
+            "// arity validation",
+            SourceSpan::from(0..0),
+        )
+        .with_suggestion(format!(
+            "{} expects at least {} arguments",
+            atom_name, min_expected
+        )));
     }
     Ok(())
 }
@@ -487,14 +536,18 @@ where
     V: Fn(f64, f64) -> Result<(), &'static str>,
 {
     let (val1, val2, world) = eval_binary_args(args, context)?;
-    let (n1, n2) = extract_numbers(&val1, &val2)?;
+    let (n1, n2) = extract_numbers(&val1, &val2, Some(context))?;
 
     if let Some(validate) = validator {
-        validate(n1, n2).map_err(|msg| SutraError::ValidationGeneral {
-            message: msg.to_string(),
-            src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-            suggestion: None,
+        validate(n1, n2).map_err(|msg| {
+            // No span available here, this should be improved in the future
+            // if we can pass span information through the validator.
+            errors::runtime_general(
+                msg,
+                context.current_file(),
+                context.current_source(),
+                context.span_for_span(Span::default()),
+            )
         })?;
     }
 
@@ -513,24 +566,25 @@ where
     F: Fn(f64, f64) -> f64,
 {
     if args.len() < 2 {
-        return Err(SutraError::RuntimeGeneral {
-            message: format!("expected at least 2 arguments, got {}", args.len()),
-            src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-            suggestion: None,
-        });
+        let mut err = errors::validation_arity(
+            "at least 2".to_string(),
+            args.len(),
+            context.current_file(),
+            context.current_source(),
+            context.span_for_span(Span::default()),
+        );
+
+        if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
+            err = err.with_test_context(tf.clone(), tn.clone());
+        }
+        return Err(err);
     }
 
     let (values, world) = eval_args(args, context)?;
     let mut acc = init;
 
     for v in values.iter() {
-        let n = v.extract().map_err(|_| SutraError::TypeMismatch {
-            expected: "number".to_string(),
-            actual: v.type_name().to_string(),
-            src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-        })?;
+        let n = v.extract(Some(context))?;
         acc = fold(acc, n);
     }
 
@@ -548,7 +602,7 @@ where
     F: Fn(bool) -> Value,
 {
     let (val, world) = eval_single_arg(args, context)?;
-    let b = val.extract()?;
+    let b = val.extract(Some(context))?;
     Ok((op(b), world))
 }
 
@@ -563,7 +617,7 @@ where
     F: Fn(Path, World) -> AtomResult,
 {
     let (val, world) = eval_single_arg(args, context)?;
-    let path = val.extract()?;
+    let path = val.extract(Some(context))?;
     op(path, world)
 }
 
@@ -578,7 +632,7 @@ where
     F: Fn(Path, Value, World) -> AtomResult,
 {
     let (path_val, value, world) = eval_binary_args(args, context)?;
-    let path = path_val.extract()?;
+    let path = path_val.extract(Some(context))?;
     op(path, value, world)
 }
 
@@ -628,8 +682,8 @@ where
     validate_sequence_arity(&values, atom_name)?;
 
     for i in 0..values.len() - 1 {
-        let a = values[i].extract()?;
-        let b = values[i + 1].extract()?;
+        let a = values[i].extract(Some(context))?;
+        let b = values[i + 1].extract(Some(context))?;
         if comparison(a, b) {
             return Ok((Value::Bool(false), world));
         }
@@ -672,7 +726,7 @@ where
 
     let mut result = init;
     for v in values.iter() {
-        let n = v.extract()?;
+        let n = v.extract(Some(context))?;
         result = fold(result, n);
     }
     Ok((Value::Number(result), world))
@@ -708,140 +762,11 @@ where
     F: Fn(T) -> Value,
 {
     let (val, world) = eval_single_arg(args, context)?;
-    let extracted = val.extract()?;
+    let extracted = val.extract(Some(context))?;
     Ok((op(extracted), world))
 }
 
-// ============================================================================
-// PURE FUNCTION HELPERS (for PureAtomFn)
-// ============================================================================
 
-/// Evaluates a sequence comparison operation on numbers for pure functions.
-/// Handles arity validation, type checking, and the common comparison pattern.
-///
-/// # Arguments
-/// * `args` - The arguments to validate and process
-/// * `comparison` - The comparison function (e.g., |a, b| a <= b)
-/// * `atom_name` - The name of the atom for error messages
-///
-/// # Returns
-/// * `Ok(Value::Bool)` if comparison succeeds
-/// * `Err(SutraError)` if validation fails
-///
-/// # Example
-/// ```ignore
-/// let result = pure_eval_numeric_sequence_comparison(
-///     args, |a, b| a <= b, "gt?"
-/// )?;
-/// ```
-pub fn pure_eval_numeric_sequence_comparison<F>(
-    args: &[Value],
-    comparison: F,
-    atom_name: &str,
-) -> PureResult
-where
-    F: Fn(f64, f64) -> bool,
-{
-    validate_sequence_arity(args, atom_name)?;
-
-    for i in 0..args.len() - 1 {
-        let a = args[i].extract()?;
-        let b = args[i + 1].extract()?;
-        if comparison(a, b) {
-            return Ok(Value::Bool(false));
-        }
-    }
-    Ok(Value::Bool(true))
-}
-
-/// Evaluates an n-ary numeric operation with a custom initial value and fold function for pure functions.
-/// Handles arity validation, type checking, and the common fold pattern.
-///
-/// # Arguments
-/// * `args` - The arguments to validate and process
-/// * `init` - The initial value for the fold
-/// * `fold` - The fold function (e.g., |acc, n| acc + n)
-/// * `atom_name` - The name of the atom for error messages
-///
-/// # Returns
-/// * `Ok(Value::Number)` if operation succeeds
-/// * `Err(SutraError)` if validation fails
-///
-/// # Example
-/// ```ignore
-/// let result = pure_eval_nary_numeric_op_custom(
-///     args, 0.0, |acc, n| acc + n, "sum"
-/// )?;
-/// ```
-pub fn pure_eval_nary_numeric_op_custom<F>(
-    args: &[Value],
-    init: f64,
-    fold: F,
-    atom_name: &str,
-) -> PureResult
-where
-    F: Fn(f64, f64) -> f64,
-{
-    validate_min_arity(args, 1, atom_name)?;
-
-    let mut result = init;
-    for v in args.iter() {
-        let n = v.extract()?;
-        result = fold(result, n);
-    }
-    Ok(Value::Number(result))
-}
-
-/// Evaluates a unary operation with type checking using the ExtractValue trait for pure functions.
-/// Handles arity validation and provides consistent error messages.
-///
-/// # Arguments
-/// * `args` - The arguments to validate and process
-/// * `op` - The operation function
-/// * `atom_name` - The name of the atom for error messages
-///
-/// # Returns
-/// * `Ok(Value)` if operation succeeds
-/// * `Err(SutraError)` if validation fails
-///
-/// # Example
-/// ```ignore
-/// let result = pure_eval_unary_typed_op(
-///     args, |b| Value::Bool(!b), "not"
-/// )?;
-/// ```
-pub fn pure_eval_unary_typed_op<T, F>(args: &[Value], op: F, atom_name: &str) -> PureResult
-where
-    Value: ExtractValue<T>,
-    F: Fn(T) -> Value,
-{
-    validate_unary_arity(args, atom_name)?;
-    let extracted = args[0].extract()?;
-    Ok(op(extracted))
-}
-
-/// Evaluates a string concatenation operation for pure functions.
-/// Handles the common pattern of concatenating multiple values into a string.
-///
-/// # Arguments
-/// * `args` - The arguments to concatenate
-/// * `atom_name` - The name of the atom for error messages
-///
-/// # Returns
-/// * `Ok(Value::String)` if operation succeeds
-/// * `Err(SutraError)` if validation fails
-///
-/// # Example
-/// ```ignore
-/// let result = pure_eval_string_concat(args, "str+")?;
-/// ```
-pub fn pure_eval_string_concat(args: &[Value], _atom_name: &str) -> PureResult {
-    let mut result = String::new();
-    for arg in args {
-        result.push_str(&arg.to_string());
-    }
-    Ok(Value::String(result))
-}
 
 // ============================================================================
 // APPLY ATOM HELPERS
@@ -877,12 +802,13 @@ pub fn eval_apply_list_arg(
     let mut sub_context = sub_eval_context!(context, context.world);
     let (list_val, world) = evaluate_ast_node(arg, &mut sub_context)?;
     let Value::List(items) = list_val else {
-        return Err(SutraError::TypeMismatch {
-            expected: "list".to_string(),
-            actual: list_val.type_name().to_string(),
-            src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-        });
+        return Err(errors::type_mismatch(
+            "List",
+            list_val.type_name(),
+            context.current_file(),
+            context.current_source(),
+            context.span_for_span(*parent_span),
+        ).with_suggestion("The last argument to 'apply' must be a list."));
     };
     let list_items = items
         .into_iter()
@@ -928,16 +854,14 @@ pub fn build_apply_call_expr(
 pub fn validate_path_arg<'a>(args: &'a [Value], atom_name: &str) -> Result<&'a Path, SutraError> {
     match &args[0] {
         Value::Path(p) => Ok(p),
-        _ => Err(SutraError::RuntimeGeneral {
-            message: format!(
-                "{} expects a Path as first argument, found {}",
-                atom_name,
-                args[0].to_string()
-            ),
-            src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-            suggestion: None,
-        }),
+        _ => Err(errors::type_mismatch(
+            "Path",
+            args[0].type_name(),
+            "<runtime>",
+            "// path validation",
+            SourceSpan::from(0..0),
+        )
+        .with_suggestion(format!("{} expects a Path as its first argument", atom_name))),
     }
 }
 
@@ -954,16 +878,14 @@ pub fn validate_path_arg<'a>(args: &'a [Value], atom_name: &str) -> Result<&'a P
 pub fn validate_string_value<'a>(value: &'a Value, context: &str) -> Result<&'a str, SutraError> {
     match value {
         Value::String(s) => Ok(s),
-        _ => Err(SutraError::RuntimeGeneral {
-            message: format!(
-                "Expected String for {}, found {}",
-                context,
-                value.to_string()
-            ),
-            src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-            suggestion: None,
-        }),
+        _ => Err(errors::type_mismatch(
+            "String",
+            value.type_name(),
+            "<runtime>",
+            "// string validation",
+            SourceSpan::from(0..0),
+        )
+        .with_suggestion(format!("Expected a String for {}", context))),
     }
 }
 
@@ -983,12 +905,14 @@ pub fn validate_list_value_mut<'a>(
 ) -> Result<&'a mut Vec<Value>, SutraError> {
     match value {
         Value::List(items) => Ok(items),
-        _ => Err(SutraError::RuntimeGeneral {
-            message: format!("Expected List for {}, found {}", context, value.to_string()),
-            src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-            suggestion: None,
-        }),
+        _ => Err(errors::type_mismatch(
+            "List",
+            value.type_name(),
+            "<runtime>",
+            "// list validation",
+            SourceSpan::from(0..0),
+        )
+        .with_suggestion(format!("Expected a List for {}", context))),
     }
 }
 
@@ -1008,12 +932,14 @@ pub fn validate_list_value<'a>(
 ) -> Result<&'a Vec<Value>, SutraError> {
     match value {
         Value::List(items) => Ok(items),
-        _ => Err(SutraError::RuntimeGeneral {
-            message: format!("Expected List for {}, found {}", context, value.to_string()),
-            src: NamedSource::new("atoms/helpers.rs".to_string(), "".to_string()),
-            span: to_source_span(Span::default()),
-            suggestion: None,
-        }),
+        _ => Err(errors::type_mismatch(
+            "List",
+            value.type_name(),
+            "<runtime>",
+            "// list validation",
+            SourceSpan::from(0..0),
+        )
+        .with_suggestion(format!("Expected a List for {}", context))),
     }
 }
 
@@ -1129,17 +1055,17 @@ mod tests {
         let err = validate_arity(&args, 2, "my_atom").unwrap_err();
         assert!(err
             .to_string()
-            .contains("my_atom expects 2 arguments, got 1"));
+            .contains("expected 2, got 1"));
 
         let err = validate_min_arity(&args, 3, "my_atom").unwrap_err();
         assert!(err
             .to_string()
-            .contains("my_atom expects at least 3 arguments, got 1"));
+            .contains("expected at least 3, got 1"));
 
         let err = validate_even_arity(&args, "my_atom").unwrap_err();
         assert!(err
             .to_string()
-            .contains("my_atom expects an even number of arguments, got 1"));
+            .contains("expected even number, got 1"));
     }
 
     #[test]

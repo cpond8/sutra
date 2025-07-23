@@ -24,8 +24,10 @@ use miette::NamedSource;
 
 // Use the public context helper macro
 use crate::prelude::*;
+use crate::atoms::LazyAtomFn;
+use crate::errors;
 use crate::{
-    atoms::SpecialFormAtomFn, helpers, runtime::eval, sub_eval_context,
+    helpers, runtime::eval, sub_eval_context,
     syntax::parser::to_source_span,
 };
 
@@ -62,23 +64,25 @@ fn register_test_atom(
     span: &Span,
 ) -> Result<(Value, World), SutraError> {
     if args.len() < 4 {
-        return Err(SutraError::ValidationGeneral {
-            message: "Expected at least 4 arguments (name, expect, metadata, and at least one body expression)".to_string(),
-            src: ctx.source.as_ref().clone(),
-            span: to_source_span(*span),
-            suggestion: None,
-        });
+        return Err(errors::validation_arity(
+            "Expected at least 4 arguments (name, expect, metadata, and at least one body expression)",
+            args.len(),
+            ctx.current_file(),
+            ctx.current_source(),
+            to_source_span(*span),
+        ).with_test_context(ctx.current_file(), ctx.test_name.clone().unwrap_or_default()));
     }
 
     let name = match &*args[0].value {
         Expr::String(s, _) => s.clone(),
         _ => {
-            return Err(SutraError::ValidationGeneral {
-                message: "Test name must be a string".to_string(),
-                src: ctx.source.as_ref().clone(),
-                span: to_source_span(args[0].span),
-                suggestion: None,
-            });
+            return Err(errors::type_mismatch(
+                "String",
+                format!("{:?}", args[0].value),
+                ctx.current_file(),
+                ctx.current_source(),
+                to_source_span(args[0].span),
+            ).with_test_context(ctx.current_file(), ctx.test_name.clone().unwrap_or_default()));
         }
     };
 
@@ -89,35 +93,37 @@ fn register_test_atom(
     let metadata = match metadata_val.as_map() {
         Some(m) => m,
         _ => {
-            return Err(SutraError::ValidationGeneral {
-                message: "Test metadata must be a map".to_string(),
-                src: ctx.source.as_ref().clone(),
-                span: to_source_span(args[args.len() - 1].span),
-                suggestion: None,
-            });
+            return Err(errors::type_mismatch(
+                "Map",
+                format!("{:?}", metadata_val),
+                ctx.current_file(),
+                ctx.current_source(),
+                to_source_span(args[args.len() - 1].span),
+            ).with_test_context(ctx.current_file(), ctx.test_name.clone().unwrap_or_default()));
         }
     };
 
     let source_file = match metadata.get(":source-file") {
         Some(Value::String(file_path)) => {
-            let src_arc = NamedSource::new(file_path.clone(), String::new());
-            let source = std::fs::read_to_string(file_path).map_err(|e| SutraError::Internal {
-                issue: "Failed to read source file".to_string(),
-                details: e.to_string(),
-                context: None,
-                src: src_arc.clone().into(),
-                span: Some(to_source_span(Span::default())),
-                source: None,
-            })?;
-            Arc::new(NamedSource::new(file_path.clone(), source))
+            let source = match std::fs::read_to_string(file_path) {
+                Ok(s) => s,
+                Err(e) => return Err(errors::runtime_general(
+                    format!("Failed to read source file: {}", e),
+                    ctx.current_file(),
+                    ctx.current_source(),
+                    to_source_span(Span::default()),
+                ).with_test_context(ctx.current_file(), ctx.test_name.clone().unwrap_or_default())),
+            };
+            let source_file = Arc::new(NamedSource::new(file_path.clone(), source));
+            source_file
         }
         _ => {
-            return Err(SutraError::ValidationGeneral {
-                message: "Test metadata must contain :source-file string".to_string(),
-                src: ctx.source.as_ref().clone(),
-                span: to_source_span(args[args.len() - 1].span),
-                suggestion: None,
-            });
+            return Err(errors::runtime_general(
+                "Test metadata must contain :source-file string",
+                ctx.current_file(),
+                ctx.current_source(),
+                to_source_span(args[args.len() - 1].span),
+            ).with_test_context(ctx.current_file(), ctx.test_name.clone().unwrap_or_default()));
         }
     };
 
@@ -129,14 +135,12 @@ fn register_test_atom(
         source_file,
     };
 
-    let mut registry = TEST_REGISTRY.lock().map_err(|_| SutraError::Internal {
-        issue: "Test registry mutex poisoned".to_string(),
-        details: "Mutex was poisoned during test registration".to_string(),
-        context: None,
-        src: ctx.source.as_ref().clone().into(),
-        span: Some(to_source_span(Span::default())),
-        source: None,
-    })?;
+    let mut registry = TEST_REGISTRY.lock().map_err(|_| errors::runtime_general(
+        "Test registry mutex poisoned",
+        ctx.current_file(),
+        ctx.current_source(),
+        to_source_span(Span::default()),
+    ).with_test_context(ctx.current_file(), ctx.test_name.clone().unwrap_or_default()))?;
     registry.insert(name, test_def);
 
     Ok((Value::Nil, ctx.world.clone()))
@@ -241,9 +245,6 @@ fn test_echo_atom(
 ///
 /// # Safety
 /// Emits output, does not mutate world state. May recurse up to max_depth.
-// Type alias for test atom function signatures
-type TestAtomFn = SpecialFormAtomFn;
-
 /// Parse arguments for borrow stress test.
 fn parse_borrow_stress_args(args: &[AstNode]) -> (i64, String) {
     let first = args.first();
@@ -283,8 +284,8 @@ fn handle_borrow_stress_recursion(
     depth: i64,
     msg: &str,
     span: &Span,
-    test_borrow_stress_atom: TestAtomFn,
-    test_echo_atom: TestAtomFn,
+    test_borrow_stress_atom: LazyAtomFn,
+    test_echo_atom: LazyAtomFn,
 ) -> Result<(Value, World), SutraError> {
     if depth == 0 {
         return handle_borrow_stress_base_case(ctx, msg, span, test_echo_atom);
@@ -309,7 +310,7 @@ fn handle_borrow_stress_base_case(
     ctx: &mut EvaluationContext,
     msg: &str,
     span: &Span,
-    test_echo_atom: TestAtomFn,
+    test_echo_atom: LazyAtomFn,
 ) -> Result<(Value, World), SutraError> {
     let mut sub_context = sub_eval_context!(ctx, ctx.world);
     sub_context.depth = ctx.depth + 1; // Manually set incremented depth
@@ -348,17 +349,17 @@ fn test_borrow_stress_atom(
 /// # Safety
 /// Test atoms may have side effects (output, recursion) intended for testing.
 pub fn register_test_atoms(registry: &mut AtomRegistry) {
-    registry.register_special_form("test/echo", test_echo_atom);
-    registry.register_special_form("test/borrow_stress", test_borrow_stress_atom);
-    registry.register_special_form("register-test!", register_test_atom);
+    registry.register_lazy("test/echo", test_echo_atom);
+    registry.register_lazy("test/borrow_stress", test_borrow_stress_atom);
+    registry.register_lazy("register-test!", register_test_atom);
 
     // Register test assertion atoms
-    registry.register_special_form("value", value_atom);
-    registry.register_special_form("tags", tags_atom);
+    registry.register_lazy("value", value_atom);
+    registry.register_lazy("tags", tags_atom);
 
     // Register assertion atoms for testing
-    registry.register_special_form("assert", assert_atom);
-    registry.register_special_form("assert-eq", assert_eq_atom);
+    registry.register_lazy("assert", assert_atom);
+    registry.register_lazy("assert-eq", assert_eq_atom);
 }
 
 /// `assert` atom - basic assertion that fails if argument is false.
@@ -388,13 +389,12 @@ fn assert_atom(
     };
 
     if !is_truthy {
-        return Err(SutraError::TestAssertion {
-            message: format!("Assertion failed: expected truthy value, got {:?}", value),
-            src: ctx.source.as_ref().clone(),
-            span: to_source_span(args[0].span),
-            expected: Some("truthy value".to_string()),
-            actual: Some(format!("{:?}", value)),
-        });
+        return Err(errors::runtime_general(
+            format!("Assertion failed: expected truthy value, got {:?}", value),
+            ctx.current_file(),
+            ctx.current_source(),
+            to_source_span(args[0].span),
+        ).with_test_context(ctx.current_file(), ctx.test_name.clone().unwrap_or_default()));
     }
 
     Ok((Value::Nil, world))
@@ -425,16 +425,12 @@ fn assert_eq_atom(
     let (actual, world2) = eval::evaluate_ast_node(&args[1], &mut sub_context)?;
 
     if expected != actual {
-        return Err(SutraError::TestAssertion {
-            message: format!(
-                "Assertion failed: expected {:?}, got {:?}",
-                expected, actual
-            ),
-            src: ctx.source.as_ref().clone(),
-            span: to_source_span(*span),
-            expected: Some(format!("{:?}", expected)),
-            actual: Some(format!("{:?}", actual)),
-        });
+        return Err(errors::runtime_general(
+            format!("Assertion failed: expected {:?}, got {:?}", expected, actual),
+            ctx.current_file(),
+            ctx.current_source(),
+            to_source_span(*span),
+        ).with_test_context(ctx.current_file(), ctx.test_name.clone().unwrap_or_default()));
     }
 
     Ok((Value::Nil, world2))

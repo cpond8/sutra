@@ -97,52 +97,52 @@
 ;; =: Equality alias for eq?
 ;; (= x y)
 (define (= ...rest)
-  (apply eq? rest))
+  (eq? ...rest))
 
 ;; is?: Equality alias for eq?
 ;; (is? x y)
 (define (is? ...rest)
-  (apply eq? rest))
+  (eq? ...rest))
 
 ;; >: Greater than alias for gt?
 ;; (> x y)
 (define (> ...rest)
-  (apply gt? rest))
+  (gt? ...rest))
 
 ;; over?: Greater than alias for gt?
 ;; (over? x y)
 (define (over? ...rest)
-  (apply gt? rest))
+  (gt? ...rest))
 
 ;; <: Less than alias for lt?
 ;; (< x y)
 (define (< ...rest)
-  (apply lt? rest))
+  (lt? ...rest))
 
 ;; under?: Less than alias for lt?
 ;; (under? x y)
 (define (under? ...rest)
-  (apply lt? rest))
+  (lt? ...rest))
 
 ;; >=: Greater than or equal alias for gte?
 ;; (>= x y)
 (define (>= ...rest)
-  (apply gte? rest))
+  (gte? ...rest))
 
 ;; at-least?: Greater than or equal alias for gte?
 ;; (at-least? ...rest)
 (define (at-least? ...rest)
-  (apply gte? rest))
+  (gte? ...rest))
 
 ;; <=: Less than or equal alias for lte?
 ;; (<= x y)
 (define (<= ...rest)
-  (apply lte? rest))
+  (lte? ...rest))
 
 ;; at-most?: Less than or equal alias for lte?
 ;; (at-most? ...rest)
 (define (at-most? ...rest)
-  (apply lte? rest))
+  (lte? ...rest))
 
 ;; ============================================================================
 ;; STRING UTILITIES

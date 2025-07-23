@@ -14,7 +14,9 @@
 //! - **Numeric Comparison**: Comparison operations work with `Value::Number`
 
 use crate::prelude::*;
-use crate::{atoms::PureAtomFn, helpers};
+use crate::{atoms::EagerAtomFn, helpers};
+use crate::atoms::AtomResult;
+use crate::helpers::ExtractValue;
 
 // ============================================================================
 // COMPARISON OPERATIONS
@@ -31,14 +33,14 @@ use crate::{atoms::PureAtomFn, helpers};
 ///   (eq? 1 1) ; => true
 ///   (eq? 1 2) ; => false
 ///   (eq? 1 1 1) ; => true
-pub const ATOM_EQ: PureAtomFn = |args| {
+pub const ATOM_EQ: EagerAtomFn = |args: &[Value], context: &mut EvaluationContext| {
     helpers::validate_binary_arity(args, "eq?")?;
     for window in args.windows(2) {
         if window[0] != window[1] {
-            return Ok(Value::Bool(false));
+            return Ok((Value::Bool(false), context.world.clone()));
         }
     }
-    Ok(Value::Bool(true))
+    Ok((Value::Bool(true), context.world.clone()))
 };
 
 /// Returns true if a > b.
@@ -51,8 +53,17 @@ pub const ATOM_EQ: PureAtomFn = |args| {
 /// Example:
 ///   (gt? 3 2) ; => true
 ///   (gt? 3 2 1) ; => true
-pub const ATOM_GT: PureAtomFn =
-    |args| helpers::pure_eval_numeric_sequence_comparison(args, |a, b| a <= b, "gt?");
+pub const ATOM_GT: EagerAtomFn = |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
+    helpers::validate_sequence_arity(args, "gt?")?;
+    for i in 0..args.len() - 1 {
+        let a: f64 = args[i].extract(Some(context))?;
+        let b: f64 = args[i + 1].extract(Some(context))?;
+        if a <= b {
+            return Ok((Value::Bool(false), context.world.clone()));
+        }
+    }
+    Ok((Value::Bool(true), context.world.clone()))
+};
 
 /// Returns true if a < b.
 ///
@@ -64,8 +75,17 @@ pub const ATOM_GT: PureAtomFn =
 /// Example:
 ///   (lt? 1 2) ; => true
 ///   (lt? 1 2 3) ; => true
-pub const ATOM_LT: PureAtomFn =
-    |args| helpers::pure_eval_numeric_sequence_comparison(args, |a, b| a >= b, "lt?");
+pub const ATOM_LT: EagerAtomFn = |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
+    helpers::validate_sequence_arity(args, "lt?")?;
+    for i in 0..args.len() - 1 {
+        let a: f64 = args[i].extract(Some(context))?;
+        let b: f64 = args[i + 1].extract(Some(context))?;
+        if a >= b {
+            return Ok((Value::Bool(false), context.world.clone()));
+        }
+    }
+    Ok((Value::Bool(true), context.world.clone()))
+};
 
 /// Returns true if a >= b.
 ///
@@ -77,8 +97,17 @@ pub const ATOM_LT: PureAtomFn =
 /// Example:
 ///   (gte? 2 2) ; => true
 ///   (gte? 3 2 1) ; => true
-pub const ATOM_GTE: PureAtomFn =
-    |args| helpers::pure_eval_numeric_sequence_comparison(args, |a, b| a < b, "gte?");
+pub const ATOM_GTE: EagerAtomFn = |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
+    helpers::validate_sequence_arity(args, "gte?")?;
+    for i in 0..args.len() - 1 {
+        let a: f64 = args[i].extract(Some(context))?;
+        let b: f64 = args[i + 1].extract(Some(context))?;
+        if a < b {
+            return Ok((Value::Bool(false), context.world.clone()));
+        }
+    }
+    Ok((Value::Bool(true), context.world.clone()))
+};
 
 /// Returns true if a <= b.
 ///
@@ -90,8 +119,17 @@ pub const ATOM_GTE: PureAtomFn =
 /// Example:
 ///   (lte? 1 2) ; => true
 ///   (lte? 1 2 3) ; => true
-pub const ATOM_LTE: PureAtomFn =
-    |args| helpers::pure_eval_numeric_sequence_comparison(args, |a, b| a > b, "lte?");
+pub const ATOM_LTE: EagerAtomFn = |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
+    helpers::validate_sequence_arity(args, "lte?")?;
+    for i in 0..args.len() - 1 {
+        let a: f64 = args[i].extract(Some(context))?;
+        let b: f64 = args[i + 1].extract(Some(context))?;
+        if a > b {
+            return Ok((Value::Bool(false), context.world.clone()));
+        }
+    }
+    Ok((Value::Bool(true), context.world.clone()))
+};
 
 // ============================================================================
 // LOGIC OPERATIONS
@@ -106,8 +144,11 @@ pub const ATOM_LTE: PureAtomFn =
 ///
 /// Example:
 ///   (not true) ; => false
-pub const ATOM_NOT: PureAtomFn =
-    |args| helpers::pure_eval_unary_typed_op::<bool, _>(args, |b| Value::Bool(!b), "not");
+pub const ATOM_NOT: EagerAtomFn = |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
+    helpers::validate_unary_arity(args, "not")?;
+    let b: bool = args[0].extract(Some(context))?;
+    Ok((Value::Bool(!b), context.world.clone()))
+};
 
 // ============================================================================
 // REGISTRATION FUNCTION
@@ -115,25 +156,23 @@ pub const ATOM_NOT: PureAtomFn =
 
 /// Registers all logic and comparison atoms with the given registry.
 pub fn register_logic_atoms(registry: &mut AtomRegistry) {
-    // Comparison operations
-    registry.register_pure("eq?", ATOM_EQ);
-    registry.register_pure("gt?", ATOM_GT);
-    registry.register_pure("lt?", ATOM_LT);
-    registry.register_pure("gte?", ATOM_GTE);
-    registry.register_pure("lte?", ATOM_LTE);
+    // Comparison operations (core atoms only)
+    registry.register_eager("eq?", ATOM_EQ);
+    registry.register_eager("gt?", ATOM_GT);
+    registry.register_eager("lt?", ATOM_LT);
+    registry.register_eager("gte?", ATOM_GTE);
+    registry.register_eager("lte?", ATOM_LTE);
 
-    // Comparison aliases
-    registry.register_pure("=", ATOM_EQ);
-    registry.register_pure(">", ATOM_GT);
-    registry.register_pure("<", ATOM_LT);
-    registry.register_pure(">=", ATOM_GTE);
-    registry.register_pure("<=", ATOM_LTE);
-    registry.register_pure("is?", ATOM_EQ);
-    registry.register_pure("over?", ATOM_GT);
-    registry.register_pure("under?", ATOM_LT);
-    registry.register_pure("at-least?", ATOM_GTE);
-    registry.register_pure("at-most?", ATOM_LTE);
+    // NOTE: Symbolic aliases (=, >, <, >=, <=) are implemented as macros in std_macros.sutra
+    // Do not register them as atoms to avoid precedence conflicts with macro expansion
+
+    // Word-based aliases that are not implemented as macros
+    registry.register_eager("is?", ATOM_EQ);
+    registry.register_eager("over?", ATOM_GT);
+    registry.register_eager("under?", ATOM_LT);
+    registry.register_eager("at-least?", ATOM_GTE);
+    registry.register_eager("at-most?", ATOM_LTE);
 
     // Logic operations
-    registry.register_pure("not", ATOM_NOT);
+    registry.register_eager("not", ATOM_NOT);
 }

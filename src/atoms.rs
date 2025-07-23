@@ -39,16 +39,14 @@
 use std::{cell::RefCell, rc::Rc};
 
 use im::HashMap;
-use miette::NamedSource;
 
 // Core types via prelude
 use crate::prelude::*;
 
 // Domain modules with aliases
 use crate::{
-    atoms::helpers::{AtomResult, PureResult},
+    atoms::helpers::AtomResult,
     runtime::eval::EvaluationContext,
-    syntax::parser,
 };
 
 // ============================================================================
@@ -58,22 +56,18 @@ use crate::{
 // The `Atom` enum and its associated function types are the foundation of the
 // dual-convention architecture. Correct classification is critical for stability.
 
-/// Pure atoms: operate only on values, no state access
-pub type PureAtomFn = fn(args: &[Value]) -> PureResult;
+/// Eagerly evaluated atoms: receive evaluated `Value` arguments and full `EvaluationContext`.
+pub type EagerAtomFn = fn(args: &[Value], context: &mut EvaluationContext) -> AtomResult;
 
-/// Stateful atoms: need limited state access via Context facade
-pub type StatefulAtomFn = fn(args: &[Value], context: &mut AtomExecutionContext) -> PureResult;
-
-/// Special Form atoms: for atoms that need to control their own argument evaluation
-pub type SpecialFormAtomFn =
+/// Lazily evaluated atoms: receive unevaluated `AstNode` arguments for manual evaluation.
+pub type LazyAtomFn =
     fn(args: &[AstNode], context: &mut EvaluationContext, parent_span: &Span) -> AtomResult;
 
-/// The unified atom representation supporting three calling conventions
+/// The unified atom representation supporting two evaluation strategies.
 #[derive(Clone)]
 pub enum Atom {
-    Pure(PureAtomFn),
-    Stateful(StatefulAtomFn),
-    SpecialForm(SpecialFormAtomFn),
+    Eager(EagerAtomFn),
+    Lazy(LazyAtomFn),
 }
 
 /// Minimal state interface for stateful atoms
@@ -84,16 +78,11 @@ pub trait StateContext {
     fn exists(&self, path: &Path) -> bool;
 }
 
-/// Polymorphic invocation interface for all callable entities
-/// This trait enables uniform invocation of atoms, macros, and future callable types
-pub trait Callable {
-    fn call(
-        &self,
-        args: &[Value],
-        context: &mut AtomExecutionContext,
-        current_world: &World,
-    ) -> Result<(Value, World), SutraError>;
-}
+// The `Callable` trait has been removed. All callable entities are now
+// dispatched through specific paths in the evaluation engine (`eval.rs`),
+// primarily `resolve_callable`. This ensures that each type of callable
+// (atoms, lambdas, etc.) receives the correct context and evaluation
+// semantics, removing the risk of incorrect polymorphic calls.
 
 // Output sink for `print`, etc., to make I/O testable and injectable.
 pub trait OutputSink {
@@ -137,7 +126,6 @@ impl AtomRegistry {
     }
 
     pub fn get(&self, name: &str) -> Option<&Atom> {
-        // Changed return type
         self.atoms.get(name)
     }
 
@@ -145,28 +133,16 @@ impl AtomRegistry {
         self.atoms.keys().cloned().collect()
     }
 
-    // API for extensibility.
     fn register(&mut self, name: &str, func: Atom) {
-        // Changed parameter type
         self.atoms.insert(name.to_string(), func);
     }
 
-    /// Register a pure atom that operates only on values with no state access.
-    /// This prevents misclassification by ensuring the correct calling convention.
-    pub fn register_pure(&mut self, name: &str, func: PureAtomFn) {
-        self.register(name, Atom::Pure(func));
+    pub fn register_eager(&mut self, name: &str, func: EagerAtomFn) {
+        self.register(name, Atom::Eager(func));
     }
 
-    /// Register a stateful atom that needs limited state access via Context facade.
-    /// This prevents misclassification by ensuring the correct calling convention.
-    pub fn register_stateful(&mut self, name: &str, func: StatefulAtomFn) {
-        self.register(name, Atom::Stateful(func));
-    }
-
-    /// Register a special form atom that controls its own argument evaluation.
-    /// This prevents misclassification by ensuring the correct calling convention.
-    pub fn register_special_form(&mut self, name: &str, func: SpecialFormAtomFn) {
-        self.register(name, Atom::SpecialForm(func));
+    pub fn register_lazy(&mut self, name: &str, func: LazyAtomFn) {
+        self.register(name, Atom::Lazy(func));
     }
 
     pub fn clear(&mut self) {
@@ -174,7 +150,6 @@ impl AtomRegistry {
     }
 
     pub fn remove(&mut self, name: &str) -> Option<Atom> {
-        // Changed return type
         self.atoms.remove(name)
     }
 
@@ -244,55 +219,26 @@ pub fn register_all_atoms(registry: &mut AtomRegistry) {
 /// String operations: core/str+
 pub fn register_collection_atoms(registry: &mut AtomRegistry) {
     // List operations
-    registry.register_pure("list", collections::ATOM_LIST);
-    registry.register_pure("len", collections::ATOM_LEN);
-    registry.register_pure("has?", collections::ATOM_HAS);
-    registry.register_pure("car", collections::ATOM_CAR);
-    registry.register_pure("cdr", collections::ATOM_CDR);
-    registry.register_pure("cons", collections::ATOM_CONS);
+    registry.register_eager("list", collections::ATOM_LIST);
+    registry.register_eager("len", collections::ATOM_LEN);
+    registry.register_eager("has?", collections::ATOM_HAS);
+    registry.register_eager("car", collections::ATOM_CAR);
+    registry.register_eager("cdr", collections::ATOM_CDR);
+    registry.register_eager("cons", collections::ATOM_CONS);
 
     // String operations
-    registry.register_pure("core/str+", collections::ATOM_CORE_STR_PLUS);
+    registry.register_eager("core/str+", collections::ATOM_CORE_STR_PLUS);
 }
 
 /// Registers all special form atoms (lambda, let, if, etc.) with the given registry.
 pub fn register_special_forms(registry: &mut AtomRegistry) {
-    registry.register_special_form("lambda", special_forms::ATOM_LAMBDA);
-    registry.register_special_form("let", special_forms::ATOM_LET);
-    registry.register_special_form("if", special_forms::ATOM_IF);
+    registry.register_lazy("lambda", special_forms::ATOM_LAMBDA);
+    registry.register_lazy("let", special_forms::ATOM_LET);
+    registry.register_lazy("if", special_forms::ATOM_IF);
+    registry.register_lazy("define", special_forms::ATOM_DEFINE);
 }
 
 // ============================================================================
 // CALLABLE TRAIT IMPLEMENTATIONS
 // ============================================================================
 
-impl Callable for Atom {
-    fn call(
-        &self,
-        args: &[Value],
-        context: &mut AtomExecutionContext,
-        current_world: &World,
-    ) -> AtomResult {
-        match self {
-            Atom::Pure(pure_fn) => {
-                let result = pure_fn(args)?;
-                // Pure atoms don't modify world state, so return the current world unchanged
-                Ok((result, current_world.clone()))
-            }
-            Atom::Stateful(stateful_fn) => {
-                let result = stateful_fn(args, context)?;
-                // The world is mutated in place via the context, so we just return it.
-                Ok((result, current_world.clone()))
-            }
-            Atom::SpecialForm(_) => {
-                // SpecialForm atoms require AstNode/EvaluationContext and cannot be called via Callable
-                Err(SutraError::RuntimeGeneral {
-                    message: "Special Form atoms cannot be called through Callable interface - use direct dispatch instead".to_string(),
-                    src: NamedSource::new("atoms.rs".to_string(), "".to_string()),
-                    span: parser::to_source_span(Span::default()),
-                    suggestion: None,
-                })
-            }
-        }
-    }
-}

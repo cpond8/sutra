@@ -16,6 +16,7 @@ use crate::{
         load_macros_from_file, std_macros::register_std_macros, MacroDefinition,
         MacroExpansionContext, MacroValidationContext,
     },
+    runtime::source::SourceContext,
 };
 
 // Using a concrete, seedable PRNG for determinism.
@@ -41,11 +42,9 @@ impl fmt::Display for Path {
 
 /// A container for all the services an atom might need during evaluation.
 /// This struct provides a clean, type-safe way to pass dependencies to atoms.
-pub struct AtomExecutionContext<'a> {
-    pub state: &'a mut dyn StateContext,
-    pub output: SharedOutput,
-    pub rng: &'a mut dyn RngCore,
-}
+// AtomExecutionContext has been removed. Eager atoms now receive the
+// full EvaluationContext directly, simplifying the architecture and
+// providing richer context for error reporting and state access.
 
 // ============================================================================
 // WORLD STATE: Data container for Sutra's world
@@ -90,6 +89,13 @@ impl WorldState {
         let new_data = del_recursive(&self.data, &path.0);
         Self { data: new_data }
     }
+
+    pub fn top_level_keys(&self) -> Vec<String> {
+        match &self.data {
+            Value::Map(m) => m.keys().cloned().collect(),
+            _ => vec![],
+        }
+    }
 }
 
 impl Default for WorldState {
@@ -111,7 +117,7 @@ pub struct World {
 
 impl World {
     pub fn new() -> Self {
-        let source = Arc::new(NamedSource::new("empty", "".to_string()));
+        let source = SourceContext::fallback("world state").to_named_source();
         Self {
             state: WorldState::new(),
             prng: SmallRng::from_entropy(),
@@ -120,7 +126,7 @@ impl World {
     }
 
     pub fn from_seed(seed: [u8; 32]) -> Self {
-        let source = Arc::new(NamedSource::new("empty", "".to_string()));
+        let source = SourceContext::fallback("world state").to_named_source();
         Self {
             state: WorldState::new(),
             prng: SmallRng::from_seed(seed),
