@@ -15,9 +15,9 @@
 
 use crate::prelude::*;
 use crate::{
-    atoms::{AtomRegistry, EagerAtomFn},
     errors,
     helpers::{self, ExtractValue},
+    NativeEagerFn,
 };
 
 // ============================================================================
@@ -26,7 +26,7 @@ use crate::{
 
 /// Sets a value at a path in the world state.
 /// `(core/set! <path> <value>)`
-pub const ATOM_CORE_SET: EagerAtomFn = |args, context| {
+pub const ATOM_CORE_SET: NativeEagerFn = |args, context| {
     helpers::validate_binary_arity(args, "core/set!")?;
     let path = &args[0].extract(Some(context))?;
     let value = args[1].clone();
@@ -36,7 +36,7 @@ pub const ATOM_CORE_SET: EagerAtomFn = |args, context| {
 
 /// Gets a value at a path in the world state.
 /// `(core/get <path>)`
-pub const ATOM_CORE_GET: EagerAtomFn = |args, context| {
+pub const ATOM_CORE_GET: NativeEagerFn = |args, context| {
     helpers::validate_unary_arity(args, "core/get")?;
     let path = &args[0].extract(Some(context))?;
     let value = context.world.borrow().get(path).cloned().unwrap_or_default();
@@ -45,7 +45,7 @@ pub const ATOM_CORE_GET: EagerAtomFn = |args, context| {
 
 /// Deletes a value at a path in the world state.
 /// `(core/del! <path>)`
-pub const ATOM_CORE_DEL: EagerAtomFn = |args, context| {
+pub const ATOM_CORE_DEL: NativeEagerFn = |args, context| {
     helpers::validate_unary_arity(args, "core/del!")?;
     let path = &args[0].extract(Some(context))?;
     context.world.borrow_mut().del(path);
@@ -54,7 +54,7 @@ pub const ATOM_CORE_DEL: EagerAtomFn = |args, context| {
 
 /// Returns true if a path exists in the world state.
 /// `(core/exists? <path>)`
-pub const ATOM_EXISTS: EagerAtomFn = |args, context| {
+pub const ATOM_EXISTS: NativeEagerFn = |args, context| {
     helpers::validate_unary_arity(args, "core/exists?")?;
     let path = &args[0].extract(Some(context))?;
     let exists = context.world.borrow().get(path).is_some();
@@ -63,7 +63,7 @@ pub const ATOM_EXISTS: EagerAtomFn = |args, context| {
 
 /// Creates a path from a string.
 /// `(path <string>)`
-pub const ATOM_PATH: EagerAtomFn = |args, context| {
+pub const ATOM_PATH: NativeEagerFn = |args, context| {
     helpers::validate_unary_arity(args, "path")?;
     match &args[0] {
         Value::String(s) => {
@@ -82,16 +82,3 @@ pub const ATOM_PATH: EagerAtomFn = |args, context| {
         )),
     }
 };
-
-// ============================================================================
-// REGISTRATION FUNCTION
-// ============================================================================
-
-/// Registers all world state atoms with the given registry.
-pub fn register_world_atoms(registry: &mut AtomRegistry) {
-    registry.register_eager("core/set!", ATOM_CORE_SET);
-    registry.register_eager("core/get", ATOM_CORE_GET);
-    registry.register_eager("core/del!", ATOM_CORE_DEL);
-    registry.register_eager("core/exists?", ATOM_EXISTS);
-    registry.register_eager("path", ATOM_PATH);
-}

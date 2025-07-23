@@ -171,6 +171,8 @@ impl From<Value> for Expr {
             ),
             Path(p) => Expr::Path(p, Span::default()),
             Lambda(_) => Expr::Symbol("<lambda>".to_string(), Span::default()),
+            NativeEagerFn(_) => Expr::Symbol("<native_eager_fn>".to_string(), Span::default()),
+            NativeLazyFn(_) => Expr::Symbol("<native_lazy_fn>".to_string(), Span::default()),
         }
     }
 }

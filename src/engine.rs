@@ -4,7 +4,7 @@ use miette::{NamedSource, Report};
 
 use crate::prelude::*;
 use crate::{
-    atoms::{OutputSink, SharedOutput},
+    atoms::{register_all_atoms, OutputSink, SharedOutput},
     macros::{
         expand_macros_recursively, parse_macro_definition, MacroDefinition, MacroExpansionContext,
         MacroValidationContext,
@@ -201,7 +201,7 @@ impl MacroProcessor {
         &self,
         expanded: &AstNode,
         env: &MacroExpansionContext,
-        atom_registry: &AtomRegistry,
+        world: &World,
         source_context: &SourceContext,
     ) -> ExecutionResult {
         // Step 1: Check if validation is enabled
@@ -216,8 +216,7 @@ impl MacroProcessor {
         };
 
         // Step 3: Perform semantic validation
-        let validation_result =
-            semantic::validate_expanded_ast(expanded, &macro_registry, atom_registry);
+        let validation_result = semantic::validate_expanded_ast(expanded, &macro_registry, world);
 
         // Step 4: Handle validation results (early return on failure)
         if !validation_result.is_valid() {
@@ -240,14 +239,12 @@ impl MacroProcessor {
         expanded: &AstNode,
         output: SharedOutput,
         source_context: SourceContext,
-        atom_registry: &AtomRegistry,
     ) -> EvaluationResult {
         let world = Rc::new(RefCell::new(World::default()));
         eval::evaluate(
             expanded,
             world,
             output,
-            atom_registry,
             source_context,
             self.max_depth,
             None,
@@ -261,14 +258,12 @@ impl MacroProcessor {
         expanded: &AstNode,
         output: SharedOutput,
         source_context: Arc<NamedSource<String>>,
-        atom_registry: &AtomRegistry,
     ) -> EvaluationResult {
         let world = Rc::new(RefCell::new(world::World::default()));
         eval::evaluate(
             expanded,
             world,
             output,
-            atom_registry,
             source_context,
             self.max_depth,
             None,
@@ -284,11 +279,12 @@ impl MacroProcessor {
     }
 
     /// Builds standard registries used across all execution paths
-    pub fn build_standard_registries() -> (AtomRegistry, MacroExpansionContext) {
-        let atom_registry = world::build_default_atom_registry();
+    pub fn build_standard_registries() -> (World, MacroExpansionContext) {
+        let mut world = World::default();
+        register_all_atoms(&mut world);
         let macro_env =
             world::build_canonical_macro_env().expect("Standard macro env should build");
-        (atom_registry, macro_env)
+        (world, macro_env)
     }
 }
 
@@ -369,10 +365,7 @@ impl ExecutionPipeline {
     // REGISTRY ACCESS SERVICES - Pure registry access for CLI
     // ============================================================================
 
-    /// Gets the atom registry (pure access, no I/O)
-    pub fn get_atom_registry() -> AtomRegistry {
-        world::build_default_atom_registry()
-    }
+    /// Gets the world state (pure access, no I/O)
 
     /// Gets the macro registry (pure access, no I/O)
     pub fn get_macro_registry() -> MacroExpansionContext {
@@ -381,8 +374,13 @@ impl ExecutionPipeline {
 
     /// Lists all available atoms (pure access, no I/O)
     pub fn list_atoms() -> Vec<String> {
-        let atom_registry = Self::get_atom_registry();
-        atom_registry.atoms.keys().cloned().collect()
+        let mut world = World::default();
+        register_all_atoms(&mut world);
+        if let Some(Value::Map(map)) = world.state.get(&Path(vec![])) {
+            map.keys().cloned().collect()
+        } else {
+            vec![]
+        }
     }
 
     /// Lists all available macros (pure access, no I/O)
@@ -410,16 +408,19 @@ impl ExecutionPipeline {
         let expanded = processor.process_with_existing_macros(nodes.to_vec(), &mut env)?;
 
         // Step 2: Validation step (optional but recommended)
-        let (atom_registry, _) = MacroProcessor::build_standard_registries();
         let source_context = RuntimeSourceContext::fallback("engine execution").to_named_source();
-        processor.validate_expanded_ast(&expanded, &env, &atom_registry, &source_context)?;
+        processor.validate_expanded_ast(
+            &expanded,
+            &env,
+            &self.world.borrow(),
+            &source_context,
+        )?;
 
         // Step 3: Evaluate the expanded AST (CRITICAL: No macro expansion happens here)
         let output = SharedOutput(Rc::new(RefCell::new(
             EngineOutputBuffer::new(),
         )));
-        let result =
-            processor.evaluate_expanded_ast(&expanded, output, source_context, &atom_registry)?;
+        let result = processor.evaluate_expanded_ast(&expanded, output, source_context)?;
 
         Ok(result)
     }
@@ -450,12 +451,10 @@ impl ExecutionPipeline {
         output: SharedOutput,
         source: SourceContext,
     ) -> Result<Value, SutraError> {
-        let atom_registry = world::build_default_atom_registry();
         eval::evaluate(
             expanded_ast,
             world,
             output,
-            &atom_registry,
             source,
             self.max_depth,
             None,
@@ -468,15 +467,19 @@ impl ExecutionPipeline {
         let named_source = Arc::new(NamedSource::new(path.to_string(), source.to_string()));
         let ast_nodes = parser::parse(source)?;
         let processor = MacroProcessor::default();
-        let (atom_registry, mut macro_env) = MacroProcessor::build_standard_registries();
+        let (world, mut macro_env) = MacroProcessor::build_standard_registries();
         let expanded_node = processor.process_with_existing_macros(ast_nodes, &mut macro_env)?;
         let source_context = Arc::new(NamedSource::new(path.to_string(), source.to_string()));
-        processor.validate_expanded_ast(&expanded_node, &macro_env, &atom_registry, &source_context)?;
+        processor.validate_expanded_ast(
+            &expanded_node,
+            &macro_env,
+            &world,
+            &source_context,
+        )?;
         let result = processor.evaluate_expanded_ast_with_context(
             &expanded_node,
             output.clone(),
             named_source.clone(),
-            &atom_registry,
         )?;
         if !result.is_nil() {
             output.emit(&result.to_string(), None);

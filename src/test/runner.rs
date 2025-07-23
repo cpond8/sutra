@@ -19,7 +19,7 @@ impl TestRunner {
     pub fn execute_test(test_body: &[AstNode], output: SharedOutput, test_file: Option<String>, test_name: Option<String>, source_file: Arc<NamedSource<String>>) -> Result<(), SutraError> {
         // Use a macro processor to handle expansion and evaluation correctly
         let processor = MacroProcessor::default();
-        let (atom_registry, mut macro_env) =
+        let (world, mut macro_env) =
             MacroProcessor::build_standard_registries();
 
         // Correctly process the nodes by passing the whole slice.
@@ -31,14 +31,13 @@ impl TestRunner {
         let source_context = source_file;
 
         // Validate the expanded AST
-        processor.validate_expanded_ast(&expanded_node, &macro_env, &atom_registry, &source_context)?;
+        processor.validate_expanded_ast(&expanded_node, &macro_env, &world, &source_context)?;
 
         // Use the builder for evaluation context
         let result = evaluate(
             &expanded_node,
-            Rc::new(RefCell::new(World::default())),
+            Rc::new(RefCell::new(world)),
             output.clone(),
-            &atom_registry,
             source_context,
             1000,
             test_file,

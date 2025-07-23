@@ -24,7 +24,7 @@ use miette::SourceSpan;
 pub type AtomResult = Result<Value, SutraError>;
 
 /// Type alias for evaluation context to reduce verbosity
-pub type EvalContext<'a> = &'a mut EvaluationContext<'a>;
+pub type EvalContext<'a> = &'a mut EvaluationContext;
 
 
 
@@ -49,11 +49,11 @@ pub type ValidationResult = Result<(), SutraError>;
 pub trait ExtractValue<T> {
     /// Extracts a value of type T from this Value.
     /// The `context` is optional to support both eager and lazy evaluation patterns.
-    fn extract(&self, context: Option<&EvaluationContext<'_>>) -> Result<T, SutraError>;
+    fn extract(&self, context: Option<&EvaluationContext>) -> Result<T, SutraError>;
 }
 
 impl ExtractValue<f64> for Value {
-    fn extract(&self, context: Option<&EvaluationContext<'_>>) -> Result<f64, SutraError> {
+    fn extract(&self, context: Option<&EvaluationContext>) -> Result<f64, SutraError> {
         let (file, source, span) = if let Some(ctx) = context {
             (
                 ctx.current_file(),
@@ -86,7 +86,7 @@ impl ExtractValue<f64> for Value {
 }
 
 impl ExtractValue<bool> for Value {
-    fn extract(&self, context: Option<&EvaluationContext<'_>>) -> Result<bool, SutraError> {
+    fn extract(&self, context: Option<&EvaluationContext>) -> Result<bool, SutraError> {
         let (file, source, span) = if let Some(ctx) = context {
             (
                 ctx.current_file(),
@@ -119,7 +119,7 @@ impl ExtractValue<bool> for Value {
 }
 
 impl ExtractValue<Path> for Value {
-    fn extract(&self, context: Option<&EvaluationContext<'_>>) -> Result<Path, SutraError> {
+    fn extract(&self, context: Option<&EvaluationContext>) -> Result<Path, SutraError> {
         let (file, source, span) = if let Some(ctx) = context {
             (
                 ctx.current_file(),
@@ -180,7 +180,7 @@ pub use sub_eval_context;
 
 /// Evaluates all arguments in sequence, threading world state through each evaluation.
 /// This is the fundamental building block for all multi-argument atom operations.
-pub fn eval_args(args: &[AstNode], context: &mut EvaluationContext<'_>) -> MultiValueResult {
+pub fn eval_args(args: &[AstNode], context: &mut EvaluationContext) -> MultiValueResult {
     let mut values = Vec::with_capacity(args.len());
     for arg in args {
         let val = evaluate_ast_node(arg, context)?;
@@ -192,7 +192,7 @@ pub fn eval_args(args: &[AstNode], context: &mut EvaluationContext<'_>) -> Multi
 /// Generic argument evaluation with compile-time arity checking
 pub fn eval_n_args<const N: usize>(
     args: &[AstNode],
-    context: &mut EvaluationContext<'_>,
+    context: &mut EvaluationContext,
 ) -> ArrayResult<N> {
     if args.len() != N {
         let mut err = errors::validation_arity(
@@ -231,13 +231,13 @@ pub fn eval_n_args<const N: usize>(
 }
 
 /// Evaluates a single argument and returns the value and world
-pub fn eval_single_arg(args: &[AstNode], context: &mut EvaluationContext<'_>) -> AtomResult {
+pub fn eval_single_arg(args: &[AstNode], context: &mut EvaluationContext) -> AtomResult {
     let [val] = eval_n_args::<1>(args, context)?;
     Ok(val)
 }
 
 /// Evaluates two arguments and returns both values and the final world
-pub fn eval_binary_args(args: &[AstNode], context: &mut EvaluationContext<'_>) -> BinaryResult {
+pub fn eval_binary_args(args: &[AstNode], context: &mut EvaluationContext) -> BinaryResult {
     let [val1, val2] = eval_n_args::<2>(args, context)?;
     Ok((val1, val2))
 }
@@ -512,7 +512,7 @@ pub fn validate_special_form_min_arity(
 /// Handles arity, type checking, and error construction.
 pub fn eval_binary_numeric_template<F, V>(
     args: &[AstNode],
-    context: &mut EvaluationContext<'_>,
+    context: &mut EvaluationContext,
     op: F,
     validator: Option<V>,
 ) -> AtomResult
@@ -543,7 +543,7 @@ where
 /// Handles arity, type checking, and error construction.
 pub fn eval_nary_numeric_template<F>(
     args: &[AstNode],
-    context: &mut EvaluationContext<'_>,
+    context: &mut EvaluationContext,
     init: f64,
     fold: F,
 ) -> AtomResult
@@ -580,7 +580,7 @@ where
 /// Handles arity, type checking, and error construction.
 pub fn eval_unary_bool_template<F>(
     args: &[AstNode],
-    context: &mut EvaluationContext<'_>,
+    context: &mut EvaluationContext,
     op: F,
 ) -> AtomResult
 where
@@ -595,7 +595,7 @@ where
 /// Handles arity, type checking, and error construction.
 pub fn eval_unary_path_template<F>(
     args: &[AstNode],
-    context: &mut EvaluationContext<'_>,
+    context: &mut EvaluationContext,
     op: F,
 ) -> AtomResult
 where
@@ -610,7 +610,7 @@ where
 /// Handles arity, type checking, and error construction.
 pub fn eval_binary_path_template<F>(
     args: &[AstNode],
-    context: &mut EvaluationContext<'_>,
+    context: &mut EvaluationContext,
     op: F,
 ) -> AtomResult
 where
@@ -625,11 +625,11 @@ where
 /// Handles arity and error construction.
 pub fn eval_unary_value_template<F>(
     args: &[AstNode],
-    context: &mut EvaluationContext<'_>,
+    context: &mut EvaluationContext,
     op: F,
 ) -> AtomResult
 where
-    F: Fn(Value, &mut EvaluationContext<'_>) -> AtomResult,
+    F: Fn(Value, &mut EvaluationContext) -> AtomResult,
 {
     let val = eval_single_arg(args, context)?;
     op(val, context)
@@ -656,7 +656,7 @@ where
 /// ```
 pub fn eval_numeric_sequence_comparison_template<F>(
     args: &[AstNode],
-    context: &mut EvaluationContext<'_>,
+    context: &mut EvaluationContext,
     comparison: F,
     atom_name: &str,
 ) -> AtomResult
@@ -698,7 +698,7 @@ where
 /// ```
 pub fn eval_nary_numeric_op_custom_template<F>(
     args: &[AstNode],
-    context: &mut EvaluationContext<'_>,
+    context: &mut EvaluationContext,
     init: f64,
     fold: F,
     atom_name: &str,
@@ -738,7 +738,7 @@ where
 /// ```
 pub fn eval_unary_typed_template<T, F>(
     args: &[AstNode],
-    context: &mut EvaluationContext<'_>,
+    context: &mut EvaluationContext,
     op: F,
     _atom_name: &str,
 ) -> AtomResult
@@ -761,7 +761,7 @@ where
 /// Returns the evaluated arguments as expressions and the final world state.
 pub fn eval_apply_normal_args(
     args: &[AstNode],
-    context: &mut EvaluationContext<'_>,
+    context: &mut EvaluationContext,
 ) -> Result<Vec<AstNode>, SutraError> {
     let mut evaluated_arg_nodes = Vec::with_capacity(args.len());
     for arg in args {
@@ -778,7 +778,7 @@ pub fn eval_apply_normal_args(
 /// Returns the list items as expressions and the final world state.
 pub fn eval_apply_list_arg(
     arg: &AstNode,
-    context: &mut EvaluationContext<'_>,
+    context: &mut EvaluationContext,
     parent_span: &Span,
 ) -> Result<Vec<AstNode>, SutraError> {
     let list_val = evaluate_ast_node(arg, context)?;

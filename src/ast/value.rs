@@ -9,10 +9,19 @@ use std::{collections::HashMap, fmt, rc::Rc};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{AstNode, ParamList, Path};
+use crate::{
+    atoms::helpers::AtomResult, runtime::eval::EvaluationContext, AstNode, ParamList, Path, Span,
+};
+
+/// Eagerly evaluated native function: receives evaluated arguments.
+pub type NativeEagerFn = fn(args: &[Value], context: &mut EvaluationContext) -> AtomResult;
+
+/// Lazily evaluated native function: receives unevaluated AST nodes.
+pub type NativeLazyFn =
+    fn(args: &[AstNode], context: &mut EvaluationContext, parent_span: &Span) -> AtomResult;
 
 /// Canonical runtime value for Sutra evaluation and macro expansion.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum Value {
     /// Absence of a value; default for uninitialized slots.
     #[default]
@@ -31,6 +40,12 @@ pub enum Value {
     Path(Path),
     /// User-defined lambda function (captures parameter list and body).
     Lambda(Rc<Lambda>),
+    /// Native (Rust) function that evaluates its arguments eagerly.
+    #[serde(skip)]
+    NativeEagerFn(NativeEagerFn),
+    /// Native (Rust) function that evaluates its arguments lazily.
+    #[serde(skip)]
+    NativeLazyFn(NativeLazyFn),
 }
 
 /// Represents a user-defined lambda function (for closures and function values).
@@ -39,6 +54,24 @@ pub struct Lambda {
     pub params: ParamList,  // Parameter names, variadic info
     pub body: Box<AstNode>, // The function body (AST)
     pub captured_env: HashMap<String, Value>,
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Nil, Value::Nil) => true,
+            (Value::Number(a), Value::Number(b)) => a == b,
+            (Value::String(a), Value::String(b)) => a == b,
+            (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::List(a), Value::List(b)) => a == b,
+            (Value::Map(a), Value::Map(b)) => a == b,
+            (Value::Path(a), Value::Path(b)) => a == b,
+            (Value::Lambda(a), Value::Lambda(b)) => a == b,
+            (Value::NativeEagerFn(a), Value::NativeEagerFn(b)) => *a as usize == *b as usize,
+            (Value::NativeLazyFn(a), Value::NativeLazyFn(b)) => *a as usize == *b as usize,
+            _ => false,
+        }
+    }
 }
 
 impl Value {
@@ -53,6 +86,8 @@ impl Value {
             Value::Map(_) => "Map",
             Value::Path(_) => "Path",
             Value::Lambda(_) => "Lambda",
+            Value::NativeEagerFn(_) => "NativeEagerFn",
+            Value::NativeLazyFn(_) => "NativeLazyFn",
         }
     }
 
@@ -147,6 +182,8 @@ impl fmt::Display for Value {
             Value::Map(map) => Value::fmt_map(f, map),
             Value::Path(p) => write!(f, "{p}"),
             Value::Lambda(_) => write!(f, "<lambda>"),
+            Value::NativeEagerFn(_) => write!(f, "<native_eager_fn>"),
+            Value::NativeLazyFn(_) => write!(f, "<native_lazy_fn>"),
         }
     }
 }

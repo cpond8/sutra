@@ -27,7 +27,7 @@ impl SemanticValidator {
         self,
         ast: &AstNode,
         macros: &MacroRegistry,
-        atoms: &AtomRegistry,
+        atoms: &World,
     ) -> ValidationResult {
         let mut result = ValidationResult::new();
         let source_ctx = self.source_context.as_ref().map(|(f, s)| (f.as_str(), s.as_str()));
@@ -51,9 +51,10 @@ impl Default for SemanticValidator {
 ///
 /// use sutra::{
 ///     ast::{AstNode, Expr, Spanned},
-///     atoms::AtomRegistry,
 ///     macros::MacroRegistry,
 ///     validation::semantic::validate_expanded_ast,
+///     World,
+///     atoms,
 /// };
 /// // Minimal dummy AST node
 /// let ast = Spanned {
@@ -61,14 +62,15 @@ impl Default for SemanticValidator {
 ///     span: Default::default(),
 /// };
 /// let macros = MacroRegistry::default();
-/// let atoms = AtomRegistry::default();
-/// let result = validate_expanded_ast(&ast, &macros, &atoms);
+/// let mut world = World::default();
+/// atoms::register_all_atoms(&mut world);
+/// let result = validate_expanded_ast(&ast, &macros, &world);
 /// assert!(result.is_valid());
 /// ```
 pub fn validate_expanded_ast(
     ast: &AstNode,
     macros: &MacroRegistry,
-    atoms: &AtomRegistry,
+    atoms: &World,
 ) -> ValidationResult {
     // Use builder pattern with no source context for backward compatibility
     SemanticValidator::new().validate(ast, macros, atoms)

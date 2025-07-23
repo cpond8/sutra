@@ -5,10 +5,7 @@ use crate::prelude::*;
 use crate::{
     ast::value::Lambda,
     ast::ParamList,
-    atoms::{
-        helpers::{validate_special_form_arity, validate_special_form_min_arity, AtomResult},
-        LazyAtomFn,
-    },
+    atoms::helpers::{validate_special_form_arity, validate_special_form_min_arity, AtomResult},
     errors,
     runtime::{eval, world::Path},
 };
@@ -72,7 +69,7 @@ fn find_and_capture_free_variables(
 }
 
 /// Implements the (define ...) special form for global bindings.
-pub const ATOM_DEFINE: LazyAtomFn = |args, context, span| {
+pub const ATOM_DEFINE: NativeLazyFn = |args, context, span| {
     // 1. Validate arity: (define <name> <value>)
     validate_special_form_arity(args, 2, "define")?;
 
@@ -179,7 +176,7 @@ pub const ATOM_DEFINE: LazyAtomFn = |args, context, span| {
 };
 
 /// Implements the (if ...) special form with lazy evaluation.
-pub const ATOM_IF: LazyAtomFn = |args, context, _span| {
+pub const ATOM_IF: NativeLazyFn = |args, context, _span| {
     validate_special_form_arity(args, 3, "if")?;
     let condition = &args[0];
     let then_branch = &args[1];
@@ -191,7 +188,7 @@ pub const ATOM_IF: LazyAtomFn = |args, context, _span| {
 };
 
 /// Implements the (lambda ...) special form.
-pub const ATOM_LAMBDA: LazyAtomFn = |args, context, span| {
+pub const ATOM_LAMBDA: NativeLazyFn = |args, context, span| {
     validate_special_form_min_arity(args, 2, "lambda")?;
     // Parse parameter list
     let param_list = match &*args[0].value {
@@ -262,7 +259,7 @@ pub const ATOM_LAMBDA: LazyAtomFn = |args, context, span| {
 };
 
 /// Implements the (let ...) special form.
-pub const ATOM_LET: LazyAtomFn = |args, context, span| {
+pub const ATOM_LET: NativeLazyFn = |args, context, span| {
     validate_special_form_min_arity(args, 2, "let")?;
     // Parse bindings
     let bindings = match &*args[0].value {
@@ -342,7 +339,6 @@ pub fn call_lambda(
     let mut new_context = eval::EvaluationContext {
         world: Rc::clone(&context.world),
         output: context.output.clone(),
-        atom_registry: context.atom_registry,
         source: context.source.clone(),
         max_depth: context.max_depth,
         depth: context.depth + 1,

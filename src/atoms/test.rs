@@ -23,8 +23,9 @@ use lazy_static::lazy_static;
 use miette::NamedSource;
 
 // Use the public context helper macro
-use crate::prelude::*;
-use crate::atoms::{AtomResult, LazyAtomFn};
+use crate::{prelude::*, register_lazy};
+use crate::atoms::AtomResult;
+use crate::NativeLazyFn;
 use crate::errors;
 use crate::{
     helpers, runtime::eval, sub_eval_context,
@@ -281,8 +282,8 @@ fn handle_borrow_stress_recursion(
     depth: i64,
     msg: &str,
     span: &Span,
-    test_borrow_stress_atom: LazyAtomFn,
-    test_echo_atom: LazyAtomFn,
+    test_borrow_stress_atom: NativeLazyFn,
+    test_echo_atom: NativeLazyFn,
 ) -> AtomResult {
     if depth == 0 {
         return handle_borrow_stress_base_case(ctx, msg, span, test_echo_atom);
@@ -307,7 +308,7 @@ fn handle_borrow_stress_base_case(
     ctx: &mut EvaluationContext,
     msg: &str,
     span: &Span,
-    test_echo_atom: LazyAtomFn,
+    test_echo_atom: NativeLazyFn,
 ) -> AtomResult {
     let mut sub_context = sub_eval_context!(ctx);
     sub_context.depth = ctx.depth + 1; // Manually set incremented depth
@@ -338,27 +339,6 @@ fn test_borrow_stress_atom(
     Ok(Value::String(format!("depth:{depth};msg:{msg}")))
 }
 
-/// Registers all test atoms in the given registry.
-///
-/// This function should only be called in debug or test builds.
-/// It registers atoms used for testing, debugging, and development purposes.
-///
-/// # Safety
-/// Test atoms may have side effects (output, recursion) intended for testing.
-pub fn register_test_atoms(registry: &mut AtomRegistry) {
-    registry.register_lazy("test/echo", test_echo_atom);
-    registry.register_lazy("test/borrow_stress", test_borrow_stress_atom);
-    registry.register_lazy("register-test!", register_test_atom);
-
-    // Register test assertion atoms
-    registry.register_lazy("value", value_atom);
-    registry.register_lazy("tags", tags_atom);
-
-    // Register assertion atoms for testing
-    registry.register_lazy("assert", assert_atom);
-    registry.register_lazy("assert-eq", assert_eq_atom);
-}
-
 /// `assert` atom - basic assertion that fails if argument is false.
 ///
 /// Usage: (assert <expression>)
@@ -371,6 +351,27 @@ pub fn register_test_atoms(registry: &mut AtomRegistry) {
 ///   (assert true)        ; => nil (success)
 ///   (assert (eq? 1 1))   ; => nil (success)
 ///   (assert false)       ; => AssertionError
+/// Registers all test atoms in the given registry.
+///
+/// This function should only be called in debug or test builds.
+/// It registers atoms used for testing, debugging, and development purposes.
+///
+/// # Safety
+/// Test atoms may have side effects (output, recursion) intended for testing.
+pub fn register_test_atoms(world: &mut World) {
+    register_lazy!(world, "test/echo", test_echo_atom);
+    register_lazy!(world, "test/borrow_stress", test_borrow_stress_atom);
+    register_lazy!(world, "register-test!", register_test_atom);
+
+    // Register test assertion atoms
+    register_lazy!(world, "value", value_atom);
+    register_lazy!(world, "tags", tags_atom);
+
+    // Register assertion atoms for testing
+    register_lazy!(world, "assert", assert_atom);
+    register_lazy!(world, "assert-eq", assert_eq_atom);
+}
+
 fn assert_atom(
     args: &[AstNode],
     ctx: &mut EvaluationContext,

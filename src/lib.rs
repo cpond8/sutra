@@ -1,6 +1,9 @@
 pub use crate::{
-    ast::{value::Value, AstNode, Expr, ParamList, Span, Spanned},
-    atoms::{AtomRegistry, SharedOutput, StateContext},
+    ast::{
+        value::{NativeEagerFn, NativeLazyFn, Value},
+        AstNode, Expr, ParamList, Span, Spanned,
+    },
+    atoms::{SharedOutput, StateContext},
     engine::{print_error, EngineOutputBuffer, EngineStdoutSink},
     macros::{
         expand_macros_recursively, MacroDefinition, MacroExpansionContext, MacroRegistry,
@@ -19,9 +22,11 @@ pub use validation::{grammar, semantic};
 
 pub mod prelude {
     pub use crate::{
-        ast::value::Value,
-        ast::{AstNode, Expr, Span, Spanned},
-        atoms::{AtomRegistry, SharedOutput},
+        ast::{
+            value::{NativeEagerFn, NativeLazyFn, Value},
+            AstNode, Expr, Span, Spanned,
+        },
+        atoms::SharedOutput,
         errors::{ErrorType, SutraError},
         macros::MacroRegistry,
         runtime::eval::EvaluationContext,

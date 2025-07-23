@@ -19,13 +19,13 @@ impl AstValidator {
     pub fn validate_node(
         node: &AstNode,
         macros: &MacroRegistry,
-        atoms: &AtomRegistry,
+        world: &World,
         result: &mut ValidationResult,
         source_context: Option<(&str, &str)>, // (file_name, source_code)
     ) {
         match &*node.value {
             Expr::List(nodes, _) => {
-                Self::validate_list_expression(nodes, macros, atoms, result, source_context);
+                Self::validate_list_expression(nodes, macros, world, result, source_context);
             }
             Expr::If {
                 condition,
@@ -38,7 +38,7 @@ impl AstValidator {
                     then_branch,
                     else_branch,
                     macros,
-                    atoms,
+                    world,
                     result,
                     source_context,
                 );
@@ -50,7 +50,7 @@ impl AstValidator {
     fn validate_list_expression(
         nodes: &[AstNode],
         macros: &MacroRegistry,
-        atoms: &AtomRegistry,
+        world: &World,
         result: &mut ValidationResult,
         source_context: Option<(&str, &str)>,
     ) {
@@ -62,17 +62,17 @@ impl AstValidator {
         let Expr::Symbol(name, _) = &*first.value else {
             // Not a function call, validate all sub-nodes
             for sub_node in nodes {
-                Self::validate_node(sub_node, macros, atoms, result, source_context);
+                Self::validate_node(sub_node, macros, world, result, source_context);
             }
             return;
         };
 
         // Validate function call
-        Self::validate_function_call(name, nodes, macros, atoms, result, source_context);
+        Self::validate_function_call(name, nodes, macros, world, result, source_context);
 
         // Validate all arguments
         for sub_node in nodes {
-            Self::validate_node(sub_node, macros, atoms, result, source_context);
+            Self::validate_node(sub_node, macros, world, result, source_context);
         }
     }
 
@@ -80,7 +80,7 @@ impl AstValidator {
         name: &str,
         nodes: &[AstNode],
         macros: &MacroRegistry,
-        atoms: &AtomRegistry,
+        world: &World,
         result: &mut ValidationResult,
         source_context: Option<(&str, &str)>,
     ) {
@@ -94,7 +94,7 @@ impl AstValidator {
             if let MacroDefinition::Template(template) = macro_def {
                 Self::validate_macro_args(name, template, nodes.len() - 1, result, &nodes[0], source_context);
             }
-        } else if !atoms.has(name) {
+        } else if world.get(&Path(vec![name.to_string()])).is_none() {
             // Report undefined symbol with proper error
             let (file_name, source_code) = source_context.unwrap_or(("validation", "// validation context"));
             let error = errors::runtime_undefined_symbol(
@@ -112,13 +112,13 @@ impl AstValidator {
         then_branch: &AstNode,
         else_branch: &AstNode,
         macros: &MacroRegistry,
-        atoms: &AtomRegistry,
+        world: &World,
         result: &mut ValidationResult,
         source_context: Option<(&str, &str)>,
     ) {
-        Self::validate_node(condition, macros, atoms, result, source_context);
-        Self::validate_node(then_branch, macros, atoms, result, source_context);
-        Self::validate_node(else_branch, macros, atoms, result, source_context);
+        Self::validate_node(condition, macros, world, result, source_context);
+        Self::validate_node(then_branch, macros, world, result, source_context);
+        Self::validate_node(else_branch, macros, world, result, source_context);
     }
 
     fn validate_macro_args(

@@ -142,13 +142,15 @@ This refactor aims to eliminate the complexity and fragility of Sutra's current 
      - Document the new symbol resolution order and the fact that all functions (built-in or user) are first-class values.
      - Remove references to the atom registry and multi-path lookup.
 - **Concrete, Actionable Checklist:**
-  - [ ] Centralize symbol resolution logic to a single function/module with linear lookup order.
-  - [ ] Register all built-in functions (atoms) as global values at startup.
-  - [ ] Remove the atom registry and all related code.
-  - [ ] Update all code to use the new symbol resolution path.
-  - [ ] Update error reporting to reflect the new lookup order and provide clear diagnostics.
-  - [ ] Update documentation and comments to describe the new model.
-  - [ ] Test thoroughly to ensure shadowing, lookup, and error reporting work as expected.
+  - [x] Centralize symbol resolution logic to a single function/module with linear lookup order.
+  - [x] Register all built-in functions (atoms) as global values at startup.
+  - [x] Remove the atom registry and all related code.
+  - [x] Update all code to use the new symbol resolution path.
+  - [x] Update error reporting to reflect the new lookup order and provide clear diagnostics.
+  - [x] Update documentation and comments to describe the new model.
+  - [x] Test thoroughly to ensure shadowing, lookup, and error reporting work as expected.
+- **Implementation Summary:**
+  Phase 3 has been successfully completed. The core of this phase was the elimination of the `AtomRegistry` and the unification of symbol resolution. Native Rust functions ("atoms") were made into first-class `Value` variants (`NativeEagerFn`, `NativeLazyFn`), allowing them to be stored directly in the `World` alongside user-defined functions. A new, unified `resolve_symbol` function was implemented with a simple, linear lookup path: lexical scope first, then the global world. The `evaluate_list` function was refactored to first resolve the head of a list to a `Value`, then handle the invocation of that `Value` based on its type. This separation of resolution and invocation dramatically simplifies the evaluation model. The old `resolve_callable` function was deleted, and compiler-driven development was used to remove all references to the `AtomRegistry` and fix the resulting type errors. Finally, doctests and comments were updated across the codebase, and the test suite was run to confirm the refactor's success.
 
 ### Phase 4: Tests, Documentation, Error Handling
 - **Objective:** Ensure the new model is robust, well-documented, and easy to debug.

@@ -10,7 +10,7 @@ use crate::prelude::*;
 
 // Domain modules with aliases
 use crate::{
-    atoms::{register_all_atoms, StateContext},
+    atoms::{StateContext},
     macros::{
         load_macros_from_file, std_macros::register_std_macros, MacroDefinition,
         MacroExpansionContext, MacroValidationContext,
@@ -169,23 +169,8 @@ impl Default for World {
 // REGISTRY CONSTRUCTION: Canonical registry builders
 // ============================================================================
 
-/// Builds and returns a fully populated atom registry with all standard atoms registered.
-///
-/// This function creates the canonical atom registry used by the Sutra engine. It includes
-/// all standard atoms and conditionally includes test atoms in debug/test builds.
-///
-/// # Example
-/// ```rust
-/// use sutra::runtime::world::build_default_atom_registry;
-/// let registry = build_default_atom_registry();
-/// assert!(!registry.is_empty());
-/// ```
-#[inline]
-pub fn build_default_atom_registry() -> AtomRegistry {
-    let mut registry = AtomRegistry::new();
-    register_all_atoms(&mut registry);
-    registry
-}
+// This function has been removed as the AtomRegistry is no longer used.
+// Native functions are now registered directly into the World.
 
 /// Builds and returns a fully populated macro registry with all standard macros registered.
 ///

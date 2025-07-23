@@ -2,10 +2,12 @@
 //!
 //! Transforms AST nodes into runtime values with world state consistency.
 //!
-//! ## CRITICAL: Atom Calling Conventions
+//! ## Calling Conventions
 //!
-//! Atoms are `Pure`/`Stateful` (eager evaluation) or `SpecialForm` (unevaluated args).
-//! **Safety**: Misclassifying atoms causes runtime failures. See `src/atoms.rs`.
+//! Native functions are implemented as `Value::NativeEagerFn` or `Value::NativeLazyFn`,
+//! preserving the dual calling convention model. Eager functions receive evaluated
+//! `Value` arguments, while lazy functions (special forms) receive raw `AstNode`
+//! arguments to control their own evaluation.
 //!
 //! ## Error Handling
 //!
@@ -16,7 +18,7 @@
 //! assert!(matches!(err, sutra::SutraError::Eval { .. }));
 //! ```
 
-// The atom registry is a single source of truth and must be passed by reference to all validation and evaluation code. Never construct a local/hidden registry.
+// All functions are now first-class values in the world state. There is no separate atom registry.
 use std::{collections::HashMap, rc::Rc, sync::Arc};
 
 use miette::{NamedSource, SourceSpan};
@@ -25,7 +27,7 @@ use miette::{NamedSource, SourceSpan};
 use crate::prelude::*;
 
 // Domain modules with aliases
-use crate::atoms::{helpers::AtomResult, special_forms, Atom, EagerAtomFn};
+use crate::atoms::{helpers::AtomResult, special_forms};
 use crate::errors;
 
 // ===================================================================================================
@@ -33,10 +35,9 @@ use crate::errors;
 // ===================================================================================================
 
 /// The context for a single evaluation, passed to atoms and all evaluation functions.
-pub struct EvaluationContext<'a> {
+pub struct EvaluationContext {
     pub world: CanonicalWorld,
     pub output: SharedOutput,
-    pub atom_registry: &'a AtomRegistry,
     pub source: Arc<NamedSource<String>>,
     pub max_depth: usize,
     pub depth: usize,
@@ -46,7 +47,7 @@ pub struct EvaluationContext<'a> {
     pub test_name: Option<String>,
 }
 
-impl<'a> EvaluationContext<'a> {
+impl EvaluationContext {
     /// Helper to increment depth for recursive calls.
     pub fn next_depth(&self) -> usize {
         self.depth + 1
@@ -57,7 +58,6 @@ impl<'a> EvaluationContext<'a> {
         let mut new = EvaluationContext {
             world: Rc::clone(&self.world),
             output: self.output.clone(),
-            atom_registry: self.atom_registry,
             source: self.source.clone(),
             max_depth: self.max_depth,
             depth: self.depth,
@@ -91,7 +91,7 @@ impl<'a> EvaluationContext<'a> {
     }
 }
 
-impl<'a> EvaluationContext<'a> {
+impl EvaluationContext {
     /// Extract the current file name for error construction
     pub fn current_file(&self) -> String {
         self.source.name().to_string()
@@ -111,113 +111,27 @@ impl<'a> EvaluationContext<'a> {
     pub fn span_for_span(&self, span: Span) -> SourceSpan {
         to_source_span(span)
     }
-    /// Looks up and invokes an atom by name, handling errors for missing atoms.
-    /// **CRITICAL**: This function does NOT handle macro expansion. Macros must be
-    /// expanded before evaluation according to the strict layering principle.
-    pub(crate) fn call_atom(
-        &mut self,
-        symbol_name: &str,
-        head: &AstNode,
-        args: &[AstNode],
-        span: &Span,
-    ) -> AtomResult {
-        // Step 1: Look up atom in registry
-        let atom = self.lookup_atom(symbol_name, head)?;
-
-        // Step 2: Validate atom classification (debug only)
-        self.validate_atom_classification(symbol_name, &atom);
-
-        // Step 3: Dispatch to appropriate atom type
-        self.dispatch_atom(atom, args, span)
-    }
-
-    fn lookup_atom(&self, symbol_name: &str, head: &AstNode) -> Result<Atom, SutraError> {
-        self.atom_registry
-            .get(symbol_name)
-            .cloned()
-            .ok_or_else(|| {
-                let mut err = errors::runtime_undefined_symbol(
-                    symbol_name,
-                    self.current_file(),
-                    self.current_source(),
-                    self.span_for_node(head)
-                ).with_suggestion(format!("Define '{}' before using it", symbol_name));
-
-                if let (Some(ref tf), Some(ref tn)) = (&self.test_file, &self.test_name) {
-                    err = err.with_test_context(tf.clone(), tn.clone());
-                }
-                err
-            })
-    }
-
-    fn validate_atom_classification(&self, symbol_name: &str, atom: &Atom) {
-        #[cfg(debug_assertions)]
-        {
-            const SPECIAL_FORM_NAMES: &[&str] = &[
-                "do",
-                "error",
-                "apply",
-                "assert",
-                "assert-eq",
-                "test/echo",
-                "test/borrow_stress",
-                "register-test!",
-            ];
-
-            if SPECIAL_FORM_NAMES.contains(&symbol_name) {
-                assert!(
-                    matches!(atom, Atom::Lazy(_)),
-                    "CRITICAL: Atom '{symbol_name}' is a special form and MUST be registered as Atom::Lazy."
-                );
-            }
-        }
-    }
-
-    fn dispatch_atom(&mut self, atom: Atom, args: &[AstNode], span: &Span) -> AtomResult {
-        match atom {
-            // Lazily evaluated atoms (formerly special forms) control their own evaluation
-            Atom::Lazy(lazy_fn) => lazy_fn(args, self, span),
-
-            // Eagerly evaluated atoms now use a single calling convention
-            Atom::Eager(eager_fn) => self.call_eager_atom(eager_fn, args, span),
-        }
-    }
-
-    fn call_eager_atom(
-        &mut self,
-        eager_fn: EagerAtomFn,
-        args: &[AstNode],
-        _parent_span: &Span,
-    ) -> AtomResult {
-        // Eagerly evaluate arguments. The world state is mutated directly.
-        let evaluated_args = evaluate_eager_args(args, self)?;
-
-        // Invoke the eager atom. It receives the current context and can mutate the world.
-        eager_fn(&evaluated_args, self)
-    }
 }
 
 // ===================================================================================================
 // PUBLIC API: Main Evaluation Interface
 // ===================================================================================================
 
-pub struct EvaluationContextBuilder<'a> {
+pub struct EvaluationContextBuilder {
     source: Arc<NamedSource<String>>,
     world: CanonicalWorld,
     output: SharedOutput,
-    atom_registry: &'a AtomRegistry,
     max_depth: usize,
     test_file: Option<String>,
     test_name: Option<String>,
 }
 
-impl<'a> EvaluationContextBuilder<'a> {
-    pub fn new(source: Arc<NamedSource<String>>, world: CanonicalWorld, output: SharedOutput, atom_registry: &'a AtomRegistry) -> Self {
+impl EvaluationContextBuilder {
+    pub fn new(source: Arc<NamedSource<String>>, world: CanonicalWorld, output: SharedOutput) -> Self {
         Self {
             source,
             world,
             output,
-            atom_registry,
             max_depth: 1000,
             test_file: None,
             test_name: None,
@@ -226,13 +140,12 @@ impl<'a> EvaluationContextBuilder<'a> {
     pub fn with_test_file(mut self, test_file: Option<String>) -> Self { self.test_file = test_file; self }
     pub fn with_test_name(mut self, test_name: Option<String>) -> Self { self.test_name = test_name; self }
     pub fn with_max_depth(mut self, max_depth: usize) -> Self { self.max_depth = max_depth; self }
-    pub fn build(self) -> EvaluationContext<'a> {
+    pub fn build(self) -> EvaluationContext {
         let mut global_env = HashMap::new();
         global_env.insert("nil".to_string(), Value::Nil);
         EvaluationContext {
             world: self.world,
             output: self.output,
-            atom_registry: self.atom_registry,
             source: self.source,
             max_depth: self.max_depth,
             depth: 0,
@@ -248,13 +161,12 @@ pub fn evaluate(
     expr: &AstNode,
     world: CanonicalWorld,
     output: SharedOutput,
-    atom_registry: &AtomRegistry,
     source: Arc<NamedSource<String>>,
     max_depth: usize,
     test_file: Option<String>,
     test_name: Option<String>,
 ) -> AtomResult {
-    let mut context = EvaluationContextBuilder::new(source, world, output, atom_registry)
+    let mut context = EvaluationContextBuilder::new(source, world, output)
         .with_max_depth(max_depth)
         .with_test_file(test_file)
         .with_test_name(test_name)
@@ -321,36 +233,48 @@ pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext)
 // EXPRESSION EVALUATION: Core Expression Types
 // ===================================================================================================
 
-/// Evaluates list expressions (function calls)
+/// Evaluates a list expression, which is the primary mechanism for function invocation.
 fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext) -> AtomResult {
-    // Step 1: Early validation - check for empty list
+    // An empty list evaluates to an empty list.
     if items.is_empty() {
         return Ok(Value::List(vec![]));
     }
 
-    // Step 2: Evaluate the head (first element) as an expression
     let head = &items[0];
     let tail = &items[1..];
-    // If the head is a symbol, use resolve_callable as before
-    if let Expr::Symbol(symbol_name, _) = &*head.value {
-        return resolve_callable(symbol_name, head, tail, span, context);
-    }
-    // Otherwise, evaluate the head as an expression
-    let head_val = evaluate_ast_node(head, context)?;
 
-    match head_val {
-        Value::Lambda(ref lambda) => {
-            // Eagerly evaluate arguments for lambda call, mutating world state.
-            let arg_values = evaluate_eager_args(tail, context)?;
-            special_forms::call_lambda(lambda, &arg_values, context)
+    // First, resolve the head of the list to a value.
+    // If it's a symbol, we look it up. Otherwise, we evaluate it as an expression.
+    let callable_val = if let Expr::Symbol(symbol_name, _) = &*head.value {
+        resolve_symbol(symbol_name, &head.span, context)?
+    } else {
+        evaluate_ast_node(head, context)?
+    };
+
+    // Now, match on the resolved value to see if it's a callable entity.
+    match callable_val {
+        Value::Lambda(lambda) => {
+            let flat_args = flatten_spread_args(tail, context)?;
+            let arg_values = evaluate_eager_args(&flat_args, context)?;
+            special_forms::call_lambda(&lambda, &arg_values, context)
         }
+        Value::NativeEagerFn(eager_fn) => {
+            let flat_args = flatten_spread_args(tail, context)?;
+            let arg_values = evaluate_eager_args(&flat_args, context)?;
+            eager_fn(&arg_values, context)
+        }
+        Value::NativeLazyFn(lazy_fn) => lazy_fn(tail, context, span),
         _ => {
             let mut err = errors::runtime_general(
-                "first element must be a callable entity (lambda or symbol)",
+                format!(
+                    "The value of type '{}' is not a callable function.",
+                    callable_val.type_name()
+                ),
                 context.current_file(),
                 context.current_source(),
-                context.span_for_node(head)
-            ).with_suggestion("Use a lambda or symbol as the function name");
+                context.span_for_node(head),
+            )
+            .with_suggestion("Ensure the first element of a list is a lambda or native function.");
 
             if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
                 err = err.with_test_context(tf.clone(), tn.clone());
@@ -360,112 +284,6 @@ fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext
     }
 }
 
-/// Resolves a callable entity following strict precedence order.
-/// This is the single source of truth for function call resolution.
-///
-/// Resolution order (per language specification):
-/// 1. Lexical environment (let/lambda bindings)
-/// 2. Atom registry (built-in functions and special forms)
-/// 3. World state (global state paths)
-fn resolve_callable(
-    symbol_name: &str,
-    head: &AstNode,
-    args: &[AstNode], // Raw, unevaluated arguments
-    span: &Span,
-    context: &mut EvaluationContext,
-) -> AtomResult {
-    // Resolution order (per language specification):
-    // 1. Lexical environment (let/lambda bindings)
-    if let Some(value) = context.get_lexical_var(symbol_name).cloned() {
-        return match value {
-            Value::Lambda(lambda) => {
-                // Eagerly evaluate arguments for lambda call
-                let flat_args = flatten_spread_args(args, context)?;
-                let arg_values = evaluate_eager_args(&flat_args, context)?;
-                special_forms::call_lambda(&lambda, &arg_values, context)
-            }
-            _ => {
-                let mut err = errors::runtime_general(
-                    format!(
-                        "'{}' is not a callable entity (found in lexical environment but not a lambda)",
-                        symbol_name
-                    ),
-                    context.current_file(),
-                    context.current_source(),
-                    context.span_for_node(head),
-                )
-                .with_suggestion("Ensure the variable contains a lambda function");
-
-                if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
-                    err = err.with_test_context(tf.clone(), tn.clone());
-                }
-                Err(err)
-            }
-        };
-    }
-
-    // 2. Atom registry (built-in functions and special forms)
-    // We clone the atom to release the borrow on the registry.
-    if let Some(atom) = context.atom_registry.get(symbol_name).cloned() {
-        return match atom {
-            // Lazy atoms receive raw, unevaluated arguments
-            Atom::Lazy(_) => context.call_atom(symbol_name, head, args, span),
-            // Eager atoms receive evaluated arguments, so we must flatten spreads first.
-            Atom::Eager(_) => {
-                let flat_args = flatten_spread_args(args, context)?;
-                context.call_atom(symbol_name, head, &flat_args, span)
-            }
-        };
-    }
-
-    // 3. World state (global state paths)
-    // First, borrow immutably to check for existence and clone the value.
-    let world_path = Path(vec![symbol_name.to_string()]);
-    let value_from_world = context.world.borrow().state.get(&world_path).cloned();
-
-    // Now that the immutable borrow is dropped, we can proceed with operations
-    // that might require a mutable borrow of the world (e.g., evaluating arguments).
-    if let Some(value) = value_from_world {
-        return match value {
-            Value::Lambda(lambda) => {
-                let flat_args = flatten_spread_args(args, context)?;
-                let arg_values = evaluate_eager_args(&flat_args, context)?;
-                special_forms::call_lambda(&lambda, &arg_values, context)
-            }
-            _ => {
-                let mut err = errors::runtime_general(
-                    format!(
-                        "'{}' is not a callable entity (found in world state but not a lambda)",
-                        symbol_name
-                    ),
-                    context.current_file(),
-                    context.current_source(),
-                    context.span_for_node(head),
-                )
-                .with_suggestion("Ensure the global variable contains a lambda function");
-
-                if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
-                    err = err.with_test_context(tf.clone(), tn.clone());
-                }
-                Err(err)
-            }
-        };
-    }
-
-    // 4. Symbol not found anywhere
-    let mut err = errors::runtime_undefined_symbol(
-        symbol_name,
-        context.current_file(),
-        context.current_source(),
-        context.span_for_node(head),
-    )
-    .with_suggestion(format!("Define '{}' before using it", symbol_name));
-
-    if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
-        err = err.with_test_context(tf.clone(), tn.clone());
-    }
-    Err(err)
-}
 
 /// Evaluates quote expressions (preserve content)
 fn evaluate_quote(inner: &AstNode, context: &mut EvaluationContext) -> AtomResult {
@@ -552,7 +370,7 @@ fn evaluate_invalid_expr(expr: &AstNode, context: &mut EvaluationContext) -> Ato
         }
 
         // Symbols need resolution - may succeed or fail
-        Expr::Symbol(symbol_name, span) => resolve_symbol(symbol_name, span, context),
+        Expr::Symbol(symbol_name, span) => Ok(resolve_symbol(symbol_name, span, context)?),
 
         // Spread arguments are only valid in function calls
         Expr::Spread(_) => {
@@ -574,42 +392,32 @@ fn evaluate_invalid_expr(expr: &AstNode, context: &mut EvaluationContext) -> Ato
     }
 }
 
-fn resolve_symbol(symbol_name: &str, span: &Span, context: &mut EvaluationContext) -> AtomResult {
-    // Try to resolve symbol in precedence order: lexical → atom → world → undefined
-
-    // Step 1: Check lexical environment (let/lambda bindings)
+/// Resolves a symbol to a value by searching the lexical environment, then the global world.
+/// This function is the single source of truth for symbol resolution.
+fn resolve_symbol(
+    symbol_name: &str,
+    span: &Span,
+    context: &mut EvaluationContext,
+) -> Result<Value, SutraError> {
+    // 1. Lexical environment (innermost to outermost)
     if let Some(value) = context.get_lexical_var(symbol_name) {
         return Ok(value.clone());
     }
 
-    // Step 2: Check if symbol is an atom (must be called, not evaluated)
-    if context.atom_registry.has(symbol_name) {
-        let mut err = errors::runtime_general(
-            format!("'{}' is an atom and must be called with arguments (e.g., ({} ...))", symbol_name, symbol_name),
-            context.current_file(),
-            context.current_source(),
-            context.span_for_span(*span)
-        ).with_suggestion(format!("Use '({} ...)' to call the atom", symbol_name));
-
-        if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
-            err = err.with_test_context(tf.clone(), tn.clone());
-        }
-        return Err(err);
-    }
-
-    // Step 3: Check world state (global variables)
+    // 2. Global world state
     let world_path = Path(vec![symbol_name.to_string()]);
     if let Some(value) = context.world.borrow().state.get(&world_path) {
         return Ok(value.clone());
     }
 
-    // Step 4: Symbol is undefined
+    // 3. Undefined
     let mut err = errors::runtime_undefined_symbol(
         symbol_name,
         context.current_file(),
         context.current_source(),
-        context.span_for_span(*span)
-    ).with_suggestion(format!("Define '{}' before using it", symbol_name));
+        context.span_for_span(*span),
+    )
+    .with_suggestion(format!("Define '{}' before using it", symbol_name));
 
     if let (Some(ref tf), Some(ref tn)) = (&context.test_file, &context.test_name) {
         err = err.with_test_context(tf.clone(), tn.clone());

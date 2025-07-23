@@ -3,9 +3,9 @@
 
 use crate::prelude::*;
 use crate::{
-    atoms::EagerAtomFn,
     errors,
     helpers::{self, ExtractValue},
+    NativeEagerFn,
 };
 
 // ============================================================================
@@ -21,7 +21,7 @@ use crate::{
 ///
 /// Example:
 ///   (+ 1 2 3) ; => 6
-pub const ATOM_ADD: EagerAtomFn = |args, context| {
+pub const ATOM_ADD: NativeEagerFn = |args, context| {
     helpers::validate_min_arity(args, 2, "+")?;
     let mut sum = 0.0;
     for arg in args {
@@ -40,7 +40,7 @@ pub const ATOM_ADD: EagerAtomFn = |args, context| {
 ///
 /// Example:
 ///   (- 5 2) ; => 3
-pub const ATOM_SUB: EagerAtomFn = |args, context| {
+pub const ATOM_SUB: NativeEagerFn = |args, context| {
     helpers::validate_min_arity(args, 1, "-")?;
     let first: f64 = args[0].extract(Some(context))?;
     if args.len() == 1 {
@@ -63,7 +63,7 @@ pub const ATOM_SUB: EagerAtomFn = |args, context| {
 ///
 /// Example:
 ///   (* 2 3 4) ; => 24
-pub const ATOM_MUL: EagerAtomFn = |args, context| {
+pub const ATOM_MUL: NativeEagerFn = |args, context| {
     helpers::validate_min_arity(args, 2, "*")?;
     let mut product = 1.0;
     for arg in args {
@@ -83,7 +83,7 @@ pub const ATOM_MUL: EagerAtomFn = |args, context| {
 /// Example:
 ///   (/ 6 2) ; => 3
 /// Note: Errors on division by zero.
-pub const ATOM_DIV: EagerAtomFn = |args, context| {
+pub const ATOM_DIV: NativeEagerFn = |args, context| {
     helpers::validate_min_arity(args, 1, "/")?;
     let first: f64 = args[0].extract(Some(context))?;
     if args.len() == 1 {
@@ -126,7 +126,7 @@ pub const ATOM_DIV: EagerAtomFn = |args, context| {
 ///   (mod 5 2) ; => 1
 ///
 /// Note: Errors on division by zero or non-integer input.
-pub const ATOM_MOD: EagerAtomFn = |args, context| {
+pub const ATOM_MOD: NativeEagerFn = |args, context| {
     helpers::validate_binary_arity(args, "mod")?;
     let a: f64 = args[0].extract(Some(context))?;
     let b: f64 = args[1].extract(Some(context))?;
@@ -155,7 +155,7 @@ pub const ATOM_MOD: EagerAtomFn = |args, context| {
 /// Example:
 ///   (abs -5) ; => 5
 ///   (abs 3.14) ; => 3.14
-pub const ATOM_ABS: EagerAtomFn = |args, context| {
+pub const ATOM_ABS: NativeEagerFn = |args, context| {
     helpers::validate_unary_arity(args, "abs")?;
     let n: f64 = args[0].extract(Some(context))?;
     Ok(Value::Number(n.abs()))
@@ -170,7 +170,7 @@ pub const ATOM_ABS: EagerAtomFn = |args, context| {
 ///
 /// Example:
 ///   (min 3 1 4) ; => 1
-pub const ATOM_MIN: EagerAtomFn = |args, context| {
+pub const ATOM_MIN: NativeEagerFn = |args, context| {
     helpers::validate_min_arity(args, 1, "min")?;
     let mut min = f64::INFINITY;
     for arg in args {
@@ -189,7 +189,7 @@ pub const ATOM_MIN: EagerAtomFn = |args, context| {
 ///
 /// Example:
 ///   (max 3 1 4) ; => 4
-pub const ATOM_MAX: EagerAtomFn = |args, context| {
+pub const ATOM_MAX: NativeEagerFn = |args, context| {
     helpers::validate_min_arity(args, 1, "max")?;
     let mut max = f64::NEG_INFINITY;
     for arg in args {
@@ -198,22 +198,3 @@ pub const ATOM_MAX: EagerAtomFn = |args, context| {
     }
     Ok(Value::Number(max))
 };
-
-// ============================================================================
-// REGISTRATION FUNCTION
-// ============================================================================
-
-/// Registers all mathematical atoms with the given registry.
-pub fn register_math_atoms(registry: &mut AtomRegistry) {
-    // Arithmetic operations
-    registry.register_eager("+", ATOM_ADD);
-    registry.register_eager("-", ATOM_SUB);
-    registry.register_eager("*", ATOM_MUL);
-    registry.register_eager("/", ATOM_DIV);
-    registry.register_eager("mod", ATOM_MOD);
-
-    // Math functions
-    registry.register_eager("abs", ATOM_ABS);
-    registry.register_eager("min", ATOM_MIN);
-    registry.register_eager("max", ATOM_MAX);
-}

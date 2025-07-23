@@ -18,27 +18,23 @@
 // - **Minimal Coupling**: Each domain module depends only on `helpers`
 // - **Clear Responsibilities**: Each module has a single, well-defined purpose
 //
-// ## CRITICAL: Atom Classification and Calling Conventions
+// ## Native Function Calling Conventions
 //
-// The Sutra engine supports two incompatible calling conventions for atoms,
-// determined by the `Atom` enum variant used at registration:
+// All built-in functions ("atoms") are first-class `Value` types, specifically
+// `Value::NativeEagerFn` and `Value::NativeLazyFn`. This design retains the dual
+// calling conventions critical for the language's semantics:
 //
-// 1.  **Eager Evaluation (`Pure`, `Stateful`)**: Arguments are evaluated *before*
-//     the atom is called. The atom receives a `&[Value]`. This is the standard
-//     convention for most atoms.
+// 1.  **Eager Functions (`NativeEagerFn`)**: Arguments are evaluated *before* the
+//     function is called. The native Rust function receives a `&[Value]`. This is
+//     the standard convention for most operations (e.g., `+`, `eq?`).
 //
-// 2.  **Lazy Evaluation (`SpecialForm`)**: Arguments are passed *unevaluated* as
-//     `&[AstNode]`. The atom is responsible for evaluating them as needed. This
-//     is used for control flow operators like `if`, `do`, and `define`.
-//
-// **Misclassifying an atom will cause immediate runtime failures.** For example,
-// registering a `SpecialForm` atom as `Pure` will lead to incorrect evaluation
-// and likely panic. Debug assertions have been added to `eval::call_atom` to
-// catch such misclassifications for known special forms.
+// 2.  **Lazy Functions (`NativeLazyFn`)**: Arguments are passed *unevaluated* as
+//     `&[AstNode]`. The function itself controls if and when to evaluate its
+//     arguments. This is essential for special forms that manage control flow
+//     (e.g., `if`, `lambda`, `let`).
 
 use std::{cell::RefCell, rc::Rc};
 
-use im::HashMap;
 
 // Core types via prelude
 use crate::prelude::*;
@@ -46,29 +42,15 @@ use crate::prelude::*;
 // Domain modules with aliases
 use crate::{
     atoms::helpers::AtomResult,
-    runtime::eval::EvaluationContext,
 };
 
 // ============================================================================
 // NEW ATOM ARCHITECTURE TYPES
 // ============================================================================
 //
-// The `Atom` enum and its associated function types are the foundation of the
-// dual-convention architecture. Correct classification is critical for stability.
+// All callable entities are now dispatched through `evaluate_list` in `eval.rs`,
+// which inspects the `Value` type to determine the correct calling convention.
 
-/// Eagerly evaluated atoms: receive evaluated `Value` arguments and full `EvaluationContext`.
-pub type EagerAtomFn = fn(args: &[Value], context: &mut EvaluationContext) -> AtomResult;
-
-/// Lazily evaluated atoms: receive unevaluated `AstNode` arguments for manual evaluation.
-pub type LazyAtomFn =
-    fn(args: &[AstNode], context: &mut EvaluationContext, parent_span: &Span) -> AtomResult;
-
-/// The unified atom representation supporting two evaluation strategies.
-#[derive(Clone)]
-pub enum Atom {
-    Eager(EagerAtomFn),
-    Lazy(LazyAtomFn),
-}
 
 /// Minimal state interface for stateful atoms
 pub trait StateContext {
@@ -78,11 +60,10 @@ pub trait StateContext {
     fn exists(&self, path: &Path) -> bool;
 }
 
-// The `Callable` trait has been removed. All callable entities are now
-// dispatched through specific paths in the evaluation engine (`eval.rs`),
-// primarily `resolve_callable`. This ensures that each type of callable
-// (atoms, lambdas, etc.) receives the correct context and evaluation
-// semantics, removing the risk of incorrect polymorphic calls.
+// The `Callable` trait has been removed. All callable entities (native functions,
+// lambdas) are resolved to a `Value` and then handled by `evaluate_list`, which
+// acts as the single dispatch point. This ensures each callable type receives
+// the correct arguments and evaluation semantics.
 
 // Output sink for `print`, etc., to make I/O testable and injectable.
 pub trait OutputSink {
@@ -114,57 +95,6 @@ impl SharedOutput {
     }
 }
 
-// Registry for all atoms, inspectable at runtime.
-#[derive(Default)]
-pub struct AtomRegistry {
-    pub atoms: HashMap<String, Atom>, // Changed from AtomFn to Atom
-}
-
-impl AtomRegistry {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn get(&self, name: &str) -> Option<&Atom> {
-        self.atoms.get(name)
-    }
-
-    pub fn list(&self) -> Vec<String> {
-        self.atoms.keys().cloned().collect()
-    }
-
-    fn register(&mut self, name: &str, func: Atom) {
-        self.atoms.insert(name.to_string(), func);
-    }
-
-    pub fn register_eager(&mut self, name: &str, func: EagerAtomFn) {
-        self.register(name, Atom::Eager(func));
-    }
-
-    pub fn register_lazy(&mut self, name: &str, func: LazyAtomFn) {
-        self.register(name, Atom::Lazy(func));
-    }
-
-    pub fn clear(&mut self) {
-        self.atoms.clear();
-    }
-
-    pub fn remove(&mut self, name: &str) -> Option<Atom> {
-        self.atoms.remove(name)
-    }
-
-    pub fn has(&self, name: &str) -> bool {
-        self.atoms.contains_key(name)
-    }
-
-    pub fn len(&self) -> usize {
-        self.atoms.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.atoms.is_empty()
-    }
-}
 
 // ============================================================================
 // MODULAR ATOM IMPLEMENTATIONS
@@ -195,50 +125,114 @@ pub use test::{TestDefinition, TEST_REGISTRY};
 // UNIFIED REGISTRATION FUNCTION
 // ============================================================================
 
-/// Registers all standard atoms from all modules with the given registry.
-/// This is the main entry point for setting up the complete atom system.
-pub fn register_all_atoms(registry: &mut AtomRegistry) {
+/// Registers all standard native functions from all modules into the given `World`.
+/// This is the main entry point for populating the global environment.
+// Helper macro to reduce boilerplate in registration
+#[macro_export]
+macro_rules! register_eager {
+    ($world:expr, $name:expr, $func:expr) => {
+        $world.set(
+            &Path(vec![$name.to_string()]),
+            Value::NativeEagerFn($func),
+        );
+    };
+}
+
+#[macro_export]
+macro_rules! register_lazy {
+    ($world:expr, $name:expr, $func:expr) => {
+        $world.set(
+            &Path(vec![$name.to_string()]),
+            Value::NativeLazyFn($func),
+        );
+    };
+}
+
+/// Registers all standard atoms from all modules with the given world.
+pub fn register_all_atoms(world: &mut World) {
     // Register atoms from each domain module
-    math::register_math_atoms(registry);
-    logic::register_logic_atoms(registry);
-    world::register_world_atoms(registry);
-    collections::register_collection_atoms(registry);
-    execution::register_execution_atoms(registry);
-    external::register_external_atoms(registry);
-    string::register_string_atoms(registry);
-    register_special_forms(registry);
+    register_math_atoms(world);
+    register_logic_atoms(world);
+    register_world_atoms(world);
+    register_collection_atoms(world);
+    register_execution_atoms(world);
+    register_external_atoms(world);
+    register_string_atoms(world);
+    register_special_forms(world);
 
     // Register test atoms only in debug or test builds
     #[cfg(any(test, feature = "test-atom", debug_assertions))]
-    test::register_test_atoms(registry);
+    test::register_test_atoms(world);
 }
 
-/// Registers all collection atoms with the given registry.
-///
-/// List operations: list, len, has?, car, cdr, cons, core/push!, core/pull!
-/// String operations: core/str+
-pub fn register_collection_atoms(registry: &mut AtomRegistry) {
-    // List operations
-    registry.register_eager("list", collections::ATOM_LIST);
-    registry.register_eager("len", collections::ATOM_LEN);
-    registry.register_eager("has?", collections::ATOM_HAS);
-    registry.register_eager("car", collections::ATOM_CAR);
-    registry.register_eager("cdr", collections::ATOM_CDR);
-    registry.register_eager("cons", collections::ATOM_CONS);
-
-    // String operations
-    registry.register_eager("core/str+", collections::ATOM_CORE_STR_PLUS);
+// Private registration functions for each module
+fn register_math_atoms(world: &mut World) {
+    register_eager!(world, "+", math::ATOM_ADD);
+    register_eager!(world, "-", math::ATOM_SUB);
+    register_eager!(world, "*", math::ATOM_MUL);
+    register_eager!(world, "/", math::ATOM_DIV);
+    register_eager!(world, "mod", math::ATOM_MOD);
+    register_eager!(world, "abs", math::ATOM_ABS);
+    register_eager!(world, "min", math::ATOM_MIN);
+    register_eager!(world, "max", math::ATOM_MAX);
 }
 
-/// Registers all special form atoms (lambda, let, if, etc.) with the given registry.
-pub fn register_special_forms(registry: &mut AtomRegistry) {
-    registry.register_lazy("lambda", special_forms::ATOM_LAMBDA);
-    registry.register_lazy("let", special_forms::ATOM_LET);
-    registry.register_lazy("if", special_forms::ATOM_IF);
-    registry.register_lazy("define", special_forms::ATOM_DEFINE);
+fn register_logic_atoms(world: &mut World) {
+    register_eager!(world, "eq?", logic::ATOM_EQ);
+    register_eager!(world, "gt?", logic::ATOM_GT);
+    register_eager!(world, "lt?", logic::ATOM_LT);
+    register_eager!(world, "gte?", logic::ATOM_GTE);
+    register_eager!(world, "lte?", logic::ATOM_LTE);
+    register_eager!(world, "is?", logic::ATOM_EQ);
+    register_eager!(world, "over?", logic::ATOM_GT);
+    register_eager!(world, "under?", logic::ATOM_LT);
+    register_eager!(world, "at-least?", logic::ATOM_GTE);
+    register_eager!(world, "at-most?", logic::ATOM_LTE);
+    register_eager!(world, "not", logic::ATOM_NOT);
 }
 
-// ============================================================================
-// CALLABLE TRAIT IMPLEMENTATIONS
-// ============================================================================
+fn register_world_atoms(world: &mut World) {
+    register_eager!(world, "core/set!", world::ATOM_CORE_SET);
+    register_eager!(world, "core/get", world::ATOM_CORE_GET);
+    register_eager!(world, "core/del!", world::ATOM_CORE_DEL);
+    register_eager!(world, "core/exists?", world::ATOM_EXISTS);
+    register_eager!(world, "path", world::ATOM_PATH);
+}
 
+fn register_collection_atoms(world: &mut World) {
+    register_eager!(world, "list", collections::ATOM_LIST);
+    register_eager!(world, "len", collections::ATOM_LEN);
+    register_eager!(world, "has?", collections::ATOM_HAS);
+    register_eager!(world, "car", collections::ATOM_CAR);
+    register_eager!(world, "cdr", collections::ATOM_CDR);
+    register_eager!(world, "cons", collections::ATOM_CONS);
+    register_eager!(world, "core/push!", collections::ATOM_CORE_PUSH);
+    register_eager!(world, "core/pull!", collections::ATOM_CORE_PULL);
+    register_eager!(world, "core/str+", collections::ATOM_CORE_STR_PLUS);
+    register_eager!(world, "core/map", collections::ATOM_CORE_MAP);
+}
+
+fn register_execution_atoms(world: &mut World) {
+    register_lazy!(world, "do", execution::ATOM_DO);
+    register_lazy!(world, "error", execution::ATOM_ERROR);
+    register_lazy!(world, "apply", execution::ATOM_APPLY);
+}
+
+fn register_external_atoms(world: &mut World) {
+    register_eager!(world, "print", external::ATOM_PRINT);
+    register_eager!(world, "core/print", external::ATOM_PRINT);
+    register_eager!(world, "output", external::ATOM_OUTPUT);
+    register_eager!(world, "rand", external::ATOM_RAND);
+}
+
+fn register_string_atoms(world: &mut World) {
+    register_eager!(world, "str", string::ATOM_STR);
+    register_eager!(world, "str+", string::ATOM_STR_PLUS);
+}
+
+fn register_special_forms(world: &mut World) {
+    register_lazy!(world, "lambda", special_forms::ATOM_LAMBDA);
+    register_lazy!(world, "let", special_forms::ATOM_LET);
+    register_lazy!(world, "if", special_forms::ATOM_IF);
+    register_lazy!(world, "define", special_forms::ATOM_DEFINE);
+}

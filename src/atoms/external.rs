@@ -14,7 +14,7 @@
 //! - **Minimal External Dependencies**: Simple implementations
 
 use crate::prelude::*;
-use crate::{atoms::EagerAtomFn, helpers};
+use crate::{helpers, NativeEagerFn};
 use crate::errors;
 
 // ============================================================================
@@ -30,7 +30,7 @@ use crate::errors;
 ///
 /// Example:
 ///   (print "hello")
-pub const ATOM_PRINT: EagerAtomFn = |args, context| {
+pub const ATOM_PRINT: NativeEagerFn = |args, context| {
     helpers::validate_unary_arity(args, "print")?;
     context.output.borrow_mut().emit(&args[0].to_string(), None);
     Ok(Value::Nil)
@@ -45,7 +45,7 @@ pub const ATOM_PRINT: EagerAtomFn = |args, context| {
 ///
 /// Example:
 ///   (output "hello")
-pub const ATOM_OUTPUT: EagerAtomFn = |args, context| {
+pub const ATOM_OUTPUT: NativeEagerFn = |args, context| {
     helpers::validate_unary_arity(args, "output")?;
     context.output.borrow_mut().emit(&args[0].to_string(), None);
     Ok(Value::Nil)
@@ -64,7 +64,7 @@ pub const ATOM_OUTPUT: EagerAtomFn = |args, context| {
 ///
 /// Example:
 ///   (rand) ; => 0.7234567 (example)
-pub const ATOM_RAND: EagerAtomFn = |args, context| {
+pub const ATOM_RAND: NativeEagerFn = |args, context| {
     helpers::validate_zero_arity(args, "rand")?;
     // If randomness is not available, return a canonical error
     return Err(errors::runtime_general(
@@ -74,18 +74,3 @@ pub const ATOM_RAND: EagerAtomFn = |args, context| {
         context.span_for_span(Span::default()),
     ));
 };
-
-// ============================================================================
-// REGISTRATION FUNCTION
-// ============================================================================
-
-/// Registers all external interface atoms with the given registry.
-pub fn register_external_atoms(registry: &mut AtomRegistry) {
-    // I/O operations
-    registry.register_eager("print", ATOM_PRINT);
-    registry.register_eager("core/print", ATOM_PRINT);
-    registry.register_eager("output", ATOM_OUTPUT);
-
-    // Randomness
-    registry.register_eager("rand", ATOM_RAND);
-}

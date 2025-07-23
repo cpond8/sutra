@@ -14,7 +14,7 @@
 //! - **State Threading**: Proper world state propagation through execution
 
 use crate::prelude::*;
-use crate::{atoms::LazyAtomFn, helpers, runtime::eval};
+use crate::{helpers, runtime::eval, NativeLazyFn};
 use crate::errors;
 
 // ============================================================================
@@ -33,7 +33,7 @@ use crate::errors;
 ///
 /// # Safety
 /// May mutate world if inner expressions do.
-pub const ATOM_DO: LazyAtomFn = |args, context, _parent_span| {
+pub const ATOM_DO: NativeLazyFn = |args, context, _parent_span| {
     let mut last_value = Value::default();
 
     for arg in args {
@@ -59,7 +59,7 @@ pub const ATOM_DO: LazyAtomFn = |args, context, _parent_span| {
 ///
 /// # Safety
 /// Always errors. Does not mutate state.
-pub const ATOM_ERROR: LazyAtomFn = |args, context, _parent_span| {
+pub const ATOM_ERROR: NativeLazyFn = |args, context, _parent_span| {
     let val = helpers::eval_single_arg(args, context)?;
     let Value::String(msg) = val else {
         return Err(errors::type_mismatch(
@@ -94,7 +94,7 @@ pub const ATOM_ERROR: LazyAtomFn = |args, context, _parent_span| {
 /// Example:
 ///   (apply + 1 2 (list 3 4)) ; => 10
 ///   (apply core/str+ (list "a" "b" "c")) ; => "abc"
-pub const ATOM_APPLY: LazyAtomFn = |args, context, parent_span| {
+pub const ATOM_APPLY: NativeLazyFn = |args, context, parent_span| {
     helpers::validate_special_form_min_arity(args, 2, "apply")?;
 
     let func_expr = &args[0];
@@ -112,17 +112,3 @@ pub const ATOM_APPLY: LazyAtomFn = |args, context, parent_span| {
     let mut sub_context = helpers::sub_eval_context!(context);
     eval::evaluate_ast_node(&call_expr, &mut sub_context)
 };
-
-// ============================================================================
-// REGISTRATION FUNCTION
-// ============================================================================
-
-/// Registers all execution control atoms with the given registry.
-pub fn register_execution_atoms(registry: &mut AtomRegistry) {
-    // Control flow
-    registry.register_lazy("do", ATOM_DO);
-    registry.register_lazy("error", ATOM_ERROR);
-
-    // Higher-order functions
-    registry.register_lazy("apply", ATOM_APPLY);
-}

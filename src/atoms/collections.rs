@@ -17,10 +17,7 @@
 //! - **Performance**: Minimal cloning, efficient string operations
 
 use crate::prelude::*;
-use crate::{
-    atoms::EagerAtomFn,
-    helpers,
-};
+use crate::{helpers, NativeEagerFn};
 use crate::errors;
 
 // ============================================================================
@@ -36,7 +33,7 @@ use crate::errors;
 ///
 /// Example:
 ///   (list 1 2 3) ; => (1 2 3)
-pub const ATOM_LIST: EagerAtomFn = |args, _| Ok(Value::List(args.to_vec()));
+pub const ATOM_LIST: NativeEagerFn = |args, _| Ok(Value::List(args.to_vec()));
 
 /// Returns the length of a list or string.
 ///
@@ -48,7 +45,7 @@ pub const ATOM_LIST: EagerAtomFn = |args, _| Ok(Value::List(args.to_vec()));
 /// Example:
 ///   (len (list 1 2 3)) ; => 3
 ///   (len "abc") ; => 3
-pub const ATOM_LEN: EagerAtomFn = |args, context| {
+pub const ATOM_LEN: NativeEagerFn = |args, context| {
     helpers::validate_unary_arity(args, "len")?;
     let val = &args[0];
     let len = match val {
@@ -77,7 +74,7 @@ pub const ATOM_LEN: EagerAtomFn = |args, context| {
 ///   (has? (list 1 2 3) 2) ; => true
 ///   (has? {"key" "value"} "key") ; => true
 ///   (has? (list 1 2 3) 4) ; => false
-pub const ATOM_HAS: EagerAtomFn = |args, context| {
+pub const ATOM_HAS: NativeEagerFn = |args, context| {
     helpers::validate_binary_arity(args, "has?")?;
     let collection_val = &args[0];
     let search_val = &args[1];
@@ -111,7 +108,7 @@ pub const ATOM_HAS: EagerAtomFn = |args, context| {
 ///
 /// # Safety
 /// Mutates the world at the given path. **Creates a new empty list if the path doesn't exist.**
-pub const ATOM_CORE_PUSH: EagerAtomFn = |args, context| {
+pub const ATOM_CORE_PUSH: NativeEagerFn = |args, context| {
     helpers::validate_binary_arity(args, "core/push!")?;
     let path = helpers::validate_path_arg(args, "core/push!")?;
     let value_to_push = args[1].clone();
@@ -140,7 +137,7 @@ pub const ATOM_CORE_PUSH: EagerAtomFn = |args, context| {
 ///
 /// # Safety
 /// Mutates the world at the given path. **Creates a new empty list if the path doesn't exist.**
-pub const ATOM_CORE_PULL: EagerAtomFn = |args, context| {
+pub const ATOM_CORE_PULL: NativeEagerFn = |args, context| {
     helpers::validate_unary_arity(args, "core/pull!")?;
     let path = helpers::validate_path_arg(args, "core/pull!")?;
 
@@ -169,7 +166,7 @@ pub const ATOM_CORE_PULL: EagerAtomFn = |args, context| {
 ///
 /// Example:
 ///   (core/str+ "foo" "bar" "baz") ; => "foobarbaz"
-pub const ATOM_CORE_STR_PLUS: EagerAtomFn = |args, context| {
+pub const ATOM_CORE_STR_PLUS: NativeEagerFn = |args, context| {
     if args.is_empty() {
         return Ok(Value::String(String::new()));
     }
@@ -203,7 +200,7 @@ pub const ATOM_CORE_STR_PLUS: EagerAtomFn = |args, context| {
 /// Example:
 ///   (car (list 1 2 3)) ; => 1
 ///   (car (list)) ; => Nil
-pub const ATOM_CAR: EagerAtomFn = |args, _context| {
+pub const ATOM_CAR: NativeEagerFn = |args, _context| {
     helpers::validate_unary_arity(args, "car")?;
     let list_val = &args[0];
     let items = helpers::validate_list_value(list_val, "car")?;
@@ -224,7 +221,7 @@ pub const ATOM_CAR: EagerAtomFn = |args, _context| {
 ///   (cdr (list 1 2 3)) ; => (2 3)
 ///   (cdr (list 1)) ; => ()
 ///   (cdr (list)) ; => ()
-pub const ATOM_CDR: EagerAtomFn = |args, _context| {
+pub const ATOM_CDR: NativeEagerFn = |args, _context| {
     helpers::validate_unary_arity(args, "cdr")?;
     let list_val = &args[0];
     let items = helpers::validate_list_value(list_val, "cdr")?;
@@ -245,7 +242,7 @@ pub const ATOM_CDR: EagerAtomFn = |args, _context| {
 /// Example:
 ///   (cons 1 (list 2 3)) ; => (1 2 3)
 ///   (cons 1 (list)) ; => (1)
-pub const ATOM_CONS: EagerAtomFn = |args, _context| {
+pub const ATOM_CONS: NativeEagerFn = |args, _context| {
     helpers::validate_binary_arity(args, "cons")?;
     let element = &args[0];
     let list_val = &args[1];
@@ -269,7 +266,7 @@ pub const ATOM_CONS: EagerAtomFn = |args, _context| {
 ///
 /// Example:
 ///   (core/map "a" 1 "b" 2) ; => {"a" 1 "b" 2}
-pub const ATOM_CORE_MAP: EagerAtomFn = |args, _context| {
+pub const ATOM_CORE_MAP: NativeEagerFn = |args, _context| {
     helpers::validate_even_arity(args, "core/map")?;
     let mut map = std::collections::HashMap::new();
     for chunk in args.chunks(2) {
@@ -279,25 +276,3 @@ pub const ATOM_CORE_MAP: EagerAtomFn = |args, _context| {
     }
     Ok(Value::Map(map))
 };
-
-// ============================================================================
-// REGISTRATION FUNCTION
-// ============================================================================
-
-/// Registers all collection atoms with the given registry.
-pub fn register_collection_atoms(registry: &mut AtomRegistry) {
-    // List operations
-    registry.register_eager("list", ATOM_LIST);
-    registry.register_eager("len", ATOM_LEN);
-    registry.register_eager("has?", ATOM_HAS);
-    registry.register_eager("car", ATOM_CAR);
-    registry.register_eager("cdr", ATOM_CDR);
-    registry.register_eager("cons", ATOM_CONS);
-    // Mutable list operations
-    registry.register_eager("core/push!", ATOM_CORE_PUSH);
-    registry.register_eager("core/pull!", ATOM_CORE_PULL);
-    // String operations
-    registry.register_eager("core/str+", ATOM_CORE_STR_PLUS);
-    // Map operations
-    registry.register_eager("core/map", ATOM_CORE_MAP);
-}
