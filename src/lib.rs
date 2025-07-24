@@ -27,17 +27,17 @@ pub mod prelude {
             AstNode, Expr, Span, Spanned,
         },
         atoms::SharedOutput,
-        errors::{ErrorType, SutraError},
+        errors::{ErrorType, SourceContext, SutraError},
         macros::MacroRegistry,
         runtime::eval::EvaluationContext,
         runtime::world::World,
-        MacroDefinition, Path,
         syntax::parser::to_source_span,
+        MacroDefinition, Path,
     };
 
     // New canonical world type for shared, mutable state
-    pub use std::rc::Rc;
     pub use std::cell::RefCell;
+    pub use std::rc::Rc;
     pub type CanonicalWorld = Rc<RefCell<crate::runtime::world::World>>;
 }
 
@@ -48,6 +48,7 @@ pub mod discovery;
 pub mod engine;
 pub mod errors;
 pub mod macros;
+pub mod repl;
 pub mod runtime;
 pub mod syntax;
 pub mod test;

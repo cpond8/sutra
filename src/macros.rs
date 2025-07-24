@@ -43,7 +43,7 @@ use std::{
 };
 
 // External crate imports
-use miette::{NamedSource};
+use miette::NamedSource;
 use serde::{Deserialize, Serialize};
 
 use crate::prelude::*;
@@ -161,10 +161,11 @@ impl MacroValidationContext {
     ) -> Result<(), SutraError> {
         // Step 1: Check for duplicates if validation is enabled
         if self.check_duplicates && target.contains_key(&name) {
+            let sc = SourceContext::fallback("MacroValidationContext::validate_and_insert");
             return Err(errors::runtime_general(
                 format!("duplicate macro name '{}'", name),
-                "MacroValidationContext::validate_and_insert".to_string(),
-                file!().to_string(),
+                "macro registration",
+                &sc,
                 to_source_span(Span::default()), // No precise span available for macro registration error.
             ));
         }
@@ -237,7 +238,7 @@ impl MacroRegistrationConfig {
 /// - Return `Result<AstNode, SutraError>` (the expanded form)
 /// - Be pure transformations with no side effects
 /// - Maintain span information for error reporting
-pub type MacroFunction = fn(&AstNode) -> Result<AstNode, SutraError>;
+pub type MacroFunction = fn(&AstNode, &SourceContext) -> Result<AstNode, SutraError>;
 
 /// A declarative macro defined by a template.
 ///
@@ -263,27 +264,29 @@ impl MacroTemplate {
 
         for name in &params.required {
             if !seen.insert(name) {
-                return Err(
+                return Err({
+                    let sc = SourceContext::fallback("MacroTemplate::new");
                     errors::runtime_general(
                         format!("duplicate parameter name '{}'", name),
-                        "MacroTemplate::new".to_string(),
-                        "macros.rs".to_string(),
+                        "parameter validation",
+                        &sc,
                         to_source_span(Span::default()),
                     )
-                );
+                });
             }
         }
 
         if let Some(var) = &params.rest {
             if !seen.insert(var) {
-                return Err(
+                return Err({
+                    let sc = SourceContext::fallback("MacroTemplate::new");
                     errors::runtime_general(
                         format!("duplicate parameter name '{}'", var),
-                        "MacroTemplate::new".to_string(),
-                        "macros.rs".to_string(),
+                        "parameter validation",
+                        &sc,
                         to_source_span(Span::default()),
                     )
-                );
+                });
             }
         }
 
@@ -439,20 +442,22 @@ impl MacroRegistry {
     ) -> Result<(), SutraError> {
         // Step 1: Validate name is not empty (if name validation is enabled)
         if config.validate_name && name.is_empty() {
+            let sc = SourceContext::fallback("MacroRegistry::validate_registration");
             return Err(errors::runtime_general(
                 "macro name cannot be empty".to_string(),
-                "MacroRegistry::validate_registration".to_string(),
-                file!().to_string(),
+                "macro validation",
+                &sc,
                 to_source_span(Span::default()), // No precise span available for macro registration error.
             ));
         }
 
         // Step 2: Check for duplicate names (if duplicate checking is enabled)
         if config.check_duplicates && self.macros.contains_key(name) {
+            let sc = SourceContext::fallback("MacroRegistry::validate_registration");
             return Err(errors::runtime_general(
                 format!("macro '{}' is already registered", name),
-                "MacroRegistry::validate_registration".to_string(),
-                file!().to_string(),
+                "macro validation",
+                &sc,
                 to_source_span(Span::default()), // No precise span available for macro registration error.
             ));
         }
@@ -484,10 +489,11 @@ impl MacroRegistry {
 
         // Step 2: Reject if macro exists and overwrites not allowed
         if !config.allow_overwrite && self.macros.contains_key(name) {
+            let sc = SourceContext::fallback("MacroRegistry::register_with_config");
             return Err(errors::runtime_general(
                 format!("macro '{}' is already registered", name),
-                "MacroRegistry::register_with_config".to_string(),
-                file!().to_string(),
+                "macro registration",
+                &sc,
                 to_source_span(Span::default()), // No precise span available for macro registration error.
             ));
         }
@@ -637,10 +643,7 @@ impl MacroRegistry {
 
 // Loading operations - re-exported from loader module
 // Expansion operations - re-exported from expander module
-pub use expander::{
-    bind_macro_params, expand_macro_call, expand_macros_recursively, expand_template,
-    substitute_template,
-};
+pub use expander::expand_macros_recursively;
 pub use loader::{
     check_arity, is_macro_definition, load_macros_from_file, parse_macro_definition,
     parse_macros_from_source,

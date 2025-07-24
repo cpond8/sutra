@@ -11,17 +11,12 @@ use std::sync::Arc;
 /// Build a ParseMissing error
 pub(super) fn build_parse_missing(
     element: String,
-    source_name: String,
-    source_code: String,
+    src: Arc<NamedSource<String>>,
     span: SourceSpan,
 ) -> SutraError {
-    if source_code.is_empty() {
-        panic!("Internal error: empty source code provided to build_parse_missing");
-    }
-
     SutraError(InternalSutraError::ParseMissing {
         element,
-        src: Arc::new(NamedSource::new(source_name, source_code)),
+        src,
         span,
         help: None,
         related_spans: Vec::new(),
@@ -34,17 +29,12 @@ pub(super) fn build_parse_missing(
 /// Build a ParseMalformed error
 pub(super) fn build_parse_malformed(
     construct: String,
-    source_name: String,
-    source_code: String,
+    src: Arc<NamedSource<String>>,
     span: SourceSpan,
 ) -> SutraError {
-    if source_code.is_empty() {
-        panic!("Internal error: empty source code provided to build_parse_malformed");
-    }
-
     SutraError(InternalSutraError::ParseMalformed {
         construct,
-        src: Arc::new(NamedSource::new(source_name, source_code)),
+        src,
         span,
         help: None,
         related_spans: Vec::new(),
@@ -58,18 +48,13 @@ pub(super) fn build_parse_malformed(
 pub(super) fn build_parse_invalid_value(
     item_type: String,
     value: String,
-    source_name: String,
-    source_code: String,
+    src: Arc<NamedSource<String>>,
     span: SourceSpan,
 ) -> SutraError {
-    if source_code.is_empty() {
-        panic!("Internal error: empty source code provided to build_parse_invalid_value");
-    }
-
     SutraError(InternalSutraError::ParseInvalidValue {
         item_type,
         value,
-        src: Arc::new(NamedSource::new(source_name, source_code)),
+        src,
         span,
         help: None,
         related_spans: Vec::new(),
@@ -82,17 +67,12 @@ pub(super) fn build_parse_invalid_value(
 /// Build a RuntimeUndefinedSymbol error
 pub(super) fn build_runtime_undefined_symbol(
     symbol: String,
-    source_name: String,
-    source_code: String,
+    src: Arc<NamedSource<String>>,
     span: SourceSpan,
 ) -> SutraError {
-    if source_code.is_empty() {
-        panic!("Internal error: empty source code provided to build_runtime_undefined_symbol");
-    }
-
     SutraError(InternalSutraError::RuntimeUndefinedSymbol {
         symbol,
-        src: Arc::new(NamedSource::new(source_name, source_code)),
+        src,
         span,
         help: None,
         related_spans: Vec::new(),
@@ -105,17 +85,14 @@ pub(super) fn build_runtime_undefined_symbol(
 /// Build a RuntimeGeneral error
 pub(super) fn build_runtime_general(
     message: String,
-    source_name: String,
-    source_code: String,
+    label: String,
+    src: Arc<NamedSource<String>>,
     span: SourceSpan,
 ) -> SutraError {
-    if source_code.is_empty() {
-        panic!("Internal error: empty source code provided to build_runtime_general");
-    }
-
     SutraError(InternalSutraError::RuntimeGeneral {
         message,
-        src: Arc::new(NamedSource::new(source_name, source_code)),
+        label,
+        src,
         span,
         help: None,
         related_spans: Vec::new(),
@@ -129,18 +106,13 @@ pub(super) fn build_runtime_general(
 pub(super) fn build_validation_arity(
     expected: String,
     actual: usize,
-    source_name: String,
-    source_code: String,
+    src: Arc<NamedSource<String>>,
     span: SourceSpan,
 ) -> SutraError {
-    if source_code.is_empty() {
-        panic!("Internal error: empty source code provided to build_validation_arity");
-    }
-
     SutraError(InternalSutraError::ValidationArity {
         expected,
         actual,
-        src: Arc::new(NamedSource::new(source_name, source_code)),
+        src,
         span,
         help: None,
         related_spans: Vec::new(),
@@ -151,17 +123,9 @@ pub(super) fn build_validation_arity(
 }
 
 /// Build a ParseEmpty error
-pub(super) fn build_parse_empty(
-    source_name: String,
-    source_code: String,
-    span: SourceSpan,
-) -> SutraError {
-    if source_code.is_empty() {
-        panic!("Internal error: empty source code provided to build_parse_empty");
-    }
-
+pub(super) fn build_parse_empty(src: Arc<NamedSource<String>>, span: SourceSpan) -> SutraError {
     SutraError(InternalSutraError::ParseEmpty {
-        src: Arc::new(NamedSource::new(source_name, source_code)),
+        src,
         span,
         help: None,
         related_spans: Vec::new(),
@@ -173,17 +137,12 @@ pub(super) fn build_parse_empty(
 
 /// Build a ParseParameterOrder error
 pub(super) fn build_parse_parameter_order(
-    source_name: String,
-    source_code: String,
+    src: Arc<NamedSource<String>>,
     span: SourceSpan,
     rest_span: SourceSpan,
 ) -> SutraError {
-    if source_code.is_empty() {
-        panic!("Internal error: empty source code provided to build_parse_parameter_order");
-    }
-
     SutraError(InternalSutraError::ParseParameterOrder {
-        src: Arc::new(NamedSource::new(source_name, source_code)),
+        src,
         span,
         rest_span,
         help: None,
@@ -198,23 +157,38 @@ pub(super) fn build_parse_parameter_order(
 pub(super) fn build_type_mismatch(
     expected: String,
     actual: String,
-    source_name: String,
-    source_code: String,
+    src: Arc<NamedSource<String>>,
     span: SourceSpan,
 ) -> SutraError {
-    if source_code.is_empty() {
-        panic!("Internal error: empty source code provided to build_type_mismatch. Expected: '{}', Actual: '{}'", expected, actual);
-    }
-
     SutraError(InternalSutraError::TypeMismatch {
         expected,
         actual,
-        src: Arc::new(NamedSource::new(source_name, source_code)),
+        src,
         span,
         help: None,
         related_spans: Vec::new(),
         test_file: None,
         test_name: None,
+        is_warning: false,
+    })
+}
+
+/// Build a TestAssertion error
+pub(super) fn build_test_assertion(
+    message: String,
+    test_name: String,
+    src: Arc<NamedSource<String>>,
+    span: SourceSpan,
+) -> SutraError {
+    let test_file = src.name().to_string();
+    SutraError(InternalSutraError::TestAssertion {
+        message,
+        test_name,
+        test_file,
+        src,
+        span,
+        help: None,
+        related_spans: Vec::new(),
         is_warning: false,
     })
 }

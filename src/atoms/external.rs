@@ -13,9 +13,9 @@
 //! - **Deterministic Where Possible**: Consistent behavior within constraints
 //! - **Minimal External Dependencies**: Simple implementations
 
+use crate::errors;
 use crate::prelude::*;
 use crate::{helpers, NativeEagerFn};
-use crate::errors;
 
 // ============================================================================
 // I/O OPERATIONS
@@ -31,7 +31,7 @@ use crate::errors;
 /// Example:
 ///   (print "hello")
 pub const ATOM_PRINT: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "print")?;
+    helpers::validate_unary_arity(args, "print", context)?;
     context.output.borrow_mut().emit(&args[0].to_string(), None);
     Ok(Value::Nil)
 };
@@ -46,7 +46,7 @@ pub const ATOM_PRINT: NativeEagerFn = |args, context| {
 /// Example:
 ///   (output "hello")
 pub const ATOM_OUTPUT: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "output")?;
+    helpers::validate_unary_arity(args, "output", context)?;
     context.output.borrow_mut().emit(&args[0].to_string(), None);
     Ok(Value::Nil)
 };
@@ -65,12 +65,12 @@ pub const ATOM_OUTPUT: NativeEagerFn = |args, context| {
 /// Example:
 ///   (rand) ; => 0.7234567 (example)
 pub const ATOM_RAND: NativeEagerFn = |args, context| {
-    helpers::validate_zero_arity(args, "rand")?;
+    helpers::validate_zero_arity(args, "rand", context)?;
     // If randomness is not available, return a canonical error
-    return Err(errors::runtime_general(
+    Err(errors::runtime_general(
         "Random number generation is not available in this context.",
-        context.current_file(),
-        context.current_source(),
-        context.span_for_span(Span::default()),
-    ));
+        "unsupported operation",
+        &context.source,
+        context.span_for_span(context.current_span),
+    ))
 };

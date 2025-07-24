@@ -1,24 +1,20 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::Arc,
 };
 
-use miette::NamedSource;
 use walkdir::WalkDir;
 
-use crate::prelude::*;
-use crate::syntax::parser;
+use crate::{errors, prelude::*, runtime::source, syntax::parser};
 
 use miette::SourceSpan;
-use crate::errors;
 
 // =====================
 // Type Aliases for Complex Types
 // =====================
 
 /// Source file context for diagnostics
-pub type SourceFile = Arc<NamedSource<String>>;
+pub type SourceFile = source::SourceContext;
 
 /// Result of test form extraction - either a valid test or None
 pub type TestFormResult = Result<Option<ASTDefinition>, SutraError>;
@@ -60,11 +56,13 @@ impl TestDiscoverer {
         let mut files = Vec::new();
         for entry in WalkDir::new(root) {
             let entry = entry.map_err(|e| {
+                let sc =
+                    source::SourceContext::fallback(&format!("Failed to walk directory: {}", e));
                 errors::runtime_general(
                     format!("Failed to walk directory: {}", e),
-                    "TestDiscoverer::discover_test_files".to_string(),
-                    file!().to_string(),
-                    SourceSpan::from(0..0), // No precise span available in file system error context.
+                    "discovery error",
+                    &sc,
+                    SourceSpan::from(0..0),
                 )
             })?;
 
@@ -91,16 +89,21 @@ impl TestDiscoverer {
         file_path: P,
     ) -> Result<Vec<ASTDefinition>, SutraError> {
         let path_str = file_path.as_ref().display().to_string();
-        let source = fs::read_to_string(file_path.as_ref())
-            .map_err(|e| errors::runtime_general(
+        let source = fs::read_to_string(file_path.as_ref()).map_err(|e| {
+            let sc = source::SourceContext::from_file(
+                &path_str,
                 format!("Failed to read file '{}': {}", path_str, e),
-                "TestDiscoverer::extract_tests_from_file".to_string(),
-                file!().to_string(),
+            );
+            errors::runtime_general(
+                format!("Failed to read file '{}': {}", path_str, e),
+                "file read error",
+                &sc,
                 SourceSpan::from(0..0), // No precise span available in file system error context.
-            ))?;
+            )
+        })?;
 
-        let ast = parser::parse(&source)?;
-        let source_file = Arc::new(NamedSource::new(path_str, source));
+        let source_file = source::SourceContext::from_file(path_str, &source);
+        let ast = parser::parse(&source, source_file.clone())?;
 
         Self::extract_tests_from_ast(ast, source_file)
     }
@@ -164,8 +167,8 @@ impl TestDiscoverer {
         if items.len() < 2 {
             return Err(errors::runtime_general(
                 "Invalid test form: expected at least a name".to_string(),
-                "TestDiscoverer::parse_test_form_structure".to_string(),
-                format!("{:?}", source_file),
+                "invalid test form",
+                &source_file,
                 parser::to_source_span(span), // Real span available from AST node.
             ));
         }
@@ -192,8 +195,8 @@ impl TestDiscoverer {
         let Expr::String(s, _) = &*name_node.value else {
             return Err(errors::runtime_general(
                 "Invalid test form: test name must be a string".to_string(),
-                "TestDiscoverer::extract_and_validate_test_name".to_string(),
-                format!("{:?}", source_file),
+                "invalid test name",
+                source_file,
                 parser::to_source_span(name_node.span), // Real span available from AST node.
             ));
         };

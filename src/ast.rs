@@ -89,7 +89,12 @@ impl Expr {
             String(s, _) => format!("\"{}\"", s),
             Number(n, _) => n.to_string(),
             Bool(b, _) => b.to_string(),
-            If { condition, then_branch, else_branch, .. } => {
+            If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
                 format!(
                     "(if {} {} {})",
                     condition.value.pretty(),
@@ -104,7 +109,11 @@ impl Expr {
     }
 
     fn pretty_list(exprs: &[AstNode]) -> String {
-        let inner = exprs.iter().map(|e| e.value.pretty()).collect::<Vec<_>>().join(" ");
+        let inner = exprs
+            .iter()
+            .map(|e| e.value.pretty())
+            .collect::<Vec<_>>()
+            .join(" ");
         format!("({})", inner)
     }
 
@@ -151,30 +160,48 @@ impl std::fmt::Display for Expr {
     }
 }
 
+/// Utility to construct an Expr from a Value, requiring a span.
+pub fn expr_from_value_with_span(val: Value, span: Span) -> Expr {
+    use Value::*;
+    match val {
+        Nil | Map(_) => Expr::List(vec![], span),
+        Number(n) => Expr::Number(n, span),
+        String(s) => Expr::String(s, span),
+        Bool(b) => Expr::Bool(b, span),
+        List(items) => Expr::List(
+            items
+                .into_iter()
+                .map(|v| Spanned {
+                    value: Arc::new(expr_from_value_with_span(v, span)),
+                    span,
+                })
+                .collect(),
+            span,
+        ),
+        Path(p) => Expr::Path(p, span),
+        Lambda(_) => Expr::Symbol("<lambda>".to_string(), span),
+        NativeEagerFn(_) => Expr::Symbol("<native_eager_fn>".to_string(), span),
+        NativeLazyFn(_) => Expr::Symbol("<native_lazy_fn>".to_string(), span),
+    }
+}
+
+// WARNING: Do not use From<Value> for Expr in production code; use expr_from_value_with_span instead.
 impl From<Value> for Expr {
     fn from(val: Value) -> Self {
-        use Value::*;
-        match val {
-            Nil | Map(_) => Expr::List(vec![], Span::default()),
-            Number(n) => Expr::Number(n, Span::default()),
-            String(s) => Expr::String(s, Span::default()),
-            Bool(b) => Expr::Bool(b, Span::default()),
-            List(items) => Expr::List(
-                items
-                    .into_iter()
-                    .map(|v| Spanned {
-                        value: Arc::new(Expr::from(v)),
-                        span: Span::default(),
-                    })
-                    .collect(),
-                Span::default(),
-            ),
-            Path(p) => Expr::Path(p, Span::default()),
-            Lambda(_) => Expr::Symbol("<lambda>".to_string(), Span::default()),
-            NativeEagerFn(_) => Expr::Symbol("<native_eager_fn>".to_string(), Span::default()),
-            NativeLazyFn(_) => Expr::Symbol("<native_lazy_fn>".to_string(), Span::default()),
-        }
+        // This is only safe for tests or when span is irrelevant.
+        expr_from_value_with_span(val, Span::default())
     }
+}
+
+/// Helper to check if a span is valid for a given source string.
+pub fn assert_valid_span(span: Span, source: &str) {
+    debug_assert!(
+        span.start <= span.end && span.end <= source.len(),
+        "Invalid span: {{start: {}, end: {}}} for source of length {}",
+        span.start,
+        span.end,
+        source.len()
+    );
 }
 
 impl<T> Spanned<T> {

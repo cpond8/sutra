@@ -18,20 +18,6 @@
 ;; CORE CONTROL FLOW
 ;; ============================================================================
 
-;; cond: Multi-branch conditional
-;; (cond ((test1 expr1) (test2 expr2) (else exprN)))
-(define (cond ...rest)
-  (if (null? rest)
-      nil
-      (let ((clause (car rest)))
-        (let ((test (car clause))
-              (expr (cadr clause)))
-          (if (eq? test 'else)
-              expr
-              (if test
-                  expr
-                  (apply cond (cdr rest))))))))
-
 ;; when: Execute body when condition is true
 ;; (when condition ...rest)
 (define (when condition ...rest)
@@ -66,24 +52,6 @@
 ;; ============================================================================
 ;; PREDICATES & LOGIC
 ;; ============================================================================
-
-;; and: Short-circuiting logical AND
-;; (and a b c)
-(define (and ...rest)
-  (if (null? rest)
-      true
-      (if (car rest)
-          (apply and (cdr rest))
-          false)))
-
-;; or: Short-circuiting logical OR
-;; (or a b c)
-(define (or ...rest)
-  (if (null? rest)
-      false
-      (if (car rest)
-          (car rest)
-          (apply or (cdr rest)))))
 
 ;; empty?: Check if collection is empty
 ;; (empty? collection)
@@ -199,35 +167,3 @@
 ;; (null? (list))
 (define (null? lst)
   (eq? (len lst) 0))
-
-;; append: Append two lists
-;; (append l1 l2)
-(define (append l1 l2)
-  (if (null? l1)
-      l2
-      (cons (car l1) (append (cdr l1) l2))))
-
-;; map: Map function over list
-;; (map f lst)
-(define (map f lst)
-  (if (null? lst)
-      (list)
-      (cons (f (car lst)) (map f (cdr lst)))))
-
-;; ============================================================================
-;; CONTROL FLOW HELPERS
-;; ============================================================================
-
-;; for-each: Loop over collection
-;; (for-each var collection ...rest)
-(define (for-each var collection ...rest)
-  (if (null? collection)
-      nil
-      (let ((current (car collection))
-            (rest (cdr collection)))
-        (let ((var current))
-          (do
-            (apply do rest)
-            (if (null? rest)
-                nil
-                (apply for-each var rest rest)))))))

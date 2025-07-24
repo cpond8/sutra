@@ -7,9 +7,9 @@
 //! - **`str`**: Converts any value to its string representation.
 //! - **`str+`**: Concatenates multiple values into a single string.
 
-use crate::prelude::*;
-use crate::helpers;
 use crate::atoms::AtomResult;
+use crate::helpers;
+use crate::prelude::*;
 
 // ============================================================================
 // STRING OPERATIONS
@@ -21,10 +21,11 @@ use crate::atoms::AtomResult;
 ///   - <value>: Any value
 ///
 /// Returns: A new String value.
-pub const ATOM_STR: NativeEagerFn = |args: &[Value], _| -> AtomResult {
-    helpers::validate_unary_arity(args, "str")?;
-    Ok(Value::String(args[0].to_string()))
-};
+pub const ATOM_STR: NativeEagerFn =
+    |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
+        helpers::validate_unary_arity(args, "str", context)?;
+        Ok(Value::String(args[0].to_string()))
+    };
 
 /// Concatenates multiple values into a single string.
 ///

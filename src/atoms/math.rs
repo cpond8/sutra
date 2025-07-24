@@ -22,10 +22,10 @@ use crate::{
 /// Example:
 ///   (+ 1 2 3) ; => 6
 pub const ATOM_ADD: NativeEagerFn = |args, context| {
-    helpers::validate_min_arity(args, 2, "+")?;
+    helpers::validate_min_arity(args, 2, "+", context)?;
     let mut sum = 0.0;
     for arg in args {
-        let n: f64 = arg.extract(Some(context))?;
+        let n: f64 = arg.extract(context)?;
         sum += n;
     }
     Ok(Value::Number(sum))
@@ -41,14 +41,14 @@ pub const ATOM_ADD: NativeEagerFn = |args, context| {
 /// Example:
 ///   (- 5 2) ; => 3
 pub const ATOM_SUB: NativeEagerFn = |args, context| {
-    helpers::validate_min_arity(args, 1, "-")?;
-    let first: f64 = args[0].extract(Some(context))?;
+    helpers::validate_min_arity(args, 1, "-", context)?;
+    let first: f64 = args[0].extract(context)?;
     if args.len() == 1 {
         return Ok(Value::Number(-first));
     }
     let mut result = first;
     for arg in args.iter().skip(1) {
-        let n: f64 = arg.extract(Some(context))?;
+        let n: f64 = arg.extract(context)?;
         result -= n;
     }
     Ok(Value::Number(result))
@@ -64,10 +64,10 @@ pub const ATOM_SUB: NativeEagerFn = |args, context| {
 /// Example:
 ///   (* 2 3 4) ; => 24
 pub const ATOM_MUL: NativeEagerFn = |args, context| {
-    helpers::validate_min_arity(args, 2, "*")?;
+    helpers::validate_min_arity(args, 2, "*", context)?;
     let mut product = 1.0;
     for arg in args {
-        let n: f64 = arg.extract(Some(context))?;
+        let n: f64 = arg.extract(context)?;
         product *= n;
     }
     Ok(Value::Number(product))
@@ -84,30 +84,30 @@ pub const ATOM_MUL: NativeEagerFn = |args, context| {
 ///   (/ 6 2) ; => 3
 /// Note: Errors on division by zero.
 pub const ATOM_DIV: NativeEagerFn = |args, context| {
-    helpers::validate_min_arity(args, 1, "/")?;
-    let first: f64 = args[0].extract(Some(context))?;
+    helpers::validate_min_arity(args, 1, "/", context)?;
+    let first: f64 = args[0].extract(context)?;
     if args.len() == 1 {
         if first == 0.0 {
             return Err(errors::runtime_general(
                 "division by zero",
-                context.current_file(),
-                context.current_source(),
+                "math error",
+                &context.source,
                 // It is not currently possible to propagate a proper span to `extract`.
                 // This is a known limitation that should be addressed in a future refactoring.
-                context.span_for_span(Span::default()),
+                context.span_for_span(context.current_span),
             ));
         }
         return Ok(Value::Number(1.0 / first));
     }
     let mut result = first;
     for arg in args.iter().skip(1) {
-        let n: f64 = arg.extract(Some(context))?;
+        let n: f64 = arg.extract(context)?;
         if n == 0.0 {
             return Err(errors::runtime_general(
                 "division by zero",
-                context.current_file(),
-                context.current_source(),
-                context.span_for_span(Span::default()),
+                "math error",
+                &context.source,
+                context.span_for_span(context.current_span),
             ));
         }
         result /= n;
@@ -127,15 +127,15 @@ pub const ATOM_DIV: NativeEagerFn = |args, context| {
 ///
 /// Note: Errors on division by zero or non-integer input.
 pub const ATOM_MOD: NativeEagerFn = |args, context| {
-    helpers::validate_binary_arity(args, "mod")?;
-    let a: f64 = args[0].extract(Some(context))?;
-    let b: f64 = args[1].extract(Some(context))?;
+    helpers::validate_binary_arity(args, "mod", context)?;
+    let a: f64 = args[0].extract(context)?;
+    let b: f64 = args[1].extract(context)?;
     if b == 0.0 {
         return Err(errors::runtime_general(
             "modulo by zero",
-            context.current_file(),
-            context.current_source(),
-            context.span_for_span(Span::default()),
+            "math error",
+            &context.source,
+            context.span_for_span(context.current_span),
         ));
     }
     Ok(Value::Number(a % b))
@@ -156,8 +156,8 @@ pub const ATOM_MOD: NativeEagerFn = |args, context| {
 ///   (abs -5) ; => 5
 ///   (abs 3.14) ; => 3.14
 pub const ATOM_ABS: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "abs")?;
-    let n: f64 = args[0].extract(Some(context))?;
+    helpers::validate_unary_arity(args, "abs", context)?;
+    let n: f64 = args[0].extract(context)?;
     Ok(Value::Number(n.abs()))
 };
 
@@ -171,10 +171,10 @@ pub const ATOM_ABS: NativeEagerFn = |args, context| {
 /// Example:
 ///   (min 3 1 4) ; => 1
 pub const ATOM_MIN: NativeEagerFn = |args, context| {
-    helpers::validate_min_arity(args, 1, "min")?;
+    helpers::validate_min_arity(args, 1, "min", context)?;
     let mut min = f64::INFINITY;
     for arg in args {
-        let n: f64 = arg.extract(Some(context))?;
+        let n: f64 = arg.extract(context)?;
         min = min.min(n);
     }
     Ok(Value::Number(min))
@@ -190,10 +190,10 @@ pub const ATOM_MIN: NativeEagerFn = |args, context| {
 /// Example:
 ///   (max 3 1 4) ; => 4
 pub const ATOM_MAX: NativeEagerFn = |args, context| {
-    helpers::validate_min_arity(args, 1, "max")?;
+    helpers::validate_min_arity(args, 1, "max", context)?;
     let mut max = f64::NEG_INFINITY;
     for arg in args {
-        let n: f64 = arg.extract(Some(context))?;
+        let n: f64 = arg.extract(context)?;
         max = max.max(n);
     }
     Ok(Value::Number(max))

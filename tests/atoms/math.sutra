@@ -125,12 +125,12 @@
       (mod 10 3))  ; 10 % 3 ? => 1
 
 (test "math: mod arity error - too few"
-      (expect (error Eval)
+      (expect (error Validation)
               (tags "math"))
       (mod 10))  ; mod expects exactly 2 arguments, got 1
 
 (test "math: mod arity error - too many"
-      (expect (error Eval)
+      (expect (error Validation)
               (tags "math"))
       (mod 10 3 2))  ; mod expects exactly 2 arguments, got 3
 

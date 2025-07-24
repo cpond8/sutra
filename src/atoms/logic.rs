@@ -13,10 +13,10 @@
 //! - **Boolean Results**: All operations return `Value::Bool`
 //! - **Numeric Comparison**: Comparison operations work with `Value::Number`
 
-use crate::prelude::*;
-use crate::helpers;
 use crate::atoms::AtomResult;
+use crate::helpers;
 use crate::helpers::ExtractValue;
+use crate::prelude::*;
 
 // ============================================================================
 // COMPARISON OPERATIONS
@@ -33,8 +33,8 @@ use crate::helpers::ExtractValue;
 ///   (eq? 1 1) ; => true
 ///   (eq? 1 2) ; => false
 ///   (eq? 1 1 1) ; => true
-pub const ATOM_EQ: NativeEagerFn = |args: &[Value], _| {
-    helpers::validate_binary_arity(args, "eq?")?;
+pub const ATOM_EQ: NativeEagerFn = |args: &[Value], context: &mut EvaluationContext| {
+    helpers::validate_binary_arity(args, "eq?", context)?;
     for window in args.windows(2) {
         if window[0] != window[1] {
             return Ok(Value::Bool(false));
@@ -53,17 +53,18 @@ pub const ATOM_EQ: NativeEagerFn = |args: &[Value], _| {
 /// Example:
 ///   (gt? 3 2) ; => true
 ///   (gt? 3 2 1) ; => true
-pub const ATOM_GT: NativeEagerFn = |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
-    helpers::validate_sequence_arity(args, "gt?")?;
-    for i in 0..args.len() - 1 {
-        let a: f64 = args[i].extract(Some(context))?;
-        let b: f64 = args[i + 1].extract(Some(context))?;
-        if a <= b {
-            return Ok(Value::Bool(false));
+pub const ATOM_GT: NativeEagerFn =
+    |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
+        helpers::validate_sequence_arity(args, "gt?", context)?;
+        for i in 0..args.len() - 1 {
+            let a: f64 = args[i].extract(context)?;
+            let b: f64 = args[i + 1].extract(context)?;
+            if a <= b {
+                return Ok(Value::Bool(false));
+            }
         }
-    }
-    Ok(Value::Bool(true))
-};
+        Ok(Value::Bool(true))
+    };
 
 /// Returns true if a < b.
 ///
@@ -75,17 +76,18 @@ pub const ATOM_GT: NativeEagerFn = |args: &[Value], context: &mut EvaluationCont
 /// Example:
 ///   (lt? 1 2) ; => true
 ///   (lt? 1 2 3) ; => true
-pub const ATOM_LT: NativeEagerFn = |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
-    helpers::validate_sequence_arity(args, "lt?")?;
-    for i in 0..args.len() - 1 {
-        let a: f64 = args[i].extract(Some(context))?;
-        let b: f64 = args[i + 1].extract(Some(context))?;
-        if a >= b {
-            return Ok(Value::Bool(false));
+pub const ATOM_LT: NativeEagerFn =
+    |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
+        helpers::validate_sequence_arity(args, "lt?", context)?;
+        for i in 0..args.len() - 1 {
+            let a: f64 = args[i].extract(context)?;
+            let b: f64 = args[i + 1].extract(context)?;
+            if a >= b {
+                return Ok(Value::Bool(false));
+            }
         }
-    }
-    Ok(Value::Bool(true))
-};
+        Ok(Value::Bool(true))
+    };
 
 /// Returns true if a >= b.
 ///
@@ -97,17 +99,18 @@ pub const ATOM_LT: NativeEagerFn = |args: &[Value], context: &mut EvaluationCont
 /// Example:
 ///   (gte? 2 2) ; => true
 ///   (gte? 3 2 1) ; => true
-pub const ATOM_GTE: NativeEagerFn = |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
-    helpers::validate_sequence_arity(args, "gte?")?;
-    for i in 0..args.len() - 1 {
-        let a: f64 = args[i].extract(Some(context))?;
-        let b: f64 = args[i + 1].extract(Some(context))?;
-        if a < b {
-            return Ok(Value::Bool(false));
+pub const ATOM_GTE: NativeEagerFn =
+    |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
+        helpers::validate_sequence_arity(args, "gte?", context)?;
+        for i in 0..args.len() - 1 {
+            let a: f64 = args[i].extract(context)?;
+            let b: f64 = args[i + 1].extract(context)?;
+            if a < b {
+                return Ok(Value::Bool(false));
+            }
         }
-    }
-    Ok(Value::Bool(true))
-};
+        Ok(Value::Bool(true))
+    };
 
 /// Returns true if a <= b.
 ///
@@ -119,17 +122,18 @@ pub const ATOM_GTE: NativeEagerFn = |args: &[Value], context: &mut EvaluationCon
 /// Example:
 ///   (lte? 1 2) ; => true
 ///   (lte? 1 2 3) ; => true
-pub const ATOM_LTE: NativeEagerFn = |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
-    helpers::validate_sequence_arity(args, "lte?")?;
-    for i in 0..args.len() - 1 {
-        let a: f64 = args[i].extract(Some(context))?;
-        let b: f64 = args[i + 1].extract(Some(context))?;
-        if a > b {
-            return Ok(Value::Bool(false));
+pub const ATOM_LTE: NativeEagerFn =
+    |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
+        helpers::validate_sequence_arity(args, "lte?", context)?;
+        for i in 0..args.len() - 1 {
+            let a: f64 = args[i].extract(context)?;
+            let b: f64 = args[i + 1].extract(context)?;
+            if a > b {
+                return Ok(Value::Bool(false));
+            }
         }
-    }
-    Ok(Value::Bool(true))
-};
+        Ok(Value::Bool(true))
+    };
 
 // ============================================================================
 // LOGIC OPERATIONS
@@ -144,8 +148,9 @@ pub const ATOM_LTE: NativeEagerFn = |args: &[Value], context: &mut EvaluationCon
 ///
 /// Example:
 ///   (not true) ; => false
-pub const ATOM_NOT: NativeEagerFn = |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
-    helpers::validate_unary_arity(args, "not")?;
-    let b: bool = args[0].extract(Some(context))?;
-    Ok(Value::Bool(!b))
-};
+pub const ATOM_NOT: NativeEagerFn =
+    |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
+        helpers::validate_unary_arity(args, "not", context)?;
+        let b: bool = args[0].extract(context)?;
+        Ok(Value::Bool(!b))
+    };

@@ -1,0 +1,315 @@
+# Writing Clear, Simple Rust: Six Antipatterns to Eliminate
+
+## Preface
+
+This guide distills the heart of clear Rust into six universal principles. Each antipattern below is a root cause of bugs, confusion, and burnout in codebases everywhere. Study the BAD and GOOD examples: exaggeration is deliberate -- if your code even slightly resembles the “bad,” it’s worth rethinking! For each pattern, use the self-critique prompts to challenge and improve your work.
+
+---
+
+## 1. Deeply Nested or Indirect Control Flow
+
+**Why it matters:**
+Each layer of nesting or indirect jumps via helpers hides the program’s intent and makes tracing logic a chore.
+
+**How to fix:**
+Flatten logic. Use early returns. Group related code together. Minimize helper “ping-pong.”
+
+**BAD: Nesting Spiral**
+
+```rust
+fn save_user(user: &User, db: &Database) -> Result<()> {
+    if user.is_active {
+        if let Some(profile) = &user.profile {
+            if profile.is_complete() {
+                if db.is_connected() {
+                    if let Ok(id) = db.save(user) {
+                        if id > 0 {
+                            println!("User saved: {}", id);
+                        } else {
+                            return Err(Error::NegativeId);
+                        }
+                    } else {
+                        return Err(Error::SaveFailed);
+                    }
+                } else {
+                    return Err(Error::NoConnection);
+                }
+            } else {
+                return Err(Error::IncompleteProfile);
+            }
+        } else {
+            return Err(Error::NoProfile);
+        }
+    } else {
+        return Err(Error::InactiveUser);
+    }
+    Ok(())
+}
+```
+
+**GOOD: Flat, Top-Down Recipe**
+
+```rust
+fn save_user(user: &User, db: &Database) -> Result<()> {
+    if !user.is_active {
+        return Err(Error::InactiveUser);
+    }
+    let profile = user.profile.as_ref().ok_or(Error::NoProfile)?;
+    if !profile.is_complete() {
+        return Err(Error::IncompleteProfile);
+    }
+    if !db.is_connected() {
+        return Err(Error::NoConnection);
+    }
+    let id = db.save(user).map_err(|_| Error::SaveFailed)?;
+    if id <= 0 {
+        return Err(Error::NegativeId);
+    }
+    println!("User saved: {}", id);
+    Ok(())
+}
+```
+
+**Self-critique prompts:**
+
+* Can I read this function top-to-bottom, or do I have to “brace match” through nesting?
+* Do helper calls just move the nesting somewhere else?
+* Would adding early returns clarify the “happy path” and error exits?
+
+---
+
+## 2. Unclear or Deferred Input Validation
+
+**Why it matters:**
+Letting invalid data slip into your logic means *every* later function must defend itself—spreading complexity everywhere.
+
+**How to fix:**
+Check all required invariants and reject bad input immediately at function entry.
+
+**BAD: “Let it ride” approach**
+
+```rust
+fn process(order: Order) -> Result<Invoice, Error> {
+    // (logic...)
+    if let Some(total) = order.items.iter().map(|item| item.price).reduce(|a, b| a + b) {
+        if total > 0.0 {
+            // process further...
+        } else {
+            return Err(Error::NoTotal);
+        }
+    } else {
+        return Err(Error::EmptyOrder);
+    }
+    // more logic...
+    Ok(Invoice::new())
+}
+```
+
+**GOOD: Validate Up Front**
+
+```rust
+fn process(order: Order) -> Result<Invoice, Error> {
+    if order.items.is_empty() {
+        return Err(Error::EmptyOrder);
+    }
+    let total: f64 = order.items.iter().map(|item| item.price).sum();
+    if total <= 0.0 {
+        return Err(Error::NoTotal);
+    }
+    // main logic assumes valid, non-empty order and positive total
+    Ok(Invoice::new())
+}
+```
+
+**Self-critique prompts:**
+
+* Does the function start by checking all preconditions?
+* Are there paths where bad input can sneak further into the system?
+* Is every assumption about data enforced up front?
+
+---
+
+## 3. Ignoring or Discarding Important Return Values
+
+**Why it matters:**
+Every missed error or ignored result is a ticking time bomb—failures become silent and undetectable.
+
+**How to fix:**
+Handle or explicitly propagate all results and errors. Never ignore `Result` or `Option` values.
+
+**BAD: Silent failure**
+
+```rust
+fn write_settings(config: &Config) {
+    std::fs::write("settings.conf", config.to_string());
+    // No error handling: if disk is full, user never knows!
+}
+```
+
+**GOOD: Handle or Bubble Up Errors**
+
+```rust
+fn write_settings(config: &Config) -> std::io::Result<()> {
+    std::fs::write("settings.conf", config.to_string())?;
+    Ok(())
+}
+```
+
+**Self-critique prompts:**
+
+* Am I intentionally ignoring any return value, or is it just convenient?
+* Could a failure here cause mysterious bugs later?
+* Does every error have a clear destination (handled, logged, or reported)?
+
+---
+
+## 4. Dense, Multi-Step Chains That Obscure Intent
+
+**Why it matters:**
+Long, chained transformations may look “clever,” but make it hard to trace data and catch mistakes.
+
+**How to fix:**
+Favor simple loops and intermediate variables for multi-step transformations or error handling.
+
+**BAD: Chain of Confusion**
+
+```rust
+let valid_names: Vec<String> = data.iter()
+    .filter(|d| d.enabled)
+    .filter_map(|d| d.name.as_ref())
+    .map(|name| name.trim().to_lowercase())
+    .filter(|name| !name.is_empty())
+    .collect();
+```
+
+**GOOD: Each Step Visible**
+
+```rust
+let mut valid_names = Vec::new();
+for d in data {
+    if !d.enabled { continue; }
+    let Some(name) = &d.name else { continue; };
+    let name = name.trim().to_lowercase();
+    if name.is_empty() { continue; }
+    valid_names.push(name);
+}
+```
+
+**Self-critique prompts:**
+
+* Can I explain what happens at each step, or does the logic “disappear” in the chain?
+* Would breaking it up make debugging or error reporting easier?
+* Are all failure or skip cases explicit?
+
+---
+
+## 5. Non-Descriptive Errors or Magic Constants
+
+**Why it matters:**
+Magic numbers, strings, or vague errors are confusing and fragile—they hide intent and make maintenance a nightmare.
+
+**How to fix:**
+Name all constants and provide detailed, actionable error messages and types.
+
+**BAD: Mystery values and empty errors**
+
+```rust
+fn connect(port: u16) -> Result<(), String> {
+    if port == 8080 {
+        return Err("bad port".into());
+    }
+    // ...
+    Ok(())
+}
+```
+
+**GOOD: Named Constants, Rich Errors**
+
+```rust
+const DEFAULT_PORT: u16 = 8080;
+
+#[derive(thiserror::Error, Debug)]
+enum ConnectError {
+    #[error("Port {0} is reserved and cannot be used")]
+    ReservedPort(u16),
+    // ...
+}
+
+fn connect(port: u16) -> Result<(), ConnectError> {
+    if port == DEFAULT_PORT {
+        return Err(ConnectError::ReservedPort(port));
+    }
+    // ...
+    Ok(())
+}
+```
+
+**Self-critique prompts:**
+
+* Are all “magic” values given names that express their purpose?
+* Could anyone diagnose the failure from just the error message?
+* Do my errors give context (what went wrong, where, and why)?
+
+---
+
+## 6. Excessive or Unnecessary Abstraction
+
+**Why it matters:**
+Overusing traits, helpers, or wrappers adds needless indirection and makes the true logic harder to find and change.
+
+**How to fix:**
+Use abstraction only when it clearly reduces repetition or enables real polymorphism.
+
+**BAD: Indirection for Its Own Sake**
+
+```rust
+trait Handler {
+    fn handle(&self, input: &str) -> bool;
+}
+
+struct PrintHandler;
+
+impl Handler for PrintHandler {
+    fn handle(&self, input: &str) -> bool {
+        println!("{}", input);
+        true
+    }
+}
+
+fn main() {
+    let handler: Box<dyn Handler> = Box::new(PrintHandler);
+    handler.handle("Hello");
+}
+```
+
+**GOOD: Direct and Obvious**
+
+```rust
+struct Printer;
+
+impl Printer {
+    fn print(&self, input: &str) {
+        println!("{}", input);
+    }
+}
+
+fn main() {
+    let printer = Printer;
+    printer.print("Hello");
+}
+```
+
+**Self-critique prompts:**
+
+* Is this trait, helper, or wrapper solving a *real* problem, or just adding layers?
+* Would direct code be easier to trace, test, and change?
+* Am I designing for a possible future, or solving today’s need?
+
+---
+
+## Summary
+
+**Code is for people first.**
+If your logic is flat, input is validated up front, results are always checked, steps are visible, intent is clear, and abstraction is used sparingly -- your code will be a joy to read and maintain, in Rust or anywhere.
+
+*Review your code with these six patterns in mind, and you’ll avoid 90% of the headaches in Rust (and most other languages, too).*

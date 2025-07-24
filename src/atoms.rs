@@ -35,14 +35,11 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-
 // Core types via prelude
 use crate::prelude::*;
 
 // Domain modules with aliases
-use crate::{
-    atoms::helpers::AtomResult,
-};
+use crate::atoms::helpers::AtomResult;
 
 // ============================================================================
 // NEW ATOM ARCHITECTURE TYPES
@@ -50,7 +47,6 @@ use crate::{
 //
 // All callable entities are now dispatched through `evaluate_list` in `eval.rs`,
 // which inspects the `Value` type to determine the correct calling convention.
-
 
 /// Minimal state interface for stateful atoms
 pub trait StateContext {
@@ -95,7 +91,6 @@ impl SharedOutput {
     }
 }
 
-
 // ============================================================================
 // MODULAR ATOM IMPLEMENTATIONS
 // ============================================================================
@@ -131,20 +126,14 @@ pub use test::{TestDefinition, TEST_REGISTRY};
 #[macro_export]
 macro_rules! register_eager {
     ($world:expr, $name:expr, $func:expr) => {
-        $world.set(
-            &Path(vec![$name.to_string()]),
-            Value::NativeEagerFn($func),
-        );
+        $world.set(&Path(vec![$name.to_string()]), Value::NativeEagerFn($func));
     };
 }
 
 #[macro_export]
 macro_rules! register_lazy {
     ($world:expr, $name:expr, $func:expr) => {
-        $world.set(
-            &Path(vec![$name.to_string()]),
-            Value::NativeLazyFn($func),
-        );
+        $world.set(&Path(vec![$name.to_string()]), Value::NativeLazyFn($func));
     };
 }
 
@@ -183,11 +172,6 @@ fn register_logic_atoms(world: &mut World) {
     register_eager!(world, "lt?", logic::ATOM_LT);
     register_eager!(world, "gte?", logic::ATOM_GTE);
     register_eager!(world, "lte?", logic::ATOM_LTE);
-    register_eager!(world, "is?", logic::ATOM_EQ);
-    register_eager!(world, "over?", logic::ATOM_GT);
-    register_eager!(world, "under?", logic::ATOM_LT);
-    register_eager!(world, "at-least?", logic::ATOM_GTE);
-    register_eager!(world, "at-most?", logic::ATOM_LTE);
     register_eager!(world, "not", logic::ATOM_NOT);
 }
 
@@ -206,6 +190,8 @@ fn register_collection_atoms(world: &mut World) {
     register_eager!(world, "car", collections::ATOM_CAR);
     register_eager!(world, "cdr", collections::ATOM_CDR);
     register_eager!(world, "cons", collections::ATOM_CONS);
+    register_eager!(world, "append", collections::ATOM_APPEND);
+    register_eager!(world, "map", collections::ATOM_MAP);
     register_eager!(world, "core/push!", collections::ATOM_CORE_PUSH);
     register_eager!(world, "core/pull!", collections::ATOM_CORE_PULL);
     register_eager!(world, "core/str+", collections::ATOM_CORE_STR_PLUS);
@@ -216,6 +202,7 @@ fn register_execution_atoms(world: &mut World) {
     register_lazy!(world, "do", execution::ATOM_DO);
     register_lazy!(world, "error", execution::ATOM_ERROR);
     register_lazy!(world, "apply", execution::ATOM_APPLY);
+    register_lazy!(world, "for-each", execution::ATOM_FOR_EACH);
 }
 
 fn register_external_atoms(world: &mut World) {
@@ -234,5 +221,8 @@ fn register_special_forms(world: &mut World) {
     register_lazy!(world, "lambda", special_forms::ATOM_LAMBDA);
     register_lazy!(world, "let", special_forms::ATOM_LET);
     register_lazy!(world, "if", special_forms::ATOM_IF);
+    register_lazy!(world, "cond", special_forms::ATOM_COND);
+    register_lazy!(world, "and", special_forms::ATOM_AND);
+    register_lazy!(world, "or", special_forms::ATOM_OR);
     register_lazy!(world, "define", special_forms::ATOM_DEFINE);
 }

@@ -3,6 +3,7 @@
 //! the core library functions.
 
 use std::{
+    io::{self, Read},
     path::{Path, PathBuf},
     process,
 };
@@ -12,12 +13,13 @@ use clap::{Parser, Subcommand};
 use crate::prelude::*;
 use crate::{
     engine::{print_error, EngineStdoutSink as StdoutSink, ExecutionPipeline},
+    runtime::source::SourceContext,
     test::runner::TestRunner,
     validation::grammar,
 };
 
-use miette::SourceSpan;
 use crate::errors;
+use miette::SourceSpan;
 
 // ============================================================================
 // CLI ARGUMENTS - Command-line argument definitions
@@ -44,6 +46,13 @@ pub enum ArgsCommand {
         #[arg(required = true)]
         file: PathBuf,
     },
+    /// Evaluate Sutra code directly from command line or stdin.
+    Eval {
+        /// Sutra code to evaluate. If not provided, reads from stdin.
+        code: Option<String>,
+    },
+    /// Start an interactive REPL (Read-Eval-Print Loop).
+    Repl,
     /// Print the fully macro-expanded code.
     Macroexpand {
         /// The path to the Sutra script file to expand.
@@ -94,10 +103,37 @@ pub fn run() {
         ArgsCommand::Run { file } => {
             let source = read_file_or_exit(&file);
             let output = SharedOutput::new(StdoutSink);
-            if let Err(e) = ExecutionPipeline::execute_source_with_context(&file.to_string_lossy(), &source, output) {
+            let pipeline = ExecutionPipeline::default();
+            if let Err(e) = pipeline.execute(&source, output, &file.display().to_string()) {
                 print_error(e);
                 process::exit(1);
             }
+        }
+
+        ArgsCommand::Eval { code } => {
+            let source = match code {
+                Some(code_str) => code_str,
+                None => {
+                    // Read from stdin
+                    let mut buffer = String::new();
+                    if let Err(e) = io::stdin().read_to_string(&mut buffer) {
+                        eprintln!("Error reading from stdin: {}", e);
+                        process::exit(1);
+                    }
+                    buffer
+                }
+            };
+
+            let output = SharedOutput::new(StdoutSink);
+            let pipeline = ExecutionPipeline::default();
+            if let Err(e) = pipeline.execute(&source, output, "<eval>") {
+                print_error(e);
+                process::exit(1);
+            }
+        }
+
+        ArgsCommand::Repl => {
+            crate::repl::run_repl();
         }
 
         ArgsCommand::Macroexpand { file } => {
@@ -133,11 +169,12 @@ pub fn run() {
         ArgsCommand::ValidateGrammar => {
             let validation_result = grammar::validate_grammar("src/syntax/grammar.pest")
                 .unwrap_or_else(|e| {
+                    let source_ctx = SourceContext::from_file("sutra-cli", "");
                     print_error(errors::runtime_general(
                         format!("Failed to validate grammar: {}", e),
                         "sutra-cli".to_string(),
-                        file!().to_string(),
-                        SourceSpan::from(0..0), // No precise span available in CLI context.
+                        &source_ctx,
+                        SourceSpan::from(0..0), // No precise span available here
                     ));
                     process::exit(1);
                 });

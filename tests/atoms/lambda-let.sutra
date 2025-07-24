@@ -20,12 +20,12 @@
    1 2 3))  ; => 6
 
 (test "lambda: arity error (too few)"
-  (expect (error Eval))
+  (expect (error Validation))
   ((lambda (x y) (+ x y))
    1))  ; => arity error
 
 (test "lambda: arity error (too many)"
-  (expect (error Eval))
+  (expect (error Validation))
   ((lambda (x y) (+ x y))
    1 2 3))  ; => arity error
 

@@ -27,12 +27,12 @@
       (if nil "taken" "not-taken"))  ; => "not-taken"
 
 (test "control: if - arity error (too few)"
-      (expect (error Eval)
+      (expect (error Validation)
               (tags "control"))
       (if true "then"))  ; if expects exactly 3 arguments, got 2
 
 (test "control: if - arity error (too many)"
-      (expect (error Eval)
+      (expect (error Validation)
               (tags "control"))
       (if true "then" "else" "extra"))  ; if expects exactly 3 arguments, got 4
 

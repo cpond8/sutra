@@ -3,12 +3,15 @@
 //! This module provides the ONLY way to create and interact with Sutra errors.
 //! All internal implementation is completely hidden to prevent misuse.
 
-mod internal;
 mod builders;
 mod context;
+mod internal;
 
 use miette::{Diagnostic, SourceSpan};
 use std::fmt;
+
+// Instead, we now use the dedicated struct.
+pub use crate::runtime::source::SourceContext;
 
 // Re-export only the error type enum for backwards compatibility
 pub use internal::ErrorType;
@@ -81,93 +84,117 @@ impl SutraError {
 /// Create a parse error for missing syntax elements
 pub fn parse_missing(
     element: impl Into<String>,
-    source_name: impl Into<String>,
-    source_code: impl Into<String>,
-    span: SourceSpan,
+    source: &SourceContext,
+    span: impl Into<SourceSpan>,
 ) -> SutraError {
-    builders::build_parse_missing(element.into(), source_name.into(), source_code.into(), span)
+    builders::build_parse_missing(element.into(), source.to_named_source(), span.into())
 }
 
 /// Create a parse error for malformed syntax constructs
 pub fn parse_malformed(
     construct: impl Into<String>,
-    source_name: impl Into<String>,
-    source_code: impl Into<String>,
-    span: SourceSpan,
+    source: &SourceContext,
+    span: impl Into<SourceSpan>,
 ) -> SutraError {
-    builders::build_parse_malformed(construct.into(), source_name.into(), source_code.into(), span)
+    builders::build_parse_malformed(construct.into(), source.to_named_source(), span.into())
 }
 
 /// Create a parse error for invalid values
 pub fn parse_invalid_value(
     item_type: impl Into<String>,
     value: impl Into<String>,
-    source_name: impl Into<String>,
-    source_code: impl Into<String>,
-    span: SourceSpan,
+    source: &SourceContext,
+    span: impl Into<SourceSpan>,
 ) -> SutraError {
-    builders::build_parse_invalid_value(item_type.into(), value.into(), source_name.into(), source_code.into(), span)
+    builders::build_parse_invalid_value(
+        item_type.into(),
+        value.into(),
+        source.to_named_source(),
+        span.into(),
+    )
 }
 
 /// Create a parse error for empty expressions
-pub fn parse_empty(
-    source_name: impl Into<String>,
-    source_code: impl Into<String>,
-    span: SourceSpan,
-) -> SutraError {
-    builders::build_parse_empty(source_name.into(), source_code.into(), span)
+pub fn parse_empty(source: &SourceContext, span: impl Into<SourceSpan>) -> SutraError {
+    builders::build_parse_empty(source.to_named_source(), span.into())
 }
 
 /// Create a parse error for parameter ordering
 pub fn parse_parameter_order(
-    source_name: impl Into<String>,
-    source_code: impl Into<String>,
-    span: SourceSpan,
-    rest_span: SourceSpan,
+    source: &SourceContext,
+    span: impl Into<SourceSpan>,
+    rest_span: impl Into<SourceSpan>,
 ) -> SutraError {
-    builders::build_parse_parameter_order(source_name.into(), source_code.into(), span, rest_span)
+    builders::build_parse_parameter_order(source.to_named_source(), span.into(), rest_span.into())
 }
 
 /// Create a runtime error for undefined symbols
 pub fn runtime_undefined_symbol(
     symbol: impl Into<String>,
-    source_name: impl Into<String>,
-    source_code: impl Into<String>,
-    span: SourceSpan,
+    source: &SourceContext,
+    span: impl Into<SourceSpan>,
 ) -> SutraError {
-    builders::build_runtime_undefined_symbol(symbol.into(), source_name.into(), source_code.into(), span)
+    builders::build_runtime_undefined_symbol(symbol.into(), source.to_named_source(), span.into())
 }
 
 /// Create a general runtime error
 pub fn runtime_general(
     message: impl Into<String>,
-    source_name: impl Into<String>,
-    source_code: impl Into<String>,
-    span: SourceSpan,
+    label: impl Into<String>,
+    source: &SourceContext,
+    span: impl Into<SourceSpan>,
 ) -> SutraError {
-    builders::build_runtime_general(message.into(), source_name.into(), source_code.into(), span)
+    builders::build_runtime_general(
+        message.into(),
+        label.into(),
+        source.to_named_source(),
+        span.into(),
+    )
 }
 
 /// Create a validation error for incorrect arity
 pub fn validation_arity(
     expected: impl Into<String>,
     actual: usize,
-    source_name: impl Into<String>,
-    source_code: impl Into<String>,
-    span: SourceSpan,
+    source: &SourceContext,
+    span: impl Into<SourceSpan>,
 ) -> SutraError {
-    builders::build_validation_arity(expected.into(), actual, source_name.into(), source_code.into(), span)
+    builders::build_validation_arity(
+        expected.into(),
+        actual,
+        source.to_named_source(),
+        span.into(),
+    )
 }
 
 /// Create a type mismatch error
 pub fn type_mismatch(
     expected: impl Into<String>,
     actual: impl Into<String>,
-    source_name: impl Into<String>,
-    source_code: impl Into<String>,
-    span: SourceSpan,
+    source: &SourceContext,
+    span: impl Into<SourceSpan>,
 ) -> SutraError {
-    builders::build_type_mismatch(expected.into(), actual.into(), source_name.into(), source_code.into(), span)
+    builders::build_type_mismatch(
+        expected.into(),
+        actual.into(),
+        source.to_named_source(),
+        span.into(),
+    )
+}
+
+/// Create a test assertion error
+pub fn test_assertion(
+    message: impl Into<String>,
+    test_name: impl Into<String>,
+    src: &SourceContext,
+    span: impl Into<SourceSpan>,
+) -> SutraError {
+    builders::build_test_assertion(
+        message.into(),
+        test_name.into(),
+        src.to_named_source(),
+        span.into(),
+    )
 }
 
 // ============================================================================
@@ -186,14 +213,8 @@ impl SutraError {
     }
 
     /// Add a related span for multi-location diagnostics
-    pub fn with_related_span(
-        self,
-        source_name: impl Into<String>,
-        source_code: impl Into<String>,
-        span: SourceSpan,
-        label: impl Into<String>,
-    ) -> Self {
-        SutraError(self.0.with_related_span(source_name.into(), source_code.into(), span, label.into()))
+    pub fn with_related_span(self, span: impl Into<SourceSpan>, label: impl Into<String>) -> Self {
+        SutraError(self.0.with_related_span(span.into(), label.into()))
     }
 
     /// Mark this error as a warning instead of fatal

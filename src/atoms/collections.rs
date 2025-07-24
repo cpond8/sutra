@@ -18,7 +18,6 @@
 
 use crate::prelude::*;
 use crate::{helpers, NativeEagerFn};
-use crate::errors;
 
 // ============================================================================
 // LIST OPERATIONS
@@ -35,29 +34,31 @@ use crate::errors;
 ///   (list 1 2 3) ; => (1 2 3)
 pub const ATOM_LIST: NativeEagerFn = |args, _| Ok(Value::List(args.to_vec()));
 
-/// Returns the length of a list or string.
+/// Returns the length of a list, string, or nil.
 ///
-/// Usage: (len <list-or-string>)
-///   - <list-or-string>: List or String to measure
+/// Usage: (len <list-or-string-or-nil>)
+///   - <list-or-string-or-nil>: List, String, or Nil to measure
 ///
 ///   Returns: Number (length)
 ///
 /// Example:
 ///   (len (list 1 2 3)) ; => 3
 ///   (len "abc") ; => 3
+///   (len nil) ; => 0
 pub const ATOM_LEN: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "len")?;
+    helpers::validate_unary_arity(args, "len", context)?;
     let val = &args[0];
     let len = match val {
         Value::List(items) => items.len(),
         Value::String(s) => s.len(),
-        _ => return Err(errors::type_mismatch(
-            "List or String",
-            val.type_name(),
-            context.current_file(),
-            context.current_source(),
-            context.span_for_span(Span::default()),
-        )),
+        Value::Nil => 0, // nil has length 0 (treated as empty list)
+        _ => {
+            return Err(context.create_type_mismatch_error(
+                "List, String, or Nil",
+                val.type_name(),
+                context.span_for_span(Span::default()),
+            ))
+        }
     };
     Ok(Value::Number(len as f64))
 };
@@ -75,22 +76,22 @@ pub const ATOM_LEN: NativeEagerFn = |args, context| {
 ///   (has? {"key" "value"} "key") ; => true
 ///   (has? (list 1 2 3) 4) ; => false
 pub const ATOM_HAS: NativeEagerFn = |args, context| {
-    helpers::validate_binary_arity(args, "has?")?;
+    helpers::validate_binary_arity(args, "has?", context)?;
     let collection_val = &args[0];
     let search_val = &args[1];
     let found = match collection_val {
         Value::List(items) => items.contains(search_val),
         Value::Map(map) => {
-            let key = helpers::validate_string_value(search_val, "map key")?;
+            let key = helpers::validate_string_value(search_val, "map key", context)?;
             map.contains_key(key)
         }
-        _ => return Err(errors::type_mismatch(
-            "List or Map",
-            collection_val.type_name(),
-            context.current_file(),
-            context.current_source(),
-            context.span_for_span(Span::default()),
-        )),
+        _ => {
+            return Err(context.create_type_mismatch_error(
+                "List or Map",
+                collection_val.type_name(),
+                context.span_for_span(Span::default()),
+            ))
+        }
     };
     Ok(Value::Bool(found))
 };
@@ -109,8 +110,8 @@ pub const ATOM_HAS: NativeEagerFn = |args, context| {
 /// # Safety
 /// Mutates the world at the given path. **Creates a new empty list if the path doesn't exist.**
 pub const ATOM_CORE_PUSH: NativeEagerFn = |args, context| {
-    helpers::validate_binary_arity(args, "core/push!")?;
-    let path = helpers::validate_path_arg(args, "core/push!")?;
+    helpers::validate_binary_arity(args, "core/push!", context)?;
+    let path = helpers::validate_path_arg(args, "core/push!", context)?;
     let value_to_push = args[1].clone();
 
     let mut world = context.world.borrow_mut();
@@ -119,7 +120,7 @@ pub const ATOM_CORE_PUSH: NativeEagerFn = |args, context| {
     }
     let list_val = world.state.get_mut(path).unwrap();
 
-    let items = helpers::validate_list_value_mut(list_val, "core/push!")?;
+    let items = helpers::validate_list_value_mut(list_val, "core/push!", context)?;
     items.push(value_to_push);
 
     Ok(Value::Nil)
@@ -138,14 +139,14 @@ pub const ATOM_CORE_PUSH: NativeEagerFn = |args, context| {
 /// # Safety
 /// Mutates the world at the given path. **Creates a new empty list if the path doesn't exist.**
 pub const ATOM_CORE_PULL: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "core/pull!")?;
-    let path = helpers::validate_path_arg(args, "core/pull!")?;
+    helpers::validate_unary_arity(args, "core/pull!", context)?;
+    let path = helpers::validate_path_arg(args, "core/pull!", context)?;
 
     let mut world = context.world.borrow_mut();
     let list_val = world.state.get_mut(path);
 
     if let Some(list_val) = list_val {
-        let items = helpers::validate_list_value_mut(list_val, "core/pull!")?;
+        let items = helpers::validate_list_value_mut(list_val, "core/pull!", context)?;
         let pulled_value = items.pop().unwrap_or(Value::Nil);
         Ok(pulled_value)
     } else {
@@ -173,11 +174,9 @@ pub const ATOM_CORE_STR_PLUS: NativeEagerFn = |args, context| {
     let mut result = String::new();
     for val in args {
         let Value::String(s) = val else {
-            return Err(errors::type_mismatch(
+            return Err(context.create_type_mismatch_error(
                 "String",
                 val.type_name(),
-                context.current_file(),
-                context.current_source(),
                 context.span_for_span(Span::default()),
             ));
         };
@@ -190,67 +189,185 @@ pub const ATOM_CORE_STR_PLUS: NativeEagerFn = |args, context| {
 // LIST ACCESS OPERATIONS
 // ============================================================================
 
-/// Returns the first element of a list.
+/// Returns the first element of a list or nil.
 ///
-/// Usage: (car <list>)
-///   - <list>: List to get first element from
+/// Usage: (car <list-or-nil>)
+///   - <list-or-nil>: List or Nil to get first element from
 ///
-///   Returns: First element, or Nil if list is empty
+///   Returns: First element, or Nil if list is empty or input is nil
 ///
 /// Example:
 ///   (car (list 1 2 3)) ; => 1
-///   (car (list)) ; => Nil
-pub const ATOM_CAR: NativeEagerFn = |args, _context| {
-    helpers::validate_unary_arity(args, "car")?;
+///   (car (list)) ; => nil
+///   (car nil) ; => nil
+pub const ATOM_CAR: NativeEagerFn = |args, context| {
+    helpers::validate_unary_arity(args, "car", context)?;
     let list_val = &args[0];
-    let items = helpers::validate_list_value(list_val, "car")?;
-    let Some(first) = items.first() else {
-        return Ok(Value::Nil);
-    };
-    Ok(first.clone())
+    match list_val {
+        Value::List(items) => {
+            let Some(first) = items.first() else {
+                return Ok(Value::Nil);
+            };
+            Ok(first.clone())
+        }
+        Value::Nil => Ok(Value::Nil), // car of nil is nil
+        _ => Err(context.create_type_mismatch_error(
+            "List or Nil",
+            list_val.type_name(),
+            context.span_for_span(Span::default()),
+        )
+        .with_suggestion("Expected a List or Nil for car")),
+    }
 };
 
-/// Returns all elements of a list except the first.
+/// Returns all elements of a list except the first, or nil for nil.
 ///
-/// Usage: (cdr <list>)
-///   - <list>: List to get rest of elements from
+/// Usage: (cdr <list-or-nil>)
+///   - <list-or-nil>: List or Nil to get rest of elements from
 ///
-///   Returns: List of remaining elements, or empty list if original is empty
+///   Returns: List of remaining elements, empty list if original is empty, or nil for nil input
 ///
 /// Example:
 ///   (cdr (list 1 2 3)) ; => (2 3)
 ///   (cdr (list 1)) ; => ()
 ///   (cdr (list)) ; => ()
-pub const ATOM_CDR: NativeEagerFn = |args, _context| {
-    helpers::validate_unary_arity(args, "cdr")?;
+///   (cdr nil) ; => nil
+pub const ATOM_CDR: NativeEagerFn = |args, context| {
+    helpers::validate_unary_arity(args, "cdr", context)?;
     let list_val = &args[0];
-    let items = helpers::validate_list_value(list_val, "cdr")?;
-    if items.is_empty() {
-        return Ok(Value::List(vec![]));
+    match list_val {
+        Value::List(items) => {
+            if items.is_empty() {
+                Ok(Value::List(vec![]))
+            } else {
+                Ok(Value::List(items[1..].to_vec()))
+            }
+        }
+        Value::Nil => Ok(Value::Nil), // cdr of nil is nil
+        _ => Err(context.create_type_mismatch_error(
+            "List or Nil",
+            list_val.type_name(),
+            context.span_for_span(Span::default()),
+        )
+        .with_suggestion("Expected a List or Nil for cdr")),
     }
-    Ok(Value::List(items[1..].to_vec()))
 };
 
-/// Constructs a new list by prepending an element to an existing list.
+/// Constructs a new list by prepending an element to an existing list or nil.
 ///
-/// Usage: (cons <element> <list>)
+/// Usage: (cons <element> <list-or-nil>)
 ///   - <element>: Value to prepend
-///   - <list>: List to prepend to
+///   - <list-or-nil>: List or Nil to prepend to
 ///
 ///   Returns: New list with element prepended
 ///
 /// Example:
 ///   (cons 1 (list 2 3)) ; => (1 2 3)
 ///   (cons 1 (list)) ; => (1)
-pub const ATOM_CONS: NativeEagerFn = |args, _context| {
-    helpers::validate_binary_arity(args, "cons")?;
+///   (cons 1 nil) ; => (1)
+pub const ATOM_CONS: NativeEagerFn = |args, context| {
+    helpers::validate_binary_arity(args, "cons", context)?;
     let element = &args[0];
     let list_val = &args[1];
-    let items = helpers::validate_list_value(list_val, "cons")?;
-    let mut new_list = Vec::with_capacity(items.len() + 1);
-    new_list.push(element.clone());
-    new_list.extend(items.iter().cloned());
+    match list_val {
+        Value::List(items) => {
+            let mut new_list = Vec::with_capacity(items.len() + 1);
+            new_list.push(element.clone());
+            new_list.extend(items.iter().cloned());
+            Ok(Value::List(new_list))
+        }
+        Value::Nil => {
+            // cons with nil creates a single-element list
+            Ok(Value::List(vec![element.clone()]))
+        }
+        _ => Err(context.create_type_mismatch_error(
+            "List or Nil",
+            list_val.type_name(),
+            context.span_for_span(Span::default()),
+        )
+        .with_suggestion("Expected a List or Nil for cons")),
+    }
+};
+
+/// Appends two or more lists.
+///
+/// Usage: (append <list1> <list2> ...)
+///   - <list1>, <list2>, ...: Lists or nil to append
+///
+///   Returns: New list containing all elements from the input lists
+///
+/// Example:
+///   (append (list 1 2) (list 3 4))   ; => (1 2 3 4)
+///   (append (list 1) nil (list 2))   ; => (1 2)
+pub const ATOM_APPEND: NativeEagerFn = |args, context| {
+    let mut new_list = Vec::new();
+    for arg in args {
+        match arg {
+            Value::List(items) => {
+                new_list.extend(items.iter().cloned());
+            }
+            Value::Nil => {
+                // Treat nil as an empty list, so do nothing
+            }
+            _ => {
+                return Err(context.create_type_mismatch_error(
+                    "List or Nil",
+                    arg.type_name(),
+                    context.span_for_span(Span::default()),
+                )
+                .with_suggestion("`append` only works on lists or nil"));
+            }
+        }
+    }
     Ok(Value::List(new_list))
+};
+
+/// Applies a function to each element of a list, returning a new list of the results.
+///
+/// Usage: (map <function> <list>)
+///   - <function>: The function to apply to each element
+///   - <list>: The list to iterate over
+///
+///   Returns: A new list containing the results of applying the function to each element.
+///
+/// Example:
+///   (map (lambda (x) (* x 2)) (list 1 2 3))  ; => (2 4 6)
+pub const ATOM_MAP: NativeEagerFn = |args, context| {
+    helpers::validate_binary_arity(args, "map", context)?;
+    let func = &args[0];
+    let list_val = &args[1];
+
+    let items = match list_val {
+        Value::List(items) => items,
+        Value::Nil => return Ok(Value::List(vec![])), // map over nil is an empty list
+        _ => {
+            return Err(context.create_type_mismatch_error(
+                "List or Nil",
+                list_val.type_name(),
+                context.span_for_span(Span::default()),
+            ));
+        }
+    };
+
+    let mut results = Vec::new();
+    for item in items {
+        let result = match func {
+            Value::Lambda(lambda) => {
+                crate::atoms::special_forms::call_lambda(lambda, &[item.clone()], context)?
+            }
+            Value::NativeEagerFn(native_fn) => native_fn(&[item.clone()], context)?,
+            _ => {
+                return Err(context.create_type_mismatch_error(
+                    "Lambda or NativeEagerFn",
+                    func.type_name(),
+                    context.span_for_span(Span::default()),
+                ).with_suggestion("The first argument to `map` must be a callable function."));
+            }
+        };
+        results.push(result);
+    }
+
+    Ok(Value::List(results))
 };
 
 // ============================================================================
@@ -266,11 +383,11 @@ pub const ATOM_CONS: NativeEagerFn = |args, _context| {
 ///
 /// Example:
 ///   (core/map "a" 1 "b" 2) ; => {"a" 1 "b" 2}
-pub const ATOM_CORE_MAP: NativeEagerFn = |args, _context| {
-    helpers::validate_even_arity(args, "core/map")?;
+pub const ATOM_CORE_MAP: NativeEagerFn = |args, context| {
+    helpers::validate_even_arity(args, "core/map", context)?;
     let mut map = std::collections::HashMap::new();
     for chunk in args.chunks(2) {
-        let key = helpers::validate_string_value(&chunk[0], "map key")?.to_string();
+        let key = helpers::validate_string_value(&chunk[0], "map key", context)?.to_string();
         let value = chunk[1].clone();
         map.insert(key, value);
     }

@@ -17,7 +17,7 @@
   (car 42))
 
 (test "car errors on wrong arity (no arguments)"
-  (expect (error Eval))
+  (expect (error Validation))
   (car))
 
 (test "cdr returns tail of list"
@@ -37,7 +37,7 @@
   (cdr 42))
 
 (test "cdr errors on wrong arity (no arguments)"
-  (expect (error Eval))
+  (expect (error Validation))
   (cdr))
 
 (test "cons prepends element to list"
@@ -49,7 +49,7 @@
   (cons "a" (list "b" "c")))
 
 (test "cons errors on wrong arity (one argument)"
-  (expect (error Eval))
+  (expect (error Validation))
   (cons 1))
 
 (test "cons errors if second argument is not a list"

@@ -13,9 +13,9 @@
 //! - **Meta-Programming**: Function application with argument flattening
 //! - **State Threading**: Proper world state propagation through execution
 
+use crate::errors;
 use crate::prelude::*;
 use crate::{helpers, runtime::eval, NativeLazyFn};
-use crate::errors;
 
 // ============================================================================
 // CONTROL FLOW OPERATIONS
@@ -36,14 +36,10 @@ use crate::errors;
 pub const ATOM_DO: NativeLazyFn = |args, context, _parent_span| {
     let mut last_value = Value::default();
 
-    for arg in args {
-        // Create a new evaluation context for the sub-expression.
-        let mut sub_context = helpers::sub_eval_context!(context);
-        // Evaluate the expression. The world is mutated via the shared context.
-        last_value = eval::evaluate_ast_node(arg, &mut sub_context)?;
+    for arg in args.iter() {
+        last_value = eval::evaluate_ast_node(arg, context)?;
     }
 
-    // Return the value of the last expression.
     Ok(last_value)
 };
 
@@ -65,15 +61,14 @@ pub const ATOM_ERROR: NativeLazyFn = |args, context, _parent_span| {
         return Err(errors::type_mismatch(
             "String",
             val.type_name(),
-            context.current_file(),
-            context.current_source(),
+            &context.source,
             context.span_for_span(Span::default()),
         ));
     };
     Err(errors::runtime_general(
         msg,
-        context.current_file(),
-        context.current_source(),
+        "user error",
+        &context.source,
         context.span_for_span(Span::default()),
     ))
 };
@@ -95,7 +90,7 @@ pub const ATOM_ERROR: NativeLazyFn = |args, context, _parent_span| {
 ///   (apply + 1 2 (list 3 4)) ; => 10
 ///   (apply core/str+ (list "a" "b" "c")) ; => "abc"
 pub const ATOM_APPLY: NativeLazyFn = |args, context, parent_span| {
-    helpers::validate_special_form_min_arity(args, 2, "apply")?;
+    helpers::validate_special_form_min_arity(args, 2, "apply", context)?;
 
     let func_expr = &args[0];
     let normal_args_slice = &args[1..args.len() - 1];
@@ -111,4 +106,64 @@ pub const ATOM_APPLY: NativeLazyFn = |args, context, parent_span| {
     let call_expr = helpers::build_apply_call_expr(func_expr, normal_args, list_args, parent_span);
     let mut sub_context = helpers::sub_eval_context!(context);
     eval::evaluate_ast_node(&call_expr, &mut sub_context)
+};
+
+/// Executes a body of code for each element in a collection.
+///
+/// Usage: (for-each <var> <collection> <body>...)
+///   - <var>: A symbol that will be bound to each element of the collection.
+///   - <collection>: The list to iterate over.
+///   - <body>...: One or more expressions to execute for each element.
+///
+/// Returns: Nil.
+///
+/// Example:
+///   (for-each item (list 1 2 3) (print item))
+pub const ATOM_FOR_EACH: NativeLazyFn = |args, context, _parent_span| {
+    helpers::validate_special_form_min_arity(args, 3, "for-each", context)?;
+
+    // First argument must be the variable symbol.
+    let var_name = match &*args[0].value {
+        Expr::Symbol(s, _) => s.clone(),
+        _ => {
+            return Err(errors::runtime_general(
+                "for-each: first argument must be a symbol",
+                "invalid definition",
+                &context.source,
+                context.span_for_node(&args[0]),
+            ));
+        }
+    };
+
+    // Second argument is the collection to iterate over.
+    let collection_val = eval::evaluate_ast_node(&args[1], context)?;
+    let items = match collection_val {
+        Value::List(items) => items,
+        Value::Nil => vec![], // for-each on nil does nothing.
+        _ => {
+            return Err(errors::type_mismatch(
+                "List or Nil",
+                collection_val.type_name(),
+                &context.source,
+                context.span_for_node(&args[1]),
+            ));
+        }
+    };
+
+    // The rest of the arguments form the body.
+    let body_exprs = &args[2..];
+
+    // Iterate over the collection.
+    for item in items {
+        // For each item, create a new lexical scope with the variable bound to the item.
+        let mut loop_context = context.clone_with_new_lexical_frame();
+        loop_context.set_lexical_var(&var_name, item);
+
+        // Execute the body expressions within the new scope.
+        for expr in body_exprs {
+            eval::evaluate_ast_node(expr, &mut loop_context)?;
+        }
+    }
+
+    Ok(Value::Nil)
 };

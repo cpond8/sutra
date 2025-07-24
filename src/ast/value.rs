@@ -96,6 +96,16 @@ impl Value {
         matches!(self, Value::Nil)
     }
 
+    /// Returns true if the value is considered "truthy" in a boolean context.
+    /// In Sutra, `nil` and `false` are falsey. Everything else is truthy.
+    pub fn is_truthy(&self) -> bool {
+        match self {
+            Value::Nil => false,
+            Value::Bool(b) => *b,
+            _ => true,
+        }
+    }
+
     /// Returns the contained number if this is a Number value, else None.
     pub fn as_number(&self) -> Option<f64> {
         match self {

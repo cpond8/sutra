@@ -10,7 +10,7 @@ use crate::prelude::*;
 
 // Domain modules with aliases
 use crate::{
-    atoms::{StateContext},
+    atoms::StateContext,
     macros::{
         load_macros_from_file, std_macros::register_std_macros, MacroDefinition,
         MacroExpansionContext, MacroValidationContext,
@@ -87,7 +87,6 @@ impl WorldState {
         Some(current)
     }
 
-
     pub fn set(&mut self, path: &Path, val: Value) {
         if path.0.is_empty() {
             return;
@@ -156,12 +155,6 @@ impl World {
 
     pub fn next_u32(&mut self) -> u32 {
         self.prng.next_u32()
-    }
-}
-
-impl Default for World {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

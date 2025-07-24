@@ -1,29 +1,35 @@
 use std::{cell::RefCell, rc::Rc};
-use std::sync::Arc;
-use miette::NamedSource;
 
-use crate::prelude::*;
 use crate::{
     atoms::SharedOutput,
     discovery::ASTDefinition,
     engine::{EngineOutputBuffer, ExecutionPipeline, MacroProcessor},
-    runtime::eval::evaluate,
+    errors,
+    prelude::*,
+    runtime::{self, eval, source},
 };
-
-use crate::errors;
 
 /// Executes test code with proper macro expansion and special form preservation.
 pub struct TestRunner;
 
 impl TestRunner {
-    pub fn execute_test(test_body: &[AstNode], output: SharedOutput, test_file: Option<String>, test_name: Option<String>, source_file: Arc<NamedSource<String>>) -> Result<(), SutraError> {
+    pub fn execute_test(
+        test_body: &[AstNode],
+        output: SharedOutput,
+        test_file: Option<String>,
+        test_name: Option<String>,
+        source_file: source::SourceContext,
+    ) -> Result<(), SutraError> {
         // Use a macro processor to handle expansion and evaluation correctly
-        let processor = MacroProcessor::default();
-        let (world, mut macro_env) =
-            MacroProcessor::build_standard_registries();
+        let processor = MacroProcessor::default().with_test_context(
+            test_file.clone().unwrap_or_default(),
+            test_name.clone().unwrap_or_default(),
+        );
+        let world = runtime::build_canonical_world();
+        let mut macro_env =
+            runtime::world::build_canonical_macro_env().expect("Standard macro env should build");
 
-        // Correctly process the nodes by passing the whole slice.
-        // This replicates the behavior of the full execution pipeline.
+        // Try macro expansion
         let expanded_node =
             processor.process_with_existing_macros(test_body.to_vec(), &mut macro_env)?;
 
@@ -31,12 +37,17 @@ impl TestRunner {
         let source_context = source_file;
 
         // Validate the expanded AST
-        processor.validate_expanded_ast(&expanded_node, &macro_env, &world, &source_context)?;
+        processor.validate_expanded_ast(
+            &expanded_node,
+            &macro_env,
+            &world.borrow(),
+            &source_context,
+        )?;
 
         // Use the builder for evaluation context
-        let result = evaluate(
+        let result = eval::evaluate(
             &expanded_node,
-            Rc::new(RefCell::new(world)),
+            world,
             output.clone(),
             source_context,
             1000,
@@ -52,14 +63,19 @@ impl TestRunner {
         Ok(())
     }
 
-    pub fn execute_ast(nodes: &[AstNode]) -> Result<Value, SutraError> {
+    pub fn execute_ast(
+        nodes: &[AstNode],
+        source_context: &source::SourceContext,
+    ) -> Result<Value, SutraError> {
         let pipeline = ExecutionPipeline::default();
-        pipeline.execute_nodes(nodes)
+        let output = SharedOutput::new(crate::engine::EngineOutputBuffer::new());
+        pipeline.execute_nodes(nodes, output, source_context.clone())
     }
 
     pub fn run_single_test(test_form: &ASTDefinition) -> Result<(), SutraError> {
         // Extract expected result from test form
-        let expected = Self::extract_expectation(test_form)?;
+        let source_context = &test_form.source_file;
+        let expected = Self::extract_expectation(test_form, source_context)?;
 
         // Execute test body and check result
         if let Expectation::Output(ref expected_output) = expected {
@@ -69,7 +85,7 @@ impl TestRunner {
             let result = Self::execute_test(
                 &test_form.body,
                 shared_output,
-                Some(test_form.source_file.name().to_string()),
+                Some(test_form.source_file.name.clone()),
                 Some(test_form.name.clone()),
                 test_form.source_file.clone(),
             );
@@ -78,13 +94,13 @@ impl TestRunner {
                 buf_ref.as_str().to_owned()
             };
             if actual_output_owned != *expected_output {
-                return Err(errors::runtime_general(
+                return Err(errors::test_assertion(
                     format!(
                         "Expected output {:?}, got {:?}",
                         expected_output, actual_output_owned
                     ),
                     test_form.name.clone(),
-                    format!("{:?}", test_form.source_file),
+                    source_context,
                     to_source_span(test_form.span),
                 ));
             }
@@ -94,9 +110,9 @@ impl TestRunner {
             return Ok(());
         }
         // Value and error expectations (existing logic)
-        match Self::execute_ast(&test_form.body) {
-            Ok(actual) => Self::check_success_test(test_form, &expected, actual),
-            Err(e) => Self::check_error_test(test_form, &expected, e),
+        match Self::execute_ast(&test_form.body, &test_form.source_file) {
+            Ok(actual) => Self::check_success_test(test_form, &expected, actual, &source_context),
+            Err(e) => Self::check_error_test(test_form, &expected, e, &source_context),
         }
     }
 
@@ -104,32 +120,30 @@ impl TestRunner {
         test_form: &ASTDefinition,
         expected: &Expectation,
         actual: Value,
+        source_context: &source::SourceContext,
     ) -> Result<(), SutraError> {
         match expected {
             // Success case: actual matches expected value
             Expectation::Value(expected_value) if actual == *expected_value => Ok(()),
             // Failure case: actual doesn't match expected value
-            Expectation::Value(expected_value) => Err(errors::runtime_general(
-                format!(
-                    "\"{}\"\nExpected {}, got {}",
-                    test_form.name, expected_value, actual
-                ),
+            Expectation::Value(expected_value) => Err(errors::test_assertion(
+                format!("Expected {}, got {}", expected_value, actual),
                 test_form.name.clone(),
-                format!("{:?}", test_form.source_file),
+                source_context,
                 to_source_span(test_form.span),
             )),
             // Failure case: expected error but got success
-            Expectation::Error(_) => Err(errors::runtime_general(
-                "Expected error, but test succeeded".to_string(),
+            Expectation::Error(_) => Err(errors::test_assertion(
+                "Expected error, but test succeeded",
                 test_form.name.clone(),
-                format!("{:?}", test_form.source_file),
+                source_context,
                 to_source_span(test_form.span),
             )),
             // Failure case: output expectation in value test path
-            Expectation::Output(_) => Err(errors::runtime_general(
-                "Output expectation not handled in value test path. Output expectations should be handled in the output test path".to_string(),
+            Expectation::Output(_) => Err(errors::test_assertion(
+                "Output expectation not handled in value test path. Output expectations should be handled in the output test path",
                 test_form.name.clone(),
-                format!("{:?}", test_form.source_file),
+                source_context,
                 to_source_span(test_form.span),
             )),
         }
@@ -139,6 +153,7 @@ impl TestRunner {
         test_form: &ASTDefinition,
         expected: &Expectation,
         actual_error: SutraError,
+        source_context: &source::SourceContext,
     ) -> Result<(), SutraError> {
         match expected {
             // Success case: error type matches expected
@@ -146,61 +161,63 @@ impl TestRunner {
                 Ok(())
             }
             // Failure case: expected error but got different type
-            Expectation::Error(expected_type) => Err(errors::runtime_general(
+   Expectation::Error(expected_type) => Err(errors::test_assertion(
                 format!(
                     "Expected error type {:?}, got {:?}",
                     expected_type,
                     actual_error.error_type()
                 ),
                 test_form.name.clone(),
-                format!("{:?}", test_form.source_file),
+                source_context,
                 to_source_span(test_form.span),
             )),
             // Failure case: expected success but got error
             Expectation::Value(_) => Err(actual_error),
             // Failure case: output expectation in error test path
-            Expectation::Output(_) => Err(errors::runtime_general(
-                "Output expectation not handled in error test path. Output expectations should be handled in the output test path".to_string(),
+            Expectation::Output(_) => Err(errors::test_assertion(
+                "Output expectation not handled in error test path. Output expectations should be handled in the output test path",
                 test_form.name.clone(),
-                format!("{:?}", test_form.source_file),
+                source_context,
                 to_source_span(test_form.span),
             )),
         }
     }
 
-    fn extract_expectation(test_form: &ASTDefinition) -> Result<Expectation, SutraError> {
+    fn extract_expectation(
+        test_form: &ASTDefinition,
+        source_context: &SourceContext,
+    ) -> Result<Expectation, SutraError> {
         // Get expect form from test definition
-        let expect = test_form
-            .expect_form
-            .as_ref()
-            .ok_or_else(|| errors::runtime_general(
-                "Test is missing expect form".to_string(),
+        let expect = test_form.expect_form.as_ref().ok_or_else(|| {
+            errors::test_assertion(
+                "Test is missing expect form",
                 test_form.name.clone(),
-                format!("{:?}", test_form.source_file),
+                source_context,
                 to_source_span(test_form.span),
-            ))?;
+            )
+        })?;
 
         // Validate expect form is a list
         let Expr::List(items, _) = &*expect.value else {
-            return Err(errors::runtime_general(
-                "expect form must be a list".to_string(),
+            return Err(errors::test_assertion(
+                "expect form must be a list",
                 test_form.name.clone(),
-                format!("{:?}", test_form.source_file),
+                source_context,
                 to_source_span(test_form.span),
             ));
         };
 
         // Look for value or error clause in expect form
         for item in items {
-            if let Some(expectation) = Self::extract_clause(item, test_form)? {
+            if let Some(expectation) = Self::extract_clause(item, test_form, source_context)? {
                 return Ok(expectation);
             }
         }
 
-        Err(errors::runtime_general(
-            "missing (value <expected>) or (error <type>) in expect form".to_string(),
+        Err(errors::test_assertion(
+            "missing (value <expected>) or (error <type>) in expect form",
             test_form.name.clone(),
-            format!("{:?}", test_form.source_file),
+            source_context,
             to_source_span(test_form.span),
         ))
     }
@@ -208,6 +225,7 @@ impl TestRunner {
     fn extract_clause(
         item: &AstNode,
         test_form: &ASTDefinition,
+        source_context: &SourceContext,
     ) -> Result<Option<Expectation>, SutraError> {
         let Expr::List(items, _) = &*item.value else {
             return Ok(None);
@@ -219,31 +237,35 @@ impl TestRunner {
             return Ok(None);
         };
         if keyword == "value" {
-            let v = Self::extract_value(&items[1], test_form)?;
+            let v = Self::extract_value(&items[1], test_form, source_context)?;
             return Ok(Some(Expectation::Value(v)));
         }
         if keyword == "error" {
-            let e = Self::extract_error_type(&items[1], test_form)?;
+            let e = Self::extract_error_type(&items[1], test_form, source_context)?;
             return Ok(Some(Expectation::Error(e)));
         }
         if keyword == "output" {
-            let o = Self::extract_output(&items[1], test_form)?;
+            let o = Self::extract_output(&items[1], test_form, source_context)?;
             return Ok(Some(Expectation::Output(o)));
         }
         Ok(None)
     }
 
-    fn extract_value(value_node: &AstNode, test_form: &ASTDefinition) -> Result<Value, SutraError> {
+    fn extract_value(
+        value_node: &AstNode,
+        test_form: &ASTDefinition,
+        source_context: &SourceContext,
+    ) -> Result<Value, SutraError> {
         // Convert AST node to Value based on type
         match &*value_node.value {
             Expr::Number(n, _) => Ok(Value::Number(*n)),
             Expr::String(s, _) => Ok(Value::String(s.clone())),
             Expr::Bool(b, _) => Ok(Value::Bool(*b)),
             Expr::Symbol(s, _) if s == "nil" => Ok(Value::Nil),
-            _ => Err(errors::runtime_general(
-                "unsupported expected value type".to_string(),
+            _ => Err(errors::test_assertion(
+                "unsupported expected value type",
                 test_form.name.clone(),
-                format!("{:?}", test_form.source_file),
+                source_context,
                 to_source_span(test_form.span),
             )),
         }
@@ -252,13 +274,14 @@ impl TestRunner {
     fn extract_error_type(
         error_node: &AstNode,
         test_form: &ASTDefinition,
+        source_context: &SourceContext,
     ) -> Result<ErrorType, SutraError> {
         // Extract error type symbol
         let Expr::Symbol(error_type, _) = &*error_node.value else {
-            return Err(errors::runtime_general(
-                "error type must be a symbol".to_string(),
+            return Err(errors::test_assertion(
+                "error type must be a symbol",
                 test_form.name.clone(),
-                format!("{:?}", test_form.source_file),
+                source_context,
                 to_source_span(test_form.span),
             ));
         };
@@ -271,10 +294,10 @@ impl TestRunner {
             "TypeError" => Ok(ErrorType::TypeError),
             "Internal" => Ok(ErrorType::Internal),
             "TestFailure" => Ok(ErrorType::TestFailure),
-            _ => Err(errors::runtime_general(
+            _ => Err(errors::test_assertion(
                 format!("unknown error type: {}", error_type),
                 test_form.name.clone(),
-                format!("{:?}", test_form.source_file),
+                source_context,
                 to_source_span(test_form.span),
             )),
         }
@@ -283,12 +306,13 @@ impl TestRunner {
     fn extract_output(
         output_node: &AstNode,
         test_form: &ASTDefinition,
+        source_context: &SourceContext,
     ) -> Result<String, SutraError> {
         let Expr::String(s, _) = &*output_node.value else {
-            return Err(errors::runtime_general(
-                "output expectation must be a string".to_string(),
+            return Err(errors::test_assertion(
+                "output expectation must be a string",
                 test_form.name.clone(),
-                format!("{:?}", test_form.source_file),
+                source_context,
                 to_source_span(test_form.span),
             ));
         };

@@ -71,7 +71,7 @@ fn find_and_capture_free_variables(
 /// Implements the (define ...) special form for global bindings.
 pub const ATOM_DEFINE: NativeLazyFn = |args, context, span| {
     // 1. Validate arity: (define <name> <value>)
-    validate_special_form_arity(args, 2, "define")?;
+    validate_special_form_arity(args, 2, "define", context)?;
 
     let name_expr = &args[0];
     let value_expr = &args[1];
@@ -81,103 +81,165 @@ pub const ATOM_DEFINE: NativeLazyFn = |args, context, span| {
         // Evaluate the value expression in the current context.
         let value = eval::evaluate_ast_node(value_expr, context)?;
 
-        // Create a path from the name and update the world state.
-        let path = Path(vec![name.clone()]);
-        context.world.borrow_mut().set(&path, value.clone());
+        // Patch: Set in lexical frame if in local scope, else global world state
+        if context.lexical_env.len() > 1 {
+            context.set_lexical_var(name, value.clone());
+        } else {
+            let path = Path(vec![name.clone()]);
+            context.world.borrow_mut().set(&path, value.clone());
+        }
 
         return Ok(value);
     }
 
     // 3. Handle function definition: (define (my-func x) (+ x 1))
     if let Expr::List(items, list_span) = &*name_expr.value {
-        if items.is_empty() {
-            return Err(errors::runtime_general(
-                "define: function definition requires a name",
-                context.current_file(),
-                context.current_source(),
-                context.span_for_span(*span),
-            ));
-        }
-
-        // The first item is the function name.
-        let function_name = match &*items[0].value {
-            Expr::Symbol(s, _) => s.clone(),
-            _ => {
-                return Err(errors::runtime_general(
-                    "define: function name must be a symbol",
-                    context.current_file(),
-                    context.current_source(),
-                    context.span_for_node(&items[0]),
-                ));
-            }
-        };
-
-        // The rest of the items are the parameters.
-        let params_nodes = &items[1..];
-        let mut required = vec![];
-        let mut rest = None;
-
-        for param_node in params_nodes {
-            match &*param_node.value {
-                Expr::Symbol(s, _) => required.push(s.clone()),
-                Expr::Spread(spread_expr) => {
-                    if let Expr::Symbol(s, _) = &*spread_expr.value {
-                        rest = Some(s.clone());
-                        break; // No params after a variadic parameter.
-                    } else {
-                        return Err(errors::runtime_general(
-                            "define: spread parameter must be a symbol",
-                            context.current_file(),
-                            context.current_source(),
-                            context.span_for_node(spread_expr),
-                        ));
-                    }
-                }
-                _ => {
-                    return Err(errors::runtime_general(
-                        "define: function parameters must be symbols",
-                        context.current_file(),
-                        context.current_source(),
-                        context.span_for_node(param_node),
-                    ));
-                }
-            }
-        }
-
-        let params = crate::ast::ParamList {
-            required,
-            rest,
-            span: *list_span,
-        };
-
-        let body = Box::new(value_expr.clone());
-        let captured_env = find_and_capture_free_variables(&body, &params, context);
-
-        let lambda = Value::Lambda(Rc::new(Lambda {
-            params,
-            body,
-            captured_env,
-        }));
-
-        // Create a path from the function name and update the world state.
-        let path = Path(vec![function_name.clone()]);
-        context.world.borrow_mut().set(&path, lambda.clone());
-
-        return Ok(lambda);
+        return handle_function_definition_list(items, list_span, value_expr, context, span);
     }
 
-    // 4. If the first argument is not a symbol or a list, it's an error.
+    // 4. Handle function definition with ParamList: (define (ParamList { required: ["my-func", "x"], ... }) (+ x 1))
+    if let Expr::ParamList(param_list) = &*name_expr.value {
+        return handle_function_definition_paramlist(param_list, value_expr, context);
+    }
+
+    // 5. If the first argument is not a symbol, list, or param list, it's an error.
     Err(errors::runtime_general(
         "define: first argument must be a symbol or a list for function definition",
-        context.current_file(),
-        context.current_source(),
+        "invalid definition",
+        &context.source,
         context.span_for_node(name_expr),
     ))
 };
 
+/// Handle function definition when the first argument is a List (legacy format)
+fn handle_function_definition_list(
+    items: &[AstNode],
+    list_span: &Span,
+    value_expr: &AstNode,
+    context: &mut EvaluationContext,
+    span: &Span,
+) -> Result<Value, SutraError> {
+    if items.is_empty() {
+        return Err(errors::runtime_general(
+            "define: function definition requires a name",
+            "invalid definition",
+            &context.source,
+            context.span_for_span(*span),
+        ));
+    }
+
+    // The first item is the function name.
+    let function_name = match &*items[0].value {
+        Expr::Symbol(s, _) => s.clone(),
+        _ => {
+            return Err(errors::runtime_general(
+                "define: function name must be a symbol",
+                "invalid definition",
+                &context.source,
+                context.span_for_node(&items[0]),
+            ));
+        }
+    };
+
+    // The rest of the items are the parameters.
+    let params_nodes = &items[1..];
+    let mut required = vec![];
+    let mut rest = None;
+
+    for param_node in params_nodes {
+        match &*param_node.value {
+            Expr::Symbol(s, _) => required.push(s.clone()),
+            Expr::Spread(spread_expr) => {
+                if let Expr::Symbol(s, _) = &*spread_expr.value {
+                    rest = Some(s.clone());
+                    break; // No params after a variadic parameter.
+                } else {
+                    return Err(errors::runtime_general(
+                        "define: spread parameter must be a symbol",
+                        "invalid definition",
+                        &context.source,
+                        context.span_for_node(spread_expr),
+                    ));
+                }
+            }
+            _ => {
+                return Err(errors::runtime_general(
+                    "define: function parameters must be symbols",
+                    "invalid definition",
+                    &context.source,
+                    context.span_for_node(param_node),
+                ));
+            }
+        }
+    }
+
+    let params = crate::ast::ParamList {
+        required,
+        rest,
+        span: *list_span,
+    };
+
+    create_and_store_lambda(function_name, params, value_expr, context)
+}
+
+/// Handle function definition when the first argument is a ParamList (current parser format)
+fn handle_function_definition_paramlist(
+    param_list: &crate::ast::ParamList,
+    value_expr: &AstNode,
+    context: &mut EvaluationContext,
+) -> Result<Value, SutraError> {
+    if param_list.required.is_empty() {
+        return Err(errors::runtime_general(
+            "define: function definition requires a name",
+            "invalid definition",
+            &context.source,
+            context.span_for_span(param_list.span),
+        ));
+    }
+
+    // The first parameter is the function name
+    let function_name = param_list.required[0].clone();
+
+    // The rest are the actual parameters
+    let function_params = crate::ast::ParamList {
+        required: param_list.required[1..].to_vec(),
+        rest: param_list.rest.clone(),
+        span: param_list.span,
+    };
+
+    create_and_store_lambda(function_name, function_params, value_expr, context)
+}
+
+/// Create a lambda and store it in the appropriate scope
+fn create_and_store_lambda(
+    function_name: String,
+    params: crate::ast::ParamList,
+    value_expr: &AstNode,
+    context: &mut EvaluationContext,
+) -> Result<Value, SutraError> {
+    let body = Box::new(value_expr.clone());
+    let captured_env = find_and_capture_free_variables(&body, &params, context);
+
+    let lambda = Value::Lambda(Rc::new(Lambda {
+        params,
+        body,
+        captured_env,
+    }));
+
+    // Patch: Set in lexical frame if in local scope, else global world state
+    if context.lexical_env.len() > 1 {
+        context.set_lexical_var(&function_name, lambda.clone());
+    } else {
+        let path = Path(vec![function_name.clone()]);
+        context.world.borrow_mut().set(&path, lambda.clone());
+    }
+
+    Ok(lambda)
+}
+
 /// Implements the (if ...) special form with lazy evaluation.
 pub const ATOM_IF: NativeLazyFn = |args, context, _span| {
-    validate_special_form_arity(args, 3, "if")?;
+    validate_special_form_arity(args, 3, "if", context)?;
     let condition = &args[0];
     let then_branch = &args[1];
     let else_branch = &args[2];
@@ -187,17 +249,93 @@ pub const ATOM_IF: NativeLazyFn = |args, context, _span| {
     eval::evaluate_ast_node(branch, context)
 };
 
+/// Implements the (cond ...) special form with lazy evaluation.
+pub const ATOM_COND: NativeLazyFn = |args, context, _span| {
+    for clause_node in args {
+        let clause = match &*clause_node.value {
+            Expr::List(items, _) => items,
+            _ => {
+                return Err(errors::runtime_general(
+                    "cond: each clause must be a list",
+                    "invalid clause",
+                    &context.source,
+                    context.span_for_node(clause_node),
+                ));
+            }
+        };
+
+        if clause.is_empty() {
+            continue; // Skip empty clauses
+        }
+
+        let condition = &clause[0];
+        let is_else = match &*condition.value {
+            Expr::Symbol(s, _) => s == "else",
+            _ => false,
+        };
+
+        if is_else {
+            if clause.len() > 1 {
+                return eval::evaluate_ast_node(&clause[1], context);
+            } else {
+                return Err(errors::runtime_general(
+                    "cond: 'else' clause must have an expression",
+                    "invalid else clause",
+                    &context.source,
+                    context.span_for_node(clause_node),
+                ));
+            }
+        }
+
+        let is_true = eval::evaluate_condition_as_bool(condition, context)?;
+        if is_true {
+            if clause.len() > 1 {
+                return eval::evaluate_ast_node(&clause[1], context);
+            } else {
+                // If condition is true and there's no expression, return true
+                return Ok(Value::Bool(true));
+            }
+        }
+    }
+
+    Ok(Value::Nil) // No condition was met
+};
+
+/// Implements the (and ...) special form with short-circuiting.
+pub const ATOM_AND: NativeLazyFn = |args, context, _span| {
+    let mut last_val = Value::Bool(true);
+    for arg in args {
+        let val = eval::evaluate_ast_node(arg, context)?;
+        if !val.is_truthy() {
+            return Ok(Value::Bool(false));
+        }
+        last_val = val;
+    }
+    Ok(last_val)
+};
+
+/// Implements the (or ...) special form with short-circuiting.
+pub const ATOM_OR: NativeLazyFn = |args, context, _span| {
+    for arg in args {
+        let val = eval::evaluate_ast_node(arg, context)?;
+        if val.is_truthy() {
+            return Ok(val);
+        }
+    }
+    Ok(Value::Bool(false))
+};
+
 /// Implements the (lambda ...) special form.
 pub const ATOM_LAMBDA: NativeLazyFn = |args, context, span| {
-    validate_special_form_min_arity(args, 2, "lambda")?;
+    validate_special_form_min_arity(args, 2, "lambda", context)?;
     // Parse parameter list
     let param_list = match &*args[0].value {
         Expr::ParamList(pl) => pl.clone(),
         _ => {
             return Err(errors::runtime_general(
                 "lambda: first argument must be a parameter list",
-                context.current_file(),
-                context.current_source(),
+                "invalid definition",
+                &context.source,
                 context.span_for_span(*span),
             ));
         }
@@ -209,8 +347,8 @@ pub const ATOM_LAMBDA: NativeLazyFn = |args, context, span| {
         if !seen.insert(name) {
             return Err(errors::runtime_general(
                 format!("lambda: duplicate parameter '{}'", name),
-                context.current_file(),
-                context.current_source(),
+                "invalid definition",
+                &context.source,
                 context.span_for_span(*span),
             ));
         }
@@ -219,8 +357,8 @@ pub const ATOM_LAMBDA: NativeLazyFn = |args, context, span| {
         if !seen.insert(rest) {
             return Err(errors::runtime_general(
                 format!("lambda: duplicate variadic parameter '{}'", rest),
-                context.current_file(),
-                context.current_source(),
+                "invalid definition",
+                &context.source,
                 context.span_for_span(*span),
             ));
         }
@@ -260,15 +398,15 @@ pub const ATOM_LAMBDA: NativeLazyFn = |args, context, span| {
 
 /// Implements the (let ...) special form.
 pub const ATOM_LET: NativeLazyFn = |args, context, span| {
-    validate_special_form_min_arity(args, 2, "let")?;
+    validate_special_form_min_arity(args, 2, "let", context)?;
     // Parse bindings
     let bindings = match &*args[0].value {
         Expr::List(pairs, _) => pairs,
         _ => {
             return Err(errors::runtime_general(
                 "let: first argument must be a list of bindings",
-                context.current_file(),
-                context.current_source(),
+                "invalid definition",
+                &context.source,
                 context.span_for_span(*span),
             ));
         }
@@ -284,8 +422,8 @@ pub const ATOM_LET: NativeLazyFn = |args, context, span| {
                 _ => {
                     return Err(errors::runtime_general(
                         "let: binding name must be a symbol",
-                        context.current_file(),
-                        context.current_source(),
+                        "invalid definition",
+                        &context.source,
                         context.span_for_span(*span),
                     ));
                 }
@@ -293,8 +431,8 @@ pub const ATOM_LET: NativeLazyFn = |args, context, span| {
             _ => {
                 return Err(errors::runtime_general(
                     "let: each binding must be a (name value) pair",
-                    context.current_file(),
-                    context.current_source(),
+                    "invalid definition",
+                    &context.source,
                     context.span_for_span(*span),
                 ));
             }
@@ -342,6 +480,7 @@ pub fn call_lambda(
         source: context.source.clone(),
         max_depth: context.max_depth,
         depth: context.depth + 1,
+        current_span: context.current_span,
         lexical_env: vec![lambda.captured_env.clone()],
         test_file: context.test_file.clone(),
         test_name: context.test_name.clone(),
@@ -360,8 +499,8 @@ pub fn call_lambda(
         );
         return Err(errors::runtime_general(
             msg,
-            context.current_file(),
-            context.current_source(),
+            "arity error",
+            &context.source,
             context.span_for_span(Span::default()),
         ));
     }

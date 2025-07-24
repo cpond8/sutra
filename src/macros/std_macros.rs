@@ -9,7 +9,9 @@
 //! node. This is the only place in the entire engine where path syntax is parsed.
 
 use crate::prelude::*;
-use crate::{macros::MacroExpansionResult as macro_result, syntax::parser};
+use crate::{
+    macros::MacroExpansionResult as macro_result, runtime::source::SourceContext, syntax::parser,
+};
 
 use crate::errors;
 
@@ -35,7 +37,6 @@ type CoreOpName = &'static str;
 /// Core operation names for consistent usage throughout the module
 const CORE_SET: CoreOpName = "core/set!";
 const CORE_GET: CoreOpName = "core/get";
-const CORE_PRINT: CoreOpName = "core/print";
 
 // ===================================================================================================
 // CORE LOGIC: Path Canonicalization (The Single Source of Truth)
@@ -43,7 +44,7 @@ const CORE_PRINT: CoreOpName = "core/print";
 
 /// Converts a user-facing expression (`Symbol`, `List`, or `Path`) into a canonical `Path`.
 /// This is the only function in the engine that understands path syntax.
-fn expr_to_path(expr: &AstNode) -> Result<Path, SutraError> {
+fn expr_to_path(expr: &AstNode, source: &SourceContext) -> Result<Path, SutraError> {
     let value = &*expr.value;
 
     // Handle dotted symbol syntax: `player.score` or plain symbol: `player`
@@ -67,8 +68,8 @@ fn expr_to_path(expr: &AstNode) -> Result<Path, SutraError> {
                 _ => {
                     return Err(errors::runtime_general(
                         "Path elements must be symbols or strings".to_string(),
-                        "expr_to_path".to_string(),
-                        format!("{:?}", expr),
+                        "path conversion",
+                        source,
                         parser::to_source_span(expr.span),
                     ));
                 }
@@ -79,27 +80,29 @@ fn expr_to_path(expr: &AstNode) -> Result<Path, SutraError> {
     }
 
     // Fallback for unsupported expression types
-    Err(errors::runtime_general(
-        "Expression cannot be converted to a path".to_string(),
-        "expr_to_path".to_string(),
-        format!("{:?}", expr),
-        parser::to_source_span(expr.span),
-    ))
+    {
+        Err(errors::runtime_general(
+            "Expression cannot be converted to a path".to_string(),
+            "path conversion",
+            source,
+            parser::to_source_span(expr.span),
+        ))
+    }
 }
 
 /// Converts a path argument to a canonical `Expr::Path` node.
-fn create_canonical_path(path_arg: &AstNode) -> macro_result {
+fn create_canonical_path(path_arg: &AstNode, source: &SourceContext) -> macro_result {
     Ok(Spanned {
-        value: Expr::Path(expr_to_path(path_arg)?, path_arg.span).into(),
+        value: Expr::Path(expr_to_path(path_arg, source)?, path_arg.span).into(),
         span: path_arg.span,
     })
 }
 
 /// Wraps an expression in a `(core/get ...)` call with proper path conversion.
-fn wrap_in_get(expr: &AstNode) -> AstNode {
+fn wrap_in_get(expr: &AstNode, source: &SourceContext) -> AstNode {
     let get_symbol = create_symbol(CORE_GET, &expr.span);
     // Convert the expression to a canonical path, but handle errors gracefully
-    let path_expr = match create_canonical_path(expr) {
+    let path_expr = match create_canonical_path(expr, source) {
         Ok(canonical_path) => canonical_path,
         Err(_) => expr.clone(), // Fall back to original expression if path conversion fails
     };
@@ -137,13 +140,11 @@ fn create_number(value: f64, span: &Span) -> AstNode {
 
 /// Creates a validation error with consistent formatting for macro arity mismatches.
 fn create_arity_error(op_name: &str, expected: usize, got: usize) -> SutraError {
-    errors::validation_arity(
-        format!("at least {}", expected),
-        got,
-        "macro".to_string(),
-        op_name.to_string(),
-        parser::to_source_span(Span::default()),
-    )
+    {
+        let sc = SourceContext::from_file("macro", op_name);
+        let span = parser::to_source_span(Span::default());
+        errors::validation_arity(format!("at least {}", expected), got, &sc, span)
+    }
 }
 
 // ===================================================================================================
@@ -153,12 +154,18 @@ fn create_arity_error(op_name: &str, expected: usize, got: usize) -> SutraError 
 /// Flexible helper for path operations that lets atoms handle arity validation.
 /// Requires at least min_args total arguments (including macro name).
 /// Converts the first argument to a canonical path if present.
-fn create_flexible_path_op(expr: &AstNode, op_name: &str, min_args: usize) -> macro_result {
+fn create_flexible_path_op(
+    expr: &AstNode,
+    op_name: &str,
+    min_args: usize,
+    source: &SourceContext,
+) -> macro_result {
     let Expr::List(items, span) = &*expr.value else {
+        let sc = SourceContext::from_file(op_name, format!("{:?}", expr));
         return Err(errors::runtime_general(
             "Expected list form for macro".to_string(),
-            "create_flexible_path_op".to_string(),
-            format!("{:?}", expr),
+            "macro expansion",
+            &sc,
             parser::to_source_span(expr.span),
         ));
     };
@@ -173,7 +180,7 @@ fn create_flexible_path_op(expr: &AstNode, op_name: &str, min_args: usize) -> ma
 
     let mut new_items = vec![create_symbol(op_name, span)];
     if items.len() > 1 {
-        new_items.push(create_canonical_path(&items[1])?);
+        new_items.push(create_canonical_path(&items[1], source)?);
         new_items.extend_from_slice(&items[2..]);
     }
 
@@ -181,22 +188,27 @@ fn create_flexible_path_op(expr: &AstNode, op_name: &str, min_args: usize) -> ma
 }
 
 /// Helper for unary core path operations like `get`, `del!`, `exists?`.
-fn create_unary_op(expr: &AstNode, op_name: &str) -> macro_result {
-    create_flexible_path_op(expr, op_name, 1) // Allow 0+ arguments, let atom validate
+fn create_unary_op(expr: &AstNode, op_name: &str, source: &SourceContext) -> macro_result {
+    create_flexible_path_op(expr, op_name, 1, source) // Allow 0+ arguments, let atom validate
 }
 
 /// Helper for binary core path operations like `set!`.
-fn create_binary_op(expr: &AstNode, op_name: &str) -> macro_result {
-    create_flexible_path_op(expr, op_name, 2) // Allow 1+ arguments, let atom validate
+fn create_binary_op(expr: &AstNode, op_name: &str, source: &SourceContext) -> macro_result {
+    create_flexible_path_op(expr, op_name, 2, source) // Allow 1+ arguments, let atom validate
 }
 
 /// Flexible helper for assignment macros like `add!`, `sub!`, etc.
-fn create_assignment_macro(expr: &AstNode, op_symbol: &str) -> macro_result {
+fn create_assignment_macro(
+    expr: &AstNode,
+    op_symbol: &str,
+    source: &SourceContext,
+) -> macro_result {
     let Expr::List(items, span) = &*expr.value else {
+        let sc = SourceContext::from_file("create_assignment_macro", format!("{:?}", expr));
         return Err(errors::runtime_general(
             "Expected list form for macro".to_string(),
-            "create_assignment_macro".to_string(),
-            format!("{:?}", expr),
+            "macro expansion",
+            &sc,
             parser::to_source_span(expr.span),
         ));
     };
@@ -212,7 +224,7 @@ fn create_assignment_macro(expr: &AstNode, op_symbol: &str) -> macro_result {
     let inner_expr = create_ast_list(
         vec![
             create_symbol(op_symbol, &items[0].span),
-            wrap_in_get(&items[1]),
+            wrap_in_get(&items[1], source),
             items[2].clone(),
         ],
         *span,
@@ -221,7 +233,7 @@ fn create_assignment_macro(expr: &AstNode, op_symbol: &str) -> macro_result {
     Ok(create_ast_list(
         vec![
             create_symbol(CORE_SET, &items[0].span),
-            create_canonical_path(&items[1])?,
+            create_canonical_path(&items[1], source)?,
             inner_expr,
         ],
         *span,
@@ -229,12 +241,17 @@ fn create_assignment_macro(expr: &AstNode, op_symbol: &str) -> macro_result {
 }
 
 /// Flexible helper for unary increment/decrement macros like `inc!`, `dec!`.
-fn create_unary_assignment_macro(expr: &AstNode, op_symbol: &str) -> macro_result {
+fn create_unary_assignment_macro(
+    expr: &AstNode,
+    op_symbol: &str,
+    source: &SourceContext,
+) -> macro_result {
     let Expr::List(items, span) = &*expr.value else {
+        let sc = SourceContext::from_file("create_unary_assignment_macro", format!("{:?}", expr));
         return Err(errors::runtime_general(
             "Expected list form for macro".to_string(),
-            "create_unary_assignment_macro".to_string(),
-            format!("{:?}", expr),
+            "macro expansion",
+            &sc,
             parser::to_source_span(expr.span),
         ));
     };
@@ -256,7 +273,7 @@ fn create_unary_assignment_macro(expr: &AstNode, op_symbol: &str) -> macro_resul
     let inner_expr = create_ast_list(
         vec![
             create_symbol(atom_name, &items[0].span),
-            wrap_in_get(&items[1]),
+            wrap_in_get(&items[1], source),
             create_number(1.0, &items[0].span),
         ],
         *span,
@@ -265,7 +282,7 @@ fn create_unary_assignment_macro(expr: &AstNode, op_symbol: &str) -> macro_resul
     Ok(create_ast_list(
         vec![
             create_symbol(CORE_SET, &items[0].span),
-            create_canonical_path(&items[1])?,
+            create_canonical_path(&items[1], source)?,
             inner_expr,
         ],
         *span,
@@ -281,23 +298,23 @@ fn create_unary_assignment_macro(expr: &AstNode, op_symbol: &str) -> macro_resul
 // -----------------------------------------------
 
 /// Expands `(set! foo bar)` to `(core/set! (path foo) bar)`.
-pub fn expand_set(expr: &AstNode) -> macro_result {
-    create_binary_op(expr, "core/set!")
+pub fn expand_set(expr: &AstNode, source: &SourceContext) -> macro_result {
+    create_binary_op(expr, "core/set!", source)
 }
 
 /// Expands `(get foo)` to `(core/get (path foo))`.
-pub fn expand_get(expr: &AstNode) -> macro_result {
-    create_unary_op(expr, "core/get")
+pub fn expand_get(expr: &AstNode, source: &SourceContext) -> macro_result {
+    create_unary_op(expr, "core/get", source)
 }
 
 /// Expands `(del! foo)` to `(core/del! (path foo))`.
-pub fn expand_del(expr: &AstNode) -> macro_result {
-    create_unary_op(expr, "core/del!")
+pub fn expand_del(expr: &AstNode, source: &SourceContext) -> macro_result {
+    create_unary_op(expr, "core/del!", source)
 }
 
 /// Expands `(exists? foo)` to `(core/exists? (path foo))`.
-pub fn expand_exists(expr: &AstNode) -> macro_result {
-    create_unary_op(expr, "core/exists?")
+pub fn expand_exists(expr: &AstNode, source: &SourceContext) -> macro_result {
+    create_unary_op(expr, "core/exists?", source)
 }
 
 // -----------------------------------------------
@@ -305,23 +322,23 @@ pub fn expand_exists(expr: &AstNode) -> macro_result {
 // -----------------------------------------------
 
 /// Expands `(add! foo 1)` to `(core/set! (path foo) (+ (core/get foo) 1))`.
-pub fn expand_add(expr: &AstNode) -> macro_result {
-    create_assignment_macro(expr, "add!")
+pub fn expand_add(expr: &AstNode, source: &SourceContext) -> macro_result {
+    create_assignment_macro(expr, "add!", source)
 }
 
 /// Expands `(sub! foo 1)` to `(core/set! (path foo) (- (core/get foo) 1))`.
-pub fn expand_sub(expr: &AstNode) -> macro_result {
-    create_assignment_macro(expr, "sub!")
+pub fn expand_sub(expr: &AstNode, source: &SourceContext) -> macro_result {
+    create_assignment_macro(expr, "sub!", source)
 }
 
 /// Expands `(inc! foo)` to `(core/set! (path foo) (+ (core/get foo) 1))`.
-pub fn expand_inc(expr: &AstNode) -> macro_result {
-    create_unary_assignment_macro(expr, "inc!")
+pub fn expand_inc(expr: &AstNode, source: &SourceContext) -> macro_result {
+    create_unary_assignment_macro(expr, "inc!", source)
 }
 
 /// Expands `(dec! foo)` to `(core/set! (path foo) (- (core/get foo) 1))`.
-pub fn expand_dec(expr: &AstNode) -> macro_result {
-    create_unary_assignment_macro(expr, "dec!")
+pub fn expand_dec(expr: &AstNode, source: &SourceContext) -> macro_result {
+    create_unary_assignment_macro(expr, "dec!", source)
 }
 
 // -----------------------------------------------
@@ -329,35 +346,8 @@ pub fn expand_dec(expr: &AstNode) -> macro_result {
 // -----------------------------------------------
 
 /// Expands `(print ...)` to `(core/print ...)`, letting the atom handle arity validation.
-pub fn expand_print(expr: &AstNode) -> macro_result {
-    // Extract list items and span
-    let Expr::List(items, span) = &*expr.value else {
-        return Err(errors::runtime_general(
-            "Expected list form for macro".to_string(),
-            "expand_print".to_string(),
-            format!("{:?}", expr),
-            parser::to_source_span(expr.span),
-        ));
-    };
-
-    // Ensure we have at least the macro name
-    if items.is_empty() {
-        return Err(errors::runtime_general(
-            "Expected list form for macro".to_string(),
-            "expand_print".to_string(),
-            format!("{:?}", expr),
-            parser::to_source_span(expr.span),
-        ));
-    }
-
-    // Replace macro name with core/print
-    let atom_symbol = create_symbol(CORE_PRINT, span);
-    let mut new_items = vec![atom_symbol];
-
-    // Copy all arguments after the macro name
-    new_items.extend_from_slice(&items[1..]);
-
-    Ok(create_ast_list(new_items, *span))
+pub fn expand_print(expr: &AstNode, source: &SourceContext) -> macro_result {
+    create_unary_op(expr, "core/print", source)
 }
 
 // ===================================================================================================

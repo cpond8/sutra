@@ -3,7 +3,7 @@
 //! This module contains the actual error enum and helper types that are
 //! used internally but never exposed to the rest of the application.
 
-use miette::{Diagnostic, NamedSource, SourceSpan, LabeledSpan};
+use miette::{Diagnostic, LabeledSpan, NamedSource, SourceSpan};
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -119,9 +119,10 @@ pub(super) enum InternalSutraError {
     #[diagnostic(code(sutra::runtime::general))]
     RuntimeGeneral {
         message: String,
+        label: String,
         #[source_code]
         src: Arc<NamedSource<String>>,
-        #[label("error location")]
+        #[label("{label}")]
         span: SourceSpan,
         #[help]
         help: Option<String>,
@@ -167,6 +168,22 @@ pub(super) enum InternalSutraError {
         test_name: Option<String>,
         is_warning: bool,
     },
+
+    #[error("Test assertion failed: {message}")]
+    #[diagnostic(code(sutra::test::assertion))]
+    TestAssertion {
+        message: String,
+        test_name: String,
+        test_file: String,
+        #[source_code]
+        src: Arc<NamedSource<String>>,
+        #[label("assertion failed here")]
+        span: SourceSpan,
+        #[help]
+        help: Option<String>,
+        related_spans: Vec<LabeledSpan>,
+        is_warning: bool,
+    },
 }
 
 /// Error type enumeration for backwards compatibility
@@ -198,7 +215,8 @@ impl InternalSutraError {
             | Self::RuntimeUndefinedSymbol { help, .. }
             | Self::RuntimeGeneral { help, .. }
             | Self::ValidationArity { help, .. }
-            | Self::TypeMismatch { help, .. } => {
+            | Self::TypeMismatch { help, .. }
+            | Self::TestAssertion { help, .. } => {
                 *help = Some(suggestion);
             }
         }
@@ -208,33 +226,68 @@ impl InternalSutraError {
     /// Add test context information
     pub(super) fn with_test_context(mut self, file: String, test_name: String) -> Self {
         match &mut self {
-            Self::ParseMissing { test_file, test_name: tn, .. }
-            | Self::ParseMalformed { test_file, test_name: tn, .. }
-            | Self::ParseInvalidValue { test_file, test_name: tn, .. }
-            | Self::ParseEmpty { test_file, test_name: tn, .. }
-            | Self::ParseParameterOrder { test_file, test_name: tn, .. }
-            | Self::RuntimeUndefinedSymbol { test_file, test_name: tn, .. }
-            | Self::RuntimeGeneral { test_file, test_name: tn, .. }
-            | Self::ValidationArity { test_file, test_name: tn, .. }
-            | Self::TypeMismatch { test_file, test_name: tn, .. } => {
+            Self::ParseMissing {
+                test_file,
+                test_name: tn,
+                ..
+            }
+            | Self::ParseMalformed {
+                test_file,
+                test_name: tn,
+                ..
+            }
+            | Self::ParseInvalidValue {
+                test_file,
+                test_name: tn,
+                ..
+            }
+            | Self::ParseEmpty {
+                test_file,
+                test_name: tn,
+                ..
+            }
+            | Self::ParseParameterOrder {
+                test_file,
+                test_name: tn,
+                ..
+            }
+            | Self::RuntimeUndefinedSymbol {
+                test_file,
+                test_name: tn,
+                ..
+            }
+            | Self::RuntimeGeneral {
+                test_file,
+                test_name: tn,
+                ..
+            }
+            | Self::ValidationArity {
+                test_file,
+                test_name: tn,
+                ..
+            }
+            | Self::TypeMismatch {
+                test_file,
+                test_name: tn,
+                ..
+            } => {
                 *test_file = Some(file);
                 *tn = Some(test_name);
+            }
+            Self::TestAssertion {
+                test_file,
+                test_name: tn,
+                ..
+            } => {
+                *test_file = file;
+                *tn = test_name;
             }
         }
         self
     }
 
     /// Add a related span for multi-location diagnostics
-    ///
-    /// TODO: source_name and source_code parameters are reserved for future
-    /// enhanced multi-file diagnostics that can show related spans from different files
-    pub(super) fn with_related_span(
-        mut self,
-        _source_name: String,
-        _source_code: String,
-        span: SourceSpan,
-        label: String,
-    ) -> Self {
+    pub(super) fn with_related_span(mut self, span: SourceSpan, label: String) -> Self {
         let labeled_span = LabeledSpan::new_with_span(Some(label), span);
         match &mut self {
             Self::ParseMissing { related_spans, .. }
@@ -245,7 +298,8 @@ impl InternalSutraError {
             | Self::RuntimeUndefinedSymbol { related_spans, .. }
             | Self::RuntimeGeneral { related_spans, .. }
             | Self::ValidationArity { related_spans, .. }
-            | Self::TypeMismatch { related_spans, .. } => {
+            | Self::TypeMismatch { related_spans, .. }
+            | Self::TestAssertion { related_spans, .. } => {
                 related_spans.push(labeled_span);
             }
         }
@@ -263,7 +317,8 @@ impl InternalSutraError {
             | Self::RuntimeUndefinedSymbol { is_warning, .. }
             | Self::RuntimeGeneral { is_warning, .. }
             | Self::ValidationArity { is_warning, .. }
-            | Self::TypeMismatch { is_warning, .. } => {
+            | Self::TypeMismatch { is_warning, .. }
+            | Self::TestAssertion { is_warning, .. } => {
                 *is_warning = true;
             }
         }
@@ -276,12 +331,11 @@ impl InternalSutraError {
             Self::ParseMissing { .. }
             | Self::ParseMalformed { .. }
             | Self::ParseInvalidValue { .. } => ErrorType::Parse,
-            Self::ParseEmpty { .. }
-            | Self::ParseParameterOrder { .. } => ErrorType::Parse,
-            Self::RuntimeUndefinedSymbol { .. }
-            | Self::RuntimeGeneral { .. } => ErrorType::Eval,
+            Self::ParseEmpty { .. } | Self::ParseParameterOrder { .. } => ErrorType::Parse,
+            Self::RuntimeUndefinedSymbol { .. } | Self::RuntimeGeneral { .. } => ErrorType::Eval,
             Self::ValidationArity { .. } => ErrorType::Validation,
             Self::TypeMismatch { .. } => ErrorType::TypeError,
+            Self::TestAssertion { .. } => ErrorType::TestFailure,
         }
     }
 
@@ -296,7 +350,8 @@ impl InternalSutraError {
             | Self::RuntimeUndefinedSymbol { is_warning, .. }
             | Self::RuntimeGeneral { is_warning, .. }
             | Self::ValidationArity { is_warning, .. }
-            | Self::TypeMismatch { is_warning, .. } => *is_warning,
+            | Self::TypeMismatch { is_warning, .. }
+            | Self::TestAssertion { is_warning, .. } => *is_warning,
         }
     }
 

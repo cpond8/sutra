@@ -17,12 +17,12 @@
       (print 123))  ; prints "123" to stdout
 
 (test "output: print - arity error (too few)"
-      (expect (error Eval)
+      (expect (error Validation)
               (tags "output"))
       (print))
 
 (test "output: print - arity error (too many)"
-      (expect (error Eval)
+      (expect (error Validation)
               (tags "output"))
       (print "one" "two"))
 

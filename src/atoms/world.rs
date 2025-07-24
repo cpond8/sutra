@@ -27,8 +27,8 @@ use crate::{
 /// Sets a value at a path in the world state.
 /// `(core/set! <path> <value>)`
 pub const ATOM_CORE_SET: NativeEagerFn = |args, context| {
-    helpers::validate_binary_arity(args, "core/set!")?;
-    let path = &args[0].extract(Some(context))?;
+    helpers::validate_binary_arity(args, "core/set!", context)?;
+    let path = &args[0].extract(context)?;
     let value = args[1].clone();
     context.world.borrow_mut().set(path, value);
     Ok(Value::Nil)
@@ -37,17 +37,22 @@ pub const ATOM_CORE_SET: NativeEagerFn = |args, context| {
 /// Gets a value at a path in the world state.
 /// `(core/get <path>)`
 pub const ATOM_CORE_GET: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "core/get")?;
-    let path = &args[0].extract(Some(context))?;
-    let value = context.world.borrow().get(path).cloned().unwrap_or_default();
+    helpers::validate_unary_arity(args, "core/get", context)?;
+    let path = &args[0].extract(context)?;
+    let value = context
+        .world
+        .borrow()
+        .get(path)
+        .cloned()
+        .unwrap_or_default();
     Ok(value)
 };
 
 /// Deletes a value at a path in the world state.
 /// `(core/del! <path>)`
 pub const ATOM_CORE_DEL: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "core/del!")?;
-    let path = &args[0].extract(Some(context))?;
+    helpers::validate_unary_arity(args, "core/del!", context)?;
+    let path = &args[0].extract(context)?;
     context.world.borrow_mut().del(path);
     Ok(Value::Nil)
 };
@@ -55,8 +60,8 @@ pub const ATOM_CORE_DEL: NativeEagerFn = |args, context| {
 /// Returns true if a path exists in the world state.
 /// `(core/exists? <path>)`
 pub const ATOM_EXISTS: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "core/exists?")?;
-    let path = &args[0].extract(Some(context))?;
+    helpers::validate_unary_arity(args, "core/exists?", context)?;
+    let path = &args[0].extract(context)?;
     let exists = context.world.borrow().get(path).is_some();
     Ok(Value::Bool(exists))
 };
@@ -64,7 +69,7 @@ pub const ATOM_EXISTS: NativeEagerFn = |args, context| {
 /// Creates a path from a string.
 /// `(path <string>)`
 pub const ATOM_PATH: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "path")?;
+    helpers::validate_unary_arity(args, "path", context)?;
     match &args[0] {
         Value::String(s) => {
             let path = Path(vec![s.clone()]);
@@ -73,12 +78,11 @@ pub const ATOM_PATH: NativeEagerFn = |args, context| {
         _ => Err(errors::type_mismatch(
             "String",
             args[0].type_name(),
-            context.current_file(),
-            context.current_source(),
+            &context.source,
             // Since this is eager, we don't have a specific node span.
             // Using the parent span from the context would be ideal if available,
             // otherwise a default span is the fallback.
-            context.span_for_span(Span::default()),
+            context.span_for_span(context.current_span),
         )),
     }
 };

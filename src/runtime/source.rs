@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use miette::NamedSource;
+use std::sync::Arc;
 
 /// Represents source context for error reporting with explicit hierarchy
 /// between real sources (preferred) and fallbacks (tolerated when necessary)

@@ -23,14 +23,10 @@ use lazy_static::lazy_static;
 use miette::NamedSource;
 
 // Use the public context helper macro
-use crate::{prelude::*, register_lazy};
 use crate::atoms::AtomResult;
 use crate::NativeLazyFn;
-use crate::errors;
-use crate::{
-    helpers, runtime::eval, sub_eval_context,
-    syntax::parser::to_source_span,
-};
+use crate::{helpers, runtime::eval, sub_eval_context, syntax::parser::to_source_span};
+use crate::{prelude::*, register_lazy};
 
 /// Represents a single test case definition with source context for diagnostics.
 #[derive(Debug, Clone)]
@@ -59,31 +55,25 @@ lazy_static! {
 /// and preserves the source context for diagnostics.
 ///
 /// Returns `nil`.
-fn register_test_atom(
-    args: &[AstNode],
-    ctx: &mut EvaluationContext,
-    span: &Span,
-) -> AtomResult {
+fn register_test_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) -> AtomResult {
     if args.len() < 4 {
-        return Err(errors::validation_arity(
-            "Expected at least 4 arguments (name, expect, metadata, and at least one body expression)",
-            args.len(),
-            ctx.current_file(),
-            ctx.current_source(),
+        return Err(ctx.create_error(
+            format!(
+                "Expected at least 4 arguments (name, expect, metadata, and at least one body expression), but got {}",
+                args.len()
+            ),
             to_source_span(*span),
-        ).with_test_context(ctx.current_file(), ctx.test_name.clone().unwrap_or_default()));
+        ));
     }
 
     let name = match &*args[0].value {
         Expr::String(s, _) => s.clone(),
         _ => {
-            return Err(errors::type_mismatch(
+            return Err(ctx.create_type_mismatch_error(
                 "String",
-                format!("{:?}", args[0].value),
-                ctx.current_file(),
-                ctx.current_source(),
+                args[0].value.type_name(),
                 to_source_span(args[0].span),
-            ).with_test_context(ctx.current_file(), ctx.test_name.clone().unwrap_or_default()));
+            ));
         }
     };
 
@@ -94,13 +84,11 @@ fn register_test_atom(
     let metadata = match metadata_val.as_map() {
         Some(m) => m,
         _ => {
-            return Err(errors::type_mismatch(
+            return Err(ctx.create_type_mismatch_error(
                 "Map",
-                format!("{:?}", metadata_val),
-                ctx.current_file(),
-                ctx.current_source(),
+                metadata_val.type_name(),
                 to_source_span(args[args.len() - 1].span),
-            ).with_test_context(ctx.current_file(), ctx.test_name.clone().unwrap_or_default()));
+            ));
         }
     };
 
@@ -108,23 +96,21 @@ fn register_test_atom(
         Some(Value::String(file_path)) => {
             let source = match std::fs::read_to_string(file_path) {
                 Ok(s) => s,
-                Err(e) => return Err(errors::runtime_general(
-                    format!("Failed to read source file: {}", e),
-                    ctx.current_file(),
-                    ctx.current_source(),
-                    to_source_span(Span::default()),
-                ).with_test_context(ctx.current_file(), ctx.test_name.clone().unwrap_or_default())),
+                Err(e) => {
+                    return Err(ctx.create_error(
+                        format!("Failed to read source file: {}", e),
+                        to_source_span(Span::default()),
+                    ))
+                }
             };
             let source_file = Arc::new(NamedSource::new(file_path.clone(), source));
             source_file
         }
         _ => {
-            return Err(errors::runtime_general(
+            return Err(ctx.create_error(
                 "Test metadata must contain :source-file string",
-                ctx.current_file(),
-                ctx.current_source(),
                 to_source_span(args[args.len() - 1].span),
-            ).with_test_context(ctx.current_file(), ctx.test_name.clone().unwrap_or_default()));
+            ));
         }
     };
 
@@ -136,12 +122,12 @@ fn register_test_atom(
         source_file,
     };
 
-    let mut registry = TEST_REGISTRY.lock().map_err(|_| errors::runtime_general(
-        "Test registry mutex poisoned",
-        ctx.current_file(),
-        ctx.current_source(),
-        to_source_span(Span::default()),
-    ).with_test_context(ctx.current_file(), ctx.test_name.clone().unwrap_or_default()))?;
+    let mut registry = TEST_REGISTRY.lock().map_err(|_| {
+        ctx.create_error(
+            "Test registry mutex poisoned",
+            to_source_span(Span::default()),
+        )
+    })?;
     registry.insert(name, test_def);
 
     Ok(Value::Nil)
@@ -157,11 +143,7 @@ fn register_test_atom(
 ///   (value "sword") ; => "sword"
 ///
 /// This atom is used in test expectations to specify the expected return value.
-fn value_atom(
-    args: &[AstNode],
-    _ctx: &mut EvaluationContext,
-    _span: &Span,
-) -> AtomResult {
+fn value_atom(args: &[AstNode], _ctx: &mut EvaluationContext, _span: &Span) -> AtomResult {
     let Some(first) = args.first() else {
         return Ok(Value::Nil);
     };
@@ -180,11 +162,7 @@ fn value_atom(
 ///   (tags "assignment" "core") ; => ["assignment" "core"]
 ///
 /// This atom is used in test expectations to specify test tags.
-fn tags_atom(
-    args: &[AstNode],
-    _ctx: &mut EvaluationContext,
-    _span: &Span,
-) -> AtomResult {
+fn tags_atom(args: &[AstNode], _ctx: &mut EvaluationContext, _span: &Span) -> AtomResult {
     let mut tags = Vec::new();
     for arg in args {
         let val = eval::evaluate_ast_node(arg, _ctx)?;
@@ -207,11 +185,7 @@ fn tags_atom(
 ///
 /// # Safety
 /// Emits output, does not mutate world state.
-fn test_echo_atom(
-    args: &[AstNode],
-    ctx: &mut EvaluationContext,
-    span: &Span,
-) -> AtomResult {
+fn test_echo_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) -> AtomResult {
     let Some(first) = args.first() else {
         let val = Value::String("".to_string());
         ctx.output.borrow_mut().emit(&val.to_string(), Some(span));
@@ -372,12 +346,8 @@ pub fn register_test_atoms(world: &mut World) {
     register_lazy!(world, "assert-eq", assert_eq_atom);
 }
 
-fn assert_atom(
-    args: &[AstNode],
-    ctx: &mut EvaluationContext,
-    _span: &Span,
-) -> AtomResult {
-    helpers::validate_special_form_arity(args, 1, "assert")?;
+fn assert_atom(args: &[AstNode], ctx: &mut EvaluationContext, _span: &Span) -> AtomResult {
+    helpers::validate_special_form_arity(args, 1, "assert", ctx)?;
 
     let value = eval::evaluate_ast_node(&args[0], ctx)?;
     let is_truthy = match value {
@@ -387,12 +357,10 @@ fn assert_atom(
     };
 
     if !is_truthy {
-        return Err(errors::runtime_general(
+        return Err(ctx.create_error(
             format!("Assertion failed: expected truthy value, got {:?}", value),
-            ctx.current_file(),
-            ctx.current_source(),
             to_source_span(args[0].span),
-        ).with_test_context(ctx.current_file(), ctx.test_name.clone().unwrap_or_default()));
+        ));
     }
 
     Ok(Value::Nil)
@@ -411,24 +379,20 @@ fn assert_atom(
 ///   (assert-eq 1 1)           ; => nil (success)
 ///   (assert-eq "a" "a")       ; => nil (success)
 ///   (assert-eq 1 2)           ; => AssertionError
-fn assert_eq_atom(
-    args: &[AstNode],
-    ctx: &mut EvaluationContext,
-    span: &Span,
-) -> AtomResult {
-    helpers::validate_special_form_arity(args, 2, "assert-eq")?;
+fn assert_eq_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) -> AtomResult {
+    helpers::validate_special_form_arity(args, 2, "assert-eq", ctx)?;
 
     let expected = eval::evaluate_ast_node(&args[0], ctx)?;
     let actual = eval::evaluate_ast_node(&args[1], ctx)?;
 
-
     if expected != actual {
-        return Err(errors::runtime_general(
-            format!("Assertion failed: expected {:?}, got {:?}", expected, actual),
-            ctx.current_file(),
-            ctx.current_source(),
+        return Err(ctx.create_error(
+            format!(
+                "Assertion failed: expected {:?}, got {:?}",
+                expected, actual
+            ),
             to_source_span(*span),
-        ).with_test_context(ctx.current_file(), ctx.test_name.clone().unwrap_or_default()));
+        ));
     }
 
     Ok(Value::Nil)

@@ -5,7 +5,10 @@
 use std::{collections::HashSet, fs, path::Path};
 
 use crate::prelude::*;
-use crate::{ast::ParamList, errors, syntax::parser, MacroTemplate, syntax::parser::to_source_span};
+use crate::{
+    ast::ParamList, errors, runtime::source::SourceContext, syntax::parser,
+    syntax::parser::to_source_span, MacroTemplate,
+};
 
 /// Type alias for macro parsing results
 type MacroParseResult = Result<Vec<(String, MacroTemplate)>, SutraError>;
@@ -17,16 +20,8 @@ type MacroParseResult = Result<Vec<(String, MacroTemplate)>, SutraError>;
 /// Parses Sutra macro definitions from a source string.
 /// Identifies `define` forms, validates structure and parameters, and checks for duplicates.
 pub fn parse_macros_from_source(source: &str) -> MacroParseResult {
-    let exprs = parser::parse(source).map_err(|e| {
-        errors::parse_malformed(
-            "macro source",
-            "macro source",
-            source.to_string(),
-            // Default span, as the specific location is in the Pest error message.
-            (0, 0).into(),
-        )
-        .with_suggestion(e.to_string())
-    })?;
+    let source_context = SourceContext::from_file("macro source", source);
+    let exprs = parser::parse(source, source_context)?;
     let mut macros = Vec::new();
     let mut names_seen = HashSet::new();
 
@@ -42,13 +37,15 @@ pub fn parse_macros_from_source(source: &str) -> MacroParseResult {
 pub fn load_macros_from_file<P: AsRef<Path>>(path: P) -> MacroParseResult {
     let path_str = path.as_ref().to_string_lossy();
     let source = fs::read_to_string(&path).map_err(|e| {
-        errors::runtime_general(
-            format!("Unable to read macro file '{}'", path_str),
-            path_str.to_string(),
-            // Source not available, so use error as source text
-            e.to_string(),
-            (0, 0).into(),
-        )
+        {
+            let sc = SourceContext::from_file(path_str.to_string(), e.to_string());
+            errors::runtime_general(
+                format!("Unable to read macro file '{}'", path_str),
+                "file load error",
+                &sc,
+                miette::SourceSpan::from((0, 0)),
+            )
+        }
         .with_suggestion("Check that the file exists and has correct read permissions.")
     })?;
     parse_macros_from_source(&source)
@@ -59,28 +56,28 @@ pub fn load_macros_from_file<P: AsRef<Path>>(path: P) -> MacroParseResult {
 pub fn check_arity(
     args_len: usize,
     params: &ParamList,
-    macro_name: &str,
+    _macro_name: &str,
     span: &Span,
+    source: &SourceContext,
 ) -> Result<(), SutraError> {
     let required_len = params.required.len();
     let has_variadic = params.rest.is_some();
     if args_len < required_len {
+        let span = to_source_span(*span);
         return Err(errors::validation_arity(
             format!("at least {}", required_len),
             args_len,
-            macro_name.to_string(),
-            // Source is not available in this context, using macro name as placeholder
-            macro_name.to_string(),
-            to_source_span(*span),
+            source,
+            span,
         ));
     }
     if args_len > required_len && !has_variadic {
+        let span = to_source_span(*span);
         return Err(errors::validation_arity(
             format!("{}", required_len),
             args_len,
-            macro_name.to_string(),
-            macro_name.to_string(),
-            to_source_span(*span),
+            source,
+            span,
         ));
     }
     Ok(())
@@ -102,17 +99,16 @@ fn try_parse_macro_form(
     let (macro_name, template) = parse_macro_definition(expr)?;
 
     if !names_seen.insert(macro_name.clone()) {
-        return Err(
+        return Err({
+            let sc = SourceContext::from_file(&macro_name, format!("{:?}", expr));
             errors::runtime_general(
                 format!("duplicate macro definition for '{}'", macro_name),
-                // Using the macro name as the source name for clarity
-                macro_name.clone(),
-                // Source is not available, so expr is placeholder
-                format!("{:?}", expr),
+                "duplicate macro",
+                &sc,
                 to_source_span(expr.span),
             )
-            .with_suggestion("Ensure all macro names within a file are unique."),
-        );
+        }
+        .with_suggestion("Ensure all macro names within a file are unique."));
     }
 
     Ok(Some((macro_name, template)))
@@ -146,41 +142,45 @@ pub fn parse_macro_definition(expr: &AstNode) -> Result<(String, MacroTemplate),
     let (items, span) = if let Expr::List(items, span) = &*expr.value {
         (items, span)
     } else {
+        let sc = SourceContext::from_file("macro definition", full_source);
         return Err(errors::runtime_general(
             "Macro definition must be a list expression",
-            "macro definition",
-            full_source.clone(),
+            "invalid definition",
+            &sc,
             to_source_span(expr.span),
         )
         .with_suggestion("Expected a form like: (define (macro-name ...) body)"));
     };
 
     if items.len() != 3 {
+        let sc = SourceContext::from_file("macro definition", full_source);
         return Err(errors::validation_arity(
             "3".to_string(),
             items.len(),
-            "macro definition",
-            full_source.clone(),
+            &sc,
             to_source_span(*span),
         )
-        .with_suggestion("A macro definition must have 3 parts: define keyword, parameter list, and body."));
+        .with_suggestion(
+            "A macro definition must have 3 parts: define keyword, parameter list, and body.",
+        ));
     }
 
     if let Expr::Symbol(s, _) = &*items[0].value {
         if s != "define" {
+            let sc = SourceContext::from_file("macro definition", full_source);
             return Err(errors::runtime_general(
                 "Macro definition must start with 'define'",
-                "macro definition",
-                full_source.clone(),
+                "invalid definition",
+                &sc,
                 to_source_span(items[0].span),
             ));
         }
     } else {
+        let sc = SourceContext::from_file("macro definition", full_source);
         return Err(errors::type_mismatch(
             "symbol",
             items[0].value.type_name(),
-            "macro definition",
-            full_source.clone(),
+            &sc,
             to_source_span(items[0].span),
         ));
     }
@@ -188,20 +188,21 @@ pub fn parse_macro_definition(expr: &AstNode) -> Result<(String, MacroTemplate),
     let param_list = if let Expr::ParamList(pl) = &*items[1].value {
         pl
     } else {
+        let sc = SourceContext::from_file("macro definition", full_source);
         return Err(errors::type_mismatch(
             "parameter list",
             items[1].value.type_name(),
-            "macro definition",
-            full_source.clone(),
+            &sc,
             to_source_span(items[1].span),
         ));
     };
 
     let macro_name = param_list.required.first().cloned().ok_or_else(|| {
+        let sc = SourceContext::from_file("macro definition", full_source.clone());
         errors::runtime_general(
             "Macro name missing from parameter list",
-            "macro definition",
-            full_source.clone(),
+            "invalid definition",
+            &sc,
             to_source_span(items[1].span),
         )
     })?;
@@ -284,8 +285,9 @@ mod tests {
             span: Span::default(),
         };
         let span = Span::default();
+        let source = SourceContext::from_file("test", "test");
 
-        assert!(check_arity(2, &params, "test", &span).is_ok());
+        assert!(check_arity(2, &params, "test", &span, &source).is_ok());
     }
 
     #[test]
@@ -296,8 +298,9 @@ mod tests {
             span: Span::default(),
         };
         let span = Span::default();
+        let source = SourceContext::from_file("test", "test");
 
-        assert!(check_arity(1, &params, "test", &span).is_err());
+        assert!(check_arity(1, &params, "test", &span, &source).is_err());
     }
 
     #[test]
@@ -308,8 +311,9 @@ mod tests {
             span: Span::default(),
         };
         let span = Span::default();
+        let source = SourceContext::from_file("test", "test");
 
-        assert!(check_arity(2, &params, "test", &span).is_err());
+        assert!(check_arity(2, &params, "test", &span, &source).is_err());
     }
 
     #[test]
@@ -320,9 +324,10 @@ mod tests {
             span: Span::default(),
         };
         let span = Span::default();
+        let source = SourceContext::from_file("test", "test");
 
-        assert!(check_arity(1, &params, "test", &span).is_ok());
-        assert!(check_arity(3, &params, "test", &span).is_ok());
+        assert!(check_arity(1, &params, "test", &span, &source).is_ok());
+        assert!(check_arity(3, &params, "test", &span, &source).is_ok());
     }
 
     #[test]
@@ -333,7 +338,8 @@ mod tests {
             span: Span::default(),
         };
         let span = Span::default();
+        let source = SourceContext::from_file("test", "test");
 
-        assert!(check_arity(1, &params, "test", &span).is_err());
+        assert!(check_arity(1, &params, "test", &span, &source).is_err());
     }
 }
