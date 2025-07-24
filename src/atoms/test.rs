@@ -22,8 +22,9 @@ use std::{
 use lazy_static::lazy_static;
 use miette::NamedSource;
 
-// Use the public context helper macro
 use crate::atoms::AtomResult;
+use crate::runtime::source::SourceContext;
+use crate::runtime::eval::EvaluationContextBuilder;
 use crate::NativeLazyFn;
 use crate::{helpers, runtime::eval, sub_eval_context, syntax::parser::to_source_span};
 use crate::{prelude::*, register_lazy};
@@ -36,6 +37,15 @@ pub struct TestDefinition {
     pub body: Vec<AstNode>,
     pub span: Span,
     pub source_file: Arc<NamedSource<String>>,
+    pub source_text: String,
+}
+
+/// Represents the outcome of a single test execution.
+#[derive(Debug, Clone)]
+pub struct TestResult {
+    pub name: String,
+    pub passed: bool,
+    pub details: String,
 }
 
 lazy_static! {
@@ -44,17 +54,6 @@ lazy_static! {
 }
 
 /// `register-test!` special form updated for AST storage.
-///
-/// Usage: (register-test! <name> <expect-form> <body> <metadata>)
-/// - <name>: A string representing the name of the test.
-/// - <expect-form>: An s-expression detailing the test's expectations (AST node).
-/// - <body>: A list of expressions to execute as the test body (AST nodes).
-/// - <metadata>: A map containing metadata like :span and :source-file.
-///
-/// This atom registers a test definition into the global registry using AST nodes
-/// and preserves the source context for diagnostics.
-///
-/// Returns `nil`.
 fn register_test_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) -> AtomResult {
     if args.len() < 4 {
         return Err(ctx.create_error(
@@ -92,7 +91,7 @@ fn register_test_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span
         }
     };
 
-    let source_file = match metadata.get(":source-file") {
+    let (source_text, source_file) = match metadata.get(":source-file") {
         Some(Value::String(file_path)) => {
             let source = match std::fs::read_to_string(file_path) {
                 Ok(s) => s,
@@ -103,8 +102,10 @@ fn register_test_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span
                     ))
                 }
             };
-            let source_file = Arc::new(NamedSource::new(file_path.clone(), source));
-            source_file
+            (
+                source.clone(),
+                Arc::new(NamedSource::new(file_path.clone(), source)),
+            )
         }
         _ => {
             return Err(ctx.create_error(
@@ -120,6 +121,7 @@ fn register_test_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span
         body,
         span: *span,
         source_file,
+        source_text,
     };
 
     let mut registry = TEST_REGISTRY.lock().map_err(|_| {
@@ -133,58 +135,27 @@ fn register_test_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span
     Ok(Value::Nil)
 }
 
-/// Value atom for test assertions.
-///
-/// Usage: (value <expected-value>)
-/// - <expected-value>: The expected value for the test assertion
-///   Returns: The expected value
-///
-/// Example:
-///   (value "sword") ; => "sword"
-///
-/// This atom is used in test expectations to specify the expected return value.
 fn value_atom(args: &[AstNode], _ctx: &mut EvaluationContext, _span: &Span) -> AtomResult {
     let Some(first) = args.first() else {
         return Ok(Value::Nil);
     };
-
-    // Evaluate the argument to get the actual value
     eval::evaluate_ast_node(first, _ctx)
 }
 
-/// Tags atom for test assertions.
-///
-/// Usage: (tags <tag1> <tag2> ...)
-/// - <tag1>, <tag2>, ...: Tags to associate with the test
-///   Returns: A list of tags
-///
-/// Example:
-///   (tags "assignment" "core") ; => ["assignment" "core"]
-///
-/// This atom is used in test expectations to specify test tags.
-fn tags_atom(args: &[AstNode], _ctx: &mut EvaluationContext, _span: &Span) -> AtomResult {
-    let mut tags = Vec::new();
-    for arg in args {
-        let val = eval::evaluate_ast_node(arg, _ctx)?;
-        match val {
-            Value::String(s) => tags.push(Value::String(s)),
-            _ => tags.push(val),
-        }
-    }
-    Ok(Value::List(tags))
+fn tags_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) -> AtomResult {
+    let mut list_expr_items = Vec::with_capacity(args.len() + 1);
+    list_expr_items.push(AstNode {
+        value: Arc::new(Expr::Symbol("list".to_string(), *span)),
+        span: *span,
+    });
+    list_expr_items.extend(args.iter().cloned());
+    let list_expr = AstNode {
+        value: Arc::new(Expr::List(list_expr_items, *span)),
+        span: *span,
+    };
+    eval::evaluate_ast_node(&list_expr, ctx)
 }
 
-/// Simple echo atom that outputs its first argument.
-///
-/// Usage: (test/echo <value>)
-/// - <value>: Any value to echo
-///   Returns: The echoed value
-///
-/// Example:
-///   (test/echo "hello") ; => "hello" (also emits "hello")
-///
-/// # Safety
-/// Emits output, does not mutate world state.
 fn test_echo_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) -> AtomResult {
     let Some(first) = args.first() else {
         let val = Value::String("".to_string());
@@ -199,25 +170,6 @@ fn test_echo_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) ->
     Ok(val)
 }
 
-/// Borrow checker/context management stress test atom.
-///
-/// Usage: (test/borrow_stress <depth:int> <msg:string>)
-/// - <depth>: Recursion depth (integer)
-/// - <msg>: Message to echo (string)
-///
-/// Behavior:
-/// - Emits output before and after a nested call to itself (if depth > 0)
-/// - Calls `test/echo` at the base case (depth = 0)
-/// - Returns a string showing the recursion depth and message
-///
-/// Example:
-///   (test/borrow_stress 2 "test") ; => "depth:2;msg:test"
-///
-/// This atom is designed to stress borrow splitting, nested calls, and output ordering.
-///
-/// # Safety
-/// Emits output, does not mutate world state. May recurse up to max_depth.
-/// Parse arguments for borrow stress test.
 fn parse_borrow_stress_args(args: &[AstNode]) -> (i64, String) {
     let first = args.first();
     let second = args.get(1);
@@ -237,7 +189,6 @@ fn parse_borrow_stress_args(args: &[AstNode]) -> (i64, String) {
     }
 }
 
-/// Emit formatted output for borrow stress test phases.
 fn emit_borrow_stress_output(
     ctx: &mut EvaluationContext,
     depth: i64,
@@ -250,7 +201,6 @@ fn emit_borrow_stress_output(
         .emit(&format!("[{phase}:{depth}:{msg}]"), Some(span));
 }
 
-/// Handle recursive case of borrow stress test.
 fn handle_borrow_stress_recursion(
     ctx: &mut EvaluationContext,
     depth: i64,
@@ -263,7 +213,7 @@ fn handle_borrow_stress_recursion(
         return handle_borrow_stress_base_case(ctx, msg, span, test_echo_atom);
     }
     let mut sub_context = sub_eval_context!(ctx);
-    sub_context.depth = ctx.depth + 1; // Manually set incremented depth
+    sub_context.depth = ctx.depth + 1;
     let nested_args = vec![
         Spanned {
             value: Arc::new(Expr::Number((depth - 1) as f64, *span)),
@@ -277,7 +227,6 @@ fn handle_borrow_stress_recursion(
     test_borrow_stress_atom(&nested_args, &mut sub_context, span)
 }
 
-/// Handle base case of borrow stress test (calls echo).
 fn handle_borrow_stress_base_case(
     ctx: &mut EvaluationContext,
     msg: &str,
@@ -285,7 +234,7 @@ fn handle_borrow_stress_base_case(
     test_echo_atom: NativeLazyFn,
 ) -> AtomResult {
     let mut sub_context = sub_eval_context!(ctx);
-    sub_context.depth = ctx.depth + 1; // Manually set incremented depth
+    sub_context.depth = ctx.depth + 1;
     let echo_arg = Spanned {
         value: Arc::new(Expr::String(msg.to_string(), *span)),
         span: *span,
@@ -293,7 +242,6 @@ fn handle_borrow_stress_base_case(
     test_echo_atom(&[echo_arg], &mut sub_context, span)
 }
 
-/// Main borrow stress test atom implementation.
 fn test_borrow_stress_atom(
     args: &[AstNode],
     ctx: &mut EvaluationContext,
@@ -313,87 +261,150 @@ fn test_borrow_stress_atom(
     Ok(Value::String(format!("depth:{depth};msg:{msg}")))
 }
 
-/// `assert` atom - basic assertion that fails if argument is false.
-///
-/// Usage: (assert <expression>)
-/// - <expression>: Any expression that evaluates to a boolean-like value
-///
-/// Returns `nil` if the assertion passes.
-/// Throws an assertion error if the expression is falsy.
-///
-/// Example:
-///   (assert true)        ; => nil (success)
-///   (assert (eq? 1 1))   ; => nil (success)
-///   (assert false)       ; => AssertionError
-/// Registers all test atoms in the given registry.
-///
-/// This function should only be called in debug or test builds.
-/// It registers atoms used for testing, debugging, and development purposes.
-///
-/// # Safety
-/// Test atoms may have side effects (output, recursion) intended for testing.
 pub fn register_test_atoms(world: &mut World) {
     register_lazy!(world, "test/echo", test_echo_atom);
     register_lazy!(world, "test/borrow_stress", test_borrow_stress_atom);
     register_lazy!(world, "register-test!", register_test_atom);
-
-    // Register test assertion atoms
     register_lazy!(world, "value", value_atom);
     register_lazy!(world, "tags", tags_atom);
-
-    // Register assertion atoms for testing
     register_lazy!(world, "assert", assert_atom);
     register_lazy!(world, "assert-eq", assert_eq_atom);
 }
 
 fn assert_atom(args: &[AstNode], ctx: &mut EvaluationContext, _span: &Span) -> AtomResult {
     helpers::validate_special_form_arity(args, 1, "assert", ctx)?;
-
     let value = eval::evaluate_ast_node(&args[0], ctx)?;
-    let is_truthy = match value {
-        Value::Bool(b) => b,
-        Value::Nil => false,
-        _ => true, // All other values are truthy
-    };
-
+    let is_truthy = value.is_truthy();
     if !is_truthy {
         return Err(ctx.create_error(
-            format!("Assertion failed: expected truthy value, got {:?}", value),
+            format!("Assertion failed: expected truthy value, got {value}"),
             to_source_span(args[0].span),
         ));
     }
-
     Ok(Value::Nil)
 }
 
-/// `assert-eq` atom - equality assertion that compares two values.
-///
-/// Usage: (assert-eq <expected> <actual>)
-/// - <expected>: The expected value
-/// - <actual>: The actual value to compare
-///
-/// Returns `nil` if the values are equal.
-/// Throws an assertion error if the values are not equal.
-///
-/// Example:
-///   (assert-eq 1 1)           ; => nil (success)
-///   (assert-eq "a" "a")       ; => nil (success)
-///   (assert-eq 1 2)           ; => AssertionError
 fn assert_eq_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) -> AtomResult {
     helpers::validate_special_form_arity(args, 2, "assert-eq", ctx)?;
-
     let expected = eval::evaluate_ast_node(&args[0], ctx)?;
     let actual = eval::evaluate_ast_node(&args[1], ctx)?;
-
     if expected != actual {
         return Err(ctx.create_error(
-            format!(
-                "Assertion failed: expected {:?}, got {:?}",
-                expected, actual
-            ),
+            format!("Assertion failed: expected {expected}, got {actual}"),
             to_source_span(*span),
         ));
     }
-
     Ok(Value::Nil)
+}
+
+// ============================================================================
+// TEST EXECUTION
+// ============================================================================
+
+pub fn run_all_registered_tests(
+    world: &CanonicalWorld,
+    output: &SharedOutput,
+) -> Vec<TestResult> {
+    let registry = TEST_REGISTRY.lock().unwrap();
+    let mut results = Vec::new();
+
+    for (_name, test_def) in registry.iter() {
+        let result = execute_single_test(test_def, world, output);
+        results.push(result);
+    }
+
+    results
+}
+
+fn execute_single_test(
+    test_def: &TestDefinition,
+    world: &CanonicalWorld,
+    output: &SharedOutput,
+) -> TestResult {
+    let source_ctx =
+        SourceContext::from_file(test_def.source_file.name(), &test_def.source_text);
+
+    let mut ctx =
+        EvaluationContextBuilder::new(source_ctx.clone(), world.clone(), output.clone())
+            .with_test_file(Some(test_def.source_file.name().to_string()))
+            .with_test_name(Some(test_def.name.clone()))
+            .build();
+
+    let actual_result = match eval_test_body(&test_def.body, &mut ctx) {
+        Ok(val) => val,
+        Err(e) => {
+            return TestResult {
+                name: test_def.name.clone(),
+                passed: false,
+                details: format!("Test failed during execution: {e}"),
+            };
+        }
+    };
+
+    let expected_result = match eval::evaluate_ast_node(&test_def.expect, &mut ctx) {
+        Ok(val) => val,
+        Err(e) => {
+            return TestResult {
+                name: test_def.name.clone(),
+                passed: false,
+                details: format!("Failed to evaluate expected value: {e}"),
+            };
+        }
+    };
+
+    let passed = actual_result == expected_result;
+    let details = if passed {
+        format!("Passed. Got: {actual_result}")
+    } else {
+        format!(
+            "Failed. Expected: {expected_result}, Got: {actual_result}",
+        )
+    };
+
+    TestResult {
+        name: test_def.name.clone(),
+        passed,
+        details,
+    }
+}
+
+fn eval_test_body(body: &[AstNode], ctx: &mut EvaluationContext) -> AtomResult {
+    let mut result = Ok(Value::Nil);
+    for expr in body {
+        result = eval::evaluate_ast_node(expr, ctx);
+        if result.is_err() {
+            return result;
+        }
+    }
+    result
+}
+
+pub fn run_tests_from_file(
+    path: &str,
+    world: &CanonicalWorld,
+    output: &SharedOutput,
+) -> Result<Vec<TestResult>, SutraError> {
+    let source_text = std::fs::read_to_string(path).map_err(|e| {
+        let dummy_ctx = EvaluationContextBuilder::new(
+            SourceContext::default(),
+            world.clone(),
+            output.clone(),
+        )
+        .build();
+        dummy_ctx.create_error(
+            format!("Failed to read test file: {e}"),
+            to_source_span(Span::default()),
+        )
+    })?;
+    let source_ctx = SourceContext::from_file(path, &source_text);
+    let ast = crate::syntax::parser::parse(&source_text, source_ctx.clone())?;
+
+    let mut reg_ctx =
+        EvaluationContextBuilder::new(source_ctx, world.clone(), output.clone()).build();
+
+    for expr in ast {
+        let _ = eval::evaluate_ast_node(&expr, &mut reg_ctx)?;
+    }
+
+    Ok(run_all_registered_tests(world, output))
 }

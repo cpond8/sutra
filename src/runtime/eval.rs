@@ -20,6 +20,7 @@
 
 // All functions are now first-class values in the world state. There is no separate atom registry.
 use std::{collections::HashMap, rc::Rc};
+use std::sync::Arc;
 
 use miette::SourceSpan;
 
@@ -131,6 +132,39 @@ impl EvaluationContext {
         }
 
         err
+    }
+}
+
+// ===================================================================================================
+// PUBLIC API: Evaluation Helpers
+// ===================================================================================================
+
+impl EvaluationContext {
+    /// Evaluates a call to a callable value with the given arguments.
+    /// This is a high-level helper for atoms like `map` that need to invoke functions.
+    pub fn eval_call(&mut self, callable: &Value, args: &[Value]) -> AtomResult {
+        match callable {
+            Value::Lambda(lambda) => {
+                // Call the lambda. Note that we are not flattening spread args here
+                // because we assume the arguments are already processed values.
+                special_forms::call_lambda(lambda, args, self)
+            }
+            Value::NativeEagerFn(eager_fn) => {
+                // Call the native eager function directly.
+                eager_fn(args, self)
+            }
+            _ => {
+                // Not a callable value.
+                Err(self.create_error(
+                    format!(
+                        "The value of type '{}' is not a callable function.",
+                        callable.type_name()
+                    ),
+                    self.span_for_span(self.current_span),
+                )
+                .with_suggestion("Expected a Lambda or NativeEagerFn."))
+            }
+        }
     }
 }
 
@@ -258,9 +292,9 @@ pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext)
 
 /// Evaluates a list expression, which is the primary mechanism for function invocation.
 fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext) -> AtomResult {
-    // An empty list evaluates to an empty list.
+    // An empty list evaluates to nil.
     if items.is_empty() {
-        return Ok(Value::List(vec![]));
+        return Ok(Value::Nil);
     }
 
     let head = &items[0];
@@ -300,34 +334,30 @@ fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext
 }
 
 /// Evaluates quote expressions (preserve content)
-fn evaluate_quote(inner: &AstNode, context: &mut EvaluationContext) -> AtomResult {
-    match &*inner.value {
-        Expr::Symbol(s, _) => Ok(Value::String(s.clone())),
-        Expr::List(exprs, _) => evaluate_quoted_list(exprs, context).map(Value::List),
-        Expr::Number(n, _) => Ok(Value::Number(*n)),
-        Expr::Bool(b, _) => Ok(Value::Bool(*b)),
-        Expr::String(s, _) => Ok(Value::String(s.clone())),
-        Expr::Path(p, _) => Ok(Value::Path(p.clone())),
-        Expr::If {
-            condition,
-            then_branch,
-            else_branch,
-            ..
-        } => evaluate_quoted_if(condition, then_branch, else_branch, context),
-        Expr::Quote(_, _) => Ok(Value::Nil),
-        Expr::ParamList(_) => Err(context
-            .create_error(
-                "Cannot evaluate parameter list (ParamList AST node) at runtime",
-                context.span_for_node(inner),
-            )
-            .with_suggestion("Parameter lists are only valid in lambda definitions")),
-        Expr::Spread(_) => Err(context
-            .create_error(
-                "Spread argument not allowed inside quote",
-                context.span_for_node(inner),
-            )
-            .with_suggestion("Remove the spread operator inside quotes")),
+fn evaluate_quote(inner: &AstNode, _context: &mut EvaluationContext) -> AtomResult {
+    fn ast_to_quoted_value(node: &AstNode) -> Value {
+        match &*node.value {
+            Expr::Symbol(s, _) => Value::Symbol(s.clone()),
+            Expr::Number(n, _) => Value::Number(*n),
+            Expr::Bool(b, _) => Value::Bool(*b),
+            Expr::String(s, _) => Value::String(s.clone()),
+            Expr::List(items, _) => {
+                let mut result = Value::Nil;
+                for item in items.iter().rev() {
+                    let cell = crate::ast::value::ConsCell {
+                        car: ast_to_quoted_value(item),
+                        cdr: result,
+                    };
+                    result = Value::Cons(Rc::new(cell));
+                }
+                result
+            }
+            Expr::Quote(inner, _) => Value::Quote(Box::new(ast_to_quoted_value(inner))),
+            Expr::Path(p, _) => Value::Path(p.clone()),
+            _ => Value::Nil,
+        }
     }
+    Ok(Value::Quote(Box::new(ast_to_quoted_value(inner))))
 }
 
 /// Evaluates literal value expressions (Path, String, Number, Bool)
@@ -404,58 +434,6 @@ fn resolve_symbol(
 }
 
 // ===================================================================================================
-// QUOTE EVALUATION: Special Quote Handling
-// ===================================================================================================
-
-/// Evaluates a single expression within a quote context
-fn evaluate_quoted_expr(expr: &AstNode, context: &EvaluationContext) -> Result<Value, SutraError> {
-    match &*expr.value {
-        Expr::Symbol(s, _) => Ok(Value::String(s.clone())),
-        Expr::Number(n, _) => Ok(Value::Number(*n)),
-        Expr::Bool(b, _) => Ok(Value::Bool(*b)),
-        Expr::String(s, _) => Ok(Value::String(s.clone())),
-        Expr::ParamList(_) => Err(context
-            .create_error(
-                "Cannot evaluate parameter list (ParamList AST node) inside quote",
-                context.span_for_node(expr),
-            )
-            .with_suggestion("Parameter lists are not allowed in quotes")),
-        Expr::Spread(_) => Err(context
-            .create_error(
-                "Spread argument not allowed inside quote",
-                context.span_for_node(expr),
-            )
-            .with_suggestion("Remove the spread operator inside quotes")),
-        _ => Ok(Value::Nil),
-    }
-}
-
-/// Evaluates a quoted list by converting each element to a value
-fn evaluate_quoted_list(
-    exprs: &[AstNode],
-    context: &EvaluationContext,
-) -> Result<Vec<Value>, SutraError> {
-    exprs
-        .iter()
-        .map(|e| evaluate_quoted_expr(e, context))
-        .collect()
-}
-
-/// Evaluates a quoted if expression
-fn evaluate_quoted_if(
-    condition: &AstNode,
-    then_branch: &AstNode,
-    else_branch: &AstNode,
-    context: &mut EvaluationContext,
-) -> AtomResult {
-    let is_true = evaluate_condition_as_bool(condition, context)?;
-    let mut sub_context = context.clone_with_new_lexical_frame();
-    sub_context.depth += 1;
-    let branch = if is_true { then_branch } else { else_branch };
-    evaluate_ast_node(branch, &mut sub_context)
-}
-
-// ===================================================================================================
 // ARGUMENT PROCESSING: Function Call Support
 // ===================================================================================================
 
@@ -503,7 +481,7 @@ fn process_single_argument(
     let list_items = extract_list_items(spread_value, expr, context)?;
 
     // Convert list items to AST nodes
-    Ok(convert_values_to_ast_nodes(list_items, arg.span))
+    Ok(convert_values_to_ast_nodes(list_items, arg.span, context)?)
 }
 
 fn extract_list_items(
@@ -511,22 +489,25 @@ fn extract_list_items(
     expr: &AstNode,
     context: &mut EvaluationContext,
 ) -> Result<Vec<Value>, SutraError> {
-    let Value::List(items) = value else {
-        return Err(context
+    match value {
+        Value::Cons(_) | Value::Nil => Ok(value.try_into_iter().collect::<Vec<Value>>()),
+        _ => Err(context
             .create_type_mismatch_error("list", value.type_name(), context.span_for_node(expr))
-            .with_suggestion("Use a list for spread operations"));
-    };
-    Ok(items)
+            .with_suggestion("Use a list for spread operations")),
+    }
 }
 
-fn convert_values_to_ast_nodes(values: Vec<Value>, span: Span) -> Vec<AstNode> {
-    values
-        .into_iter()
-        .map(|value| Spanned {
-            value: Expr::from(value).into(),
+fn convert_values_to_ast_nodes(values: Vec<Value>, span: Span, context: &EvaluationContext) -> Result<Vec<AstNode>, SutraError> {
+    let mut nodes = Vec::with_capacity(values.len());
+    for value in values {
+        let expr = crate::ast::expr_from_value_with_span(value, span)
+            .map_err(|msg| errors::runtime_general(msg, "value-to-ast", &context.source, context.span_for_span(span)))?;
+        nodes.push(Spanned {
+            value: Arc::new(expr),
             span,
-        })
-        .collect()
+        });
+    }
+    Ok(nodes)
 }
 
 // ===================================================================================================
@@ -535,25 +516,25 @@ fn convert_values_to_ast_nodes(values: Vec<Value>, span: Span) -> Vec<AstNode> {
 
 // `wrap_value_with_world_state` is now removed.
 
+fn is_truthy(val: &Value) -> bool {
+    match val {
+        Value::Bool(false) => false,
+        Value::Nil => false,
+        Value::Number(n) => *n != 0.0,
+        Value::String(s) => !s.is_empty(),
+        Value::Map(m) => !m.is_empty(),
+        Value::Quote(inner) => is_truthy(inner),
+        _ => true,
+    }
+}
+
 /// Helper to evaluate a conditional expression and return a boolean result
 pub fn evaluate_condition_as_bool(
     condition: &AstNode,
     context: &mut EvaluationContext,
 ) -> Result<bool, SutraError> {
     let cond_val = evaluate_ast_node(condition, context)?;
-
-    // Guard clause: ensure condition evaluates to boolean
-    let Value::Bool(b) = cond_val else {
-        return Err(context
-            .create_type_mismatch_error(
-                "bool",
-                cond_val.type_name(),
-                context.span_for_node(condition),
-            )
-            .with_suggestion("Use a boolean value for conditions"));
-    };
-
-    Ok(b)
+    Ok(is_truthy(&cond_val))
 }
 
 // The `capture_lexical_env` function was here, but is no longer used after the refactor.

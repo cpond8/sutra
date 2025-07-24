@@ -32,8 +32,8 @@ pub enum Value {
     String(String),
     /// Boolean value.
     Bool(bool),
-    /// List of values (deeply compositional).
-    List(Vec<Value>),
+    /// A Lisp-style cons cell, forming the head of a list.
+    Cons(Rc<ConsCell>),
     /// Map from string keys to values (deeply compositional).
     Map(HashMap<String, Value>),
     /// Reference to a path in the world state (not auto-resolved).
@@ -46,6 +46,8 @@ pub enum Value {
     /// Native (Rust) function that evaluates its arguments lazily.
     #[serde(skip)]
     NativeLazyFn(NativeLazyFn),
+    Symbol(String),
+    Quote(Box<Value>),
 }
 
 /// Represents a user-defined lambda function (for closures and function values).
@@ -56,6 +58,13 @@ pub struct Lambda {
     pub captured_env: HashMap<String, Value>,
 }
 
+/// Represents a Lisp-style cons cell (a pair of values).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ConsCell {
+    pub car: Value,
+    pub cdr: Value,
+}
+
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -63,12 +72,14 @@ impl PartialEq for Value {
             (Value::Number(a), Value::Number(b)) => a == b,
             (Value::String(a), Value::String(b)) => a == b,
             (Value::Bool(a), Value::Bool(b)) => a == b,
-            (Value::List(a), Value::List(b)) => a == b,
+            (Value::Cons(a), Value::Cons(b)) => Rc::ptr_eq(a, b) || a == b,
             (Value::Map(a), Value::Map(b)) => a == b,
             (Value::Path(a), Value::Path(b)) => a == b,
             (Value::Lambda(a), Value::Lambda(b)) => a == b,
             (Value::NativeEagerFn(a), Value::NativeEagerFn(b)) => *a as usize == *b as usize,
             (Value::NativeLazyFn(a), Value::NativeLazyFn(b)) => *a as usize == *b as usize,
+            (Value::Symbol(a), Value::Symbol(b)) => a == b,
+            (Value::Quote(a), Value::Quote(b)) => a == b,
             _ => false,
         }
     }
@@ -82,12 +93,14 @@ impl Value {
             Value::Number(_) => "Number",
             Value::String(_) => "String",
             Value::Bool(_) => "Bool",
-            Value::List(_) => "List",
+            Value::Cons(_) => "List", // User-facing type name remains "List" for consistency.
             Value::Map(_) => "Map",
             Value::Path(_) => "Path",
             Value::Lambda(_) => "Lambda",
             Value::NativeEagerFn(_) => "NativeEagerFn",
             Value::NativeLazyFn(_) => "NativeLazyFn",
+            Value::Symbol(_) => "Symbol",
+            Value::Quote(_) => "Quote",
         }
     }
 
@@ -150,13 +163,28 @@ impl Value {
     // Display formatting helpers (internal)
     // ------------------------------------------------------------------------
 
-    fn fmt_list(f: &mut fmt::Formatter<'_>, items: &[Value]) -> fmt::Result {
+    fn fmt_cons_chain(f: &mut fmt::Formatter<'_>, start_cell: &ConsCell) -> fmt::Result {
         write!(f, "(")?;
-        for (i, item) in items.iter().enumerate() {
-            if i > 0 {
-                write!(f, " ")?;
+        write!(f, "{}", start_cell.car)?;
+
+        let mut current_cdr = &start_cell.cdr;
+        loop {
+            match current_cdr {
+                // Proper list case: the cdr is another cons cell
+                Value::Cons(next_cell) => {
+                    write!(f, " {}", next_cell.car)?;
+                    current_cdr = &next_cell.cdr;
+                }
+                // Proper list termination
+                Value::Nil => {
+                    break;
+                }
+                // Improper list case (dotted pair)
+                other => {
+                    write!(f, " . {}", other)?;
+                    break;
+                }
             }
-            write!(f, "{item}")?;
         }
         write!(f, ")")
     }
@@ -188,12 +216,14 @@ impl fmt::Display for Value {
             }
             Value::String(s) => write!(f, "{s}"),
             Value::Bool(b) => write!(f, "{b}"),
-            Value::List(items) => Value::fmt_list(f, items),
+            Value::Cons(cell) => Value::fmt_cons_chain(f, cell),
             Value::Map(map) => Value::fmt_map(f, map),
             Value::Path(p) => write!(f, "{p}"),
             Value::Lambda(_) => write!(f, "<lambda>"),
             Value::NativeEagerFn(_) => write!(f, "<native_eager_fn>"),
             Value::NativeLazyFn(_) => write!(f, "<native_lazy_fn>"),
+            Value::Symbol(s) => write!(f, "{s}"),
+            Value::Quote(v) => write!(f, "'{v}"),
         }
     }
 }

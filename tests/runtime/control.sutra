@@ -26,6 +26,21 @@
               (tags "control"))
       (if nil "taken" "not-taken"))  ; => "not-taken"
 
+(test "control: if - falsy condition (zero)"
+      (expect (value "not-taken")
+              (tags "control"))
+      (if 0 "taken" "not-taken"))  ; => "not-taken"
+
+(test "control: if - falsy condition (empty string)"
+      (expect (value "not-taken")
+              (tags "control"))
+      (if "" "taken" "not-taken"))  ; => "not-taken"
+
+(test "control: if - falsy condition (empty list)"
+      (expect (value "not-taken")
+              (tags "control"))
+      (if '() "taken" "not-taken"))  ; => "not-taken"
+
 (test "control: if - arity error (too few)"
       (expect (error Validation)
               (tags "control"))

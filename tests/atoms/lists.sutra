@@ -1,0 +1,39 @@
+(register-test! "cons should create a proper list"
+  (value (list 1 2 3))
+  (cons 1 (cons 2 (cons 3 nil))))
+
+(register-test! "cons should create an improper list (dotted pair)"
+  (value "(1 . 2)")
+  (str (cons 1 2)))
+
+(register-test! "car should return the first element"
+  (value 1)
+  (car (list 1 2 3)))
+
+(register-test! "car on an empty list should return nil"
+  (value nil)
+  (car (list)))
+
+(register-test! "cdr should return the rest of the list"
+  (value (list 2 3))
+  (cdr (list 1 2 3)))
+
+(register-test! "cdr on a single-element list should return an empty list"
+  (value nil)
+  (cdr (list 1)))
+
+(register-test! "len should return the length of a proper list"
+  (value 3)
+  (len (list 1 2 3)))
+
+(register-test! "len on an empty list should be 0"
+  (value 0)
+  (len (list)))
+
+(register-test! "append should combine two lists"
+  (value (list 1 2 3 4))
+  (append (list 1 2) (list 3 4)))
+
+(register-test! "map should apply a function to each element"
+  (value (list 2 4 6))
+  (map (lambda (x) (+ x 1)) (list 1 3 5)))

@@ -6,7 +6,9 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Path, Value};
+use crate::Path;
+
+pub use self::value::{ConsCell, Lambda, Value};
 
 /// Represents a span in the source code.
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -160,28 +162,55 @@ impl std::fmt::Display for Expr {
     }
 }
 
+fn spanned(expr: Expr, span: Span) -> Spanned<Arc<Expr>> {
+    Spanned { value: Arc::new(expr), span }
+}
+
 /// Utility to construct an Expr from a Value, requiring a span.
-pub fn expr_from_value_with_span(val: Value, span: Span) -> Expr {
-    use Value::*;
+pub fn expr_from_value_with_span(val: Value, span: Span) -> Result<Expr, String> {
     match val {
-        Nil | Map(_) => Expr::List(vec![], span),
-        Number(n) => Expr::Number(n, span),
-        String(s) => Expr::String(s, span),
-        Bool(b) => Expr::Bool(b, span),
-        List(items) => Expr::List(
-            items
-                .into_iter()
-                .map(|v| Spanned {
-                    value: Arc::new(expr_from_value_with_span(v, span)),
-                    span,
-                })
-                .collect(),
-            span,
-        ),
-        Path(p) => Expr::Path(p, span),
-        Lambda(_) => Expr::Symbol("<lambda>".to_string(), span),
-        NativeEagerFn(_) => Expr::Symbol("<native_eager_fn>".to_string(), span),
-        NativeLazyFn(_) => Expr::Symbol("<native_lazy_fn>".to_string(), span),
+        Value::Nil => Ok(Expr::List(vec![], span)),
+        Value::Number(n) => Ok(Expr::Number(n, span)),
+        Value::String(s) => Ok(Expr::String(s, span)),
+        Value::Bool(b) => Ok(Expr::Bool(b, span)),
+        Value::Symbol(s) => Ok(Expr::Symbol(s, span)),
+        Value::Quote(v) => {
+            let quoted = expr_from_value_with_span(*v, span)?;
+            Ok(Expr::Quote(Box::new(spanned(quoted, span)), span))
+        }
+        Value::Cons(cell) => {
+            let mut items = Vec::new();
+            let mut current = Some(cell);
+            while let Some(cell_rc) = current {
+                let cell_ref = cell_rc.as_ref();
+                let car_expr = expr_from_value_with_span(cell_ref.car.clone(), span)?;
+                items.push(spanned(car_expr, span));
+                match &cell_ref.cdr {
+                    Value::Cons(next) => current = Some(next.clone()),
+                    Value::Nil => current = None,
+                    other => {
+                        let cdr_expr = expr_from_value_with_span(other.clone(), span)?;
+                        items.push(spanned(cdr_expr, span));
+                        current = None;
+                    }
+                }
+            }
+            Ok(Expr::List(items, span))
+        }
+        Value::Map(map) => {
+            let mut items = Vec::new();
+            for (k, v) in map {
+                let key_expr = Expr::String(k, span);
+                let val_expr = expr_from_value_with_span(v, span)?;
+                let pair = Expr::List(vec![spanned(key_expr, span), spanned(val_expr, span)], span);
+                items.push(spanned(pair, span));
+            }
+            Ok(Expr::List(items, span))
+        }
+        Value::Path(p) => Ok(Expr::Path(p, span)),
+        Value::Lambda(_) | Value::NativeEagerFn(_) | Value::NativeLazyFn(_) => {
+            Err("Cannot convert function value to AST expression. This is a logic error.".to_string())
+        }
     }
 }
 
@@ -189,7 +218,10 @@ pub fn expr_from_value_with_span(val: Value, span: Span) -> Expr {
 impl From<Value> for Expr {
     fn from(val: Value) -> Self {
         // This is only safe for tests or when span is irrelevant.
-        expr_from_value_with_span(val, Span::default())
+        match expr_from_value_with_span(val, Span::default()) {
+            Ok(expr) => expr,
+            Err(msg) => panic!("{}", msg),
+        }
     }
 }
 
@@ -226,4 +258,5 @@ impl TypeNameTrait for Expr {
     }
 }
 
+pub mod list;
 pub mod value;

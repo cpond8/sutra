@@ -23,15 +23,15 @@ use crate::{helpers, NativeEagerFn};
 
 /// Emits output to the output sink.
 ///
-/// Usage: (print <value>)
+/// Usage: (core/print <value>)
 ///   - <value>: Any value
 ///
 ///   Returns: Nil. Emits output.
 ///
 /// Example:
-///   (print "hello")
+///   (core/print "hello")
 pub const ATOM_PRINT: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "print", context)?;
+    helpers::validate_unary_arity(args, "core/print", context)?;
     context.output.borrow_mut().emit(&args[0].to_string(), None);
     Ok(Value::Nil)
 };

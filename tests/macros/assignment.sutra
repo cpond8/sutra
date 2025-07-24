@@ -60,7 +60,7 @@
       (add! player.score "five"))  ; add! expects number, got string
 
 (test "assignment: add! arity error (too few)"
-      (expect (error Eval)
+      (expect (error Validation)
               (tags "assignment"))
       (add! player.score))  ; add! expects exactly 2 arguments, got 1
 

@@ -20,12 +20,12 @@
    1 2 3))  ; => 6
 
 (test "lambda: arity error (too few)"
-  (expect (error Validation))
+  (expect (error Eval)) ; because the arity of lambdas can only be checked at runtime
   ((lambda (x y) (+ x y))
    1))  ; => arity error
 
 (test "lambda: arity error (too many)"
-  (expect (error Validation))
+  (expect (error Eval)) ; because the arity of lambdas can only be checked at runtime
   ((lambda (x y) (+ x y))
    1 2 3))  ; => arity error
 

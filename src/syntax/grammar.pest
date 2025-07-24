@@ -6,10 +6,10 @@
 
 // -- Special Rules --
 
-// `WHITESPACE` and `COMMENT` are silent rules (`_`) that `pest` can apply
-// implicitly between any other rules. This keeps the main grammar clean.
-WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
-COMMENT    = _{ ";" ~ (!"\n" ~ ANY)* }
+// `WHITESPACE` is a silent rule (`_`) that pest applies between all tokens.
+// By including COMMENT as an alternative, comments are ignored everywhere.
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" | COMMENT }
+COMMENT    = { ";" ~ (!"\n" ~ ANY)* }
 
 // -- Core Grammar Rules --
 

@@ -346,8 +346,18 @@ pub fn expand_dec(expr: &AstNode, source: &SourceContext) -> macro_result {
 // -----------------------------------------------
 
 /// Expands `(print ...)` to `(core/print ...)`, letting the atom handle arity validation.
-pub fn expand_print(expr: &AstNode, source: &SourceContext) -> macro_result {
-    create_unary_op(expr, "core/print", source)
+pub fn expand_print(expr: &AstNode, _source: &SourceContext) -> macro_result {
+    let Expr::List(items, span) = &*expr.value else {
+        return Err(errors::runtime_general(
+            "Expected list form for macro".to_string(),
+            "macro expansion",
+            &_source,
+            parser::to_source_span(expr.span),
+        ));
+    };
+    let mut new_items = vec![create_symbol("core/print", span)];
+    new_items.extend_from_slice(&items[1..]);
+    Ok(create_ast_list(new_items, *span))
 }
 
 // ===================================================================================================

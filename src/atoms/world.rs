@@ -28,7 +28,7 @@ use crate::{
 /// `(core/set! <path> <value>)`
 pub const ATOM_CORE_SET: NativeEagerFn = |args, context| {
     helpers::validate_binary_arity(args, "core/set!", context)?;
-    let path = &args[0].extract(context)?;
+    let path = helpers::validate_path_arg(&args[0], context.current_span, "core/set!", context)?;
     let value = args[1].clone();
     context.world.borrow_mut().set(path, value);
     Ok(Value::Nil)
@@ -38,7 +38,7 @@ pub const ATOM_CORE_SET: NativeEagerFn = |args, context| {
 /// `(core/get <path>)`
 pub const ATOM_CORE_GET: NativeEagerFn = |args, context| {
     helpers::validate_unary_arity(args, "core/get", context)?;
-    let path = &args[0].extract(context)?;
+    let path = helpers::validate_path_arg(&args[0], context.current_span, "core/get", context)?;
     let value = context
         .world
         .borrow()
@@ -52,7 +52,7 @@ pub const ATOM_CORE_GET: NativeEagerFn = |args, context| {
 /// `(core/del! <path>)`
 pub const ATOM_CORE_DEL: NativeEagerFn = |args, context| {
     helpers::validate_unary_arity(args, "core/del!", context)?;
-    let path = &args[0].extract(context)?;
+    let path = helpers::validate_path_arg(&args[0], context.current_span, "core/del!", context)?;
     context.world.borrow_mut().del(path);
     Ok(Value::Nil)
 };
@@ -61,7 +61,7 @@ pub const ATOM_CORE_DEL: NativeEagerFn = |args, context| {
 /// `(core/exists? <path>)`
 pub const ATOM_EXISTS: NativeEagerFn = |args, context| {
     helpers::validate_unary_arity(args, "core/exists?", context)?;
-    let path = &args[0].extract(context)?;
+    let path = helpers::validate_path_arg(&args[0], context.current_span, "core/exists?", context)?;
     let exists = context.world.borrow().get(path).is_some();
     Ok(Value::Bool(exists))
 };
@@ -79,9 +79,6 @@ pub const ATOM_PATH: NativeEagerFn = |args, context| {
             "String",
             args[0].type_name(),
             &context.source,
-            // Since this is eager, we don't have a specific node span.
-            // Using the parent span from the context would be ideal if available,
-            // otherwise a default span is the fallback.
             context.span_for_span(context.current_span),
         )),
     }

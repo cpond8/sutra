@@ -21,26 +21,27 @@
               (tags "output"))
       (print))
 
-(test "output: print - arity error (too many)"
-      (expect (error Validation)
+(test "output: println - simple string"
+      (expect (output "hello\n")
               (tags "output"))
-      (print "one" "two"))
+      (println "hello"))
 
-;;;
-;;; 2. Display (Macro)
-;;;
-
-(test "output: display - multiple args"
-      (expect (output "hello 123 true\\n")
+(test "output: println - with number"
+      (expect (output "123\n")
               (tags "output"))
-      (display "hello" 123 true))  ; prints "hello 123 true" to stdout
+      (println 123))
 
-(test "output: display - single arg"
-      (expect (output "hello\\n")
+(test "output: println - single arg"
+      (expect (output "hello\n")
               (tags "output"))
-      (display "hello"))  ; prints "hello" to stdout
+      (println "hello"))
 
-(test "output: display - no args"
-      (expect (output "")
+(test "output: println - no args"
+      (expect (output "\n")
               (tags "output"))
-      (display))  ; prints nothing to stdout
+      (println))
+
+(test "output: print - multiple"
+  (expect (output "hello123true")
+          (tags "output"))
+  (print "hello" 123 true))

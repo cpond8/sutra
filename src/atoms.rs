@@ -192,8 +192,6 @@ fn register_collection_atoms(world: &mut World) {
     register_eager!(world, "cons", collections::ATOM_CONS);
     register_eager!(world, "append", collections::ATOM_APPEND);
     register_eager!(world, "map", collections::ATOM_MAP);
-    register_eager!(world, "core/push!", collections::ATOM_CORE_PUSH);
-    register_eager!(world, "core/pull!", collections::ATOM_CORE_PULL);
     register_eager!(world, "core/str+", collections::ATOM_CORE_STR_PLUS);
     register_eager!(world, "core/map", collections::ATOM_CORE_MAP);
 }

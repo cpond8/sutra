@@ -53,6 +53,12 @@
               (tags "parsing"))
       "")  ; => ""
 
+(test "parsing: string - with \"...\""
+      (expect (value "...oops")
+              (tags "parsing"))
+      "...oops")  ; => parse "...oops"
+
+
 (test "parsing: quote - symbol"
       (expect (value 'foo)
               (tags "parsing"))
@@ -105,8 +111,3 @@
       (expect (error Parse)
               (tags "parsing"))
       "(+ 1 2))")  ; => parse error
-
-(test "parsing: error - spread outside list"
-      (expect (error Parse)
-              (tags "parsing"))
-      "...oops")  ; => parse error

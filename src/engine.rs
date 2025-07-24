@@ -45,9 +45,6 @@ impl Default for EngineOutputBuffer {
 
 impl OutputSink for EngineOutputBuffer {
     fn emit(&mut self, text: &str, _span: Option<&Span>) {
-        if !self.buffer.is_empty() {
-            self.buffer.push('\n');
-        }
         self.buffer.push_str(text);
     }
 }

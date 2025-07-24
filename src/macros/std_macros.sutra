@@ -119,7 +119,7 @@
 ;; str+: Concatenate strings
 ;; (str+ "foo" "bar" "baz")
 (define (str+ ...rest)
-  (apply core/str+ rest))
+  (apply core/str+ (list ...rest)))
 
 ;; join-str+: Join strings with separator
 ;; (join-str+ " " "a" "b" "c")
@@ -130,16 +130,13 @@
           (car rest)
           (core/str+ (car rest) sep (apply join-str+ sep (cdr rest))))))
 
-;; display: Print multiple values
-;; (display "hello" 123 true)
-(define (display ...rest)
-  (if (null? rest)
-      (print "")
-      (if (null? (cdr rest))
-          (print (car rest))
-          (do
-            (print (car rest))
-            (apply display (cdr rest))))))
+;; print: Concatenate all arguments, no newline
+(define (print ...rest)
+  (core/print (apply core/str+ rest)))
+
+;; println: Concatenate all arguments, add newline
+(define (println ...rest)
+  (core/print (core/str+ (apply core/str+ rest) "\n")))
 
 ;; ============================================================================
 ;; TEST HARNESS
@@ -167,3 +164,7 @@
 ;; (null? (list))
 (define (null? lst)
   (eq? (len lst) 0))
+
+;; Diagnostic macro: show-rest
+(define (show-rest ...rest)
+  rest)

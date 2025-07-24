@@ -7,6 +7,7 @@ use crate::{
     errors,
     prelude::*,
     runtime::{self, eval, source},
+    syntax::parser,
 };
 
 /// Executes test code with proper macro expansion and special form preservation.
@@ -73,13 +74,35 @@ impl TestRunner {
     }
 
     pub fn run_single_test(test_form: &ASTDefinition) -> Result<(), SutraError> {
-        // Extract expected result from test form
         let source_context = &test_form.source_file;
         let expected = Self::extract_expectation(test_form, source_context)?;
 
-        // Execute test body and check result
+        // Guard: parse error expectation with single string body
+        if matches!(&expected, Expectation::Error(ErrorType::Parse))
+            && test_form.body.len() == 1
+            && matches!(*test_form.body[0].value, Expr::String(_, _))
+        {
+            let Expr::String(ref code, _) = *test_form.body[0].value else { unreachable!() };
+            let parse_result = parser::parse(code, source_context.clone());
+            return match parse_result {
+                Err(e) if e.error_type() == ErrorType::Parse => Ok(()),
+                Err(e) => Err(errors::test_assertion(
+                    format!("Expected parse error, but got different error: {:?}", e.error_type()),
+                    test_form.name.clone(),
+                    source_context,
+                    to_source_span(test_form.span),
+                )),
+                Ok(_) => Err(errors::test_assertion(
+                    "Expected parse error, but parsing succeeded",
+                    test_form.name.clone(),
+                    source_context,
+                    to_source_span(test_form.span),
+                )),
+            };
+        }
+
+        // Guard: output expectation
         if let Expectation::Output(ref expected_output) = expected {
-            // Output expectation: capture output and compare
             let output_buffer = Rc::new(RefCell::new(EngineOutputBuffer::new()));
             let shared_output = SharedOutput(output_buffer.clone());
             let result = Self::execute_test(
@@ -89,10 +112,7 @@ impl TestRunner {
                 Some(test_form.name.clone()),
                 test_form.source_file.clone(),
             );
-            let actual_output_owned = {
-                let buf_ref = output_buffer.borrow();
-                buf_ref.as_str().to_owned()
-            };
+            let actual_output_owned = output_buffer.borrow().as_str().to_owned();
             if actual_output_owned != *expected_output {
                 return Err(errors::test_assertion(
                     format!(
@@ -109,7 +129,8 @@ impl TestRunner {
             }
             return Ok(());
         }
-        // Value and error expectations (existing logic)
+
+        // All other tests
         match Self::execute_ast(&test_form.body, &test_form.source_file) {
             Ok(actual) => Self::check_success_test(test_form, &expected, actual, &source_context),
             Err(e) => Self::check_error_test(test_form, &expected, e, &source_context),
@@ -230,21 +251,35 @@ impl TestRunner {
         let Expr::List(items, _) = &*item.value else {
             return Ok(None);
         };
-        if items.len() != 2 {
+        if items.is_empty() {
             return Ok(None);
         }
         let Expr::Symbol(keyword, _) = &*items[0].value else {
             return Ok(None);
         };
         if keyword == "value" {
-            let v = Self::extract_value(&items[1], test_form, source_context)?;
-            return Ok(Some(Expectation::Value(v)));
+            // Accept (value x y z) as a list value if more than two elements
+            if items.len() == 2 {
+                let v = Self::extract_value(&items[1], test_form, source_context)?;
+                return Ok(Some(Expectation::Value(v)));
+            } else if items.len() > 2 {
+                // Build a list value from all elements after the keyword
+                let mut result = Value::Nil;
+                for item in items[1..].iter().rev() {
+                    let cell = crate::ast::value::ConsCell {
+                        car: Self::extract_value(item, test_form, source_context)?,
+                        cdr: result,
+                    };
+                    result = Value::Cons(Rc::new(cell));
+                }
+                return Ok(Some(Expectation::Value(result)));
+            }
         }
-        if keyword == "error" {
+        if keyword == "error" && items.len() == 2 {
             let e = Self::extract_error_type(&items[1], test_form, source_context)?;
             return Ok(Some(Expectation::Error(e)));
         }
-        if keyword == "output" {
+        if keyword == "output" && items.len() == 2 {
             let o = Self::extract_output(&items[1], test_form, source_context)?;
             return Ok(Some(Expectation::Output(o)));
         }
@@ -262,6 +297,19 @@ impl TestRunner {
             Expr::String(s, _) => Ok(Value::String(s.clone())),
             Expr::Bool(b, _) => Ok(Value::Bool(*b)),
             Expr::Symbol(s, _) if s == "nil" => Ok(Value::Nil),
+            Expr::Symbol(s, _) => Ok(Value::Symbol(s.clone())),
+            Expr::Quote(inner, _) => Ok(Value::Quote(Box::new(Self::extract_value(inner, test_form, source_context)?))),
+            Expr::List(items, _) => {
+                let mut result = Value::Nil;
+                for item in items.iter().rev() {
+                    let cell = crate::ast::value::ConsCell {
+                        car: Self::extract_value(item, test_form, source_context)?,
+                        cdr: result,
+                    };
+                    result = Value::Cons(Rc::new(cell));
+                }
+                Ok(result)
+            }
             _ => Err(errors::test_assertion(
                 "unsupported expected value type",
                 test_form.name.clone(),

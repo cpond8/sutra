@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use crate::prelude::*;
 use crate::{
-    ast::value::Lambda,
+    ast::{value::Lambda, ConsCell},
     ast::ParamList,
     atoms::helpers::{validate_special_form_arity, validate_special_form_min_arity, AtomResult},
     errors,
@@ -508,8 +508,15 @@ pub fn call_lambda(
         new_context.set_lexical_var(name, value.clone());
     }
     if let Some(rest) = &lambda.params.rest {
-        let rest_args = args[fixed..].to_vec();
-        new_context.set_lexical_var(rest, Value::List(rest_args));
+        let rest_args = &args[fixed..];
+        let mut rest_list = Value::Nil;
+        for item in rest_args.iter().rev() {
+            rest_list = Value::Cons(Rc::new(ConsCell {
+                car: item.clone(),
+                cdr: rest_list,
+            }));
+        }
+        new_context.set_lexical_var(rest, rest_list);
     }
 
     // Evaluate body in new context

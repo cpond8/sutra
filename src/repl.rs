@@ -45,7 +45,7 @@ impl ReplState {
 /// Main REPL entry point
 pub fn run_repl() {
     println!("Sutra REPL v0.1.0");
-    println!("Type :help for help, :quit to exit");
+    println!("Type :help for help, :quit to exit, :clear to reset the state");
     println!();
 
     let mut repl_state = ReplState::new();
@@ -112,7 +112,7 @@ enum ReplCommand {
 
 /// Handle special REPL commands that start with ':'
 fn handle_repl_command(command: &str, state: &mut ReplState) -> ReplCommand {
-    match command {
+    match command.to_ascii_lowercase().as_str() {
         ":help" | ":h" => {
             println!("Sutra REPL Commands:");
             println!("  :help, :h     Show this help");

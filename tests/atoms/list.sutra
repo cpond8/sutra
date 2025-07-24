@@ -13,7 +13,7 @@
   (car (list)))
 
 (test "car errors on non-list argument"
-  (expect (error Eval))
+  (expect (error TypeError))
   (car 42))
 
 (test "car errors on wrong arity (no arguments)"
@@ -21,11 +21,11 @@
   (car))
 
 (test "cdr returns tail of list"
-  (expect (value (list 2 3)))
+  (expect (value 2 3))
   (cdr (list 1 2 3)))
 
 (test "cdr returns tail with one element"
-  (expect (value (list "b")))
+  (expect (value "b"))
   (cdr (list "a" "b")))
 
 (test "cdr errors on empty list"
@@ -33,7 +33,7 @@
   (cdr (list)))
 
 (test "cdr errors on non-list argument"
-  (expect (error Eval))
+  (expect (error TypeError))
   (cdr 42))
 
 (test "cdr errors on wrong arity (no arguments)"
@@ -41,17 +41,13 @@
   (cdr))
 
 (test "cons prepends element to list"
-  (expect (value (list 1 2 3)))
+  (expect (value 1 2 3))
   (cons 1 (list 2 3)))
 
 (test "cons prepends string to list"
-  (expect (value (list "a" "b" "c")))
+  (expect (value "a" "b" "c"))
   (cons "a" (list "b" "c")))
 
 (test "cons errors on wrong arity (one argument)"
   (expect (error Validation))
   (cons 1))
-
-(test "cons errors if second argument is not a list"
-  (expect (error Eval))
-  (cons 1 2))

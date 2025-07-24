@@ -14,6 +14,7 @@ use crate::{
     errors,
     runtime::eval::{evaluate_ast_node, EvaluationContext},
 };
+use std::sync::Arc;
 
 // ============================================================================
 // TYPE ALIASES AND CORE TYPES
@@ -746,9 +747,11 @@ pub fn eval_apply_normal_args(
 ) -> Result<Vec<AstNode>, SutraError> {
     let mut evaluated_arg_nodes = Vec::with_capacity(args.len());
     for arg in args {
-        let val = evaluate_ast_node(arg, context)?;
+        let val = crate::runtime::eval::evaluate_ast_node(arg, context)?;
+        let expr = crate::ast::expr_from_value_with_span(val, arg.span)
+            .map_err(|msg| errors::runtime_general(msg, "value-to-ast", &context.source, context.span_for_span(arg.span)))?;
         evaluated_arg_nodes.push(Spanned {
-            value: Expr::from(val).into(),
+            value: Arc::new(expr),
             span: arg.span,
         });
     }
@@ -763,23 +766,48 @@ pub fn eval_apply_list_arg(
     parent_span: &Span,
 ) -> Result<Vec<AstNode>, SutraError> {
     let list_val = evaluate_ast_node(arg, context)?;
-    let Value::List(items) = list_val else {
-        return Err(errors::type_mismatch(
-            "List",
-            list_val.type_name(),
-            &context.source,
-            context.span_for_span(*parent_span),
-        )
-        .with_suggestion("The last argument to 'apply' must be a list."));
-    };
-    let list_items = items
-        .into_iter()
-        .map(|v| Spanned {
-            value: Expr::from(v).into(),
-            span: *parent_span,
-        })
-        .collect();
-    Ok(list_items)
+    match list_val {
+        Value::Cons(_) | Value::Nil => {
+            // Note: We use `parent_span` for each element because after evaluation,
+            // the original span information for each list element is lost.
+            // To preserve per-element spans, the evaluation pipeline would need to
+            // carry spans alongside values (e.g., Spanned<Value>), which is not currently implemented.
+            let mut items = Vec::new();
+            let mut current = list_val;
+            loop {
+                match current {
+                    Value::Cons(boxed) => {
+                        let head = boxed.car.clone();
+                        let tail = boxed.cdr.clone();
+                        items.push(Spanned {
+                            value: Expr::from(head).into(),
+                            span: *parent_span,
+                        });
+                        current = tail;
+                    }
+                    Value::Nil => break,
+                    _ => {
+                        return Err(errors::type_mismatch(
+                            "proper List",
+                            current.type_name(),
+                            &context.source,
+                            context.span_for_span(*parent_span),
+                        ).with_suggestion("The last argument to 'apply' must be a proper list (ending in nil)."));
+                    }
+                }
+            }
+            Ok(items)
+        }
+        _ => {
+            return Err(errors::type_mismatch(
+                "List",
+                list_val.type_name(),
+                &context.source,
+                context.span_for_span(*parent_span),
+            )
+            .with_suggestion("The last argument to 'apply' must be a list."))
+        }
+    }
 }
 
 /// Builds the call expression for apply by combining function, normal args, and list args.
@@ -814,17 +842,18 @@ pub fn build_apply_call_expr(
 /// * `Ok(&Path)` - The path if valid
 /// * `Err(SutraError)` - Error with descriptive message
 pub fn validate_path_arg<'a>(
-    args: &'a [Value],
+    value: &'a Value,
+    span: Span,
     atom_name: &str,
     ctx: &EvaluationContext,
 ) -> Result<&'a Path, SutraError> {
-    match &args[0] {
+    match value {
         Value::Path(p) => Ok(p),
         _ => Err(errors::type_mismatch(
             "Path",
-            args[0].type_name(),
+            value.type_name(),
             &ctx.source,
-            ctx.span_for_span(ctx.current_span),
+            ctx.span_for_span(span), // Use the argument's span
         )
         .with_suggestion(format!(
             "{} expects a Path as its first argument",
@@ -870,22 +899,7 @@ pub fn validate_string_value<'a>(
 /// # Returns
 /// * `Ok(&mut Vec<Value>)` - Mutable reference to the list if valid
 /// * `Err(SutraError)` - Error with descriptive message
-pub fn validate_list_value_mut<'a>(
-    value: &'a mut Value,
-    context: &str,
-    ctx: &EvaluationContext,
-) -> Result<&'a mut Vec<Value>, SutraError> {
-    match value {
-        Value::List(items) => Ok(items),
-        _ => Err(errors::type_mismatch(
-            "List",
-            value.type_name(),
-            &ctx.source,
-            ctx.span_for_span(ctx.current_span),
-        )
-        .with_suggestion(format!("Expected a List for {}", context))),
-    }
-}
+// This function is removed as mutable operations on immutable lists are not supported.
 
 /// Validates that a value is a List and extracts a reference to it.
 /// Provides consistent error messages for list validation across collection atoms.
@@ -897,20 +911,21 @@ pub fn validate_list_value_mut<'a>(
 /// # Returns
 /// * `Ok(&Vec<Value>)` - Reference to the list if valid
 /// * `Err(SutraError)` - Error with descriptive message
+// This function is temporarily disabled and will be replaced by an iterator-based
+// helper in the next step.
 pub fn validate_list_value<'a>(
     value: &'a Value,
     context: &str,
     ctx: &EvaluationContext,
-) -> Result<&'a Vec<Value>, SutraError> {
+) -> Result<(), SutraError> {
     match value {
-        Value::List(items) => Ok(items),
+        Value::Cons(_) | Value::Nil => Ok(()),
         _ => Err(errors::type_mismatch(
             "List",
             value.type_name(),
             &ctx.source,
             ctx.span_for_span(ctx.current_span),
-        )
-        .with_suggestion(format!("Expected a List for {}", context))),
+        ).with_suggestion(format!("Expected a List for {}", context))),
     }
 }
 

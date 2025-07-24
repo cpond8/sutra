@@ -38,7 +38,7 @@ Sutra is a minimal, homoiconic, expression-based language designed for composabl
 
 | Type | Example            | Description            | Implementation |
 | :--- | :----------------- | :--------------------- | :------------- |
-| List | `(1 2 "a" true)`   | Ordered, heterogeneous | `Value::List`  |
+| List | `(1 2 "a" true)`   | Ordered, heterogeneous | `Value::Cons`  |
 | Map  | `{foo: 1, bar: 2}` | Key-value, string keys | `Value::Map`   |
 
 ### 2.3 Symbol Resolution
@@ -74,7 +74,14 @@ undefined-var  ; Error: undefined symbol: 'undefined-var'
 - `'expr` — returns the literal expression, not evaluated.
 - AST: `Expr::Quote`
 
-### 2.6 Spread Argument
+### 2.6 Data Structures: Cons-Cell Lists
+
+Sutra's lists are implemented as `ConsCell`-based linked lists, similar to traditional Lisp dialects. This design has significant performance and semantic implications:
+
+- **O(1) `cons`, `car`, `cdr`**: Prepending an element (`cons`), accessing the head (`car`), and accessing the tail (`cdr`) are all constant-time operations. This is a significant performance advantage over vector-based lists, where prepending is an O(n) operation.
+- **Structural Sharing**: `ConsCell` lists are immutable and use reference counting (`Rc`) to enable structural sharing. This means that when you `cons` an element onto a list, you are creating a new list that shares the tail of the original list.
+
+### 2.7 Spread Argument
 
 - `...symbol` — splices a list of arguments in call position.
 - Grammar: `spread_arg`

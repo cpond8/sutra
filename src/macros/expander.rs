@@ -135,10 +135,19 @@ fn expand_template(
         } else {
             Vec::new()
         };
-        bindings.insert(
-            variadic_name.clone(),
-            Spanned { value: Expr::List(rest_args, *span).into(), span: *span },
-        );
+        // Patch: Always substitute (list ...rest_args) as the value for the variadic parameter
+        let mut list_items = Vec::with_capacity(rest_args.len() + 1);
+        // Add the 'list' symbol as the head
+        list_items.push(Spanned {
+            value: Expr::Symbol("list".to_string(), *span).into(),
+            span: *span,
+        });
+        list_items.extend(rest_args);
+        let list_node = Spanned {
+            value: Expr::List(list_items, *span).into(),
+            span: *span,
+        };
+        bindings.insert(variadic_name.clone(), list_node);
     }
     substitute_template(&template.body, &bindings, env, source_ctx, depth + 1)
 }

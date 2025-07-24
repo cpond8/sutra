@@ -20,8 +20,14 @@ type MacroParseResult = Result<Vec<(String, MacroTemplate)>, SutraError>;
 /// Parses Sutra macro definitions from a source string.
 /// Identifies `define` forms, validates structure and parameters, and checks for duplicates.
 pub fn parse_macros_from_source(source: &str) -> MacroParseResult {
-    let source_context = SourceContext::from_file("macro source", source);
-    let exprs = parser::parse(source, source_context)?;
+    // Filter out comment lines (lines starting with ';;')
+    let filtered_source = source
+        .lines()
+        .filter(|line| !line.trim_start().starts_with(";;"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let source_context = SourceContext::from_file("macro source", &filtered_source);
+    let exprs = parser::parse(&filtered_source, source_context)?;
     let mut macros = Vec::new();
     let mut names_seen = HashSet::new();
 
