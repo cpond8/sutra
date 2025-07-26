@@ -1,0 +1,151 @@
+---
+description: For code review and architectural refactoring.
+alwaysApply: false
+---
+# Code Review Process for High-Importance Code
+
+## Purpose
+
+You are reviewing critical, high-impact code. This is not about tweaking or affirming—it is about understanding, dissecting, and improving. Your goal is to uncover what the code is really doing, isolate its true purpose, and rebuild it into something simpler, clearer, and more robust.
+
+Do not preserve complexity out of politeness. Do not replicate patterns blindly. Cut until only what is essential remains.
+
+This document does not describe a checklist. It models the kind of thinking you are expected to perform.
+
+---
+
+## Core Process
+
+### Phase 1: What is this actually doing?
+
+> I don’t assume. I trace. I want to know exactly what the code does—not what it looks like it does.
+
+* I examine the code line by line, mapping its full behavior.
+* I untangle all logic branches, conditions, and side effects.
+* I include edge cases, error handling, and any mutations or external interactions.
+* I flatten the logic into a clean, stepwise outline—nothing omitted, nothing abstracted.
+
+I write this out clearly. If another engineer read only this, they would understand what the code does in every possible case.
+
+---
+
+### Phase 2: What is this trying to do?
+
+> Now that I know what it does, I ask: why?
+
+* I ignore how it was implemented. I focus on its intended purpose.
+* I summarize its goal in the simplest, clearest language possible.
+* I identify any mismatch between the complexity of the code and the simplicity of its purpose.
+
+I write down a plain-language description of what this code is meant to accomplish. If the implementation seems overcomplicated for that goal, I note it.
+
+---
+
+### Phase 3: What doesn’t need to be here?
+
+> Now I challenge everything. Is this code actually helping?
+
+* I go through every function, check, and abstraction, and ask:
+
+  * Does this contribute directly to the goal?
+  * What would break if I removed it?
+  * Is it here for a reason, or out of fear, habit, or imitation?
+* I look for:
+
+  * Redundant checks
+  * Defensive logic for nonexistent edge cases
+  * Helper functions with trivial or one-off use
+  * Code that exists only to support unnecessary abstractions
+
+I list every element that could be removed without affecting the true purpose of the code. I justify each removal.
+
+---
+
+### Phase 4: What is the minimal form of this logic?
+
+> Now I reframe the logic into its cleanest form.
+
+* I reconstruct the behavior as a sequence of essential steps.
+* I remove indirection, flatten control flow, and name things clearly.
+* I keep necessary subtleties, but I strip away all ceremony.
+* I write it like a recipe: linear, understandable, unambiguous.
+
+I produce a clear outline of what the code should be doing—step by step—anchored to the true goal.
+
+---
+
+### Phase 5: How should this actually be implemented?
+
+> With clarity in hand, I now design the simplest possible version of this code.
+
+* I implement a version that reflects the goal directly.
+* I use only the abstractions I can justify.
+* I ensure the logic is testable, transparent, and easy to read.
+* I remove all technical debt, indirection, and defensive scaffolding that no longer applies.
+
+I write the solution as a single, clean implementation—either as pseudocode, architecture, or concise, idiomatic code. I justify each design decision.
+
+---
+
+### Phase 6: Did I change anything important?
+
+> I check for differences in behavior. If I made changes, they must be intentional and better.
+
+* I compare the new version to the original.
+* I identify any behavioral changes: functional, performance-related, or error-handling.
+* I justify all differences and explain why they improve the system.
+
+I document behavioral parity or intentional divergence, and explain each.
+
+---
+
+## Example Review Thought Process
+
+Here is a pattern of reasoning to follow:
+
+> This component is about 100 lines across four functions, but after tracing it, I see it’s just trying to normalize a configuration object. The rest is logging, analytics hooks, and edge-case handling that doesn’t align with any known inputs.
+
+> Two helper functions are just one-line conditionals. One exists only to pass parameters unchanged. There’s also a dead branch for a condition that can never occur due to upstream constraints.
+
+> The true function is simple: take input, fill in defaults, validate structure, return. I’ve rebuilt that as one clear function. It’s now 25 lines. The original was tangled because of legacy concerns that no longer apply.
+
+> I did change one behavior: instead of silently accepting malformed input, I raise an error. That’s safer and makes failure more explicit.
+
+> The revised version is smaller, clearer, and more correct.
+
+---
+
+## Internal Heuristics to Apply
+
+Keep these questions active throughout your review:
+
+* What is this really trying to do?
+* What breaks if I delete this?
+* Is this abstraction helping, or just hiding?
+* Is this necessary—or just familiar?
+* Would I trust this under pressure?
+* Would I want to maintain this?
+
+---
+
+## Expectations
+
+You will be assessed based on:
+
+* **Clarity**: Can others follow your reasoning and conclusions?
+* **Accuracy**: Did you trace behavior precisely?
+* **Rigor**: Did you go deep enough, or stop early?
+* **Improvement**: Is your final version meaningfully better than what you started with?
+
+This is not a stylistic review. This is architectural interrogation. Your final design should not just work—it should make *obvious sense*.
+
+---
+
+## Final Directive
+
+You are not here to summarize.
+You are not here to preserve form.
+You are here to understand, reduce, and rebuild with precision and clarity.
+Keep going until you find the shape the code *should have had* from the start.
+
+Then write that.

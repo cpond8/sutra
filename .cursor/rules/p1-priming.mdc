@@ -1,0 +1,172 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+
+Below is a comprehensive, developer-focused guide on how to consistently harness **priming-based behavioral shaping** for AI code assistants. It’s designed as a reusable and general-purpose reference that you can adapt across tools, prompts, projects, and assistant agents.
+
+---
+
+# **Priming for Success: A Practical Guide to Shaping AI Agent Behavior Through Cognitive Trajectory Modeling**
+
+## Purpose
+
+This document outlines how to reliably guide AI coding agents (e.g. Cursor, Cline, GPT-based assistants) into producing higher-quality, more architecturally sound results by **priming them not just with instructions, but with modeled thinking patterns**.
+
+Instead of merely telling the AI what to do, you **show it how to think**, prompting it to internalize your standards of clarity, minimalism, and critical insight.
+
+This technique—**Priming by Example Trajectory**—has shown a marked improvement in the depth, coherence, and architectural rigor of AI-generated output.
+
+---
+
+## Core Principle
+
+> **LLMs don't think—they autocomplete. So show them the kind of thinking you want them to autocomplete.**
+
+* Rather than hand them static requirements, provide a **pattern of reasoning**.
+* Rather than enforce rigid procedures, **model internal behavior**.
+* Rather than describe “steps,” **demonstrate cognitive movement** toward clarity and simplicity.
+
+If you show the AI a smart thought process, it tends to replay and adapt that process intelligently—even discovering valid insights on its own.
+
+---
+
+## What This Is Not
+
+* Not a checklist
+* Not a prompt template
+* Not just better wording
+
+This is **cognitive posture injection**. You give the AI a way of thinking that yields better outcomes, then let it carry that mindset through the work.
+
+---
+
+## Key Components of Effective Priming
+
+### 1. **Modeled Internal Monologue**
+
+Provide a first-person example of an agent working through the task. Use concrete language like:
+
+> "At first, the logic seemed complex, but when I traced it, I saw it was just doing X..."
+> "I noticed three functions doing the same thing, so I collapsed them..."
+> "It turned out most of this component wasn't needed after all."
+
+This shows the AI how to behave: skeptical, observant, reductionist, architectural.
+
+---
+
+### 2. **Staged Cognitive Trajectory**
+
+Define an implicit path from naive understanding to architectural clarity. For example:
+
+* Trace all behavior (what it does)
+* Infer real intent (what it’s trying to do)
+* Eliminate excess (what it doesn’t need)
+* Reconstruct minimal logic (what it should do)
+* Design a clean version (how it should do it)
+* Validate behavior (does it still work?)
+
+This guides the AI to perform structured thinking—even if you don’t name these as “phases.”
+
+---
+
+### 3. **Architectural Bias**
+
+Embed values in the example: clarity, simplicity, minimalism, correctness over cleverness.
+
+Avoid rewarding verbosity, boilerplate, or overengineering.
+
+---
+
+### 4. **Critical Reflection Moments**
+
+Model points of realization or self-correction. These serve as cues that it’s okay to re-evaluate or shift direction.
+
+Example:
+
+> "Initially I thought this abstraction was useful, but after looking at real usage, it just added noise. I removed it, and everything got clearer."
+
+This encourages actual design insight, not blind restructuring.
+
+---
+
+### 5. **Behavioral Comparison and Justification**
+
+Conclude the example with a careful comparison:
+
+> "My revised version changed X and removed Y. It now surfaces Z as an error instead of failing silently. The new behavior is safer and simpler."
+
+This trains the AI to check its own work and hold itself accountable for regressions or improvements.
+
+---
+
+## How to Use This in Practice
+
+### 1. **Create a Reusable Priming Segment**
+
+Craft a reusable text block that models the kind of code review or design process you want. Include:
+
+* Example internal monologue
+* Key reductionist questions
+* Refactor behavior
+* Comparison of old vs new behavior
+
+Use this at the *start* of your interaction—before giving the actual task.
+
+> You only need one good modeled thought process to anchor the agent.
+
+---
+
+### 2. **Inject as Context in Prompts**
+
+When using tools like Cursor or GPT-powered agents:
+
+* Paste your priming model before or alongside the task
+* Frame the prompt as a continuation of that thought process
+
+Example prompt:
+
+> "Continue the following pattern of analysis on the attached code..."
+> "Apply the same thinking here: trace → infer purpose → simplify → redesign → compare."
+
+---
+
+### 3. **Iterate the Model Over Time**
+
+After successful uses, extract and record high-performing responses from the AI itself. Curate a growing library of effective cognitive examples.
+
+Each of these becomes another trajectory you can use to seed future interactions.
+
+---
+
+## Maintenance Advice
+
+* **Avoid overfitting** your models to one codebase—keep the example domain-agnostic.
+* **Don’t over-explain**. If you state "simulate this thought process," the AI might mimic tone instead of structure.
+* **Keep the example authentic**. The more real it sounds (like a skilled engineer’s reflection), the more useful it becomes as a behavioral scaffold.
+
+---
+
+## Summary Heuristic
+
+> **Don’t tell the AI what to do. Show it how to think. Then ask it to keep thinking like that.**
+
+---
+
+## Optional Template Block (for Copy-Paste)
+
+You can prepend this to a task:
+
+```
+Here is how I work through code reviews:
+
+- First, I trace the actual behavior, not assuming anything.
+- Then I try to state, in plain language, what the code is trying to do.
+- I look for parts that aren’t helping. If it’s not needed, I cut it.
+- I flatten logic, clean up indirection, and ask: what’s the simplest way to do this?
+- I build a new version—shorter, clearer, correct.
+- Then I compare behavior. If I changed something, I explain why it’s better now.
+
+Now, do the same on the following code...
+```

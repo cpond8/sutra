@@ -1,12 +1,16 @@
-# Self-Critique and Iteration Process
+# Self-Critique and Iteration Process for Optimising Proposals and Solutions
 
----
 
-## Instructions: Plan, Iterate and Self-Critique
+## Instructions
 
-Every solution should go through multiple iterations with rigorous self-critique. The goal is to arrive at the simplest, most effective solution. _Never settle for "good enough" -- push until you can go no farther._
+Every idea you come up with should go through multiple iterations of self-review with rigorous and honest self-critique. The goal is to arrive at the simplest, most effective solution. _Never settle for "good enough" -- push until you can go no farther._
 
----
+1. The purpose of a self-critique is to identify flaws and weaknesses left unaddressed to improve the quality and robustness of your work.
+
+2. A good self-critique provides actionable feedback and insights into things you might not have considered.
+
+3. A self-critique that simply nods and affirms that everything "looks good" is _worthless_ -- I would not have asked you to perform one if I thought things were good enough.
+
 
 ## Core Principle: Clarity at All Levels
 
@@ -18,35 +22,30 @@ This applies to **all levels** of code, from architectural down to the individua
 
 ### Clear code is like a recipe:
 
-* **It is direct.**
+**It is direct.**
   - It doesn't waste your time with cleverness or verbosity.
   - It says exactly what is needed, nothing more.
 
-* **It is stepwise.**
+**It is stepwise.**
   - It doesn’t bundle several different tasks together.
   - Each step does one thing, then moves on.
 
-* **It is ordered.**
+**It is ordered.**
   - It doesn't force you to jump around to complete the task.
   - Its logic flows linearly, top to bottom, start to finish.
 
-* **It is transparent.**
+**It is transparent.**
   - It doesn’t hide complexity behind nebulous abstractions.
   - It shows you what matters, even when it’s messy.
 
-* **It is consistent.**
+**It is consistent.**
   - It doesn’t change terms or patterns partway through.
   - It repeats what already works to make things clear.
 
-* **It is predictable.**
+**It is predictable.**
   - It doesn’t assume or surprise.
   - It makes all needs and effects clearly visible.
 
-* **It is considerate.**
-  - It was not written for just the author.
-  - It was written so anyone can follow along with confidence.
-
----
 
 ## The Iteration Process
 
@@ -99,13 +98,15 @@ This applies to **all levels** of code, from architectural down to the individua
 - What is this _supposed_ to do?
 - Do you really _need_ this to accomplish that?
 
+**Revalation: often the complexity is unneeded if you dig deep enough.**
+
 **You would be surprised at how much you can cut without changing anything.**
 
 ### Step 5: Let Context Determine Behavior
 
 - How does this effect the system as a whole?
 - Can this be reused?
-- Can this be replaced with something more appropriate for the system as a whole?
+- Can this be replaced with something more appropriate for the system?
 
 **Stop and ask**: "What is this actually trying to do?"
 
@@ -127,38 +128,32 @@ This applies to **all levels** of code, from architectural down to the individua
 
 **Be honest in your self-critique**
 
----
 
 ## Key Questions for Self-Critique
 
-### Principles
-
-- The purpose of a critique is to identify flaws and weaknesses left unaddressed to improve the quality and robustness of your work.
-- A good critique provides actionable feedback and insights into things you might not have considered.
-- A critique that simply nods and affirms that everything "looks good" is _worthless_, the same as no critique at all.
+**Ask yourself honestly, looking for flaws and improvements:**
 
 1. **"Is this really necessary?"**
-   - Can I eliminate this complexity?
-   - Is this abstraction actually needed?
-   - Could I do this more directly?
+    - Can I eliminate this complexity?
+    - Is this abstraction actually needed?
+    - Could I do this more directly?
 2. **"Could I do this even more concisely?"**
-   - Can I reduce lines without losing clarity?
-   - Is there unnecessary repetition?
-   - Could I combine related operations?
+    - Can I reduce lines without losing clarity?
+    - Is there unnecessary repetition?
+    - Could I combine related operations?
 3. **"Could I make the logic here even clearer?"**
-   - Is the control flow obvious?
-   - Are the steps self-documenting?
-   - Could I make this more like a recipe?
+    - Is the control flow obvious?
+    - Are the steps self-documenting?
+    - Could I make this more like a recipe?
 4. **"What is this actually trying to do?"**
-   - Am I solving the right problem?
-   - Is the real problem actually earlier down the pipeline?
-   - Do I even need to solve this?
+    - Am I solving the right problem?
+    - Is the real problem actually earlier down the pipeline?
+    - Do I even need to solve this?
 
---
 
 ## Key Insights
 
 - **Complexity at any level is a sign of poor design**
 - **The iterative process reveals the true simplicity**
 - **Each iteration should eliminate more complexity, not reorganize it**
-- **The final solution is often much simpler than the initial approach**
+- **Your revised solution should be simpler yet more robust than your initial approach**

@@ -1,0 +1,144 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# How I Write Effective Priming Instructions for AI Agents
+
+These are not typical instructions. They are not bullet lists, procedural steps, or style guides.
+
+They are **thought processes made visible**.
+
+When I write priming documents, my goal is to **seed a behavior pattern**, not issue commands. I want the AI that reads it to internalize a mode of thinking—and then keep thinking that way.
+
+That means the priming document itself must behave as the model I want to reproduce.
+
+So here’s how I approach writing them.
+
+---
+
+## Step 1: I Clarify the Objective
+
+> What kind of behavior do I want to shape?
+
+I begin by identifying the outcome I care about—not in terms of what the agent *should do*, but in terms of what kind of agent I want to invoke.
+
+For example:
+
+* Do I want an agent that thinks architecturally?
+* Do I want one that questions assumptions?
+* Do I want one that favors minimalism over cleverness?
+
+Once I know that, I write the document as if *I am already thinking that way*.
+
+I don’t explain the posture—I inhabit it.
+
+---
+
+## Step 2: I Write From the Inside Out
+
+> I don’t explain how to simulate good thinking. I demonstrate it by doing the thinking.
+
+I write in the first person—not to role-play, but to show the internal shape of reasoning.
+
+> “I started by reading the code, but nothing made sense until I untangled the control flow. Once I did, I realized the entire second function was redundant.”
+
+This shows:
+
+* That I don’t trust surface impressions
+* That I work through confusion
+* That I draw insight from structure
+
+I don’t say “you should think clearly.” I show what clear thinking looks like.
+
+That’s what the AI will learn from.
+
+---
+
+## Step 3: I Lay Out a Thought Trajectory
+
+> Where does the insight come from?
+
+Every priming doc should unfold like a story arc—starting with confusion, moving through analysis, and ending in clarity.
+
+This arc might include:
+
+* A moment of realization
+* A shift in perspective
+* An unexpected simplification
+* A decision that cuts through noise
+
+I write those beats out in order, so the AI can follow the path.
+
+If the AI fills in that pattern with its own content later, the structure holds.
+
+---
+
+## Step 4: I Bias the Document Toward Good Outcomes
+
+> Every sentence reinforces the right behavior.
+
+If I want simple, robust code, I make the priming doc value:
+
+* Directness
+* Concision
+* Honest self-critique
+* Explicit trade-offs
+
+If I want deeper reasoning, I model:
+
+* Doubt
+* Pattern-breaking
+* The willingness to delete cherished ideas if they aren’t needed
+
+The tone of the document becomes the tone of the future work.
+
+---
+
+## Step 5: I Don’t Generalize—Even When Writing a Template
+
+> I don’t say “analyze the code thoroughly.” I say what I analyzed.
+> I don’t say “remove unnecessary abstraction.” I remove it.
+
+I keep the language grounded, specific, and low to the metal.
+
+That’s how I keep the AI from going abstract or hand-wavy when it imitates the document later.
+
+Even if the document is domain-agnostic, its **examples feel like real thought**, not fill-in-the-blank instructions.
+
+---
+
+## Step 6: I End with Confirmation of Change
+
+> I make it clear what improved—and why it mattered.
+
+After the work is done, I compare outcomes. I name what got simpler, what got safer, and what got clearer.
+
+I show that the work led to something unambiguously better.
+
+This anchors the value of the behavior.
+
+It tells the AI:
+
+> “When you think this way, things get better. That’s why this mode of operation is worth continuing.”
+
+---
+
+## Summary: My Rules for Writing Priming Instructions
+
+* **Model the behavior, don’t describe it**
+* **Write from inside the thinking process**
+* **Use example-driven structure**
+* **Favor grounded, specific language**
+* **Reinforce values through tone and pacing**
+* **End with improvement, not just completion**
+
+When I write priming docs like this, I don’t just shape what the AI does—I shape *how* it thinks. Or more precisely, how it continues a behavior pattern that leads to clarity, simplicity, and correctness.
+
+---
+
+## Final Note
+
+If you want AI to behave like a top-tier engineer, don’t tell it how they work. Show it how they think—and think like one while you’re writing.
+
+That’s how I do it.

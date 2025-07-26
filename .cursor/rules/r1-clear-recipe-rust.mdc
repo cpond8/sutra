@@ -1,0 +1,261 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# How I Write Clear, Simple, Recipe-Like Rust Code
+
+When I write Rust code, my primary goal is clarity. I'm not just writing code to run—I’m writing code to be easily read, understood, and confidently maintained by other developers.
+
+If code isn’t easy to follow, it isn’t finished. Complexity hides bugs and confusion. My code should read like a straightforward recipe: clear, linear, direct, with no surprises or unnecessary cleverness.
+
+Here's the thinking process I always use when writing Rust code:
+
+---
+
+## 1. I Start With Input Validation
+
+> “Do I trust the data I’m getting? No—I validate first, clearly and early.”
+
+I don’t wait until halfway through my logic to find out my assumptions were wrong. Every function I write begins with explicit, up-front validation. If something is invalid, I immediately return a clear error.
+
+For example, instead of this vague, delayed approach:
+
+```rust
+fn process(order: Order) -> Result<Invoice, Error> {
+    if let Some(total) = order.items.iter().map(|item| item.price).reduce(|a, b| a + b) {
+        if total > 0.0 {
+            // continue processing...
+        } else {
+            return Err(Error::NoTotal);
+        }
+    } else {
+        return Err(Error::EmptyOrder);
+    }
+}
+```
+
+I prefer to make my validation immediately clear:
+
+```rust
+fn process(order: Order) -> Result<Invoice, Error> {
+    if order.items.is_empty() {
+        return Err(Error::EmptyOrder);
+    }
+    let total: f64 = order.items.iter().map(|item| item.price).sum();
+    if total <= 0.0 {
+        return Err(Error::NoTotal);
+    }
+    // rest of logic is confident now, input is guaranteed valid
+    Ok(Invoice::new())
+}
+```
+
+I don’t let invalid data slip deeper into the logic—that spreads complexity and confusion.
+
+---
+
+## 2. I Write Linear, Flat, Top-to-Bottom Logic
+
+> “Can I read this function straight through, top-to-bottom? If not, I rethink it.”
+
+Deep nesting is a red flag: it means logic isn’t straightforward. My solution is simple: early returns, minimal nesting, explicit conditionals, and linear flow.
+
+Instead of this nesting nightmare:
+
+```rust
+fn save_user(user: &User, db: &Database) -> Result<()> {
+    if user.is_active {
+        if let Some(profile) = &user.profile {
+            if profile.is_complete() {
+                if db.is_connected() {
+                    if let Ok(id) = db.save(user) {
+                        if id > 0 {
+                            println!("User saved: {}", id);
+                        } else {
+                            return Err(Error::NegativeId);
+                        }
+                    } else {
+                        return Err(Error::SaveFailed);
+                    }
+                } else {
+                    return Err(Error::NoConnection);
+                }
+            } else {
+                return Err(Error::IncompleteProfile);
+            }
+        } else {
+            return Err(Error::NoProfile);
+        }
+    } else {
+        return Err(Error::InactiveUser);
+    }
+    Ok(())
+}
+```
+
+I flatten it into a linear recipe:
+
+```rust
+fn save_user(user: &User, db: &Database) -> Result<()> {
+    if !user.is_active {
+        return Err(Error::InactiveUser);
+    }
+    let profile = user.profile.as_ref().ok_or(Error::NoProfile)?;
+    if !profile.is_complete() {
+        return Err(Error::IncompleteProfile);
+    }
+    if !db.is_connected() {
+        return Err(Error::NoConnection);
+    }
+    let id = db.save(user).map_err(|_| Error::SaveFailed)?;
+    if id <= 0 {
+        return Err(Error::NegativeId);
+    }
+    println!("User saved: {}", id);
+    Ok(())
+}
+```
+
+---
+
+## 3. I Don’t Ignore Errors or Return Values
+
+> “Am I quietly discarding any important return values? I never allow silent failures.”
+
+If something returns a `Result` or `Option`, I either handle it explicitly or propagate it upward. Silent failures breed mysterious bugs and frustration later on.
+
+Bad example (silent failure):
+
+```rust
+fn write_settings(config: &Config) {
+    std::fs::write("settings.conf", config.to_string());
+    // If this fails, nobody ever knows.
+}
+```
+
+Better, explicit handling:
+
+```rust
+fn write_settings(config: &Config) -> std::io::Result<()> {
+    std::fs::write("settings.conf", config.to_string())?;
+    Ok(())
+}
+```
+
+---
+
+## 4. I Avoid Chained Transformations That Obscure Intent
+
+> “Long chains of operations might seem clever, but they bury important logic.”
+
+I keep each transformation visible and explicit. Instead of this dense chain:
+
+```rust
+let ids: Vec<u32> = orders
+    .iter()
+    .filter(|o| o.shipped && o.amount > 100.0)
+    .map(|o| o.id)
+    .collect::<Vec<_>>()
+    .into_iter()
+    .sorted()
+    .collect();
+```
+
+I unpack it into a simple loop:
+
+```rust
+let mut ids = Vec::new();
+for order in &orders {
+    if order.shipped && order.amount > 100.0 {
+        ids.push(order.id);
+    }
+}
+ids.sort();
+```
+
+Each step is now visible, debuggable, and readable at a glance.
+
+---
+
+## 5. I Use Meaningful Constants and Rich Error Types
+
+> “Magic numbers and unclear errors confuse everyone—including future me.”
+
+Instead of vague errors and numbers with unclear meaning:
+
+```rust
+fn connect(port: u16) -> Result<(), String> {
+    if port == 8080 {
+        return Err("bad port".into());
+    }
+    Ok(())
+}
+```
+
+I give everything clear names and structured errors:
+
+```rust
+const DEFAULT_PORT: u16 = 8080;
+
+#[derive(thiserror::Error, Debug)]
+enum ConnectError {
+    #[error("Port {0} is reserved and cannot be used")]
+    ReservedPort(u16),
+}
+
+fn connect(port: u16) -> Result<(), ConnectError> {
+    if port == DEFAULT_PORT {
+        return Err(ConnectError::ReservedPort(port));
+    }
+    Ok(())
+}
+```
+
+---
+
+## 6. I Don’t Abstract Unless I Need To
+
+> “Abstraction is a tool, not a habit. Is this abstraction making things clearer?”
+
+Instead of indirect trait use just because it’s common:
+
+```rust
+trait Handler {
+    fn handle(&self, input: &str) -> bool;
+}
+
+struct PrintHandler;
+impl Handler for PrintHandler {
+    fn handle(&self, input: &str) -> bool {
+        println!("{}", input);
+        true
+    }
+}
+```
+
+I write direct, obvious code:
+
+```rust
+struct Printer;
+
+impl Printer {
+    fn print(&self, input: &str) {
+        println!("{}", input);
+    }
+}
+```
+
+---
+
+## Final Check
+
+At the end, I confirm the recipe:
+
+* Does my code read clearly from top to bottom?
+* Is every input validated explicitly at the start?
+* Are errors handled transparently and never ignored?
+* Is every step obvious and self-documenting?
+* Did I avoid unnecessary abstraction?
+
+When I follow this trajectory consistently, I produce Rust code that’s clear, maintainable, robust, and straightforward—exactly what good code should be.
