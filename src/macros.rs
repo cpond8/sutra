@@ -48,7 +48,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::prelude::*;
 use crate::{
-    ast::ParamList, errors::ErrorKind, errors::ErrorReporting, validation::ValidationContext,
+    syntax::ParamList, errors::ErrorKind, errors::ErrorReporting, validation::ValidationContext,
 };
 
 use crate::errors::{self, DiagnosticInfo, FileContext, SourceContext, SourceInfo, SutraError};

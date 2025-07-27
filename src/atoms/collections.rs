@@ -20,11 +20,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::{
-    ast::{
-        spanned_value::SpannedValue,
-        value::{NativeFn, Value},
-        AstNode, ConsCell,
-    },
+    runtime::{NativeFn, SpannedValue, Value, ConsCell},
+    syntax::AstNode,
     engine::evaluate_ast_node,
     errors::{to_source_span, ErrorReporting},
 };
@@ -172,7 +169,7 @@ pub const ATOM_CORE_STR_PLUS: NativeFn = |args, context, call_span| {
     for arg in args {
         let val_sv = evaluate_ast_node(arg, context)?;
         let s = match &val_sv.value {
-            Value::String(s) => s,
+            Value::String(s) => s.as_str(),
             _ => {
                 return Err(context.type_mismatch(
                     "String",
@@ -181,7 +178,7 @@ pub const ATOM_CORE_STR_PLUS: NativeFn = |args, context, call_span| {
                 ))
             }
         };
-        result.push_str(&s);
+        result.push_str(s);
     }
     Ok(SpannedValue {
         value: Value::String(result),
@@ -408,7 +405,7 @@ pub const ATOM_MAP: NativeFn = |args, context, call_span| {
                 evaluate_ast_node(&lambda.body, &mut new_context)?
             }
             Value::NativeFn(native_fn) => {
-                let expr = crate::ast::expr_from_value_with_span(item.clone(), list_sv.span)
+                let expr = crate::syntax::expr_from_value_with_span(item.clone(), list_sv.span)
                     .map_err(|_| context.type_mismatch(
                         "convertible to expression",
                         item.type_name(),

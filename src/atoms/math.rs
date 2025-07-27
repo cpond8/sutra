@@ -2,10 +2,7 @@
 // All atoms in this module are pure functions that do not mutate world state.
 
 use crate::{
-    ast::{
-        spanned_value::SpannedValue,
-        value::{NativeFn, Value},
-    },
+    runtime::{NativeFn, SpannedValue, Value},
     engine::evaluate_ast_node,
     errors::{to_source_span, ErrorReporting},
 };

@@ -14,10 +14,7 @@
 //! - **Safe Defaults**: Missing values return `Value::Nil` rather than errors
 
 use crate::{
-    ast::{
-        spanned_value::SpannedValue,
-        value::{NativeFn, Value},
-    },
+    runtime::{NativeFn, SpannedValue, Value},
     engine::evaluate_ast_node,
     errors::{to_source_span, ErrorReporting},
     prelude::Path,

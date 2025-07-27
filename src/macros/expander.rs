@@ -15,7 +15,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    ast::{Expr, Spanned},
+    syntax::{Expr, Spanned},
     errors::{to_source_span, ErrorKind, ErrorReporting, SourceContext, SutraError},
     macros::{
         MacroExpansionContext, MacroExpansionResult, MacroExpansionStep, MAX_MACRO_RECURSION_DEPTH,
@@ -189,7 +189,7 @@ fn substitute_template(
                         ValidationContext::new(source_ctx.clone(), "macro-expansion".to_string());
                     return Err(context.type_mismatch(
                         "list",
-                        substituted.type_name(),
+                        substituted.value.type_name(),
                         to_source_span(inner.span),
                     ));
                 }

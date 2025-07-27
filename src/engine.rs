@@ -4,29 +4,22 @@ use miette::{NamedSource, Report};
 
 use crate::prelude::*;
 use crate::{
-    atoms::{build_canonical_macro_env, build_canonical_world, OutputSink, SharedOutput},
+    atoms::{
+        build_canonical_macro_env, build_canonical_world, special_forms::call_lambda, OutputSink,
+        SharedOutput,
+    },
+    errors::{
+        self, DiagnosticInfo, ErrorKind, ErrorReporting, FileContext, SourceContext, SourceInfo,
+        SutraError,
+    },
     macros::{
         expand_macros_recursively, parse_macro_definition, MacroDefinition, MacroExpansionContext,
         MacroValidationContext,
     },
-    syntax::parser,
-    validation::semantic,
+    runtime::{SpannedResult, SpannedValue},
+    syntax::{parser, ConsCell},
+    validation::{semantic, ValidationContext},
 };
-
-use crate::errors::{
-    self, DiagnosticInfo, ErrorKind, ErrorReporting, FileContext, SourceContext, SourceInfo,
-    SutraError,
-};
-use crate::validation::ValidationContext;
-
-// Import Lambda and ConsCell types from ast module
-use crate::ast::value::ConsCell;
-
-// Import call_lambda function from special_forms
-use crate::atoms::special_forms::call_lambda;
-
-// Import SpannedResult and SpannedValue types
-use crate::ast::spanned_value::{SpannedResult, SpannedValue};
 
 // ============================================================================
 // EVALUATION CONTEXT - Simplified evaluation state

@@ -44,7 +44,7 @@
 use crate::errors::{
     to_source_span, DiagnosticInfo, ErrorKind, ErrorReporting, FileContext, SourceInfo, SutraError,
 };
-use crate::{ast::ParamList, prelude::*, errors::SourceContext};
+use crate::{syntax::ParamList, prelude::*, errors::SourceContext};
 use miette::{LabeledSpan, SourceSpan};
 use pest::{
     error::{Error, InputLocation},

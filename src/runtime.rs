@@ -1,17 +1,17 @@
-//! Canonical runtime value type for the Sutra engine.
+//! Runtime module for the Sutra language
 //!
-//! All computation, macro expansion, and evaluation in Sutra produces or manipulates a `Value`.
-//! This type is deeply compositional: lists and maps can contain any other value, including nested lists and maps.
-//! `Nil` represents the absence of a value and is the default for all uninitialized slots.
-//! `Path` is a first-class value, enabling explicit reference to locations in the world state.
+//! This module provides the core runtime value types for the Sutra engine.
+//! All computation, macro expansion, and evaluation produces or manipulates these types.
+//! Values are deeply compositional: lists and maps can contain any other value.
 
 use std::{collections::HashMap, fmt, rc::Rc};
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ast::spanned_value::SpannedResult, engine::EvaluationContext, AstNode, ParamList, Path, Span,
+    engine::EvaluationContext, AstNode, ParamList, Path, Span,
 };
+use crate::errors::SutraError;
 
 /// Unified native function signature.
 ///
@@ -36,6 +36,8 @@ pub enum Value {
     Bool(bool),
     /// A Lisp-style cons cell, forming the head of a list.
     Cons(Rc<ConsCell>),
+    /// A simple list of values (more efficient than cons cells).
+    List(Vec<Value>),
     /// Map from string keys to values (deeply compositional).
     Map(HashMap<String, Value>),
     /// Reference to a path in the world state (not auto-resolved).
@@ -72,6 +74,7 @@ impl PartialEq for Value {
             (Value::String(a), Value::String(b)) => a == b,
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Cons(a), Value::Cons(b)) => Rc::ptr_eq(a, b) || a == b,
+            (Value::List(a), Value::List(b)) => a == b,
             (Value::Map(a), Value::Map(b)) => a == b,
             (Value::Path(a), Value::Path(b)) => a == b,
             (Value::Lambda(a), Value::Lambda(b)) => a == b,
@@ -92,6 +95,7 @@ impl Value {
             Value::String(_) => "String",
             Value::Bool(_) => "Bool",
             Value::Cons(_) => "List", // User-facing type name remains "List" for consistency.
+            Value::List(_) => "List", // User-facing type name remains "List" for consistency.
             Value::Map(_) => "Map",
             Value::Path(_) => "Path",
             Value::Lambda(_) => "Lambda",
@@ -156,6 +160,28 @@ impl Value {
         }
     }
 
+    /// Returns the list as a slice if this is a List value, else None.
+    /// This provides a simpler interface than cons cell iteration.
+    pub fn as_list(&self) -> Option<&[Value]> {
+        match self {
+            Value::List(items) => Some(items),
+            _ => None,
+        }
+    }
+
+    /// Creates a list from a vector of values.
+    pub fn from_list(items: Vec<Value>) -> Self {
+        Value::List(items)
+    }
+
+    /// Attempts to create an iterator over a `Value`.
+    ///
+    /// If the `Value` is a `Cons`, `List`, or `Nil`, it returns an iterator.
+    /// This is the primary way to traverse list structures.
+    pub fn try_into_iter(self) -> impl Iterator<Item = Value> {
+        ListIterImpl::new(self)
+    }
+
     // ------------------------------------------------------------------------
     // Display formatting helpers (internal)
     // ------------------------------------------------------------------------
@@ -214,12 +240,86 @@ impl fmt::Display for Value {
             Value::String(s) => write!(f, "{s}"),
             Value::Bool(b) => write!(f, "{b}"),
             Value::Cons(cell) => Value::fmt_cons_chain(f, cell),
+            Value::List(items) => {
+                write!(f, "(")?;
+                let mut first = true;
+                for item in items {
+                    if !first {
+                        write!(f, " ")?;
+                    }
+                    write!(f, "{item}")?;
+                    first = false;
+                }
+                write!(f, ")")
+            }
             Value::Map(map) => Value::fmt_map(f, map),
             Value::Path(p) => write!(f, "{p}"),
             Value::Lambda(_) => write!(f, "<lambda>"),
             Value::NativeFn(_) => write!(f, "<native_fn>"),
             Value::Symbol(s) => write!(f, "{s}"),
             Value::Quote(v) => write!(f, "'{v}"),
+        }
+    }
+}
+
+// ============================================================================
+// SPANNED VALUE TYPES
+// ============================================================================
+
+/// A canonical value paired with its source span. By carrying the span with the
+/// value, we ensure that any subsequent errors related to this value (e.g.,
+/// type mismatches) can be reported with precise source location information.
+#[derive(Debug, Clone)]
+pub struct SpannedValue {
+    pub value: Value,
+    pub span: Span,
+}
+
+/// The canonical result type for any operation that produces a value.
+pub type SpannedResult = Result<SpannedValue, SutraError>;
+
+/// Internal iterator implementation for Value lists.
+/// This is a private implementation detail.
+struct ListIterImpl {
+    current: Value,
+}
+
+impl ListIterImpl {
+    fn new(value: Value) -> Self {
+        ListIterImpl { current: value }
+    }
+}
+
+impl Iterator for ListIterImpl {
+    type Item = Value;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match &self.current {
+            Value::Cons(cell) => {
+                let car = cell.car.clone();
+                // Move to the next link in the chain.
+                self.current = cell.cdr.clone();
+                Some(car)
+            }
+            Value::List(items) => {
+                // For List variant, we need to handle it differently
+                // This is a simplified approach - in practice, we'd want to
+                // convert List to Cons cells or handle it more efficiently
+                if let Some(item) = items.first() {
+                    let item = item.clone();
+                    // Remove the first item and continue with the rest
+                    if items.len() > 1 {
+                        self.current = Value::List(items[1..].to_vec());
+                    } else {
+                        self.current = Value::Nil;
+                    }
+                    Some(item)
+                } else {
+                    None
+                }
+            }
+            // If the current value is not a list type, the list has ended.
+            _ => None,
         }
     }
 }

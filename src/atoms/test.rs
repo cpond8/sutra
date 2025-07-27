@@ -23,9 +23,9 @@ use lazy_static::lazy_static;
 use miette::NamedSource;
 
 use crate::{
-    ast::{AstNode, Expr, Span, Spanned},
+    syntax::{AstNode, Expr, Span, Spanned},
     engine::{evaluate_ast_node, EvaluationContext},
-    ast::spanned_value::{SpannedResult, SpannedValue},
+    runtime::{SpannedResult, SpannedValue},
     errors::{to_source_span, ErrorReporting, SourceContext, SutraError},
     prelude::*,
 };

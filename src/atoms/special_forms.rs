@@ -2,11 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::{
-    ast::{
-        spanned_value::{SpannedResult, SpannedValue},
-        value::{ConsCell, Lambda, NativeFn},
-        AstNode, Expr, ParamList, Span, Value,
-    },
+    runtime::{ConsCell, Lambda, NativeFn, SpannedResult, SpannedValue, Value},
+    syntax::{AstNode, Expr, ParamList, Span},
     engine::{evaluate_ast_node, EvaluationContext},
     errors::{to_source_span, ErrorKind, ErrorReporting},
     prelude::*,
@@ -185,7 +182,7 @@ fn handle_function_definition_list(
         }
     }
 
-    let params = crate::ast::ParamList {
+    let params = ParamList {
         required,
         rest,
         span: *list_span,
@@ -196,7 +193,7 @@ fn handle_function_definition_list(
 
 /// Handle function definition when the first argument is a ParamList (current parser format)
 fn handle_function_definition_paramlist(
-    param_list: &crate::ast::ParamList,
+    param_list: &ParamList,
     value_expr: &AstNode,
     context: &mut EvaluationContext,
     call_span: &Span,
@@ -215,7 +212,7 @@ fn handle_function_definition_paramlist(
     let function_name = param_list.required[0].clone();
 
     // The rest are the actual parameters
-    let function_params = crate::ast::ParamList {
+    let function_params = ParamList {
         required: param_list.required[1..].to_vec(),
         rest: param_list.rest.clone(),
         span: param_list.span,
@@ -227,7 +224,7 @@ fn handle_function_definition_paramlist(
 /// Create a lambda and store it in the appropriate scope
 fn create_and_store_lambda(
     function_name: String,
-    params: crate::ast::ParamList,
+    params: ParamList,
     value_expr: &AstNode,
     context: &mut EvaluationContext,
     call_span: &Span,

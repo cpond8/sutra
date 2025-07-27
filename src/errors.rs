@@ -486,7 +486,7 @@ pub fn unspanned() -> miette::SourceSpan {
 /// Converts a Sutra AST Span to a miette SourceSpan.
 /// This is a utility function for the new error system to bridge between
 /// the AST span representation and the error reporting span format.
-pub fn to_source_span(span: crate::ast::Span) -> miette::SourceSpan {
+pub fn to_source_span(span: crate::syntax::Span) -> miette::SourceSpan {
     miette::SourceSpan::from(span.start..span.end)
 }
 

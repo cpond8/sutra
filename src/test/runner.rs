@@ -6,6 +6,7 @@ use crate::{
     engine::{evaluate, EngineOutputBuffer, ExecutionPipeline, MacroProcessor},
     errors::{to_source_span, ErrorCategory, ErrorKind, ErrorReporting, SourceContext, SutraError},
     prelude::*,
+    runtime::ConsCell,
     syntax::parser,
     validation::ValidationContext,
 };
@@ -293,7 +294,7 @@ impl TestRunner {
                 // Build a list value from all elements after the keyword
                 let mut result = Value::Nil;
                 for item in items[1..].iter().rev() {
-                    let cell = crate::ast::value::ConsCell {
+                    let cell = ConsCell {
                         car: Self::extract_value(item, test_form, source_context)?,
                         cdr: result,
                     };
@@ -337,7 +338,7 @@ impl TestRunner {
             Expr::List(items, _) => {
                 let mut result = Value::Nil;
                 for item in items.iter().rev() {
-                    let cell = crate::ast::value::ConsCell {
+                    let cell = ConsCell {
                         car: Self::extract_value(item, test_form, source_context)?,
                         cdr: result,
                     };

@@ -6,7 +6,7 @@ use std::{collections::HashSet, fs, path::Path};
 
 use crate::prelude::*;
 use crate::{
-    ast::ParamList,
+    syntax::ParamList,
     errors::{self, to_source_span, ErrorKind, ErrorReporting, SourceContext, SutraError},
     syntax::parser,
     validation::ValidationContext,

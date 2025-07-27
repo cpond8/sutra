@@ -14,11 +14,8 @@
 //! - **Numeric Comparison**: Comparison operations work with `Value::Number`
 
 use crate::{
-    ast::{
-        spanned_value::{SpannedResult, SpannedValue},
-        value::{NativeFn, Value},
-        AstNode,
-    },
+    runtime::{NativeFn, SpannedResult, SpannedValue, Value},
+    syntax::AstNode,
     engine::evaluate_ast_node,
     errors::{to_source_span, ErrorReporting},
     prelude::*,

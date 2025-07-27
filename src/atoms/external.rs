@@ -14,7 +14,7 @@
 //! - **Minimal External Dependencies**: Simple implementations
 
 use crate::{
-    ast::spanned_value::SpannedValue,
+    runtime::SpannedValue,
     engine::evaluate_ast_node,
     errors::{to_source_span, ErrorReporting},
     prelude::*,

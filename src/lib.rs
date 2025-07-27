@@ -1,5 +1,6 @@
 pub use crate::{
-    ast::{value::Value, AstNode, Expr, ParamList, Span, Spanned},
+    syntax::{AstNode, Expr, ParamList, Span, Spanned},
+    runtime::{ConsCell, Lambda, Value},
     atoms::{
         build_canonical_macro_env, build_canonical_world, Path, SharedOutput, StateContext, World,
     },
@@ -12,17 +13,13 @@ pub use crate::{
 };
 
 // Module aliases for concise imports
-pub use ast::value;
 pub use engine::{evaluate, EvaluationContext};
-pub use syntax::parser;
 pub use validation::{grammar, semantic};
 
 pub mod prelude {
     pub use crate::{
-        ast::{
-            value::{NativeFn, Value},
-            AstNode, Expr, Span, Spanned,
-        },
+        runtime::{NativeFn, Value},
+        syntax::{AstNode, Expr, Span, Spanned},
         atoms::SharedOutput,
         atoms::{Path, World},
         engine::EvaluationContext,
@@ -37,7 +34,6 @@ pub mod prelude {
     pub type CanonicalWorld = Rc<RefCell<crate::atoms::World>>;
 }
 
-pub mod ast;
 pub mod atoms;
 pub mod cli;
 pub mod discovery;
@@ -45,6 +41,7 @@ pub mod engine;
 pub mod errors;
 pub mod macros;
 pub mod repl;
+pub mod runtime;
 pub mod syntax;
 pub mod test;
 pub mod validation;
