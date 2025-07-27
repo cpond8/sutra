@@ -19,6 +19,22 @@ use crate::{
 };
 
 // ============================================================================
+// CONSTANTS
+// ============================================================================
+
+/// Maximum recursion depth for macro expansion to prevent infinite loops
+const MAX_RECURSION_DEPTH: usize = 100;
+
+/// Expected arity for single-argument macros
+const SINGLE_ARG_ARITY: usize = 1;
+
+/// Expected arity for two-argument macros
+const DUAL_ARG_ARITY: usize = 2;
+
+/// Expected arity for macro definitions (define name params body)
+const MACRO_DEFINITION_ARITY: usize = 3;
+
+// ============================================================================
 // CORE TYPES
 // ============================================================================
 
@@ -124,7 +140,7 @@ impl MacroSystem {
 
     /// Recursively expand macros with depth checking
     fn expand_recursive(&self, node: AstNode, depth: usize) -> Result<AstNode, SutraError> {
-        if depth > 100 {
+        if depth > MAX_RECURSION_DEPTH {
             let ctx = ValidationContext::new(
                 SourceContext::from_file("macro_expansion", "recursion_limit"),
                 "macro_expansion".to_string(),
@@ -133,26 +149,36 @@ impl MacroSystem {
         }
 
         // Check if this is a macro call
-        if let Expr::List(items, _) = &*node.value {
-            if let Some(first) = items.first() {
-                if let Expr::Symbol(name, _) = &*first.value {
-                    if let Some(macro_def) = self.macros.get(name) {
-                        let expanded = self.apply_macro(&node, macro_def)?;
-                        return self.expand_recursive(expanded, depth + 1);
-                    }
-                }
-            }
+        let Expr::List(items, _) = &*node.value else {
+            return self.expand_subforms(node, depth);
+        };
+
+        let Some(first) = items.first() else {
+            return self.expand_subforms(node, depth);
+        };
+
+        let Expr::Symbol(name, _) = &*first.value else {
+            return self.expand_subforms(node, depth);
+        };
+
+        if let Some(macro_def) = self.macros.get(name) {
+            let expanded = self.apply_macro(&node, macro_def)?;
+            return self.expand_recursive(expanded, depth + 1);
         }
 
-        // Recursively expand subforms
+        self.expand_subforms(node, depth)
+    }
+
+    /// Helper to expand subforms without macro call detection
+    fn expand_subforms(&self, node: AstNode, depth: usize) -> Result<AstNode, SutraError> {
         match &*node.value {
             Expr::List(items, span) => {
-                let expanded_items: Result<Vec<_>, _> = items
-                    .iter()
-                    .map(|item| self.expand_recursive(item.clone(), depth))
-                    .collect();
+                let mut expanded_items = Vec::new();
+                for item in items {
+                    expanded_items.push(self.expand_recursive(item.clone(), depth)?);
+                }
                 Ok(Spanned {
-                    value: Expr::List(expanded_items?, *span).into(),
+                    value: Expr::List(expanded_items, *span).into(),
                     span: node.span,
                 })
             }
@@ -313,7 +339,7 @@ impl MacroSystem {
             return Ok(None);
         };
 
-        if items.len() != 3 {
+        if items.len() != MACRO_DEFINITION_ARITY {
             return Ok(None);
         }
 
@@ -360,6 +386,11 @@ impl MacroSystem {
 
     /// Extract arguments from a macro call
     fn extract_args(&self, call: &AstNode) -> Result<(Vec<AstNode>, Span), SutraError> {
+        Self::extract_args_from_call(call)
+    }
+
+    /// Static helper to extract arguments from macro calls
+    fn extract_args_from_call(call: &AstNode) -> Result<(Vec<AstNode>, Span), SutraError> {
         let Expr::List(items, span) = &*call.value else {
             let ctx = ValidationContext::new(
                 SourceContext::from_file("macro_expansion", "invalid_call"),
@@ -388,8 +419,8 @@ impl MacroSystem {
     // PATH CANONICALIZATION
     // ========================================================================
 
-    /// Convert various path syntaxes to canonical Expr::Path
-    fn to_canonical_path(&self, expr: &AstNode) -> Result<AstNode, SutraError> {
+    /// Static helper to convert expressions to canonical paths
+    fn canonical_path_from_expr(expr: &AstNode) -> Result<AstNode, SutraError> {
         let path = match &*expr.value {
             Expr::Symbol(s, _) if s.contains('.') => Path(s.split('.').map(String::from).collect()),
             Expr::Symbol(s, _) => Path(vec![s.clone()]),
@@ -482,373 +513,179 @@ impl MacroSystem {
         );
     }
 
-    /// Expand (set! path value) to (core/set! canonical_path value)
-    fn expand_set(call: &AstNode) -> Result<AstNode, SutraError> {
-        let system = MacroSystem::new(SourceContext::fallback("temp").to_named_source());
-        let (args, span) = system.extract_args(call)?;
-        if args.len() != 2 {
+    // ========================================================================
+    // BUILT-IN MACRO HELPERS
+    // ========================================================================
+
+    /// Validate arity and create error if mismatch
+    fn validate_arity(
+        args: &[AstNode],
+        expected: usize,
+        macro_name: &str,
+        span: Span,
+    ) -> Result<(), SutraError> {
+        if args.len() != expected {
             let ctx = ValidationContext::new(
-                SourceContext::from_file("set!", "arity"),
+                SourceContext::from_file(macro_name, "arity"),
                 "macro_expansion".to_string(),
             );
-            return Err(ctx.arity_mismatch("2", args.len(), to_source_span(span)));
+            return Err(ctx.arity_mismatch(
+                &expected.to_string(),
+                args.len(),
+                to_source_span(span),
+            ));
         }
+        Ok(())
+    }
 
-        let canonical_path = system.to_canonical_path(&args[0])?;
-        Ok(Spanned {
+    /// Create a simple core function call: (core/function_name canonical_path ...)
+    fn create_core_call(
+        function_name: &str,
+        path: AstNode,
+        extra_args: &[AstNode],
+        span: Span,
+    ) -> AstNode {
+        let mut items = vec![
+            Spanned {
+                value: Expr::Symbol(format!("core/{}", function_name), span).into(),
+                span,
+            },
+            path,
+        ];
+        items.extend(extra_args.iter().cloned());
+
+        Spanned {
+            value: Expr::List(items, span).into(),
+            span,
+        }
+    }
+
+    /// Create arithmetic update: (core/set! path (operator (core/get path) value))
+    fn create_arithmetic_update(
+        path: AstNode,
+        operator: &str,
+        value: AstNode,
+        span: Span,
+    ) -> AstNode {
+        let get_call = Self::create_core_call("get", path.clone(), &[], span);
+        let arithmetic_expr = Spanned {
             value: Expr::List(
                 vec![
                     Spanned {
-                        value: Expr::Symbol("core/set!".to_string(), span).into(),
+                        value: Expr::Symbol(operator.to_string(), span).into(),
                         span,
                     },
-                    canonical_path,
-                    args[1].clone(),
+                    get_call,
+                    value,
                 ],
                 span,
             )
             .into(),
             span,
-        })
+        };
+        Self::create_core_call("set!", path, &[arithmetic_expr], span)
+    }
+
+    /// Expand (set! path value) to (core/set! canonical_path value)
+    fn expand_set(call: &AstNode) -> Result<AstNode, SutraError> {
+        let (args, span) = Self::extract_args_from_call(call)?;
+        Self::validate_arity(&args, DUAL_ARG_ARITY, "set!", span)?;
+        let canonical_path = Self::canonical_path_from_expr(&args[0])?;
+        Ok(Self::create_core_call(
+            "set!",
+            canonical_path,
+            &[args[1].clone()],
+            span,
+        ))
     }
 
     /// Expand (get path) to (core/get canonical_path)
     fn expand_get(call: &AstNode) -> Result<AstNode, SutraError> {
-        let system = MacroSystem::new(SourceContext::fallback("temp").to_named_source());
-        let (args, span) = system.extract_args(call)?;
-        if args.len() != 1 {
-            let ctx = ValidationContext::new(
-                SourceContext::from_file("get", "arity"),
-                "macro_expansion".to_string(),
-            );
-            return Err(ctx.arity_mismatch("1", args.len(), to_source_span(span)));
-        }
-
-        let canonical_path = system.to_canonical_path(&args[0])?;
-        Ok(Spanned {
-            value: Expr::List(
-                vec![
-                    Spanned {
-                        value: Expr::Symbol("core/get".to_string(), span).into(),
-                        span,
-                    },
-                    canonical_path,
-                ],
-                span,
-            )
-            .into(),
-            span,
-        })
+        let (args, span) = Self::extract_args_from_call(call)?;
+        Self::validate_arity(&args, SINGLE_ARG_ARITY, "get", span)?;
+        let canonical_path = Self::canonical_path_from_expr(&args[0])?;
+        Ok(Self::create_core_call("get", canonical_path, &[], span))
     }
 
     /// Expand (del! path) to (core/del! canonical_path)
     fn expand_del(call: &AstNode) -> Result<AstNode, SutraError> {
-        let system = MacroSystem::new(SourceContext::fallback("temp").to_named_source());
-        let (args, span) = system.extract_args(call)?;
-        if args.len() != 1 {
-            let ctx = ValidationContext::new(
-                SourceContext::from_file("del!", "arity"),
-                "macro_expansion".to_string(),
-            );
-            return Err(ctx.arity_mismatch("1", args.len(), to_source_span(span)));
-        }
-
-        let canonical_path = system.to_canonical_path(&args[0])?;
-        Ok(Spanned {
-            value: Expr::List(
-                vec![
-                    Spanned {
-                        value: Expr::Symbol("core/del!".to_string(), span).into(),
-                        span,
-                    },
-                    canonical_path,
-                ],
-                span,
-            )
-            .into(),
-            span,
-        })
+        let (args, span) = Self::extract_args_from_call(call)?;
+        Self::validate_arity(&args, SINGLE_ARG_ARITY, "del!", span)?;
+        let canonical_path = Self::canonical_path_from_expr(&args[0])?;
+        Ok(Self::create_core_call("del!", canonical_path, &[], span))
     }
 
     /// Expand (exists? path) to (core/exists? canonical_path)
     fn expand_exists(call: &AstNode) -> Result<AstNode, SutraError> {
-        let system = MacroSystem::new(SourceContext::fallback("temp").to_named_source());
-        let (args, span) = system.extract_args(call)?;
-        if args.len() != 1 {
-            let ctx = ValidationContext::new(
-                SourceContext::from_file("exists?", "arity"),
-                "macro_expansion".to_string(),
-            );
-            return Err(ctx.arity_mismatch("1", args.len(), to_source_span(span)));
-        }
-
-        let canonical_path = system.to_canonical_path(&args[0])?;
-        Ok(Spanned {
-            value: Expr::List(
-                vec![
-                    Spanned {
-                        value: Expr::Symbol("core/exists?".to_string(), span).into(),
-                        span,
-                    },
-                    canonical_path,
-                ],
-                span,
-            )
-            .into(),
-            span,
-        })
+        let (args, span) = Self::extract_args_from_call(call)?;
+        Self::validate_arity(&args, SINGLE_ARG_ARITY, "exists?", span)?;
+        let canonical_path = Self::canonical_path_from_expr(&args[0])?;
+        Ok(Self::create_core_call("exists?", canonical_path, &[], span))
     }
 
     /// Expand (inc! path) to (core/set! path (+ (core/get path) 1))
     fn expand_inc(call: &AstNode) -> Result<AstNode, SutraError> {
-        let system = MacroSystem::new(SourceContext::fallback("temp").to_named_source());
-        let (args, span) = system.extract_args(call)?;
-        if args.len() != 1 {
-            let ctx = ValidationContext::new(
-                SourceContext::from_file("inc!", "arity"),
-                "macro_expansion".to_string(),
-            );
-            return Err(ctx.arity_mismatch("1", args.len(), to_source_span(span)));
-        }
-
-        let canonical_path = system.to_canonical_path(&args[0])?;
-        let get_expr = Spanned {
-            value: Expr::List(
-                vec![
-                    Spanned {
-                        value: Expr::Symbol("core/get".to_string(), span).into(),
-                        span,
-                    },
-                    canonical_path.clone(),
-                ],
-                span,
-            )
-            .into(),
+        let (args, span) = Self::extract_args_from_call(call)?;
+        Self::validate_arity(&args, SINGLE_ARG_ARITY, "inc!", span)?;
+        let canonical_path = Self::canonical_path_from_expr(&args[0])?;
+        let one = Spanned {
+            value: Expr::Number(1.0, span).into(),
             span,
         };
-        let add_expr = Spanned {
-            value: Expr::List(
-                vec![
-                    Spanned {
-                        value: Expr::Symbol("+".to_string(), span).into(),
-                        span,
-                    },
-                    get_expr,
-                    Spanned {
-                        value: Expr::Number(1.0, span).into(),
-                        span,
-                    },
-                ],
-                span,
-            )
-            .into(),
+        Ok(Self::create_arithmetic_update(
+            canonical_path,
+            "+",
+            one,
             span,
-        };
-
-        Ok(Spanned {
-            value: Expr::List(
-                vec![
-                    Spanned {
-                        value: Expr::Symbol("core/set!".to_string(), span).into(),
-                        span,
-                    },
-                    canonical_path,
-                    add_expr,
-                ],
-                span,
-            )
-            .into(),
-            span,
-        })
+        ))
     }
 
     /// Expand (dec! path) to (core/set! path (- (core/get path) 1))
     fn expand_dec(call: &AstNode) -> Result<AstNode, SutraError> {
-        let system = MacroSystem::new(SourceContext::fallback("temp").to_named_source());
-        let (args, span) = system.extract_args(call)?;
-        if args.len() != 1 {
-            let ctx = ValidationContext::new(
-                SourceContext::from_file("dec!", "arity"),
-                "macro_expansion".to_string(),
-            );
-            return Err(ctx.arity_mismatch("1", args.len(), to_source_span(span)));
-        }
-
-        let canonical_path = system.to_canonical_path(&args[0])?;
-        let get_expr = Spanned {
-            value: Expr::List(
-                vec![
-                    Spanned {
-                        value: Expr::Symbol("core/get".to_string(), span).into(),
-                        span,
-                    },
-                    canonical_path.clone(),
-                ],
-                span,
-            )
-            .into(),
+        let (args, span) = Self::extract_args_from_call(call)?;
+        Self::validate_arity(&args, SINGLE_ARG_ARITY, "dec!", span)?;
+        let canonical_path = Self::canonical_path_from_expr(&args[0])?;
+        let one = Spanned {
+            value: Expr::Number(1.0, span).into(),
             span,
         };
-        let sub_expr = Spanned {
-            value: Expr::List(
-                vec![
-                    Spanned {
-                        value: Expr::Symbol("-".to_string(), span).into(),
-                        span,
-                    },
-                    get_expr,
-                    Spanned {
-                        value: Expr::Number(1.0, span).into(),
-                        span,
-                    },
-                ],
-                span,
-            )
-            .into(),
+        Ok(Self::create_arithmetic_update(
+            canonical_path,
+            "-",
+            one,
             span,
-        };
-
-        Ok(Spanned {
-            value: Expr::List(
-                vec![
-                    Spanned {
-                        value: Expr::Symbol("core/set!".to_string(), span).into(),
-                        span,
-                    },
-                    canonical_path,
-                    sub_expr,
-                ],
-                span,
-            )
-            .into(),
-            span,
-        })
+        ))
     }
 
     /// Expand (add! path value) to (core/set! path (+ (core/get path) value))
     fn expand_add(call: &AstNode) -> Result<AstNode, SutraError> {
-        let system = MacroSystem::new(SourceContext::fallback("temp").to_named_source());
-        let (args, span) = system.extract_args(call)?;
-        if args.len() != 2 {
-            let ctx = ValidationContext::new(
-                SourceContext::from_file("add!", "arity"),
-                "macro_expansion".to_string(),
-            );
-            return Err(ctx.arity_mismatch("2", args.len(), to_source_span(span)));
-        }
-
-        let canonical_path = system.to_canonical_path(&args[0])?;
-        let get_expr = Spanned {
-            value: Expr::List(
-                vec![
-                    Spanned {
-                        value: Expr::Symbol("core/get".to_string(), span).into(),
-                        span,
-                    },
-                    canonical_path.clone(),
-                ],
-                span,
-            )
-            .into(),
+        let (args, span) = Self::extract_args_from_call(call)?;
+        Self::validate_arity(&args, DUAL_ARG_ARITY, "add!", span)?;
+        let canonical_path = Self::canonical_path_from_expr(&args[0])?;
+        Ok(Self::create_arithmetic_update(
+            canonical_path,
+            "+",
+            args[1].clone(),
             span,
-        };
-        let add_expr = Spanned {
-            value: Expr::List(
-                vec![
-                    Spanned {
-                        value: Expr::Symbol("+".to_string(), span).into(),
-                        span,
-                    },
-                    get_expr,
-                    args[1].clone(),
-                ],
-                span,
-            )
-            .into(),
-            span,
-        };
-
-        Ok(Spanned {
-            value: Expr::List(
-                vec![
-                    Spanned {
-                        value: Expr::Symbol("core/set!".to_string(), span).into(),
-                        span,
-                    },
-                    canonical_path,
-                    add_expr,
-                ],
-                span,
-            )
-            .into(),
-            span,
-        })
+        ))
     }
 
     /// Expand (sub! path value) to (core/set! path (- (core/get path) value))
     fn expand_sub(call: &AstNode) -> Result<AstNode, SutraError> {
-        let system = MacroSystem::new(SourceContext::fallback("temp").to_named_source());
-        let (args, span) = system.extract_args(call)?;
-        if args.len() != 2 {
-            let ctx = ValidationContext::new(
-                SourceContext::from_file("sub!", "arity"),
-                "macro_expansion".to_string(),
-            );
-            return Err(ctx.arity_mismatch("2", args.len(), to_source_span(span)));
-        }
-
-        let canonical_path = system.to_canonical_path(&args[0])?;
-        let get_expr = Spanned {
-            value: Expr::List(
-                vec![
-                    Spanned {
-                        value: Expr::Symbol("core/get".to_string(), span).into(),
-                        span,
-                    },
-                    canonical_path.clone(),
-                ],
-                span,
-            )
-            .into(),
+        let (args, span) = Self::extract_args_from_call(call)?;
+        Self::validate_arity(&args, DUAL_ARG_ARITY, "sub!", span)?;
+        let canonical_path = Self::canonical_path_from_expr(&args[0])?;
+        Ok(Self::create_arithmetic_update(
+            canonical_path,
+            "-",
+            args[1].clone(),
             span,
-        };
-        let sub_expr = Spanned {
-            value: Expr::List(
-                vec![
-                    Spanned {
-                        value: Expr::Symbol("-".to_string(), span).into(),
-                        span,
-                    },
-                    get_expr,
-                    args[1].clone(),
-                ],
-                span,
-            )
-            .into(),
-            span,
-        };
-
-        Ok(Spanned {
-            value: Expr::List(
-                vec![
-                    Spanned {
-                        value: Expr::Symbol("core/set!".to_string(), span).into(),
-                        span,
-                    },
-                    canonical_path,
-                    sub_expr,
-                ],
-                span,
-            )
-            .into(),
-            span,
-        })
+        ))
     }
 
     /// Expand (print ...) to (core/print ...)
     fn expand_print(call: &AstNode) -> Result<AstNode, SutraError> {
-        let system = MacroSystem::new(SourceContext::fallback("temp").to_named_source());
-        let (args, span) = system.extract_args(call)?;
+        let (args, span) = Self::extract_args_from_call(call)?;
 
         let mut items = vec![Spanned {
             value: Expr::Symbol("core/print".to_string(), span).into(),
@@ -888,6 +725,39 @@ pub fn load_macros_from_source(source: &str, env: &mut MacroSystem) -> Result<()
 
 /// Parse a macro definition from AST (public wrapper)
 pub fn parse_macro_definition(expr: &AstNode) -> Result<(String, MacroTemplate), SutraError> {
+    // Input validation first
+    let Expr::List(items, _) = &*expr.value else {
+        return Err(create_parse_error(
+            "not_macro",
+            "macro definition",
+            expr.span,
+        ));
+    };
+
+    if items.len() != MACRO_DEFINITION_ARITY {
+        return Err(create_parse_error(
+            "not_macro",
+            "macro definition",
+            expr.span,
+        ));
+    }
+
+    let Expr::Symbol(def_name, _) = &*items[0].value else {
+        return Err(create_parse_error(
+            "not_macro",
+            "macro definition",
+            expr.span,
+        ));
+    };
+
+    if def_name != "define" {
+        return Err(create_parse_error(
+            "not_macro",
+            "macro definition",
+            expr.span,
+        ));
+    }
+
     let system = MacroSystem::new(SourceContext::fallback("temp").to_named_source());
     match system.parse_macro_definition(expr)? {
         Some((name, MacroDefinition::Template(template))) => Ok((name, template)),
@@ -904,19 +774,26 @@ pub fn parse_macro_definition(expr: &AstNode) -> Result<(String, MacroTemplate),
                 to_source_span(expr.span),
             ))
         }
-        None => {
-            let ctx = ValidationContext::new(
-                SourceContext::from_file("parse_macro", "not_macro"),
-                "macro_parsing".to_string(),
-            );
-            Err(ctx.report(
-                ErrorKind::MalformedConstruct {
-                    construct: "macro definition".to_string(),
-                },
-                to_source_span(expr.span),
-            ))
-        }
+        None => Err(create_parse_error(
+            "not_macro",
+            "macro definition",
+            expr.span,
+        )),
     }
+}
+
+/// Helper to create consistent parse errors
+fn create_parse_error(context: &str, construct: &str, span: Span) -> SutraError {
+    let ctx = ValidationContext::new(
+        SourceContext::from_file("parse_macro", context),
+        "macro_parsing".to_string(),
+    );
+    ctx.report(
+        ErrorKind::MalformedConstruct {
+            construct: construct.to_string(),
+        },
+        to_source_span(span),
+    )
 }
 
 /// Expand macros recursively (compatibility alias)
@@ -927,10 +804,8 @@ pub fn expand_macros_recursively(
     env.expand(ast)
 }
 
-// Compatibility type aliases
-pub type MacroEnvironment = MacroSystem;
-pub type MacroExpansionContext = MacroSystem;
-pub type MacroExpansionResult = Result<AstNode, SutraError>;
+// Note: Removed unnecessary type aliases that just renamed the same types
+// Use MacroSystem and Result<AstNode, SutraError> directly instead
 
 // Re-exports for std_macros module (kept for external macro file loading)
 pub mod std_macros {

@@ -44,7 +44,7 @@ use serde::{Deserialize, Serialize};
 use crate::prelude::*;
 
 // Domain modules with aliases
-use crate::macros::MacroEnvironment;
+use crate::macros::MacroSystem;
 
 // Using a concrete, seedable PRNG for determinism.
 type SmallRng = Xoshiro256StarStar;
@@ -114,7 +114,7 @@ impl Default for WorldState {
 pub struct World {
     pub state: WorldState,
     pub prng: SmallRng,
-    pub macros: MacroEnvironment,
+    pub macros: MacroSystem,
 }
 
 impl World {
@@ -123,7 +123,7 @@ impl World {
         Self {
             state: WorldState::new(),
             prng: SmallRng::from_entropy(),
-            macros: MacroEnvironment::new(source),
+            macros: MacroSystem::new(source),
         }
     }
 
@@ -132,7 +132,7 @@ impl World {
         Self {
             state: WorldState::new(),
             prng: SmallRng::from_seed(seed),
-            macros: MacroEnvironment::new(source),
+            macros: MacroSystem::new(source),
         }
     }
 
@@ -211,7 +211,7 @@ pub fn build_canonical_world() -> CanonicalWorld {
 }
 
 /// Builds and returns the canonical macro environment
-pub fn build_canonical_macro_env() -> Result<MacroEnvironment, SutraError> {
+pub fn build_canonical_macro_env() -> Result<MacroSystem, SutraError> {
     use crate::macros::{load_macros_from_source, std_macros::register_std_macros};
 
     // Step 1: Create environment and register standard macros
@@ -219,7 +219,7 @@ pub fn build_canonical_macro_env() -> Result<MacroEnvironment, SutraError> {
         "std_macros.sutra",
         fs::read_to_string("src/macros/std_macros.sutra").unwrap_or_default(),
     ));
-    let mut env = MacroEnvironment::new(source);
+    let mut env = MacroSystem::new(source);
     register_std_macros(&mut env);
 
     // Step 2: Load user macros from file

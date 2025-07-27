@@ -1,6 +1,6 @@
 use crate::{
     errors::{to_source_span, ErrorKind, SourceContext, SutraError},
-    macros::MacroEnvironment,
+    macros::MacroSystem,
     prelude::*,
     MacroDefinition,
 };
@@ -9,7 +9,7 @@ use crate::{
 /// Returns all validation errors found.
 pub fn validate_ast_semantics(
     ast: &AstNode,
-    macros: &MacroEnvironment,
+    macros: &MacroSystem,
     world: &World,
     _source: &SourceContext,
 ) -> Vec<SutraError> {
@@ -20,7 +20,7 @@ pub fn validate_ast_semantics(
 
 fn validate_node(
     node: &AstNode,
-    macros: &MacroEnvironment,
+    macros: &MacroSystem,
     world: &World,
     errors: &mut Vec<SutraError>,
 ) {
@@ -51,7 +51,7 @@ fn validate_node(
 fn validate_call(
     name: &str,
     nodes: &[AstNode],
-    macros: &MacroEnvironment,
+    macros: &MacroSystem,
     world: &World,
     errors: &mut Vec<SutraError>,
 ) {
