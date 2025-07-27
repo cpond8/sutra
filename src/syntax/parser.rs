@@ -4,8 +4,7 @@
 //! This parser is purely syntactic - no semantic analysis or type checking.
 
 use crate::errors::{to_source_span, ErrorKind, SourceContext, SutraError};
-use crate::{syntax::ParamList, prelude::*};
-use miette::SourceSpan;
+use crate::{prelude::*, syntax::ParamList};
 use pest::{error::Error, iterators::Pair, Parser};
 use pest_derive::Parser;
 
@@ -27,7 +26,7 @@ pub fn parse(source_text: &str, source_context: SourceContext) -> Result<Vec<Ast
         .map_err(|e| convert_parse_error(e, &source_context))?;
 
     let program = pairs.peek().unwrap(); // pest guarantees program rule exists
-    
+
     program
         .into_inner()
         .filter(|p| p.as_rule() != Rule::EOI)
@@ -57,56 +56,76 @@ pub fn wrap_in_do(nodes: Vec<AstNode>) -> AstNode {
 
 fn build_ast_node(pair: Pair<Rule>, source: &SourceContext) -> Result<AstNode, SutraError> {
     let span = get_span(&pair);
-    
+
     match pair.as_rule() {
         Rule::expr => {
             let inner = pair.into_inner().next().unwrap(); // grammar guarantees inner exists
             build_ast_node(inner, source)
         }
-        
+
+        Rule::atom => {
+            let inner = pair.into_inner().next().unwrap(); // grammar guarantees inner exists
+            build_ast_node(inner, source)
+        }
+
         Rule::number => {
             let text = pair.as_str();
-            let value = text.parse::<f64>()
-                .map_err(|_| make_error(source, ErrorKind::InvalidLiteral {
-                    literal_type: "number".into(),
-                    value: text.into(),
-                }, span))?;
+            let value = text.parse::<f64>().map_err(|_| {
+                make_error(
+                    source,
+                    ErrorKind::InvalidLiteral {
+                        literal_type: "number".into(),
+                        value: text.into(),
+                    },
+                    span,
+                )
+            })?;
             Ok(make_number(value, span))
         }
-        
+
         Rule::boolean => {
             let value = match pair.as_str() {
                 "true" => true,
                 "false" => false,
-                text => return Err(make_error(source, ErrorKind::InvalidLiteral {
-                    literal_type: "boolean".into(),
-                    value: text.into(),
-                }, span)),
+                text => {
+                    return Err(make_error(
+                        source,
+                        ErrorKind::InvalidLiteral {
+                            literal_type: "boolean".into(),
+                            value: text.into(),
+                        },
+                        span,
+                    ))
+                }
             };
             Ok(make_boolean(value, span))
         }
-        
+
         Rule::string => {
             let content = unescape_string(pair.as_str())?;
             Ok(make_string(content, span))
         }
-        
+
         Rule::symbol => {
             let text = pair.as_str();
             if text.contains('.') {
                 let components: Vec<String> = text.split('.').map(String::from).collect();
                 if components.iter().any(|c| c.is_empty()) {
-                    return Err(make_error(source, ErrorKind::InvalidLiteral {
-                        literal_type: "path".into(),
-                        value: text.into(),
-                    }, span));
+                    return Err(make_error(
+                        source,
+                        ErrorKind::InvalidLiteral {
+                            literal_type: "path".into(),
+                            value: text.into(),
+                        },
+                        span,
+                    ));
                 }
                 Ok(make_path(Path(components), span))
             } else {
                 Ok(make_symbol(text, span))
             }
         }
-        
+
         Rule::list | Rule::block => {
             let children: Result<Vec<_>, _> = pair
                 .into_inner()
@@ -114,54 +133,64 @@ fn build_ast_node(pair: Pair<Rule>, source: &SourceContext) -> Result<AstNode, S
                 .collect();
             Ok(make_list(children?, span))
         }
-        
+
         Rule::quote => {
-            let inner = pair.into_inner().next()
-                .ok_or_else(|| make_error(source, ErrorKind::MissingElement {
-                    element: "expression after quote".into(),
-                }, span))?;
+            let inner = pair.into_inner().next().ok_or_else(|| {
+                make_error(
+                    source,
+                    ErrorKind::MissingElement {
+                        element: "expression after quote".into(),
+                    },
+                    span,
+                )
+            })?;
             let quoted = build_ast_node(inner, source)?;
             Ok(make_quote(quoted, span))
         }
-        
-        Rule::param_list => {
-            build_param_list(pair, source)
-        }
-        
-        Rule::lambda_form => {
-            build_special_form(pair, "lambda", source)
-        }
-        
-        Rule::define_form => {
-            build_special_form(pair, "define", source)
-        }
-        
+
+        Rule::param_list => build_param_list(pair, source),
+
+        Rule::lambda_form => build_special_form(pair, "lambda", source),
+
+        Rule::define_form => build_special_form(pair, "define", source),
+
         Rule::spread_arg => {
-            let symbol_pair = pair.into_inner().next()
-                .ok_or_else(|| make_error(source, ErrorKind::MissingElement {
-                    element: "symbol after spread".into(),
-                }, span))?;
+            let symbol_pair = pair.into_inner().next().ok_or_else(|| {
+                make_error(
+                    source,
+                    ErrorKind::MissingElement {
+                        element: "symbol after spread".into(),
+                    },
+                    span,
+                )
+            })?;
             let symbol = build_ast_node(symbol_pair, source)?;
             Ok(make_spread(symbol, span))
         }
-        
-        rule => Err(make_error(source, ErrorKind::MalformedConstruct {
-            construct: format!("unsupported rule: {:?}", rule),
-        }, span)),
+
+        rule => Err(make_error(
+            source,
+            ErrorKind::MalformedConstruct {
+                construct: format!("unsupported rule: {:?}", rule),
+            },
+            span,
+        )),
     }
 }
 
 fn build_param_list(pair: Pair<Rule>, source: &SourceContext) -> Result<AstNode, SutraError> {
     let span = get_span(&pair);
-    let param_items: Vec<_> = pair.into_inner()
-        .next().unwrap() // grammar guarantees param_items exists
+    let param_items: Vec<_> = pair
+        .into_inner()
+        .next()
+        .unwrap() // grammar guarantees param_items exists
         .into_inner()
         .collect();
-    
+
     let mut required = Vec::new();
     let mut rest = None;
     let mut found_rest = false;
-    
+
     for item in param_items {
         match item.as_rule() {
             Rule::symbol if !found_rest => {
@@ -173,40 +202,71 @@ fn build_param_list(pair: Pair<Rule>, source: &SourceContext) -> Result<AstNode,
                 found_rest = true;
             }
             Rule::symbol => {
-                return Err(make_error(source, ErrorKind::ParameterOrderViolation {
-                    rest_span: to_source_span(get_span(&item)),
-                }, get_span(&item)));
+                return Err(make_error(
+                    source,
+                    ErrorKind::ParameterOrderViolation {
+                        rest_span: to_source_span(get_span(&item)),
+                    },
+                    get_span(&item),
+                ));
             }
             _ => {
-                return Err(make_error(source, ErrorKind::InvalidLiteral {
-                    literal_type: "parameter".into(),
-                    value: format!("{:?}", item.as_rule()),
-                }, get_span(&item)));
+                return Err(make_error(
+                    source,
+                    ErrorKind::InvalidLiteral {
+                        literal_type: "parameter".into(),
+                        value: format!("{:?}", item.as_rule()),
+                    },
+                    get_span(&item),
+                ));
             }
         }
     }
-    
-    Ok(make_param_list(ParamList { required, rest, span }, span))
+
+    Ok(make_param_list(
+        ParamList {
+            required,
+            rest,
+            span,
+        },
+        span,
+    ))
 }
 
-fn build_special_form(pair: Pair<Rule>, form_name: &str, source: &SourceContext) -> Result<AstNode, SutraError> {
+fn build_special_form(
+    pair: Pair<Rule>,
+    form_name: &str,
+    source: &SourceContext,
+) -> Result<AstNode, SutraError> {
     let span = get_span(&pair);
     let mut inner = pair.into_inner();
-    
+
     let param_list = build_param_list(
-        inner.next().ok_or_else(|| make_error(source, ErrorKind::MissingElement {
-            element: "parameter list".into(),
-        }, span))?,
-        source
+        inner.next().ok_or_else(|| {
+            make_error(
+                source,
+                ErrorKind::MissingElement {
+                    element: "parameter list".into(),
+                },
+                span,
+            )
+        })?,
+        source,
     )?;
-    
+
     let body = build_ast_node(
-        inner.next().ok_or_else(|| make_error(source, ErrorKind::MissingElement {
-            element: "function body".into(),
-        }, span))?,
-        source
+        inner.next().ok_or_else(|| {
+            make_error(
+                source,
+                ErrorKind::MissingElement {
+                    element: "function body".into(),
+                },
+                span,
+            )
+        })?,
+        source,
     )?;
-    
+
     let form_symbol = make_symbol(form_name, span);
     Ok(make_list(vec![form_symbol, param_list, body], span))
 }
@@ -216,7 +276,10 @@ fn build_special_form(pair: Pair<Rule>, form_name: &str, source: &SourceContext)
 // ============================================================================
 
 fn make_list(items: Vec<AstNode>, span: Span) -> AstNode {
-    Spanned { value: Expr::List(items, span).into(), span }
+    Spanned {
+        value: Expr::List(items, span).into(),
+        span,
+    }
 }
 
 fn make_empty_list() -> AstNode {
@@ -225,35 +288,59 @@ fn make_empty_list() -> AstNode {
 }
 
 fn make_symbol(text: &str, span: Span) -> AstNode {
-    Spanned { value: Expr::Symbol(text.to_string(), span).into(), span }
+    Spanned {
+        value: Expr::Symbol(text.to_string(), span).into(),
+        span,
+    }
 }
 
 fn make_path(path: Path, span: Span) -> AstNode {
-    Spanned { value: Expr::Path(path, span).into(), span }
+    Spanned {
+        value: Expr::Path(path, span).into(),
+        span,
+    }
 }
 
 fn make_string(content: String, span: Span) -> AstNode {
-    Spanned { value: Expr::String(content, span).into(), span }
+    Spanned {
+        value: Expr::String(content, span).into(),
+        span,
+    }
 }
 
 fn make_number(value: f64, span: Span) -> AstNode {
-    Spanned { value: Expr::Number(value, span).into(), span }
+    Spanned {
+        value: Expr::Number(value, span).into(),
+        span,
+    }
 }
 
 fn make_boolean(value: bool, span: Span) -> AstNode {
-    Spanned { value: Expr::Bool(value, span).into(), span }
+    Spanned {
+        value: Expr::Bool(value, span).into(),
+        span,
+    }
 }
 
 fn make_quote(expr: AstNode, span: Span) -> AstNode {
-    Spanned { value: Expr::Quote(Box::new(expr), span).into(), span }
+    Spanned {
+        value: Expr::Quote(Box::new(expr), span).into(),
+        span,
+    }
 }
 
 fn make_spread(expr: AstNode, span: Span) -> AstNode {
-    Spanned { value: Expr::Spread(Box::new(expr)).into(), span }
+    Spanned {
+        value: Expr::Spread(Box::new(expr)).into(),
+        span,
+    }
 }
 
 fn make_param_list(params: ParamList, span: Span) -> AstNode {
-    Spanned { value: Expr::ParamList(params).into(), span }
+    Spanned {
+        value: Expr::ParamList(params).into(),
+        span,
+    }
 }
 
 // ============================================================================
@@ -279,10 +366,10 @@ fn calculate_span(nodes: &[AstNode]) -> Span {
 
 fn unescape_string(text: &str) -> Result<String, SutraError> {
     // Remove surrounding quotes
-    let inner = &text[1..text.len()-1];
+    let inner = &text[1..text.len() - 1];
     let mut result = String::with_capacity(inner.len());
     let mut chars = inner.chars();
-    
+
     while let Some(ch) = chars.next() {
         if ch == '\\' {
             match chars.next() {
@@ -300,7 +387,7 @@ fn unescape_string(text: &str) -> Result<String, SutraError> {
             result.push(ch);
         }
     }
-    
+
     Ok(result)
 }
 
@@ -329,10 +416,13 @@ fn make_error(source: &SourceContext, kind: ErrorKind, span: Span) -> SutraError
 
 fn convert_parse_error(error: Error<Rule>, source: &SourceContext) -> SutraError {
     let span = match error.location {
-        pest::error::InputLocation::Pos(pos) => Span { start: pos, end: pos },
+        pest::error::InputLocation::Pos(pos) => Span {
+            start: pos,
+            end: pos,
+        },
         pest::error::InputLocation::Span((start, end)) => Span { start, end },
     };
-    
+
     // Simple error message improvement
     let message = if error.to_string().contains("expected ')'") {
         "Missing closing parenthesis"
@@ -343,10 +433,14 @@ fn convert_parse_error(error: Error<Rule>, source: &SourceContext) -> SutraError
     } else {
         "Syntax error"
     };
-    
-    make_error(source, ErrorKind::MalformedConstruct {
-        construct: message.to_string(),
-    }, span)
+
+    make_error(
+        source,
+        ErrorKind::MalformedConstruct {
+            construct: message.to_string(),
+        },
+        span,
+    )
 }
 
 #[cfg(test)]

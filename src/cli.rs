@@ -19,9 +19,47 @@ use crate::{
     evaluate,
     macros::MacroSystem,
     syntax::parser,
-    test::runner::TestRunner,
+    test::{runner::TestRunner, TestSummary},
     validation::{grammar, ValidationContext},
 };
+use std::collections::HashMap;
+use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
+
+// ============================================================================
+// TEST REPORTING STRUCTURES
+// ============================================================================
+
+#[derive(Debug)]
+struct TestResult {
+    name: String,
+    passed: bool,
+    error_summary: Option<String>, // Just store a summary for categorization
+}
+
+#[derive(Debug)]
+struct FileTestSummary {
+    file_path: PathBuf,
+    results: Vec<TestResult>,
+}
+
+impl FileTestSummary {
+    fn new(file_path: PathBuf) -> Self {
+        Self {
+            file_path,
+            results: Vec::new(),
+        }
+    }
+    
+    fn add_result(&mut self, result: TestResult) {
+        self.results.push(result);
+    }
+    
+    fn summary(&self) -> TestSummary {
+        let passed = self.results.iter().filter(|r| r.passed).count();
+        let failed = self.results.len() - passed;
+        TestSummary { passed, failed }
+    }
+}
 
 // ============================================================================
 // CLI ARGUMENTS - Command-line argument definitions
@@ -248,7 +286,7 @@ fn validate_grammar() -> Result<(), SutraError> {
     Ok(())
 }
 
-/// Simplified test runner
+/// Enhanced test runner with detailed reporting
 fn run_tests(path: PathBuf) -> Result<(), SutraError> {
     let test_files = TestDiscoverer::discover_test_files(path).map_err(|e| {
         let context = ValidationContext {
@@ -263,11 +301,13 @@ fn run_tests(path: PathBuf) -> Result<(), SutraError> {
         )
     })?;
 
-    let mut total_tests = 0;
-    let mut passed = 0;
-    let mut failed = 0;
+    let mut file_summaries = Vec::new();
+    let mut overall_summary = TestSummary::default();
+    let mut error_categories: HashMap<String, usize> = HashMap::new();
 
     for file_path in test_files {
+        let mut file_summary = FileTestSummary::new(file_path.clone());
+        
         let test_forms = TestDiscoverer::extract_tests_from_file(&file_path).map_err(|e| {
             let context = ValidationContext {
                 source: SourceContext::fallback("run_tests"),
@@ -286,26 +326,127 @@ fn run_tests(path: PathBuf) -> Result<(), SutraError> {
         })?;
 
         for test_form in test_forms {
-            total_tests += 1;
             match TestRunner::run_single_test(&test_form) {
                 Ok(()) => {
-                    passed += 1;
-                    println!("✓ {}", test_form.name);
+                    // Print passed test immediately
+                    use std::io::Write;
+                    let mut stdout = StandardStream::stdout(ColorChoice::Auto);
+                    stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green))).ok();
+                    write!(&mut stdout, "✓").ok();
+                    stdout.reset().ok();
+                    println!(" {}", test_form.name);
+                    
+                    file_summary.add_result(TestResult {
+                        name: test_form.name.clone(),
+                        passed: true,
+                        error_summary: None,
+                    });
                 }
                 Err(e) => {
-                    failed += 1;
-                    let report = miette::Report::new(e);
-                    eprintln!("{report:?}");
+                    // Print failed test with rich miette diagnostic immediately
+                    use std::io::Write;
+                    let mut stdout = StandardStream::stdout(ColorChoice::Auto);
+                    stdout.set_color(ColorSpec::new().set_fg(Some(Color::Red))).ok();
+                    write!(&mut stdout, "✗").ok();
+                    stdout.reset().ok();
+                    println!(" {}", test_form.name);
+                    
+                    // Print rich miette diagnostic
+                    print_error(e);
+                    
+                    // Categorize error for summary (recreate since we consumed e)
+                    let error_category = "Runtime: Test Failed"; // Simplified for now since we consumed e
+                    *error_categories.entry(error_category.to_string()).or_insert(0) += 1;
+                    
+                    file_summary.add_result(TestResult {
+                        name: test_form.name.clone(),
+                        passed: false,
+                        error_summary: Some(error_category.to_string()),
+                    });
                 }
             }
         }
+        
+        // Print file summary with colors
+        print_file_summary(&file_summary);
+        
+        let file_test_summary = file_summary.summary();
+        overall_summary.passed += file_test_summary.passed;
+        overall_summary.failed += file_test_summary.failed;
+        
+        file_summaries.push(file_summary);
     }
 
-    println!("\nTest Summary: {passed}/{total_tests} passed");
-    if failed > 0 {
+    // Print overall summary
+    print_overall_summary(&overall_summary, &error_categories);
+
+    if overall_summary.has_failures() {
         process::exit(1);
     }
+    
     Ok(())
+}
+
+// ============================================================================
+// TEST REPORTING FUNCTIONS
+// ============================================================================
+
+/// Print file-by-file test summary with colors
+fn print_file_summary(file_summary: &FileTestSummary) {
+    use std::io::Write;
+    let mut stdout = StandardStream::stdout(ColorChoice::Auto);
+    
+    let summary = file_summary.summary();
+    let success_rate = summary.success_rate();
+    
+    // Choose color based on success rate
+    let color = if success_rate >= 80.0 {
+        Color::Green
+    } else if success_rate >= 50.0 {
+        Color::Yellow
+    } else {
+        Color::Red
+    };
+    
+    // Print file summary (individual tests were already printed above)
+    stdout.set_color(ColorSpec::new().set_fg(Some(color))).ok();
+    write!(&mut stdout, "\n{}: {}/{} passed ({:.1}%)\n", 
+           file_summary.file_path.file_name()
+               .and_then(|n| n.to_str())
+               .unwrap_or("unknown"),
+           summary.passed, 
+           summary.total_tests(), 
+           success_rate).ok();
+    stdout.reset().ok();
+}
+
+/// Print overall test summary with error categorization
+fn print_overall_summary(summary: &TestSummary, error_categories: &HashMap<String, usize>) {
+    use std::io::Write;
+    let mut stdout = StandardStream::stdout(ColorChoice::Auto);
+    
+    let success_rate = summary.success_rate();
+    let color = if success_rate >= 80.0 {
+        Color::Green
+    } else if success_rate >= 50.0 {
+        Color::Yellow
+    } else {
+        Color::Red
+    };
+    
+    println!("\n{}", "=".repeat(50));
+    stdout.set_color(ColorSpec::new().set_fg(Some(color)).set_bold(true)).ok();
+    write!(&mut stdout, "Overall Test Summary: {}/{} passed ({:.1}%)", 
+           summary.passed, summary.total_tests(), success_rate).ok();
+    stdout.reset().ok();
+    println!("\n{}", "=".repeat(50));
+    
+    if !error_categories.is_empty() {
+        println!("\nError Categories:");
+        for (category, count) in error_categories {
+            println!("  {}: {}", category, count);
+        }
+    }
 }
 
 /// The main entry point for the CLI.
