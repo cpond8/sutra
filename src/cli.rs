@@ -19,7 +19,7 @@ use crate::{
     discovery::TestDiscoverer,
     errors::{self, print_error, ErrorKind, ErrorReporting, SourceContext, SutraError},
     evaluate,
-    macros::{expand_macros, parse_macro_definition, MacroDefinition, MacroEnvironment},
+    macros::{expand_macros, parse_macro_definition, MacroDefinition, MacroSystem},
     semantic,
     syntax::parser,
     test::runner::TestRunner,
@@ -360,7 +360,7 @@ pub struct ExecutionPipeline {
     /// Macro environment with canonical macros pre-loaded.
     pub world: crate::prelude::CanonicalWorld,
     /// Macro environment with canonical macros pre-loaded.
-    pub macro_env: MacroEnvironment,
+    pub macro_env: MacroSystem,
     /// Maximum recursion depth for evaluation
     pub max_depth: usize,
     /// Whether to validate expanded AST before evaluation
@@ -374,7 +374,7 @@ impl Default for ExecutionPipeline {
             macro_env: build_canonical_macro_env().unwrap_or_else(|e| {
                 eprintln!("Warning: Failed to load standard macros: {}", e);
                 // Create a minimal macro environment with only core macros
-                MacroEnvironment::new(Arc::new(NamedSource::new("fallback", String::new())))
+                MacroSystem::new(Arc::new(NamedSource::new("fallback", String::new())))
             }),
             max_depth: 100,
             validate: false, // Keep validation disabled for now
@@ -458,7 +458,7 @@ impl ExecutionPipeline {
     // ============================================================================
 
     /// Gets the macro registry (pure access, no I/O)
-    pub fn get_macro_registry() -> MacroEnvironment {
+    pub fn get_macro_registry() -> MacroSystem {
         build_canonical_macro_env().expect("Standard macro env should build")
     }
 
@@ -476,10 +476,7 @@ impl ExecutionPipeline {
     /// Lists all available macros (pure access, no I/O)
     pub fn list_macros() -> Vec<String> {
         let macro_registry = Self::get_macro_registry();
-        let mut items = Vec::new();
-        items.extend(macro_registry.core_macros.keys().cloned());
-        items.extend(macro_registry.user_macros.keys().cloned());
-        items
+        macro_registry.macro_names()
     }
 
     // ============================================================================
