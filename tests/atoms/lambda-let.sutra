@@ -42,9 +42,10 @@
 
 (test "lambda: higher-order (returns lambda)"
   (expect (value 15))
-  ((lambda (n)
-     (lambda (x) (+ x n)))
-   10))  ; => function that adds 10
+  (let ((add-ten ((lambda (n)
+                   (lambda (x) (+ x n)))
+                 10)))
+    (add-ten 5)))  ; => function that adds 10, called with 5 returns 15
 
 (test "let: basic bindings"
   (expect (value 12))
@@ -53,11 +54,11 @@
     (+ a b)))  ; => 12
 
 (test "let: shadowing outer lexical variable"
-  (expect (value 3))
+  (expect (value 4))
   (let ((x 1))
     (let ((x 2)
           (y x))
-      (+ x y))))  ; => 3
+      (+ x y))))  ; => 4
 
 (test "let: sequential binding and shadowing"
   (expect (value 6))

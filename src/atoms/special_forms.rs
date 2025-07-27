@@ -21,7 +21,6 @@ use std::rc::Rc;
 
 use crate::{
     errors::{to_source_span, ErrorKind, ErrorReporting},
-    prelude::*,
     runtime::{
         evaluate_ast_node, ConsCell, EvaluationContext, Lambda, NativeFn, SpannedResult,
         SpannedValue, Value,
@@ -89,44 +88,176 @@ fn find_and_capture_free_variables(
 
 /// Implements the (define ...) special form for global bindings.
 pub const ATOM_DEFINE: NativeFn = |args, context, call_span| {
-    // 1. Validate arity: (define <name> <value>)
-    if args.len() != 2 {
-        return Err(context.arity_mismatch("2", args.len(), to_source_span(*call_span)));
+    if args.len() < 2 {
+        return Err(context.arity_mismatch("at least 2", args.len(), to_source_span(*call_span)));
     }
 
     let name_expr = &args[0];
-    let value_expr = &args[1];
 
-    // 2. Handle variable definition: (define my-var 100)
+    // Handle variable definition: (define my-var 100)
     if let Expr::Symbol(name, _) = &*name_expr.value {
-        // Evaluate the value expression in the current context.
-        let spanned_value = evaluate_ast_node(value_expr, context)?;
-
-        // Patch: Set in lexical frame if in local scope, else global world state
-        if context.env.len() > 1 {
-            context.set_var(name, spanned_value.value.clone());
-        } else {
-            let path = Path(vec![name.clone()]);
-            context
-                .world
-                .borrow_mut()
-                .set(&path, spanned_value.value.clone());
+        if args.len() != 2 {
+            return Err(context.arity_mismatch(
+                "2 for variable definition",
+                args.len(),
+                to_source_span(*call_span),
+            ));
         }
+        // Evaluate the value expression in the current context.
+        let spanned_value = evaluate_ast_node(&args[1], context)?;
+
+        // Set the variable in the current lexical scope
+        context.set_var(name, spanned_value.value.clone());
 
         return Ok(spanned_value);
     }
 
-    // 3. Handle function definition: (define (my-func x) (+ x 1))
-    if let Expr::List(items, list_span) = &*name_expr.value {
-        return handle_function_definition_list(items, list_span, value_expr, context, call_span);
+    // Handle function definition: (define (my-func x) body1 body2 ...)
+    if let Expr::List(items, _) = &*name_expr.value {
+        if items.is_empty() {
+            return Err(context.report(
+                ErrorKind::InvalidOperation {
+                    operation: "define".to_string(),
+                    operand_type: "function definition requires a name".to_string(),
+                },
+                to_source_span(*call_span),
+            ));
+        }
+
+        // Extract function name
+        let function_name = match &*items[0].value {
+            Expr::Symbol(s, _) => s.clone(),
+            _ => {
+                return Err(context.report(
+                    ErrorKind::InvalidOperation {
+                        operation: "define".to_string(),
+                        operand_type: "function name must be a symbol".to_string(),
+                    },
+                    context.span_for_node(&items[0]),
+                ));
+            }
+        };
+
+        // Create parameter list from remaining items
+        let param_names: Result<Vec<String>, _> = items[1..]
+            .iter()
+            .map(|param_node| match &*param_node.value {
+                Expr::Symbol(s, _) => Ok(s.clone()),
+                _ => Err(context.report(
+                    ErrorKind::TypeMismatch {
+                        expected: "symbol".to_string(),
+                        actual: "non-symbol".to_string(),
+                    },
+                    context.span_for_node(param_node),
+                )),
+            })
+            .collect();
+
+        let param_names = param_names?;
+
+        let param_list = ParamList {
+            required: param_names,
+            rest: None, // TODO: Handle variadic params if needed
+            span: *call_span,
+        };
+
+        // Create lambda body (handle multiple expressions like ATOM_LAMBDA does)
+        let body = if args.len() == 2 {
+            Box::new(args[1].clone())
+        } else {
+            // Multiple body expressions - wrap in do
+            let do_expr = Expr::List(
+                std::iter::once(AstNode {
+                    value: std::sync::Arc::new(Expr::Symbol("do".to_string(), *call_span)),
+                    span: *call_span,
+                })
+                .chain(args[1..].iter().cloned())
+                .collect(),
+                *call_span,
+            );
+            Box::new(AstNode {
+                value: std::sync::Arc::new(do_expr),
+                span: *call_span,
+            })
+        };
+
+        let captured_env = find_and_capture_free_variables(&body, &param_list, context);
+
+        let lambda = Value::Lambda(Rc::new(Lambda {
+            params: param_list,
+            body,
+            captured_env,
+        }));
+
+        // Set the function in the current lexical scope
+        context.set_var(&function_name, lambda.clone());
+
+        return Ok(SpannedValue {
+            value: lambda,
+            span: *call_span,
+        });
     }
 
-    // 4. Handle function definition with ParamList: (define (ParamList { required: ["my-func", "x"], ... }) (+ x 1))
+    // Handle function definition with ParamList: (define (ParamList { required: ["my-func", "x"], ... }) body1 body2 ...)
     if let Expr::ParamList(param_list) = &*name_expr.value {
-        return handle_function_definition_paramlist(param_list, value_expr, context, call_span);
+        if param_list.required.is_empty() {
+            return Err(context.report(
+                ErrorKind::InvalidOperation {
+                    operation: "define".to_string(),
+                    operand_type: "function definition requires a name".to_string(),
+                },
+                to_source_span(param_list.span),
+            ));
+        }
+
+        // The first parameter is the function name
+        let function_name = param_list.required[0].clone();
+
+        // The rest are the actual parameters
+        let function_params = ParamList {
+            required: param_list.required[1..].to_vec(),
+            rest: param_list.rest.clone(),
+            span: param_list.span,
+        };
+
+        // Create lambda body (handle multiple expressions like ATOM_LAMBDA does)
+        let body = if args.len() == 2 {
+            Box::new(args[1].clone())
+        } else {
+            // Multiple body expressions - wrap in do
+            let do_expr = Expr::List(
+                std::iter::once(AstNode {
+                    value: std::sync::Arc::new(Expr::Symbol("do".to_string(), *call_span)),
+                    span: *call_span,
+                })
+                .chain(args[1..].iter().cloned())
+                .collect(),
+                *call_span,
+            );
+            Box::new(AstNode {
+                value: std::sync::Arc::new(do_expr),
+                span: *call_span,
+            })
+        };
+
+        let captured_env = find_and_capture_free_variables(&body, &function_params, context);
+
+        let lambda = Value::Lambda(Rc::new(Lambda {
+            params: function_params,
+            body,
+            captured_env,
+        }));
+
+        // Set the function in the current lexical scope
+        context.set_var(&function_name, lambda.clone());
+
+        return Ok(SpannedValue {
+            value: lambda,
+            span: *call_span,
+        });
     }
 
-    // 5. If the first argument is not a symbol, list, or param list, it's an error.
+    // 5. If the first argument is not a symbol or list, it's an error.
     Err(context.report(
         ErrorKind::InvalidOperation {
             operation: "define".to_string(),
@@ -135,148 +266,6 @@ pub const ATOM_DEFINE: NativeFn = |args, context, call_span| {
         context.span_for_node(name_expr),
     ))
 };
-
-/// Handle function definition when the first argument is a List (legacy format)
-fn handle_function_definition_list(
-    items: &[AstNode],
-    list_span: &Span,
-    value_expr: &AstNode,
-    context: &mut EvaluationContext,
-    call_span: &Span,
-) -> SpannedResult {
-    if items.is_empty() {
-        return Err(context.report(
-            ErrorKind::InvalidOperation {
-                operation: "define".to_string(),
-                operand_type: "function definition requires a name".to_string(),
-            },
-            to_source_span(*call_span),
-        ));
-    }
-
-    // The first item is the function name.
-    let function_name = match &*items[0].value {
-        Expr::Symbol(s, _) => s.clone(),
-        _ => {
-            return Err(context.report(
-                ErrorKind::InvalidOperation {
-                    operation: "define".to_string(),
-                    operand_type: "function name must be a symbol".to_string(),
-                },
-                context.span_for_node(&items[0]),
-            ));
-        }
-    };
-
-    // The rest of the items are the parameters.
-    let params_nodes = &items[1..];
-    let mut required = vec![];
-    let mut rest = None;
-
-    for param_node in params_nodes {
-        match &*param_node.value {
-            Expr::Symbol(s, _) => required.push(s.clone()),
-            Expr::Spread(spread_expr) => {
-                if let Expr::Symbol(s, _) = &*spread_expr.value {
-                    rest = Some(s.clone());
-                    break; // No params after a variadic parameter.
-                } else {
-                    return Err(context.report(
-                        ErrorKind::TypeMismatch {
-                            expected: "symbol".to_string(),
-                            actual: "non-symbol".to_string(),
-                        },
-                        context.span_for_node(spread_expr),
-                    ));
-                }
-            }
-            _ => {
-                return Err(context.report(
-                    ErrorKind::TypeMismatch {
-                        expected: "symbol".to_string(),
-                        actual: "non-symbol".to_string(),
-                    },
-                    context.span_for_node(param_node),
-                ));
-            }
-        }
-    }
-
-    let params = ParamList {
-        required,
-        rest,
-        span: *list_span,
-    };
-
-    create_and_store_lambda(function_name, params, value_expr, context, call_span)
-}
-
-/// Handle function definition when the first argument is a ParamList (current parser format)
-fn handle_function_definition_paramlist(
-    param_list: &ParamList,
-    value_expr: &AstNode,
-    context: &mut EvaluationContext,
-    call_span: &Span,
-) -> SpannedResult {
-    if param_list.required.is_empty() {
-        return Err(context.report(
-            ErrorKind::InvalidOperation {
-                operation: "define".to_string(),
-                operand_type: "function definition requires a name".to_string(),
-            },
-            to_source_span(param_list.span),
-        ));
-    }
-
-    // The first parameter is the function name
-    let function_name = param_list.required[0].clone();
-
-    // The rest are the actual parameters
-    let function_params = ParamList {
-        required: param_list.required[1..].to_vec(),
-        rest: param_list.rest.clone(),
-        span: param_list.span,
-    };
-
-    create_and_store_lambda(
-        function_name,
-        function_params,
-        value_expr,
-        context,
-        call_span,
-    )
-}
-
-/// Create a lambda and store it in the appropriate scope
-fn create_and_store_lambda(
-    function_name: String,
-    params: ParamList,
-    value_expr: &AstNode,
-    context: &mut EvaluationContext,
-    call_span: &Span,
-) -> SpannedResult {
-    let body = Box::new(value_expr.clone());
-    let captured_env = find_and_capture_free_variables(&body, &params, context);
-
-    let lambda = Value::Lambda(Rc::new(Lambda {
-        params,
-        body,
-        captured_env,
-    }));
-
-    // Patch: Set in lexical frame if in local scope, else global world state
-    if context.env.len() > 1 {
-        context.set_var(&function_name, lambda.clone());
-    } else {
-        let path = Path(vec![function_name.clone()]);
-        context.world.borrow_mut().set(&path, lambda.clone());
-    }
-
-    Ok(SpannedValue {
-        value: lambda,
-        span: *call_span,
-    })
-}
 
 /// Implements the (if ...) special form with lazy evaluation.
 pub const ATOM_IF: NativeFn = |args, context, call_span| {
@@ -560,7 +549,12 @@ pub fn call_lambda(
 ) -> SpannedResult {
     let mut new_context = context.with_new_frame();
 
-    // Bind parameters in the new top frame
+    // First, restore the captured environment (free variables)
+    for (name, value) in &lambda.captured_env {
+        new_context.set_var(name, value.clone());
+    }
+
+    // Bind parameters in the new top frame (these may shadow captured variables)
     let fixed = lambda.params.required.len();
     let variadic = lambda.params.rest.is_some();
     if (!variadic && args.len() != fixed) || (variadic && args.len() < fixed) {

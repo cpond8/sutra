@@ -338,7 +338,7 @@ pub struct EvaluationContext {
     pub source: crate::errors::SourceContext,
     pub depth: usize,
     pub max_depth: usize,
-    pub env: std::collections::HashMap<String, Value>, // Single environment instead of stack
+    pub env: Vec<std::collections::HashMap<String, Value>>, // Stack of lexical scopes
 }
 
 impl EvaluationContext {
@@ -348,8 +348,8 @@ impl EvaluationContext {
         output: crate::atoms::SharedOutput,
         source: crate::errors::SourceContext,
     ) -> Self {
-        let mut env = std::collections::HashMap::new();
-        env.insert("nil".to_string(), Value::Nil);
+        let mut global_env = std::collections::HashMap::new();
+        global_env.insert("nil".to_string(), Value::Nil);
 
         Self {
             world,
@@ -357,7 +357,7 @@ impl EvaluationContext {
             source,
             depth: 0,
             max_depth: 1000,
-            env,
+            env: vec![global_env],
         }
     }
 
@@ -373,28 +373,37 @@ impl EvaluationContext {
         ctx
     }
 
-    /// Set a variable in the environment
+    /// Set a variable in the current lexical scope
     pub fn set_var(&mut self, name: &str, value: Value) {
-        self.env.insert(name.to_string(), value);
+        if let Some(current_scope) = self.env.last_mut() {
+            current_scope.insert(name.to_string(), value);
+        }
     }
 
-    /// Get a variable from the environment
+    /// Get a variable from the lexical scope chain (search from innermost to outermost)
     pub fn get_var(&self, name: &str) -> Option<&Value> {
-        self.env.get(name)
+        // Search from innermost scope to outermost
+        for scope in self.env.iter().rev() {
+            if let Some(value) = scope.get(name) {
+                return Some(value);
+            }
+        }
+        None
     }
 
     /// Create a new lexical frame for let/lambda
     pub fn with_new_frame(&self) -> Self {
-        let mut new = Self {
+        let mut new_env = self.env.clone();
+        new_env.push(std::collections::HashMap::new()); // Add new lexical scope
+
+        Self {
             world: std::rc::Rc::clone(&self.world),
             output: self.output.clone(),
             source: self.source.clone(),
             depth: self.depth,
             max_depth: self.max_depth,
-            env: self.env.clone(),
-        };
-        new.env.insert("nil".to_string(), Value::Nil);
-        new
+            env: new_env,
+        }
     }
 
     /// Extract span information for error reporting

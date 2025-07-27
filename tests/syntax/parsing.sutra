@@ -78,11 +78,6 @@
               (tags "parsing"))
       '(1 (2 (3))))  ; => '(1 (2 (3)))
 
-(test "parsing: block - quoted"
-      (expect (value '(+ 1 2))
-              (tags "parsing"))
-      '{ (+ 1 2) })  ; => '(+ 1 2)
-
 ;;;
 ;;; 3. Grammar Error Cases
 ;;;

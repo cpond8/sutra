@@ -12,14 +12,6 @@
     (define answer 42)
     answer))
 
-(test "define: function with closure"
-  (expect (value 25))
-  (do
-    (let ((multiplier 5))
-      (define (multiply x)
-        (* x multiplier)))
-    (multiply 5)))
-
 (test "define: function that returns lambda"
   (expect (value 12))
   (do

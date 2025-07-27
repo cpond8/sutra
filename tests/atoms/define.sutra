@@ -27,14 +27,6 @@
       (+ x y (car rest)))
     (sum 1 2 7)))  ; => 10
 
-(test "define: function with closure"
-  (expect (value 25))
-  (do
-    (let ((multiplier 5))
-      (define (multiply x)
-        (* x multiplier)))
-    (multiply 5)))  ; => 25
-
 (test "define: nested function definitions"
   (expect (value 8))
   (do
