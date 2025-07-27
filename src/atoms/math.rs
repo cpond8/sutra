@@ -2,9 +2,8 @@
 // All atoms in this module are pure functions that do not mutate world state.
 
 use crate::{
-    runtime::{NativeFn, SpannedValue, Value},
-    engine::evaluate_ast_node,
     errors::{to_source_span, ErrorReporting},
+    runtime::{evaluate_ast_node, NativeFn, SpannedValue, Value},
 };
 
 // ============================================================================
@@ -34,7 +33,11 @@ pub const ATOM_ADD: NativeFn = |args, context, call_span| {
         let n = match spanned_arg.value {
             Value::Number(n) => n,
             _ => {
-                return Err(context.type_mismatch("Number", spanned_arg.value.type_name(), to_source_span(spanned_arg.span)));
+                return Err(context.type_mismatch(
+                    "Number",
+                    spanned_arg.value.type_name(),
+                    to_source_span(spanned_arg.span),
+                ));
             }
         };
         sum += n;
@@ -71,7 +74,11 @@ pub const ATOM_SUB: NativeFn = |args, context, call_span| {
     let first = match evaluated_args[0].value {
         Value::Number(n) => n,
         _ => {
-            return Err(context.type_mismatch("Number", evaluated_args[0].value.type_name(), to_source_span(evaluated_args[0].span)));
+            return Err(context.type_mismatch(
+                "Number",
+                evaluated_args[0].value.type_name(),
+                to_source_span(evaluated_args[0].span),
+            ));
         }
     };
 
@@ -87,7 +94,11 @@ pub const ATOM_SUB: NativeFn = |args, context, call_span| {
         let n = match spanned_arg.value {
             Value::Number(n) => n,
             _ => {
-                return Err(context.type_mismatch("Number", spanned_arg.value.type_name(), to_source_span(spanned_arg.span)));
+                return Err(context.type_mismatch(
+                    "Number",
+                    spanned_arg.value.type_name(),
+                    to_source_span(spanned_arg.span),
+                ));
             }
         };
         result -= n;
@@ -121,7 +132,11 @@ pub const ATOM_MUL: NativeFn = |args, context, call_span| {
         let n = match spanned_arg.value {
             Value::Number(n) => n,
             _ => {
-                return Err(context.type_mismatch("Number", spanned_arg.value.type_name(), to_source_span(spanned_arg.span)));
+                return Err(context.type_mismatch(
+                    "Number",
+                    spanned_arg.value.type_name(),
+                    to_source_span(spanned_arg.span),
+                ));
             }
         };
         product *= n;
@@ -159,7 +174,13 @@ pub const ATOM_DIV: NativeFn = |args, context, call_span| {
     let first_span = evaluated_args[0].span;
     let first = match evaluated_args[0].value {
         Value::Number(n) => n,
-        _ => return Err(context.type_mismatch("Number", evaluated_args[0].value.type_name(), to_source_span(first_span))),
+        _ => {
+            return Err(context.type_mismatch(
+                "Number",
+                evaluated_args[0].value.type_name(),
+                to_source_span(first_span),
+            ))
+        }
     };
 
     if args.len() == 1 {
@@ -177,11 +198,19 @@ pub const ATOM_DIV: NativeFn = |args, context, call_span| {
         let n = match spanned_arg.value {
             Value::Number(n) => n,
             _ => {
-                return Err(context.type_mismatch("Number", spanned_arg.value.type_name(), to_source_span(spanned_arg.span)));
+                return Err(context.type_mismatch(
+                    "Number",
+                    spanned_arg.value.type_name(),
+                    to_source_span(spanned_arg.span),
+                ));
             }
         };
         if n == 0.0 {
-             return Err(context.invalid_operation("division", "zero", to_source_span(spanned_arg.span)));
+            return Err(context.invalid_operation(
+                "division",
+                "zero",
+                to_source_span(spanned_arg.span),
+            ));
         }
         result /= n;
     }
@@ -214,11 +243,23 @@ pub const ATOM_MOD: NativeFn = |args, context, call_span| {
 
     let a = match eval_args[0].value {
         Value::Number(n) => n,
-        _ => return Err(context.type_mismatch("Number", eval_args[0].value.type_name(), to_source_span(eval_args[0].span)))
+        _ => {
+            return Err(context.type_mismatch(
+                "Number",
+                eval_args[0].value.type_name(),
+                to_source_span(eval_args[0].span),
+            ))
+        }
     };
     let b = match eval_args[1].value {
         Value::Number(n) => n,
-        _ => return Err(context.type_mismatch("Number", eval_args[1].value.type_name(), to_source_span(eval_args[1].span)))
+        _ => {
+            return Err(context.type_mismatch(
+                "Number",
+                eval_args[1].value.type_name(),
+                to_source_span(eval_args[1].span),
+            ))
+        }
     };
 
     if b == 0.0 {
@@ -252,7 +293,11 @@ pub const ATOM_ABS: NativeFn = |args, context, call_span| {
     let n = match spanned_arg.value {
         Value::Number(n) => n,
         _ => {
-            return Err(context.type_mismatch("Number", spanned_arg.value.type_name(), to_source_span(spanned_arg.span)));
+            return Err(context.type_mismatch(
+                "Number",
+                spanned_arg.value.type_name(),
+                to_source_span(spanned_arg.span),
+            ));
         }
     };
     Ok(SpannedValue {
@@ -272,7 +317,11 @@ pub const ATOM_ABS: NativeFn = |args, context, call_span| {
 ///   (min 3 1 4) ; => 1
 pub const ATOM_MIN: NativeFn = |args, context, call_span| {
     if args.is_empty() {
-        return Err(context.arity_mismatch("at least 1 for 'min'", args.len(), to_source_span(*call_span)));
+        return Err(context.arity_mismatch(
+            "at least 1 for 'min'",
+            args.len(),
+            to_source_span(*call_span),
+        ));
     }
 
     let mut min = f64::INFINITY;
@@ -281,7 +330,11 @@ pub const ATOM_MIN: NativeFn = |args, context, call_span| {
         let n = match spanned_arg.value {
             Value::Number(n) => n,
             _ => {
-                return Err(context.type_mismatch("Number", spanned_arg.value.type_name(), to_source_span(spanned_arg.span)));
+                return Err(context.type_mismatch(
+                    "Number",
+                    spanned_arg.value.type_name(),
+                    to_source_span(spanned_arg.span),
+                ));
             }
         };
         min = min.min(n);
@@ -303,7 +356,11 @@ pub const ATOM_MIN: NativeFn = |args, context, call_span| {
 ///   (max 3 1 4) ; => 4
 pub const ATOM_MAX: NativeFn = |args, context, call_span| {
     if args.is_empty() {
-        return Err(context.arity_mismatch("at least 1 for 'max'", args.len(), to_source_span(*call_span)));
+        return Err(context.arity_mismatch(
+            "at least 1 for 'max'",
+            args.len(),
+            to_source_span(*call_span),
+        ));
     }
     let mut max = f64::NEG_INFINITY;
     for arg_node in args {
@@ -311,7 +368,11 @@ pub const ATOM_MAX: NativeFn = |args, context, call_span| {
         let n = match spanned_arg.value {
             Value::Number(n) => n,
             _ => {
-                return Err(context.type_mismatch("Number", spanned_arg.value.type_name(), to_source_span(spanned_arg.span)));
+                return Err(context.type_mismatch(
+                    "Number",
+                    spanned_arg.value.type_name(),
+                    to_source_span(spanned_arg.span),
+                ));
             }
         };
         max = max.max(n);

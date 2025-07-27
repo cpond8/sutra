@@ -14,11 +14,51 @@
 //! - **Minimal External Dependencies**: Simple implementations
 
 use crate::{
-    runtime::SpannedValue,
-    engine::evaluate_ast_node,
     errors::{to_source_span, ErrorReporting},
     prelude::*,
+    runtime::{evaluate_ast_node, SpannedValue},
 };
+
+// ============================================================================
+// OUTPUT TYPES - Generic output handling for CLI and testing
+// ============================================================================
+
+/// OutputBuffer: collects output into a String for testing or programmatic capture.
+pub struct EngineOutputBuffer {
+    pub buffer: String,
+}
+
+impl EngineOutputBuffer {
+    pub fn new() -> Self {
+        Self {
+            buffer: String::new(),
+        }
+    }
+    pub fn as_str(&self) -> &str {
+        &self.buffer
+    }
+}
+
+impl Default for EngineOutputBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl crate::atoms::OutputSink for EngineOutputBuffer {
+    fn emit(&mut self, text: &str, _span: Option<&Span>) {
+        self.buffer.push_str(text);
+    }
+}
+
+/// StdoutSink: writes output to stdout for CLI and default runner use.
+pub struct EngineStdoutSink;
+
+impl crate::atoms::OutputSink for EngineStdoutSink {
+    fn emit(&mut self, text: &str, _span: Option<&Span>) {
+        println!("{text}");
+    }
+}
 
 // ============================================================================
 // I/O OPERATIONS

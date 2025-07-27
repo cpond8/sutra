@@ -20,10 +20,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::{
-    runtime::{NativeFn, SpannedValue, Value, ConsCell},
-    syntax::AstNode,
-    engine::evaluate_ast_node,
     errors::{to_source_span, ErrorReporting},
+    runtime::{evaluate_ast_node, ConsCell, NativeFn, SpannedValue, Value},
+    syntax::AstNode,
 };
 
 // ============================================================================
@@ -398,19 +397,18 @@ pub const ATOM_MAP: NativeFn = |args, context, call_span| {
                         to_source_span(list_sv.span),
                     ));
                 }
-                new_context.set_var(
-                    &lambda.params.required[0],
-                    item.clone(),
-                );
+                new_context.set_var(&lambda.params.required[0], item.clone());
                 evaluate_ast_node(&lambda.body, &mut new_context)?
             }
             Value::NativeFn(native_fn) => {
                 let expr = crate::syntax::expr_from_value_with_span(item.clone(), list_sv.span)
-                    .map_err(|_| context.type_mismatch(
-                        "convertible to expression",
-                        item.type_name(),
-                        to_source_span(list_sv.span),
-                    ))?;
+                    .map_err(|_| {
+                        context.type_mismatch(
+                            "convertible to expression",
+                            item.type_name(),
+                            to_source_span(list_sv.span),
+                        )
+                    })?;
                 let ast_node = AstNode {
                     value: Arc::new(expr),
                     span: list_sv.span,

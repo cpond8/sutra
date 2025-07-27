@@ -14,11 +14,10 @@
 //! - **State Threading**: Proper world state propagation through execution
 
 use crate::{
-    runtime::{NativeFn, SpannedValue, Value},
-    syntax::Expr,
     atoms::special_forms::call_lambda,
-    engine::evaluate_ast_node,
     errors::{to_source_span, ErrorKind, ErrorReporting},
+    runtime::{evaluate_ast_node, NativeFn, SpannedValue, Value},
+    syntax::Expr,
 };
 
 // ============================================================================

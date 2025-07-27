@@ -48,7 +48,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::prelude::*;
 use crate::{
-    syntax::ParamList, errors::ErrorKind, errors::ErrorReporting, validation::ValidationContext,
+    errors::ErrorKind, errors::ErrorReporting, syntax::ParamList, validation::ValidationContext,
 };
 
 use crate::errors::{self, DiagnosticInfo, FileContext, SourceContext, SourceInfo, SutraError};
@@ -692,3 +692,174 @@ pub use loader::{
     check_arity, is_macro_definition, load_macros_from_file, parse_macro_definition,
     parse_macros_from_source,
 };
+
+// ============================================================================
+// MACRO PROCESSOR - Dedicated macro processing service
+// ============================================================================
+
+/// Dedicated macro processing service that encapsulates macro environment building and processing.
+pub struct MacroProcessor {
+    /// Whether to validate expanded AST before evaluation
+    pub validate: bool,
+    /// Maximum recursion depth for evaluation
+    pub max_depth: usize,
+    /// Test file name for error reporting
+    pub test_file: Option<String>,
+    /// Test name for error reporting
+    pub test_name: Option<String>,
+}
+
+impl Default for MacroProcessor {
+    fn default() -> Self {
+        Self {
+            validate: true,
+            max_depth: 100,
+            test_file: None,
+            test_name: None,
+        }
+    }
+}
+
+impl MacroProcessor {
+    /// Creates a new macro processor with specified settings
+    pub fn new(validate: bool, max_depth: usize) -> Self {
+        Self {
+            validate,
+            max_depth,
+            test_file: None,
+            test_name: None,
+        }
+    }
+
+    /// Creates a new macro processor with test context
+    pub fn with_test_context(mut self, test_file: String, test_name: String) -> Self {
+        self.test_file = Some(test_file);
+        self.test_name = Some(test_name);
+        self
+    }
+
+    /// Partition AST nodes, process macros, and expand - unified macro processing pipeline
+    pub fn partition_and_process_macros(
+        &self,
+        ast_nodes: Vec<AstNode>,
+    ) -> Result<(AstNode, MacroExpansionContext), SutraError> {
+        use crate::{atoms::build_canonical_macro_env, syntax::parser};
+
+        // Step 1: Partition AST nodes into macro definitions and user code
+        let (macro_defs, user_code) = self.partition_ast_nodes(ast_nodes);
+
+        // Step 2: Build canonical macro environment
+        let mut env = build_canonical_macro_env()?;
+
+        // Step 3: Process user-defined macros
+        self.process_macro_definitions(macro_defs, &mut env)?;
+
+        // Step 4: Wrap user code in a (do ...) block if needed
+        let program = parser::wrap_in_do(user_code);
+
+        // Step 5: Expand macros recursively
+        let expanded = expand_macros_recursively(program, &mut env)?;
+
+        Ok((expanded, env))
+    }
+
+    /// Process with existing macro environment, expanding macros and returning the result.
+    /// This is ideal for test runners or other contexts where a pre-configured macro
+    /// environment is available.
+    pub fn process_with_existing_macros(
+        &self,
+        ast_nodes: Vec<AstNode>,
+        env: &mut MacroExpansionContext,
+    ) -> Result<AstNode, SutraError> {
+        use crate::syntax::parser;
+
+        // Step 1: Partition AST nodes into macro definitions and user code
+        let (macro_defs, user_code) = self.partition_ast_nodes(ast_nodes);
+
+        // Step 2: Process user-defined macros into the existing environment
+        self.process_macro_definitions(macro_defs, env)?;
+
+        // Step 3: Wrap user code in a (do ...) block if needed
+        let program = parser::wrap_in_do(user_code);
+
+        // Step 4: Expand macros recursively
+        expand_macros_recursively(program, env)
+    }
+
+    /// Partitions AST nodes into macro definitions and user code
+    fn partition_ast_nodes(&self, ast_nodes: Vec<AstNode>) -> (Vec<AstNode>, Vec<AstNode>) {
+        // Note: define forms are special forms that should be evaluated, not treated as macros
+        ast_nodes.into_iter().partition(|_expr| false) // Don't partition define forms as macros
+    }
+
+    /// Expand macros with existing environment (for single AST nodes)
+    pub fn expand_with_macros(
+        &self,
+        ast: AstNode,
+        env: &mut MacroExpansionContext,
+    ) -> Result<AstNode, SutraError> {
+        expand_macros_recursively(ast, env)
+    }
+
+    /// Processes macro definitions and adds them to the environment
+    pub fn process_macro_definitions(
+        &self,
+        macro_defs: Vec<AstNode>,
+        env: &mut MacroExpansionContext,
+    ) -> Result<(), SutraError> {
+        let ctx = MacroValidationContext::for_user_macros();
+        let mut macros = Vec::new();
+
+        for macro_expr in macro_defs {
+            let (name, template) = parse_macro_definition(&macro_expr)?;
+            macros.push((name, template));
+        }
+
+        ctx.validate_and_insert_many(macros, &mut env.user_macros)
+    }
+
+    /// Combines core and user macros into a single registry for validation
+    pub fn combine_macro_registries(
+        &self,
+        env: &MacroExpansionContext,
+    ) -> HashMap<String, MacroDefinition> {
+        let mut combined = env.core_macros.clone();
+        combined.extend(env.user_macros.clone());
+        combined
+    }
+
+    /// Validates an expanded AST if validation is enabled
+    pub fn validate_expanded_ast(
+        &self,
+        expanded: &AstNode,
+        env: &MacroExpansionContext,
+        world: &crate::atoms::World,
+        source_context: &crate::errors::SourceContext,
+    ) -> Result<(), SutraError> {
+        use crate::validation::semantic;
+
+        // Step 1: Check if validation is enabled
+        if !self.validate {
+            return Ok(());
+        }
+
+        // Step 2: Build macro registry for validation
+        let combined_macros = self.combine_macro_registries(env);
+        let macro_registry = MacroRegistry {
+            macros: combined_macros,
+        };
+
+        // Step 3: Perform semantic validation
+        let validation_errors =
+            semantic::validate_ast_semantics(expanded, &macro_registry, world, source_context);
+
+        // Step 4: Handle validation results
+        if !validation_errors.is_empty() {
+            // Return the first validation error
+            return Err(validation_errors.into_iter().next().unwrap());
+        }
+
+        // Step 5: Validation successful
+        Ok(())
+    }
+}

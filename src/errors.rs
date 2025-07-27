@@ -525,3 +525,17 @@ impl ErrorReporting for ValidationContext {
         }
     }
 }
+
+// ============================================================================
+// ERROR FORMATTING UTILITIES
+// ============================================================================
+
+/// Prints a SutraError with full miette diagnostics
+/// 
+/// This provides rich error formatting with source spans, suggestions, and context.
+/// Use this for user-facing error display in CLI and REPL contexts.
+pub fn print_error(error: SutraError) {
+    use miette::Report;
+    let report = Report::new(error);
+    eprintln!("{report:?}");
+}

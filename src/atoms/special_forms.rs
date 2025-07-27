@@ -2,11 +2,13 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::{
-    runtime::{ConsCell, Lambda, NativeFn, SpannedResult, SpannedValue, Value},
-    syntax::{AstNode, Expr, ParamList, Span},
-    engine::{evaluate_ast_node, EvaluationContext},
     errors::{to_source_span, ErrorKind, ErrorReporting},
     prelude::*,
+    runtime::{
+        evaluate_ast_node, ConsCell, EvaluationContext, Lambda, NativeFn, SpannedResult,
+        SpannedValue, Value,
+    },
+    syntax::{AstNode, Expr, ParamList, Span},
 };
 
 fn find_and_capture_free_variables(
@@ -218,7 +220,13 @@ fn handle_function_definition_paramlist(
         span: param_list.span,
     };
 
-    create_and_store_lambda(function_name, function_params, value_expr, context, call_span)
+    create_and_store_lambda(
+        function_name,
+        function_params,
+        value_expr,
+        context,
+        call_span,
+    )
 }
 
 /// Create a lambda and store it in the appropriate scope
@@ -372,9 +380,7 @@ pub const ATOM_OR: NativeFn = |args, context, call_span| {
 /// Implements the (lambda ...) special form.
 pub const ATOM_LAMBDA: NativeFn = |args, context, call_span| {
     if args.len() < 2 {
-        return Err(
-            context.arity_mismatch("at least 2", args.len(), to_source_span(*call_span))
-        );
+        return Err(context.arity_mismatch("at least 2", args.len(), to_source_span(*call_span)));
     }
     // Parse parameter list
     let param_list = match &*args[0].value {
@@ -453,9 +459,7 @@ pub const ATOM_LAMBDA: NativeFn = |args, context, call_span| {
 /// Implements the (let ...) special form.
 pub const ATOM_LET: NativeFn = |args, context, call_span| {
     if args.len() < 2 {
-        return Err(
-            context.arity_mismatch("at least 2", args.len(), to_source_span(*call_span))
-        );
+        return Err(context.arity_mismatch("at least 2", args.len(), to_source_span(*call_span)));
     }
     // Parse bindings
     let bindings = match &*args[0].value {

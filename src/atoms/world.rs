@@ -14,10 +14,9 @@
 //! - **Safe Defaults**: Missing values return `Value::Nil` rather than errors
 
 use crate::{
-    runtime::{NativeFn, SpannedValue, Value},
-    engine::evaluate_ast_node,
     errors::{to_source_span, ErrorReporting},
     prelude::Path,
+    runtime::{evaluate_ast_node, NativeFn, SpannedValue, Value},
 };
 
 // ============================================================================
@@ -35,8 +34,11 @@ pub const ATOM_CORE_SET: NativeFn = |args, context, call_span| {
     let path = match &path_sv.value {
         Value::Path(p) => p,
         _ => {
-            return Err(context
-                .type_mismatch("Path", path_sv.value.type_name(), to_source_span(path_sv.span)))
+            return Err(context.type_mismatch(
+                "Path",
+                path_sv.value.type_name(),
+                to_source_span(path_sv.span),
+            ))
         }
     };
 
@@ -60,12 +62,20 @@ pub const ATOM_CORE_GET: NativeFn = |args, context, call_span| {
     let path = match &path_sv.value {
         Value::Path(p) => p,
         _ => {
-            return Err(context
-                .type_mismatch("Path", path_sv.value.type_name(), to_source_span(path_sv.span)))
+            return Err(context.type_mismatch(
+                "Path",
+                path_sv.value.type_name(),
+                to_source_span(path_sv.span),
+            ))
         }
     };
 
-    let value = context.world.borrow().get(&path).cloned().unwrap_or_default();
+    let value = context
+        .world
+        .borrow()
+        .get(&path)
+        .cloned()
+        .unwrap_or_default();
 
     Ok(SpannedValue {
         value,
@@ -84,8 +94,11 @@ pub const ATOM_CORE_DEL: NativeFn = |args, context, call_span| {
     let path = match &path_sv.value {
         Value::Path(p) => p,
         _ => {
-            return Err(context
-                .type_mismatch("Path", path_sv.value.type_name(), to_source_span(path_sv.span)))
+            return Err(context.type_mismatch(
+                "Path",
+                path_sv.value.type_name(),
+                to_source_span(path_sv.span),
+            ))
         }
     };
 
@@ -108,8 +121,11 @@ pub const ATOM_EXISTS: NativeFn = |args, context, call_span| {
     let path = match &path_sv.value {
         Value::Path(p) => p,
         _ => {
-            return Err(context
-                .type_mismatch("Path", path_sv.value.type_name(), to_source_span(path_sv.span)))
+            return Err(context.type_mismatch(
+                "Path",
+                path_sv.value.type_name(),
+                to_source_span(path_sv.span),
+            ))
         }
     };
 

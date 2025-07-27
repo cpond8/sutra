@@ -2,13 +2,15 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     atoms::{build_canonical_macro_env, build_canonical_world, SharedOutput},
+    cli::ExecutionPipeline,
     discovery::ASTDefinition,
-    engine::{evaluate, EngineOutputBuffer, ExecutionPipeline, MacroProcessor},
+    runtime::evaluate,
     errors::{to_source_span, ErrorCategory, ErrorKind, ErrorReporting, SourceContext, SutraError},
     prelude::*,
     runtime::ConsCell,
     syntax::parser,
     validation::ValidationContext,
+    EngineOutputBuffer, MacroProcessor,
 };
 
 /// Executes test code with proper macro expansion and special form preservation.
@@ -61,7 +63,7 @@ impl TestRunner {
         source_context: &SourceContext,
     ) -> Result<Value, SutraError> {
         let pipeline = ExecutionPipeline::default();
-        let output = SharedOutput::new(crate::engine::EngineOutputBuffer::new());
+        let output = SharedOutput::new(EngineOutputBuffer::new());
         pipeline.execute_nodes(nodes, output, source_context.clone())
     }
 

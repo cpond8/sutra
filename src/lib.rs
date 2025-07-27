@@ -3,26 +3,26 @@ pub use crate::{
     runtime::{ConsCell, Lambda, Value},
     atoms::{
         build_canonical_macro_env, build_canonical_world, Path, SharedOutput, StateContext, World,
+        EngineOutputBuffer, EngineStdoutSink,
     },
-    engine::{print_error, EngineOutputBuffer, EngineStdoutSink},
+    errors::{print_error},
     macros::{
         expand_macros_recursively, MacroDefinition, MacroExpansionContext, MacroRegistry,
-        MacroTemplate,
+        MacroTemplate, MacroProcessor,
     },
     test::{Expectation, TestResult, TestSummary},
 };
 
 // Module aliases for concise imports
-pub use engine::{evaluate, EvaluationContext};
+pub use runtime::{evaluate, EvaluationContext};
 pub use validation::{grammar, semantic};
 
 pub mod prelude {
     pub use crate::{
-        runtime::{NativeFn, Value},
+        runtime::{NativeFn, Value, EvaluationContext},
         syntax::{AstNode, Expr, Span, Spanned},
         atoms::SharedOutput,
         atoms::{Path, World},
-        engine::EvaluationContext,
         errors::{ErrorKind, SourceContext, SutraError},
         macros::MacroRegistry,
         MacroDefinition,
@@ -37,7 +37,6 @@ pub mod prelude {
 pub mod atoms;
 pub mod cli;
 pub mod discovery;
-pub mod engine;
 pub mod errors;
 pub mod macros;
 pub mod repl;

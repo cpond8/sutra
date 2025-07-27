@@ -22,12 +22,11 @@ use std::{
 use lazy_static::lazy_static;
 use miette::NamedSource;
 
+use crate::prelude::*;
 use crate::{
-    syntax::{AstNode, Expr, Span, Spanned},
-    engine::{evaluate_ast_node, EvaluationContext},
-    runtime::{SpannedResult, SpannedValue},
     errors::{to_source_span, ErrorReporting, SourceContext, SutraError},
-    prelude::*,
+    runtime::{evaluate_ast_node, EvaluationContext, SpannedResult, SpannedValue},
+    syntax::{AstNode, Expr, Span, Spanned},
 };
 
 use crate::register_lazy;
@@ -144,7 +143,10 @@ fn register_test_atom(
 
 fn value_atom(args: &[AstNode], _ctx: &mut EvaluationContext, call_span: &Span) -> SpannedResult {
     let Some(first) = args.first() else {
-        return Ok(SpannedValue { value: Value::Nil, span: *call_span });
+        return Ok(SpannedValue {
+            value: Value::Nil,
+            span: *call_span,
+        });
     };
     evaluate_ast_node(first, _ctx)
 }
@@ -163,18 +165,32 @@ fn tags_atom(args: &[AstNode], ctx: &mut EvaluationContext, call_span: &Span) ->
     evaluate_ast_node(&list_expr, ctx)
 }
 
-fn test_echo_atom(args: &[AstNode], ctx: &mut EvaluationContext, call_span: &Span) -> SpannedResult {
+fn test_echo_atom(
+    args: &[AstNode],
+    ctx: &mut EvaluationContext,
+    call_span: &Span,
+) -> SpannedResult {
     let Some(first) = args.first() else {
         let val = Value::String("".to_string());
-        ctx.output.borrow_mut().emit(&val.to_string(), Some(call_span));
-        return Ok(SpannedValue { value: val, span: *call_span });
+        ctx.output
+            .borrow_mut()
+            .emit(&val.to_string(), Some(call_span));
+        return Ok(SpannedValue {
+            value: val,
+            span: *call_span,
+        });
     };
     let val = match &*first.value {
         Expr::String(s, _) => Value::String(s.clone()),
         _ => Value::String(format!("{}", first.value)),
     };
-    ctx.output.borrow_mut().emit(&val.to_string(), Some(call_span));
-    Ok(SpannedValue { value: val, span: *call_span })
+    ctx.output
+        .borrow_mut()
+        .emit(&val.to_string(), Some(call_span));
+    Ok(SpannedValue {
+        value: val,
+        span: *call_span,
+    })
 }
 
 fn parse_borrow_stress_args(args: &[AstNode]) -> (i64, String) {
@@ -300,7 +316,11 @@ fn assert_atom(args: &[AstNode], ctx: &mut EvaluationContext, call_span: &Span) 
     })
 }
 
-fn assert_eq_atom(args: &[AstNode], ctx: &mut EvaluationContext, call_span: &Span) -> SpannedResult {
+fn assert_eq_atom(
+    args: &[AstNode],
+    ctx: &mut EvaluationContext,
+    call_span: &Span,
+) -> SpannedResult {
     if args.len() != 2 {
         return Err(ctx.arity_mismatch("2", args.len(), to_source_span(*call_span)));
     }

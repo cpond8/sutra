@@ -4,10 +4,7 @@
 
 use std::io::{self, Write};
 
-use crate::{
-    atoms::SharedOutput,
-    engine::{print_error, EngineStdoutSink, ExecutionPipeline},
-};
+use crate::{atoms::SharedOutput, cli::ExecutionPipeline, errors::print_error, EngineStdoutSink};
 
 /// REPL state that persists across evaluations
 pub struct ReplState {

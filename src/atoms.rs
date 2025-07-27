@@ -327,6 +327,9 @@ pub mod special_forms;
 pub mod string;
 pub mod world;
 
+// Re-export output types for external use
+pub use external::{EngineOutputBuffer, EngineStdoutSink};
+
 // Test atoms module - only available in debug/test builds
 #[cfg(any(test, feature = "test-atom", debug_assertions))]
 pub mod test;

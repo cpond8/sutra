@@ -8,10 +8,8 @@ use std::{collections::HashMap, fmt, rc::Rc};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    engine::EvaluationContext, AstNode, ParamList, Path, Span,
-};
 use crate::errors::SutraError;
+use crate::{AstNode, ParamList, Path, Span};
 
 /// Unified native function signature.
 ///
@@ -322,4 +320,320 @@ impl Iterator for ListIterImpl {
             _ => None,
         }
     }
+}
+
+// ============================================================================
+// EVALUATION CONTEXT - Simplified evaluation state
+// ============================================================================
+
+/// Simplified evaluation context with essential state only
+pub struct EvaluationContext {
+    pub world: crate::prelude::CanonicalWorld,
+    pub output: crate::atoms::SharedOutput,
+    pub source: crate::errors::SourceContext,
+    pub depth: usize,
+    pub max_depth: usize,
+    pub env: std::collections::HashMap<String, Value>, // Single environment instead of stack
+}
+
+impl EvaluationContext {
+    /// Create a new evaluation context
+    pub fn new(
+        world: crate::prelude::CanonicalWorld,
+        output: crate::atoms::SharedOutput,
+        source: crate::errors::SourceContext,
+    ) -> Self {
+        let mut env = std::collections::HashMap::new();
+        env.insert("nil".to_string(), Value::Nil);
+
+        Self {
+            world,
+            output,
+            source,
+            depth: 0,
+            max_depth: 1000,
+            env,
+        }
+    }
+
+    /// Create context with custom settings
+    pub fn with_settings(
+        world: crate::prelude::CanonicalWorld,
+        output: crate::atoms::SharedOutput,
+        source: crate::errors::SourceContext,
+        max_depth: usize,
+    ) -> Self {
+        let mut ctx = Self::new(world, output, source);
+        ctx.max_depth = max_depth;
+        ctx
+    }
+
+    /// Set a variable in the environment
+    pub fn set_var(&mut self, name: &str, value: Value) {
+        self.env.insert(name.to_string(), value);
+    }
+
+    /// Get a variable from the environment
+    pub fn get_var(&self, name: &str) -> Option<&Value> {
+        self.env.get(name)
+    }
+
+    /// Create a new lexical frame for let/lambda
+    pub fn with_new_frame(&self) -> Self {
+        let mut new = Self {
+            world: std::rc::Rc::clone(&self.world),
+            output: self.output.clone(),
+            source: self.source.clone(),
+            depth: self.depth,
+            max_depth: self.max_depth,
+            env: self.env.clone(),
+        };
+        new.env.insert("nil".to_string(), Value::Nil);
+        new
+    }
+
+    /// Extract span information for error reporting
+    pub fn span_for_node(&self, node: &AstNode) -> miette::SourceSpan {
+        crate::errors::to_source_span(node.span)
+    }
+}
+
+impl crate::errors::ErrorReporting for EvaluationContext {
+    fn report(
+        &self,
+        kind: crate::errors::ErrorKind,
+        span: miette::SourceSpan,
+    ) -> crate::errors::SutraError {
+        use crate::errors::{DiagnosticInfo, FileContext, SourceInfo, SutraError};
+
+        SutraError {
+            kind: kind.clone(),
+            source_info: SourceInfo {
+                source: self.source.to_named_source(),
+                primary_span: span,
+                file_context: FileContext::Runtime { test_info: None },
+            },
+            diagnostic_info: DiagnosticInfo {
+                help: None,
+                related_spans: Vec::new(),
+                error_code: format!("sutra::runtime::{}", kind.code_suffix()),
+                is_warning: false,
+            },
+        }
+    }
+}
+
+// ============================================================================
+// CORE EVALUATION FUNCTIONS
+// ============================================================================
+
+/// Core recursive evaluator
+pub fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext) -> SpannedResult {
+    use crate::{errors::ErrorReporting, Expr};
+
+    // Check recursion limit
+    if context.depth > context.max_depth {
+        return Err(context.report(
+            crate::errors::ErrorKind::RecursionLimit,
+            context.span_for_node(expr),
+        ));
+    }
+
+    // Evaluate based on expression type
+    match &*expr.value {
+        Expr::List(items, _) => evaluate_call(items, context),
+        Expr::Quote(inner, _) => Ok(SpannedValue {
+            value: Value::Quote(Box::new(ast_to_value(inner))),
+            span: expr.span,
+        }),
+        Expr::Symbol(name, _) => resolve_symbol(name, expr, context),
+        Expr::String(s, _) => Ok(SpannedValue {
+            value: Value::String(s.clone()),
+            span: expr.span,
+        }),
+        Expr::Number(n, _) => Ok(SpannedValue {
+            value: Value::Number(*n),
+            span: expr.span,
+        }),
+        Expr::Bool(b, _) => Ok(SpannedValue {
+            value: Value::Bool(*b),
+            span: expr.span,
+        }),
+        Expr::Path(p, _) => Ok(SpannedValue {
+            value: Value::Path(p.clone()),
+            span: expr.span,
+        }),
+        Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            let is_true = evaluate_condition_as_bool(condition, context)?;
+            if is_true {
+                evaluate_ast_node(then_branch, context)
+            } else {
+                evaluate_ast_node(else_branch, context)
+            }
+        }
+        _ => Err(context.report(
+            crate::errors::ErrorKind::InvalidOperation {
+                operation: "evaluate".to_string(),
+                operand_type: expr.value.type_name().to_string(),
+            },
+            context.span_for_node(expr),
+        )),
+    }
+}
+
+/// Evaluate function calls
+fn evaluate_call(items: &[AstNode], context: &mut EvaluationContext) -> SpannedResult {
+    use crate::{errors::ErrorReporting, Expr};
+
+    if items.is_empty() {
+        return Ok(SpannedValue {
+            value: Value::Nil,
+            span: items.first().map(|n| n.span).unwrap_or_default(),
+        });
+    }
+
+    let head = &items[0];
+    let tail = &items[1..];
+
+    // Resolve callable
+    let callable = if let Expr::Symbol(name, _) = &*head.value {
+        resolve_symbol(name, head, context)?.value
+    } else {
+        evaluate_ast_node(head, context)?.value
+    };
+
+    // Dispatch call
+    match callable {
+        Value::Lambda(lambda) => {
+            // Evaluate arguments for lambda calls
+            let args = evaluate_args(tail, context)?;
+            crate::atoms::special_forms::call_lambda(&lambda, &args, context, &head.span)
+        }
+        Value::NativeFn(func) => {
+            // Pass unevaluated arguments to native function
+            func(tail, context, &head.span)
+        }
+        _ => Err(context.report(
+            crate::errors::ErrorKind::TypeMismatch {
+                expected: "callable".to_string(),
+                actual: callable.type_name().to_string(),
+            },
+            context.span_for_node(head),
+        )),
+    }
+}
+
+/// Evaluate arguments for function calls
+fn evaluate_args(
+    args: &[AstNode],
+    context: &mut EvaluationContext,
+) -> Result<Vec<Value>, SutraError> {
+    let mut values = Vec::new();
+    for arg in args {
+        let result = evaluate_ast_node(arg, context)?;
+        values.push(result.value);
+    }
+    Ok(values)
+}
+
+/// Resolve symbol to value
+fn resolve_symbol(name: &str, node: &AstNode, context: &mut EvaluationContext) -> SpannedResult {
+    use crate::errors::ErrorReporting;
+
+    // Check local environment first
+    if let Some(value) = context.get_var(name) {
+        return Ok(SpannedValue {
+            value: value.clone(),
+            span: node.span,
+        });
+    }
+
+    // Check global world state
+    let world_path = crate::atoms::Path(vec![name.to_string()]);
+    if let Some(value) = context.world.borrow().state.get(&world_path) {
+        return Ok(SpannedValue {
+            value: value.clone(),
+            span: node.span,
+        });
+    }
+
+    // Undefined
+    Err(context.report(
+        crate::errors::ErrorKind::UndefinedSymbol {
+            symbol: name.to_string(),
+        },
+        context.span_for_node(node),
+    ))
+}
+
+/// Convert AST to quoted value
+fn ast_to_value(node: &AstNode) -> Value {
+    use crate::{syntax::ConsCell, Expr};
+
+    match &*node.value {
+        Expr::Symbol(s, _) => Value::Symbol(s.clone()),
+        Expr::Number(n, _) => Value::Number(*n),
+        Expr::Bool(b, _) => Value::Bool(*b),
+        Expr::String(s, _) => Value::String(s.clone()),
+        Expr::List(items, _) => {
+            let mut result = Value::Nil;
+            for item in items.iter().rev() {
+                let cell = ConsCell {
+                    car: ast_to_value(item),
+                    cdr: result,
+                };
+                result = Value::Cons(std::rc::Rc::new(cell));
+            }
+            result
+        }
+        Expr::Quote(inner, _) => Value::Quote(Box::new(ast_to_value(inner))),
+        Expr::Path(p, _) => Value::Path(p.clone()),
+        _ => Value::Nil,
+    }
+}
+
+/// Evaluate condition as boolean
+pub fn evaluate_condition_as_bool(
+    condition: &AstNode,
+    context: &mut EvaluationContext,
+) -> Result<bool, SutraError> {
+    let result = evaluate_ast_node(condition, context)?;
+    Ok(is_truthy(&result.value))
+}
+
+/// Check if value is truthy
+fn is_truthy(val: &Value) -> bool {
+    match val {
+        Value::Bool(false) => false,
+        Value::Nil => false,
+        Value::Number(n) => *n != 0.0,
+        Value::String(s) => !s.is_empty(),
+        Value::Map(m) => !m.is_empty(),
+        Value::Quote(inner) => is_truthy(inner),
+        _ => true,
+    }
+}
+
+// ============================================================================
+// PUBLIC EVALUATION API
+// ============================================================================
+
+/// Main evaluation entry point
+/// 
+/// This is the primary interface for evaluating AST nodes. It creates an evaluation
+/// context and delegates to the core evaluation logic.
+pub fn evaluate(
+    expr: &AstNode,
+    world: crate::prelude::CanonicalWorld,
+    output: crate::atoms::SharedOutput,
+    source: crate::errors::SourceContext,
+) -> Result<Value, crate::errors::SutraError> {
+    let mut context = EvaluationContext::new(world, output, source);
+    let result = evaluate_ast_node(expr, &mut context)?;
+    Ok(result.value)
 }
