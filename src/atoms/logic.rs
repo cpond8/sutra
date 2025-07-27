@@ -1,17 +1,19 @@
+//! Logic and comparison operations for the Sutra language.
 //!
-//! This module provides all logic and comparison atom operations for the Sutra engine.
-//! All atoms in this module are pure functions that do not mutate world state.
+//! This module provides boolean logic and value comparison operations.
+//! All operations are pure functions that return boolean results.
 //!
 //! ## Atoms Provided
 //!
-//! - **Comparison**: `eq?`, `gt?`, `lt?`, `gte?`, `lte?`
+//! - **Equality**: `eq?` (aliases: `=`, `is?`)
+//! - **Comparison**: `gt?` (`>`), `lt?` (`<`), `gte?` (`>=`), `lte?` (`<=`)
+//! - **Aliases**: `over?`, `under?`, `at-least?`, `at-most?`
 //! - **Logic**: `not`
 //!
-//! ## Design Principles
+//! ## Design Notes
 //!
-//! - **Pure Functions**: No side effects, no world state modification
-//! - **Boolean Results**: All operations return `Value::Bool`
-//! - **Numeric Comparison**: Comparison operations work with `Value::Number`
+//! Comparison operations work primarily with numeric values and return boolean results.
+//! Multiple aliases are provided for convenience and readability.
 
 use crate::{
     errors::{to_source_span, ErrorReporting},

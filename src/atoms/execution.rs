@@ -1,17 +1,17 @@
+//! Execution control atoms for the Sutra language.
 //!
-//! This module provides execution control atom operations for the Sutra engine.
-//! These atoms control program flow and higher-order function application.
+//! This module provides atoms for controlling program flow and higher-order
+//! function operations.
 //!
 //! ## Atoms Provided
 //!
 //! - **Control Flow**: `do`, `error`
-//! - **Higher-Order**: `apply`
+//! - **Higher-Order Functions**: `apply`, `for-each`
 //!
-//! ## Design Principles
+//! ## Design Notes
 //!
-//! - **Flow Control**: Sequential execution and error handling
-//! - **Meta-Programming**: Function application with argument flattening
-//! - **State Threading**: Proper world state propagation through execution
+//! These atoms control evaluation order and can manipulate the execution context.
+//! They properly thread world state through sequential operations.
 
 use crate::{
     atoms::special_forms::call_lambda,

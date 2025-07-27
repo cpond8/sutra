@@ -7,12 +7,12 @@
 ;;;
 
 (test "output: print - simple string"
-      (expect (output "hello\\n")
+      (expect (output "hello")
               (tags "output"))
       (print "hello"))  ; prints "hello" to stdout
 
 (test "output: print - with number"
-      (expect (output "123\\n")
+      (expect (output "123")
               (tags "output"))
       (print 123))  ; prints "123" to stdout
 

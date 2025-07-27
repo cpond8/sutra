@@ -25,11 +25,10 @@ use miette::NamedSource;
 use crate::prelude::*;
 use crate::{
     errors::{to_source_span, ErrorReporting, SourceContext, SutraError},
+    register_atom,
     runtime::{evaluate_ast_node, EvaluationContext, SpannedResult, SpannedValue},
     syntax::{AstNode, Expr, Span, Spanned},
 };
-
-use crate::register_lazy;
 
 /// Represents a single test case definition with source context for diagnostics.
 #[derive(Debug, Clone)]
@@ -288,13 +287,13 @@ fn test_borrow_stress_atom(
 }
 
 pub fn register_test_atoms(world: &mut World) {
-    register_lazy!(world, "test/echo", test_echo_atom);
-    register_lazy!(world, "test/borrow_stress", test_borrow_stress_atom);
-    register_lazy!(world, "register-test!", register_test_atom);
-    register_lazy!(world, "value", value_atom);
-    register_lazy!(world, "tags", tags_atom);
-    register_lazy!(world, "assert", assert_atom);
-    register_lazy!(world, "assert-eq", assert_eq_atom);
+    register_atom!(world, "test/echo", test_echo_atom);
+    register_atom!(world, "test/borrow_stress", test_borrow_stress_atom);
+    register_atom!(world, "register-test!", register_test_atom);
+    register_atom!(world, "value", value_atom);
+    register_atom!(world, "tags", tags_atom);
+    register_atom!(world, "assert", assert_atom);
+    register_atom!(world, "assert-eq", assert_eq_atom);
 }
 
 fn assert_atom(args: &[AstNode], ctx: &mut EvaluationContext, call_span: &Span) -> SpannedResult {

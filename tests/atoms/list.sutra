@@ -8,8 +8,8 @@
   (expect (value "a"))
   (car (list "a" "b")))
 
-(test "car errors on empty list"
-  (expect (error Runtime))
+(test "car returns nil on empty list"
+  (expect (value nil))
   (car (list)))
 
 (test "car errors on non-list argument"
@@ -25,11 +25,11 @@
   (cdr (list 1 2 3)))
 
 (test "cdr returns tail with one element"
-  (expect (value "b"))
+  (expect (value ("b")))
   (cdr (list "a" "b")))
 
-(test "cdr errors on empty list"
-  (expect (error Runtime))
+(test "cdr returns nil on empty list"
+  (expect (value nil))
   (cdr (list)))
 
 (test "cdr errors on non-list argument"

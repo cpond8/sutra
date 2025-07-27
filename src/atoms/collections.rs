@@ -1,20 +1,19 @@
+//! Collection operations for the Sutra language.
 //!
-//! This module provides all collection atom operations for the Sutra engine.
-//! Collections include lists, maps, and strings with both pure and stateful operations.
+//! This module provides atoms for working with lists, strings, and maps.
+//! Includes both pure operations and stateful world operations.
 //!
 //! ## Atoms Provided
 //!
-//! - **List Operations**: `list`, `len`, `has?`, `car`, `cdr`, `cons`
-//! - **Mutable List Operations**: `core/push!`, `core/pull!`
+//! - **List Operations**: `list`, `len`, `null?`, `has?`, `car`, `cdr`, `cons`, `append`
+//! - **List Mapping**: `map`
 //! - **String Operations**: `core/str+`
 //! - **Map Operations**: `core/map`
 //!
-//! ## Design Principles
+//! ## Design Notes
 //!
-//! - **Type Safety**: Clear error messages for type mismatches
-//! - **Immutable Operations**: Pure functions where possible
-//! - **Mutable Operations**: World-state operations for list manipulation
-//! - **Performance**: Minimal cloning, efficient string operations
+//! Most operations are pure functions, with some exceptions for world state
+//! operations prefixed with `core/`.
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -88,6 +87,31 @@ pub const ATOM_LEN: NativeFn = |args, context, call_span| {
     })
 };
 
+/// Returns true if a list is empty (nil).
+///
+/// Usage: (null? <list>)
+///   - <list>: List or Nil to check
+///
+///   Returns: Bool (true if empty/nil, false otherwise)
+///
+/// Example:
+///   (null? nil) ; => true
+///   (null? (list)) ; => true
+///   (null? (list 1 2)) ; => false
+pub const ATOM_NULL: NativeFn = |args, context, call_span| {
+    if args.len() != 1 {
+        return Err(context.arity_mismatch("1", args.len(), to_source_span(*call_span)));
+    }
+
+    let val_sv = evaluate_ast_node(&args[0], context)?;
+    let is_null = matches!(val_sv.value, Value::Nil);
+
+    Ok(SpannedValue {
+        value: Value::Bool(is_null),
+        span: *call_span,
+    })
+};
+
 /// Tests if a collection contains a value or key.
 ///
 /// Usage: (has? <collection> <value>)
@@ -139,10 +163,6 @@ pub const ATOM_HAS: NativeFn = |args, context, call_span| {
         span: *call_span,
     })
 };
-
-// `ATOM_CORE_PUSH` and `ATOM_CORE_PULL` have been removed as they are fundamentally
-// incompatible with the new immutable, `Rc`-based list implementation. A separate,
-// mutable list type may be introduced in the future if required.
 
 // ============================================================================
 // STRING OPERATIONS

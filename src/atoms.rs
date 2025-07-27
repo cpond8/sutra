@@ -1,37 +1,51 @@
 // # Sutra Atom System
 //
-// This module provides the atom system for the Sutra language engine.
-// Atoms are the primitive operations that form the foundation of all computation.
+// This module provides the core atom system for the Sutra language engine.
+// Atoms are built-in primitive functions that form the foundation of all computation
+// in the Sutra language.
 //
 // ## Module Structure
 //
-// - **`helpers`**: Shared infrastructure for all atoms
-// - **`math`**: Mathematical operations (`+`, `-`, `*`, `/`, etc.)
-// - **`logic`**: Logic and comparison operations (`eq?`, `not`, etc.)
-// - **`world`**: World state management (`core/set!`, `core/get`, etc.)
-// - **`collections`**: Collection operations (`list`, `len`, etc.)
-// - **`execution`**: Execution control (`do`, `error`, `apply`)
-// - **`external`**: External interface (`print`, `rand`)
+// The atom system is organized into domain-specific modules:
 //
-// ## Design Principles
+// - **`math`**: Arithmetic operations (`+`, `-`, `*`, `/`, `mod`, `abs`, `min`, `max`)
+// - **`logic`**: Logic and comparison operations (`eq?`, `gt?`, `lt?`, `not`, etc.)
+// - **`collections`**: List and collection operations (`list`, `len`, `null?`, `car`, `cdr`, etc.)
+// - **`world`**: World state management (`set!`, `get`, `del!`, `exists?`, etc.)
+// - **`execution`**: Control flow and execution (`do`, `error`, `apply`, `for-each`)
+// - **`external`**: External I/O operations (`print`, `println`, `output`, `rand`)
+// - **`string`**: String manipulation (`str`, `str+`)
+// - **`special_forms`**: Language special forms (`lambda`, `let`, `if`, `cond`, `and`, `or`, `define`)
 //
-// - **Minimal Coupling**: Each domain module depends only on `helpers`
-// - **Clear Responsibilities**: Each module has a single, well-defined purpose
+// ## Architecture
 //
-// ## Native Function Calling Conventions
+// ### Native Functions
+// All atoms are implemented as native Rust functions with the signature `NativeFn`:
+// ```rust
+// type NativeFn = fn(&[AstNode], &mut EvaluationContext, &Span) -> SpannedResult;
+// ```
 //
-// All built-in functions ("atoms") are first-class `Value` types, specifically
-// `Value::NativeEagerFn` and `Value::NativeLazyFn`. This design retains the dual
-// calling conventions critical for the language's semantics:
+// ### Registration System
+// Atoms are registered into the global environment using the `register_atom!` macro.
+// All atoms use the same unified `NativeFn` signature regardless of whether they
+// control their own argument evaluation (like special forms) or expect pre-evaluated
+// arguments (like arithmetic operations).
 //
-// 1.  **Eager Functions (`NativeEagerFn`)**: Arguments are evaluated *before* the
-//     function is called. The native Rust function receives a `&[Value]`. This is
-//     the standard convention for most operations (e.g., `+`, `eq?`).
+// ### Aliases
+// Many comparison and mathematical operations support multiple aliases for convenience:
+// - `eq?`, `=`, `is?` all refer to equality comparison
+// - `gt?`, `>`, `over?` all refer to greater-than comparison
+// - `lt?`, `<`, `under?` all refer to less-than comparison
+// - And so on for `>=`, `<=`, etc.
 //
-// 2.  **Lazy Functions (`NativeLazyFn`)**: Arguments are passed *unevaluated* as
-//     `&[AstNode]`. The function itself controls if and when to evaluate its
-//     arguments. This is essential for special forms that manage control flow
-//     (e.g., `if`, `lambda`, `let`).
+// ## World State Management
+//
+// The atom system includes a sophisticated world state management system that allows
+// atoms to read from and modify persistent state. The `World` struct contains:
+//
+// - **State**: A hierarchical key-value store accessible via dot-notation paths
+// - **PRNG**: A seedable random number generator for deterministic randomness
+// - **Macros**: A macro expansion system for code transformation
 
 use std::{cell::RefCell, collections::HashMap, fmt, fs, rc::Rc};
 
@@ -220,7 +234,7 @@ pub fn build_canonical_macro_env() -> Result<MacroSystem, SutraError> {
 }
 
 // ============================================================================
-// STATE CONTEXT IMPLEMENTATION
+// STATE AND OUTPUT INFRASTRUCTURE
 // ============================================================================
 
 impl StateContext for WorldState {
@@ -241,13 +255,6 @@ impl StateContext for WorldState {
     }
 }
 
-// ============================================================================
-// NEW ATOM ARCHITECTURE TYPES
-// ============================================================================
-//
-// All callable entities are now dispatched through `evaluate_list` in `eval.rs`,
-// which inspects the `Value` type to determine the correct calling convention.
-
 /// Minimal state interface for stateful atoms
 pub trait StateContext {
     fn get(&self, path: &Path) -> Option<&Value>;
@@ -256,17 +263,12 @@ pub trait StateContext {
     fn exists(&self, path: &Path) -> bool;
 }
 
-// The `Callable` trait has been removed. All callable entities (native functions,
-// lambdas) are resolved to a `Value` and then handled by `evaluate_list`, which
-// acts as the single dispatch point. This ensures each callable type receives
-// the correct arguments and evaluation semantics.
-
-// Output sink for `print`, etc., to make I/O testable and injectable.
+/// Output sink for `print` and similar I/O operations, enabling testable and injectable output.
 pub trait OutputSink {
     fn emit(&mut self, text: &str, span: Option<&Span>);
 }
 
-// A null output sink for testing or running without output.
+/// A null output sink for testing or running without output.
 pub struct NullSink;
 impl OutputSink for NullSink {
     fn emit(&mut self, _text: &str, _span: Option<&Span>) {}
@@ -317,27 +319,20 @@ pub mod test;
 pub use test::{TestDefinition, TEST_REGISTRY};
 
 // ============================================================================
-// UNIFIED REGISTRATION FUNCTION
+// ATOM REGISTRATION SYSTEM
 // ============================================================================
 
-/// Registers all standard native functions from all modules into the given `World`.
-/// This is the main entry point for populating the global environment.
-// Helper macro to reduce boilerplate in registration
+/// Helper macro to register atoms in the global environment.
+/// All atoms use the same `NativeFn` signature regardless of evaluation strategy.
 #[macro_export]
-macro_rules! register_eager {
-    ($world:expr, $name:expr, $func:expr) => {
-        $world.set(&Path(vec![$name.to_string()]), Value::NativeFn($func));
-    };
-}
-
-#[macro_export]
-macro_rules! register_lazy {
+macro_rules! register_atom {
     ($world:expr, $name:expr, $func:expr) => {
         $world.set(&Path(vec![$name.to_string()]), Value::NativeFn($func));
     };
 }
 
 /// Registers all standard atoms from all modules with the given world.
+/// This is the main entry point for populating the global environment.
 pub fn register_all_atoms(world: &mut World) {
     // Register atoms from each domain module
     register_math_atoms(world);
@@ -356,74 +351,86 @@ pub fn register_all_atoms(world: &mut World) {
 
 // Private registration functions for each module
 fn register_math_atoms(world: &mut World) {
-    register_eager!(world, "+", math::ATOM_ADD);
-    register_eager!(world, "-", math::ATOM_SUB);
-    register_eager!(world, "*", math::ATOM_MUL);
-    register_eager!(world, "/", math::ATOM_DIV);
-    register_eager!(world, "mod", math::ATOM_MOD);
-    register_eager!(world, "abs", math::ATOM_ABS);
-    register_eager!(world, "min", math::ATOM_MIN);
-    register_eager!(world, "max", math::ATOM_MAX);
+    register_atom!(world, "+", math::ATOM_ADD);
+    register_atom!(world, "-", math::ATOM_SUB);
+    register_atom!(world, "*", math::ATOM_MUL);
+    register_atom!(world, "/", math::ATOM_DIV);
+    register_atom!(world, "mod", math::ATOM_MOD);
+    register_atom!(world, "abs", math::ATOM_ABS);
+    register_atom!(world, "min", math::ATOM_MIN);
+    register_atom!(world, "max", math::ATOM_MAX);
 }
 
 fn register_logic_atoms(world: &mut World) {
-    register_eager!(world, "eq?", logic::ATOM_EQ);
-    register_eager!(world, "gt?", logic::ATOM_GT);
-    register_eager!(world, "lt?", logic::ATOM_LT);
-    register_eager!(world, "gte?", logic::ATOM_GTE);
-    register_eager!(world, "lte?", logic::ATOM_LTE);
-    register_eager!(world, "not", logic::ATOM_NOT);
+    register_atom!(world, "eq?", logic::ATOM_EQ);
+    register_atom!(world, "=", logic::ATOM_EQ); // alias for eq?
+    register_atom!(world, "is?", logic::ATOM_EQ); // alias for eq?
+    register_atom!(world, "gt?", logic::ATOM_GT);
+    register_atom!(world, ">", logic::ATOM_GT); // alias for gt?
+    register_atom!(world, "over?", logic::ATOM_GT); // alias for gt?
+    register_atom!(world, "lt?", logic::ATOM_LT);
+    register_atom!(world, "<", logic::ATOM_LT); // alias for lt?
+    register_atom!(world, "under?", logic::ATOM_LT); // alias for lt?
+    register_atom!(world, "gte?", logic::ATOM_GTE);
+    register_atom!(world, ">=", logic::ATOM_GTE); // alias for gte?
+    register_atom!(world, "at-least?", logic::ATOM_GTE); // alias for gte?
+    register_atom!(world, "lte?", logic::ATOM_LTE);
+    register_atom!(world, "<=", logic::ATOM_LTE); // alias for lte?
+    register_atom!(world, "at-most?", logic::ATOM_LTE); // alias for lte?
+    register_atom!(world, "not", logic::ATOM_NOT);
 }
 
 fn register_world_atoms(world: &mut World) {
-    register_eager!(world, "set!", world::ATOM_SET);
-    register_eager!(world, "get", world::ATOM_GET);
-    register_eager!(world, "del!", world::ATOM_DEL);
-    register_eager!(world, "exists?", world::ATOM_EXISTS);
-    register_eager!(world, "inc!", world::ATOM_INC);
-    register_eager!(world, "dec!", world::ATOM_DEC);
-    register_eager!(world, "add!", world::ATOM_ADD);
-    register_eager!(world, "sub!", world::ATOM_SUB);
-    register_eager!(world, "path", world::ATOM_PATH);
+    register_atom!(world, "set!", world::ATOM_SET);
+    register_atom!(world, "get", world::ATOM_GET);
+    register_atom!(world, "del!", world::ATOM_DEL);
+    register_atom!(world, "exists?", world::ATOM_EXISTS);
+    register_atom!(world, "inc!", world::ATOM_INC);
+    register_atom!(world, "dec!", world::ATOM_DEC);
+    register_atom!(world, "add!", world::ATOM_ADD);
+    register_atom!(world, "sub!", world::ATOM_SUB);
+    register_atom!(world, "path", world::ATOM_PATH);
 }
 
 fn register_collection_atoms(world: &mut World) {
-    register_eager!(world, "list", collections::ATOM_LIST);
-    register_eager!(world, "len", collections::ATOM_LEN);
-    register_eager!(world, "has?", collections::ATOM_HAS);
-    register_eager!(world, "car", collections::ATOM_CAR);
-    register_eager!(world, "cdr", collections::ATOM_CDR);
-    register_eager!(world, "cons", collections::ATOM_CONS);
-    register_eager!(world, "append", collections::ATOM_APPEND);
-    register_eager!(world, "map", collections::ATOM_MAP);
-    register_eager!(world, "core/str+", collections::ATOM_CORE_STR_PLUS);
-    register_eager!(world, "core/map", collections::ATOM_CORE_MAP);
+    register_atom!(world, "list", collections::ATOM_LIST);
+    register_atom!(world, "len", collections::ATOM_LEN);
+    register_atom!(world, "null?", collections::ATOM_NULL);
+    register_atom!(world, "has?", collections::ATOM_HAS);
+    register_atom!(world, "car", collections::ATOM_CAR);
+    register_atom!(world, "cdr", collections::ATOM_CDR);
+    register_atom!(world, "cons", collections::ATOM_CONS);
+    register_atom!(world, "append", collections::ATOM_APPEND);
+    register_atom!(world, "map", collections::ATOM_MAP);
+    register_atom!(world, "core/str+", collections::ATOM_CORE_STR_PLUS);
+    register_atom!(world, "core/map", collections::ATOM_CORE_MAP);
 }
 
 fn register_execution_atoms(world: &mut World) {
-    register_lazy!(world, "do", execution::ATOM_DO);
-    register_lazy!(world, "error", execution::ATOM_ERROR);
-    register_lazy!(world, "apply", execution::ATOM_APPLY);
-    register_lazy!(world, "for-each", execution::ATOM_FOR_EACH);
+    register_atom!(world, "do", execution::ATOM_DO);
+    register_atom!(world, "error", execution::ATOM_ERROR);
+    register_atom!(world, "apply", execution::ATOM_APPLY);
+    register_atom!(world, "for-each", execution::ATOM_FOR_EACH);
 }
 
 fn register_external_atoms(world: &mut World) {
-    register_eager!(world, "print", external::ATOM_PRINT);
-    register_eager!(world, "output", external::ATOM_OUTPUT);
-    register_eager!(world, "rand", external::ATOM_RAND);
+    register_atom!(world, "print", external::ATOM_PRINT);
+    register_atom!(world, "println", external::ATOM_PRINTLN);
+    register_atom!(world, "output", external::ATOM_OUTPUT);
+    register_atom!(world, "rand", external::ATOM_RAND);
 }
 
 fn register_string_atoms(world: &mut World) {
-    register_eager!(world, "str", string::ATOM_STR);
-    register_eager!(world, "str+", string::ATOM_STR_PLUS);
+    register_atom!(world, "str", string::ATOM_STR);
+    register_atom!(world, "str+", string::ATOM_STR_PLUS);
 }
 
 fn register_special_forms(world: &mut World) {
-    register_lazy!(world, "lambda", special_forms::ATOM_LAMBDA);
-    register_lazy!(world, "let", special_forms::ATOM_LET);
-    register_lazy!(world, "if", special_forms::ATOM_IF);
-    register_lazy!(world, "cond", special_forms::ATOM_COND);
-    register_lazy!(world, "and", special_forms::ATOM_AND);
-    register_lazy!(world, "or", special_forms::ATOM_OR);
-    register_lazy!(world, "define", special_forms::ATOM_DEFINE);
+    register_atom!(world, "lambda", special_forms::ATOM_LAMBDA);
+    register_atom!(world, "let", special_forms::ATOM_LET);
+    register_atom!(world, "if", special_forms::ATOM_IF);
+    register_atom!(world, "cond", special_forms::ATOM_COND);
+    register_atom!(world, "and", special_forms::ATOM_AND);
+    register_atom!(world, "or", special_forms::ATOM_OR);
+    register_atom!(world, "define", special_forms::ATOM_DEFINE);
 }

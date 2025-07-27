@@ -1,17 +1,17 @@
+//! External system interface atoms for the Sutra language.
 //!
-//! This module provides atoms that interface with external systems.
-//! These atoms break the pure functional model by interacting with I/O or randomness.
+//! This module provides atoms that interact with external systems, breaking the
+//! pure functional model through I/O operations and randomness.
 //!
 //! ## Atoms Provided
 //!
-//! - **I/O**: `print`
+//! - **I/O Operations**: `print`, `println`, `output`
 //! - **Randomness**: `rand`
 //!
-//! ## Design Principles
+//! ## Design Notes
 //!
-//! - **Side Effects**: Clear documentation of external interactions
-//! - **Deterministic Where Possible**: Consistent behavior within constraints
-//! - **Minimal External Dependencies**: Simple implementations
+//! These atoms have side effects and may produce non-deterministic results.
+//! The PRNG used for `rand` is seedable for testing purposes.
 
 use crate::{
     errors::{to_source_span, ErrorReporting},
@@ -64,24 +64,54 @@ impl crate::atoms::OutputSink for EngineStdoutSink {
 // I/O OPERATIONS
 // ============================================================================
 
-/// Emits output to the output sink.
+/// Prints concatenated arguments to the output sink.
 ///
-/// Usage: (print <value>)
-///   - <value>: Any value
+/// Usage: (print <value>...)
+///   - <value>: Any number of values to print
 ///
-///   Returns: Nil. Emits output.
+///   Returns: Nil. Emits output without trailing newline.
 ///
-/// Example:
-///   (print "hello")
+/// Examples:
+///   (print "hello")     ; outputs "hello"
+///   (print "hello" 123 true)  ; outputs "hello123true"
 pub const ATOM_PRINT: NativeFn = |args, context, call_span| {
-    if args.len() != 1 {
-        return Err(context.arity_mismatch("1", args.len(), to_source_span(*call_span)));
+    if args.is_empty() {
+        return Err(context.arity_mismatch("at least 1", 0, to_source_span(*call_span)));
     }
-    let spanned_val = evaluate_ast_node(&args[0], context)?;
-    context
-        .output
-        .borrow_mut()
-        .emit(&spanned_val.value.to_string(), Some(&spanned_val.span));
+
+    let mut output = String::new();
+    for arg in args {
+        let spanned_val = evaluate_ast_node(arg, context)?;
+        output.push_str(&spanned_val.value.to_string());
+    }
+
+    context.output.borrow_mut().emit(&output, Some(call_span));
+    Ok(SpannedValue {
+        value: Value::Nil,
+        span: *call_span,
+    })
+};
+
+/// Prints concatenated arguments to the output sink with a trailing newline.
+///
+/// Usage: (println <value>...)
+///   - <value>: Any number of values to print (zero or more)
+///
+///   Returns: Nil. Emits output with newline.
+///
+/// Examples:
+///   (println "hello")     ; outputs "hello\n"
+///   (println "hello" 123 true)  ; outputs "hello123true\n"
+///   (println)  ; prints just a newline
+pub const ATOM_PRINTLN: NativeFn = |args, context, call_span| {
+    let mut output = String::new();
+    for arg in args {
+        let spanned_val = evaluate_ast_node(arg, context)?;
+        output.push_str(&spanned_val.value.to_string());
+    }
+    output.push('\n');
+
+    context.output.borrow_mut().emit(&output, Some(call_span));
     Ok(SpannedValue {
         value: Value::Nil,
         span: *call_span,

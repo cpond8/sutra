@@ -1,5 +1,12 @@
-// This module provides all mathematical atom operations for the Sutra engine.
-// All atoms in this module are pure functions that do not mutate world state.
+//! Mathematical operations for the Sutra language.
+//!
+//! This module provides arithmetic operations that work with numeric values.
+//! All operations are pure functions that do not modify world state.
+//!
+//! ## Atoms Provided
+//!
+//! - **Basic Arithmetic**: `+`, `-`, `*`, `/`, `mod`
+//! - **Mathematical Functions**: `abs`, `min`, `max`
 
 use crate::{
     errors::{to_source_span, ErrorReporting},

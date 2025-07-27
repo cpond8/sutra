@@ -1,3 +1,21 @@
+//! Special forms for the Sutra language.
+//!
+//! This module provides language special forms that control evaluation and define
+//! fundamental language constructs. Unlike regular atoms, special forms control
+//! when and how their arguments are evaluated.
+//!
+//! ## Special Forms Provided
+//!
+//! - **Functions**: `lambda`, `define`
+//! - **Local Binding**: `let`
+//! - **Conditional Logic**: `if`, `cond`
+//! - **Boolean Logic**: `and`, `or`
+//!
+//! ## Design Notes
+//!
+//! Special forms receive unevaluated AST nodes and control evaluation themselves.
+//! This enables lazy evaluation, conditional evaluation, and binding constructs.
+
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 

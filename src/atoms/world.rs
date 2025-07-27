@@ -1,18 +1,18 @@
+//! World state management atoms for the Sutra language.
 //!
-//! This module provides all world state manipulation atom operations for the Sutra engine.
-//! These atoms are the primary interface for reading and modifying game state.
+//! This module provides atoms for reading and modifying the persistent world state.
+//! The world state is a hierarchical key-value store accessible via dot-notation paths.
 //!
 //! ## Atoms Provided
 //!
-//! - **State Operations**: `set!`, `get`, `del!`
+//! - **State Operations**: `set!`, `get`, `del!`, `path`
 //! - **State Queries**: `exists?`
 //! - **Arithmetic Updates**: `inc!`, `dec!`, `add!`, `sub!`
 //!
-//! ## Design Principles
+//! ## Design Notes
 //!
-//! - **Path-Based Access**: All operations use `Path` for addressing with automatic canonicalization
-//! - **User-Friendly**: Direct atom implementations without macro indirection
-//! - **Safe Defaults**: Missing values return `Value::Nil` rather than errors
+//! All operations use `Path` objects for addressing state locations.
+//! Missing values return `nil` rather than errors for graceful handling.
 
 use crate::{
     errors::{to_source_span, ErrorReporting},
