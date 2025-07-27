@@ -473,7 +473,7 @@ fn convert_values_to_ast_nodes(
 ) -> Result<Vec<AstNode>, SutraError> {
     let mut nodes = Vec::with_capacity(values.len());
     for value in values {
-        let expr = crate::ast::expr_from_value_with_span(value, span).map_err(|msg| {
+        let expr = crate::ast::expr_from_value_with_span(value, span).map_err(|_| {
             context.report(
                 ErrorKind::InvalidOperation {
                     operation: "value-to-ast".to_string(),

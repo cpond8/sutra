@@ -6,7 +6,6 @@ use std::{
 use walkdir::WalkDir;
 
 use crate::{
-    atoms::{TestDefinition, test::TestResult},
     errors::{ErrorReporting, to_source_span, unspanned},
     prelude::*,
     runtime::source::SourceContext,

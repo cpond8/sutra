@@ -10,11 +10,11 @@
 
 use crate::prelude::*;
 use crate::{
-    macros::{MacroExpansionResult as macro_result}, 
-    errors::to_source_span, 
-    runtime::source::SourceContext, 
+    errors::to_source_span,
+    errors::{ErrorKind, ErrorReporting},
+    macros::MacroExpansionResult as macro_result,
+    runtime::source::SourceContext,
     validation::semantic::ValidationContext,
-    errors::{ErrorReporting, ErrorKind},
 };
 
 // ===================================================================================================
@@ -68,7 +68,8 @@ fn expr_to_path(expr: &AstNode, source: &SourceContext) -> Result<Path, SutraErr
             match item_value {
                 Expr::Symbol(s, _) | Expr::String(s, _) => parts.push(s.clone()),
                 _ => {
-                    let context = ValidationContext::new(source.clone(), "macro_expansion".to_string());
+                    let context =
+                        ValidationContext::new(source.clone(), "macro_expansion".to_string());
                     return Err(context.report(
                         ErrorKind::InvalidOperation {
                             operation: "path_conversion".to_string(),

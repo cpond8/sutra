@@ -16,7 +16,6 @@ use crate::{
 
 use crate::errors::{self, ErrorKind, ErrorReporting, SutraError};
 use crate::validation::semantic::ValidationContext;
-use miette::SourceSpan;
 
 // ============================================================================
 // OUTPUT TYPES - Generic output handling for CLI and testing
@@ -225,20 +224,20 @@ impl MacroProcessor {
         };
 
         // Step 3: Perform semantic validation
-        let mut validation_result =
+        let validation_errors =
             semantic::validate_expanded_ast(expanded, &macro_registry, world, source_context);
 
         // Step 4: Test context is handled automatically by EvaluationContext
         // when it creates errors, so no post-processing needed here
-        
+
         // TODO: Ensure Engine passes test_file/test_name to EvaluationContext
         // when creating the evaluation context, rather than modifying errors afterward
 
         // Step 5: Handle validation results
-        if !validation_result.is_valid() {
+        if !validation_errors.is_empty() {
             // Return the first validation error. The validator now creates fully-contextualized errors,
             // so we no longer need to wrap them in a generic error.
-            return Err(validation_result.errors.remove(0));
+            return Err(validation_errors.into_iter().next().unwrap());
         }
 
         // Step 6: Validation successful

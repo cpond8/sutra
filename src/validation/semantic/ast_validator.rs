@@ -1,135 +1,123 @@
-// Core types via prelude
-use crate::prelude::*;
-
-// Domain modules with aliases
 use crate::{
-    errors::{to_source_span, ErrorReporting},
-    validation::grammar::{ValidationReporter, ValidationResult},
+    errors::{to_source_span, ErrorReporting, SutraError},
+    prelude::*,
+    runtime::source::SourceContext,
     validation::semantic::ValidationContext,
     MacroDefinition, MacroTemplate,
 };
 
-/// Validates AST nodes for semantic correctness
-/// Focuses on macro/atom existence and argument validation
-pub struct AstValidator;
+/// Validates an AST for semantic correctness: undefined symbols and macro arity.
+/// Returns all validation errors found.
+pub fn validate_ast_semantics(
+    ast: &AstNode,
+    macros: &MacroRegistry,
+    world: &World,
+    source: &SourceContext,
+) -> Vec<SutraError> {
+    let mut errors = Vec::new();
+    let context = ValidationContext::new(source.clone(), "semantic".to_string());
 
-impl AstValidator {
-    /// Recursively validates AST nodes for macro/atom existence and argument counts.
-    /// Traverses the tree, reporting errors for undefined macros/atoms and incorrect macro usage.
-    pub fn validate_node(
-        node: &AstNode,
-        context: &ValidationContext,
-        result: &mut ValidationResult,
-    ) {
-        match &*node.value {
-            Expr::List(nodes, _) => {
-                Self::validate_list_expression(nodes, context, result);
+    validate_node_recursive(ast, macros, world, &context, &mut errors);
+    errors
+}
+
+fn validate_node_recursive(
+    node: &AstNode,
+    macros: &MacroRegistry,
+    world: &World,
+    context: &ValidationContext,
+    errors: &mut Vec<SutraError>,
+) {
+    match &*node.value {
+        Expr::List(nodes, _) if !nodes.is_empty() => {
+            // Check if this is a function call
+            if let Expr::Symbol(name, _) = &*nodes[0].value {
+                validate_function_call(name, nodes, macros, world, context, errors);
             }
-            Expr::If {
-                condition,
-                then_branch,
-                else_branch,
-                ..
-            } => {
-                Self::validate_if_expression(condition, then_branch, else_branch, context, result);
+
+            // Always validate all child nodes
+            for child in nodes {
+                validate_node_recursive(child, macros, world, context, errors);
             }
-            _ => {}
         }
+
+        Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            validate_node_recursive(condition, macros, world, context, errors);
+            validate_node_recursive(then_branch, macros, world, context, errors);
+            validate_node_recursive(else_branch, macros, world, context, errors);
+        }
+
+        // Other expression types either have no children or don't need validation
+        _ => {}
+    }
+}
+
+fn validate_function_call(
+    name: &str,
+    nodes: &[AstNode],
+    macros: &MacroRegistry,
+    world: &World,
+    context: &ValidationContext,
+    errors: &mut Vec<SutraError>,
+) {
+    // Skip special forms - they have their own validation
+    if matches!(
+        name,
+        "define" | "if" | "lambda" | "let" | "do" | "error" | "apply"
+    ) {
+        return;
     }
 
-    fn validate_list_expression(
-        nodes: &[AstNode],
-        context: &ValidationContext,
-        result: &mut ValidationResult,
-    ) {
-        if nodes.is_empty() {
-            return;
+    // Check macros first
+    if let Some(macro_def) = macros.lookup(name) {
+        if let MacroDefinition::Template(template) = macro_def {
+            validate_macro_arity(name, template, nodes.len() - 1, &nodes[0], context, errors);
         }
-
-        let first = &nodes[0];
-        let Expr::Symbol(name, _) = &*first.value else {
-            // Not a function call, validate all sub-nodes
-            for sub_node in nodes {
-                Self::validate_node(sub_node, context, result);
-            }
-            return;
-        };
-
-        // Validate function call
-        Self::validate_function_call(name, nodes, context, result);
-
-        // Validate all arguments
-        for sub_node in nodes.iter().skip(1) {
-            Self::validate_node(sub_node, context, result);
-        }
+        return;
     }
 
-    fn validate_function_call(
-        name: &str,
-        nodes: &[AstNode],
-        context: &ValidationContext,
-        result: &mut ValidationResult,
-    ) {
-        if context.is_special_form(name) {
-            return;
-        }
-
-        if let Some(macro_def) = context.macros.lookup(name) {
-            if let MacroDefinition::Template(template) = macro_def {
-                Self::validate_macro_args(
-                    name,
-                    template,
-                    nodes.len() - 1,
-                    result,
-                    &nodes[0],
-                    context,
-                );
-            }
-        } else if context.world.get(&Path::from(name)).is_none() {
-            let span = to_source_span(nodes[0].span);
-            let error = context.undefined_symbol(name, span);
-            result.report_error(error);
-        }
+    // Check atoms
+    if world.get(&Path(vec![name.to_string()])).is_some() {
+        return;
     }
 
-    fn validate_if_expression(
-        condition: &AstNode,
-        then_branch: &AstNode,
-        else_branch: &AstNode,
-        context: &ValidationContext,
-        result: &mut ValidationResult,
-    ) {
-        Self::validate_node(condition, context, result);
-        Self::validate_node(then_branch, context, result);
-        Self::validate_node(else_branch, context, result);
-    }
+    // Undefined symbol
+    let span = to_source_span(nodes[0].span);
+    let error = context.undefined_symbol(name, span);
+    errors.push(error);
+}
 
-    fn validate_macro_args(
-        _name: &str,
-        template: &MacroTemplate,
-        actual_args: usize,
-        result: &mut ValidationResult,
-        call_node: &AstNode,
-        context: &ValidationContext,
-    ) {
-        let required_args = template.params.required.len();
-        let has_rest = template.params.rest.is_some();
+fn validate_macro_arity(
+    _name: &str,
+    template: &MacroTemplate,
+    actual_args: usize,
+    call_node: &AstNode,
+    context: &ValidationContext,
+    errors: &mut Vec<SutraError>,
+) {
+    let required = template.params.required.len();
+    let has_rest = template.params.rest.is_some();
 
-        let arity_ok = if has_rest {
-            actual_args >= required_args
+    let valid = if has_rest {
+        actual_args >= required
+    } else {
+        actual_args == required
+    };
+
+    if !valid {
+        let expected = if has_rest {
+            format!("at least {}", required)
         } else {
-            actual_args == required_args
+            required.to_string()
         };
 
-        if !arity_ok {
-            let expected = if has_rest {
-                format!("at least {}", required_args)
-            } else {
-                required_args.to_string()
-            };
-            let error =
-                context.arity_mismatch(&expected, actual_args, to_source_span(call_node.span));
-            result.report_error(error);
-        }
+        let span = to_source_span(call_node.span);
+        let error = context.arity_mismatch(&expected, actual_args, span);
+        errors.push(error);
     }
 }

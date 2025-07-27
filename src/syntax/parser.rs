@@ -112,11 +112,6 @@ impl ParserState {
     fn debug_info(&self) -> String {
         "Parser at unimplemented location".to_string()
     }
-
-    // TODO: Implement this method to find matching opener for diagnostics.
-    fn find_matching_opener(&self, _close_span: SourceSpan) -> Option<SourceSpan> {
-        None
-    }
 }
 
 impl ErrorReporting for ParserState {

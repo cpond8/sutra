@@ -4,8 +4,7 @@ use crate::{
     errors::{DiagnosticInfo, ErrorKind, ErrorReporting, FileContext, SourceInfo, SutraError},
     prelude::*,
     runtime::source,
-    semantic::ast_validator::AstValidator,
-    validation::ValidationResult,
+    validation::semantic::ast_validator::validate_ast_semantics,
 };
 use miette::SourceSpan;
 
@@ -81,9 +80,8 @@ impl ErrorReporting for ValidationContext {
     }
 }
 
-// ATTN: Please verify if this function is still needed, or if it has been made vestigial.
 /// Validates an expanded AST for macro and atom correctness.
-/// Returns a ValidationResult with any errors found.
+/// Returns a list of validation errors found.
 ///
 /// This is the primary entry point for semantic validation.
 pub fn validate_expanded_ast(
@@ -91,9 +89,6 @@ pub fn validate_expanded_ast(
     macros: &MacroRegistry,
     world: &World,
     source: &source::SourceContext,
-) -> ValidationResult {
-    let mut result = ValidationResult::new();
-    let context = ValidationContext::new(source.clone(), "semantic".to_string());
-    AstValidator::validate_node(ast, &context, &mut result);
-    result
+) -> Vec<SutraError> {
+    validate_ast_semantics(ast, macros, world, source)
 }
