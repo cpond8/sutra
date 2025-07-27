@@ -11,7 +11,7 @@
 
 use crate::prelude::*;
 use crate::{
-    errors,
+    errors::{self, ErrorReporting, SutraError},
     runtime::eval::{evaluate_ast_node, EvaluationContext},
 };
 use std::sync::Arc;
@@ -21,22 +21,22 @@ use std::sync::Arc;
 // ============================================================================
 
 /// Convenient type alias for atom return values - modern Rust idiom
-pub type AtomResult = Result<Value, OldSutraError>;
+pub type AtomResult = Result<Value, SutraError>;
 
 /// Type alias for evaluation context to reduce verbosity
 pub type EvalContext<'a> = &'a mut EvaluationContext;
 
 /// Type alias for functions that return multiple values with world state
-pub type MultiValueResult = Result<Vec<Value>, OldSutraError>;
+pub type MultiValueResult = Result<Vec<Value>, SutraError>;
 
 /// Type alias for functions that return typed arrays with world state
-pub type ArrayResult<const N: usize> = Result<[Value; N], OldSutraError>;
+pub type ArrayResult<const N: usize> = Result<[Value; N], SutraError>;
 
 /// Type alias for binary operations returning two values and world
-pub type BinaryResult = Result<(Value, Value), OldSutraError>;
+pub type BinaryResult = Result<(Value, Value), SutraError>;
 
 /// Type alias for validation functions that return unit
-pub type ValidationResult = Result<(), OldSutraError>;
+pub type ValidationResult = Result<(), SutraError>;
 
 // ============================================================================
 // TRAIT-BASED TYPE EXTRACTION
@@ -47,49 +47,46 @@ pub type ValidationResult = Result<(), OldSutraError>;
 pub trait ExtractValue<T> {
     /// Extracts a value of type T from this Value.
     /// The `context` is optional to support both eager and lazy evaluation patterns.
-    fn extract(&self, context: &EvaluationContext) -> Result<T, OldSutraError>;
+    fn extract(&self, context: &EvaluationContext) -> Result<T, SutraError>;
 }
 
 impl ExtractValue<f64> for Value {
-    fn extract(&self, context: &EvaluationContext) -> Result<f64, OldSutraError> {
+    fn extract(&self, context: &EvaluationContext) -> Result<f64, SutraError> {
         if let Value::Number(n) = self {
             return Ok(*n);
         }
 
-        Err(errors::type_mismatch(
+        Err(context.type_mismatch(
             "Number",
             self.type_name(),
-            &context.source,
             context.span_for_span(context.current_span),
         ))
     }
 }
 
 impl ExtractValue<bool> for Value {
-    fn extract(&self, context: &EvaluationContext) -> Result<bool, OldSutraError> {
+    fn extract(&self, context: &EvaluationContext) -> Result<bool, SutraError> {
         if let Value::Bool(b) = self {
             return Ok(*b);
         }
 
-        Err(errors::type_mismatch(
+        Err(context.type_mismatch(
             "Boolean",
             self.type_name(),
-            &context.source,
             context.span_for_span(context.current_span),
         ))
     }
 }
 
 impl ExtractValue<Path> for Value {
-    fn extract(&self, context: &EvaluationContext) -> Result<Path, OldSutraError> {
+    fn extract(&self, context: &EvaluationContext) -> Result<Path, SutraError> {
         if let Value::Path(path) = self {
             return Ok(path.clone());
         }
 
-        Err(errors::type_mismatch(
+        Err(context.type_mismatch(
             "Path",
             self.type_name(),
-            &context.source,
             context.span_for_span(context.current_span),
         ))
     }
@@ -140,16 +137,9 @@ pub fn eval_n_args<const N: usize>(
     context: &mut EvaluationContext,
 ) -> ArrayResult<N> {
     if args.len() != N {
-        let mut err = errors::validation_arity(
-            N.to_string(),
-            args.len(),
-            &context.source,
-            context.span_for_span(context.current_span),
+        return Err(
+            context.arity_mismatch(&N.to_string(), args.len(), context.span_for_span(context.current_span))
         );
-        if let (Some(tf), Some(tn)) = (context.test_file.as_deref(), context.test_name.as_deref()) {
-            err = err.with_test_context(tf.to_string(), tn.to_string());
-        }
-        return Err(err);
     }
 
     let mut values = Vec::with_capacity(N);
@@ -161,13 +151,12 @@ pub fn eval_n_args<const N: usize>(
     // Convert Vec to array - this is safe because we checked length above
     // The try_into() should never fail given the length check, but we handle it defensively
     let values_array: [Value; N] = values.try_into().map_err(|_| {
-        errors::runtime_general(
-            "Failed to convert evaluated arguments to array",
-            "internal engine error",
-            &context.source,
-            context.span_for_span(context.current_span),
-        )
-        .with_suggestion("This is an internal engine error. Please report this as a bug.")
+        context
+            .internal_error(
+                "Failed to convert evaluated arguments to array",
+                context.span_for_span(context.current_span),
+            )
+            .with_suggestion("This is an internal engine error. Please report this as a bug.")
     })?;
 
     Ok(values_array)
@@ -195,7 +184,7 @@ pub fn extract_numbers(
     val1: &Value,
     val2: &Value,
     context: &EvaluationContext,
-) -> Result<(f64, f64), OldSutraError> {
+) -> Result<(f64, f64), SutraError> {
     let n1 = val1.extract(context)?;
     let n2 = val2.extract(context)?;
     Ok((n1, n2))
@@ -224,13 +213,13 @@ pub fn validate_arity(
     ctx: &EvaluationContext,
 ) -> ValidationResult {
     if args.len() != expected {
-        return Err(errors::validation_arity(
-            expected.to_string(),
-            args.len(),
-            &ctx.source,
-            ctx.span_for_span(ctx.current_span),
-        )
-        .with_suggestion(format!("{} expects {} arguments", atom_name, expected)));
+        return Err(ctx
+            .arity_mismatch(
+                &expected.to_string(),
+                args.len(),
+                ctx.span_for_span(ctx.current_span),
+            )
+            .with_suggestion(format!("{} expects {} arguments", atom_name, expected)));
     }
     Ok(())
 }
@@ -258,16 +247,16 @@ pub fn validate_min_arity(
     ctx: &EvaluationContext,
 ) -> ValidationResult {
     if args.len() < min_expected {
-        return Err(errors::validation_arity(
-            format!("at least {}", min_expected),
-            args.len(),
-            &ctx.source,
-            ctx.span_for_span(ctx.current_span),
-        )
-        .with_suggestion(format!(
-            "{} expects at least {} arguments",
-            atom_name, min_expected
-        )));
+        return Err(ctx
+            .arity_mismatch(
+                &format!("at least {}", min_expected),
+                args.len(),
+                ctx.span_for_span(ctx.current_span),
+            )
+            .with_suggestion(format!(
+                "{} expects at least {} arguments",
+                atom_name, min_expected
+            )));
     }
     Ok(())
 }
@@ -339,13 +328,9 @@ pub fn validate_sequence_arity(
     ctx: &EvaluationContext,
 ) -> ValidationResult {
     if args.len() < 2 {
-        return Err(errors::validation_arity(
-            "at least 2".to_string(),
-            args.len(),
-            &ctx.source,
-            ctx.span_for_span(ctx.current_span),
-        )
-        .with_suggestion(format!("{} expects at least 2 arguments", atom_name)));
+        return Err(ctx
+            .arity_mismatch("at least 2", args.len(), ctx.span_for_span(ctx.current_span))
+            .with_suggestion(format!("{} expects at least 2 arguments", atom_name)));
     }
     Ok(())
 }
@@ -371,17 +356,13 @@ pub fn validate_even_arity(
     ctx: &EvaluationContext,
 ) -> ValidationResult {
     if args.len() % 2 != 0 {
-        return Err(errors::validation_arity(
-            "even number",
-            args.len(),
-            &ctx.source,
-            ctx.span_for_span(ctx.current_span),
-        )
-        .with_suggestion(format!(
-            "{} expects an even number of arguments, got {}",
-            atom_name,
-            args.len()
-        )));
+        return Err(ctx
+            .arity_mismatch("even number", args.len(), ctx.span_for_span(ctx.current_span))
+            .with_suggestion(format!(
+                "{} expects an even number of arguments, got {}",
+                atom_name,
+                args.len()
+            )));
     }
     Ok(())
 }
@@ -407,13 +388,9 @@ pub fn validate_zero_arity(
     ctx: &EvaluationContext,
 ) -> ValidationResult {
     if args.len() != 0 {
-        return Err(errors::validation_arity(
-            0.to_string(),
-            args.len(),
-            &ctx.source,
-            ctx.span_for_span(ctx.current_span),
-        )
-        .with_suggestion(format!("{} expects no arguments", atom_name)));
+        return Err(ctx
+            .arity_mismatch("0", args.len(), ctx.span_for_span(ctx.current_span))
+            .with_suggestion(format!("{} expects no arguments", atom_name)));
     }
     Ok(())
 }
@@ -441,13 +418,13 @@ pub fn validate_special_form_arity(
     ctx: &EvaluationContext,
 ) -> ValidationResult {
     if args.len() != expected {
-        return Err(errors::validation_arity(
-            expected.to_string(),
-            args.len(),
-            &ctx.source,
-            ctx.span_for_span(ctx.current_span),
-        )
-        .with_suggestion(format!("{} expects {} arguments", atom_name, expected)));
+        return Err(ctx
+            .arity_mismatch(
+                &expected.to_string(),
+                args.len(),
+                ctx.span_for_span(ctx.current_span),
+            )
+            .with_suggestion(format!("{} expects {} arguments", atom_name, expected)));
     }
     Ok(())
 }
@@ -475,16 +452,16 @@ pub fn validate_special_form_min_arity(
     ctx: &EvaluationContext,
 ) -> ValidationResult {
     if args.len() < min_expected {
-        return Err(errors::validation_arity(
-            format!("at least {}", min_expected),
-            args.len(),
-            &ctx.source,
-            ctx.span_for_span(ctx.current_span),
-        )
-        .with_suggestion(format!(
-            "{} expects at least {} arguments",
-            atom_name, min_expected
-        )));
+        return Err(ctx
+            .arity_mismatch(
+                &format!("at least {}", min_expected),
+                args.len(),
+                ctx.span_for_span(ctx.current_span),
+            )
+            .with_suggestion(format!(
+                "{} expects at least {} arguments",
+                atom_name, min_expected
+            )));
     }
     Ok(())
 }
@@ -509,16 +486,7 @@ where
     let (n1, n2) = extract_numbers(&val1, &val2, context)?;
 
     if let Some(validate) = validator {
-        validate(n1, n2).map_err(|msg| {
-            // No span available here, this should be improved in the future
-            // if we can pass span information through the validator.
-            errors::runtime_general(
-                msg,
-                "internal engine error",
-                &context.source,
-                context.span_for_span(context.current_span),
-            )
-        })?;
+        validate(n1, n2).map_err(|msg| context.invalid_operation(msg, "Number", context.span_for_span(context.current_span)))?;
     }
 
     Ok(op(n1, n2))
@@ -536,17 +504,11 @@ where
     F: Fn(f64, f64) -> f64,
 {
     if args.len() < 2 {
-        let mut err = errors::validation_arity(
-            "at least 2".to_string(),
+        return Err(context.arity_mismatch(
+            "at least 2",
             args.len(),
-            &context.source,
             context.span_for_span(context.current_span),
-        );
-
-        if let (Some(tf), Some(tn)) = (context.test_file.as_deref(), context.test_name.as_deref()) {
-            err = err.with_test_context(tf.to_string(), tn.to_string());
-        }
-        return Err(err);
+        ));
     }
 
     let values = eval_args(args, context)?;
@@ -744,12 +706,12 @@ where
 pub fn eval_apply_normal_args(
     args: &[AstNode],
     context: &mut EvaluationContext,
-) -> Result<Vec<AstNode>, OldSutraError> {
+) -> Result<Vec<AstNode>, SutraError> {
     let mut evaluated_arg_nodes = Vec::with_capacity(args.len());
     for arg in args {
         let val = crate::runtime::eval::evaluate_ast_node(arg, context)?;
         let expr = crate::ast::expr_from_value_with_span(val, arg.span)
-            .map_err(|msg| errors::runtime_general(msg, "value-to-ast", &context.source, context.span_for_span(arg.span)))?;
+            .map_err(|msg| context.internal_error(&msg, context.span_for_span(arg.span)))?;
         evaluated_arg_nodes.push(Spanned {
             value: Arc::new(expr),
             span: arg.span,
@@ -764,7 +726,7 @@ pub fn eval_apply_list_arg(
     arg: &AstNode,
     context: &mut EvaluationContext,
     parent_span: &Span,
-) -> Result<Vec<AstNode>, OldSutraError> {
+) -> Result<Vec<AstNode>, SutraError> {
     let list_val = evaluate_ast_node(arg, context)?;
     match list_val {
         Value::Cons(_) | Value::Nil => {
@@ -787,25 +749,22 @@ pub fn eval_apply_list_arg(
                     }
                     Value::Nil => break,
                     _ => {
-                        return Err(errors::type_mismatch(
-                            "proper List",
-                            current.type_name(),
-                            &context.source,
-                            context.span_for_span(*parent_span),
-                        ).with_suggestion("The last argument to 'apply' must be a proper list (ending in nil)."));
+                        return Err(context
+                            .type_mismatch(
+                                "proper List",
+                                current.type_name(),
+                                context.span_for_span(*parent_span),
+                            )
+                            .with_suggestion("The last argument to 'apply' must be a proper list (ending in nil)."));
                     }
                 }
             }
             Ok(items)
         }
         _ => {
-            return Err(errors::type_mismatch(
-                "List",
-                list_val.type_name(),
-                &context.source,
-                context.span_for_span(*parent_span),
-            )
-            .with_suggestion("The last argument to 'apply' must be a list."))
+            return Err(context
+                .type_mismatch("List", list_val.type_name(), context.span_for_span(*parent_span))
+                .with_suggestion("The last argument to 'apply' must be a list."))
         }
     }
 }
@@ -846,19 +805,15 @@ pub fn validate_path_arg<'a>(
     span: Span,
     atom_name: &str,
     ctx: &EvaluationContext,
-) -> Result<&'a Path, OldSutraError> {
+) -> Result<&'a Path, SutraError> {
     match value {
         Value::Path(p) => Ok(p),
-        _ => Err(errors::type_mismatch(
-            "Path",
-            value.type_name(),
-            &ctx.source,
-            ctx.span_for_span(span), // Use the argument's span
-        )
-        .with_suggestion(format!(
-            "{} expects a Path as its first argument",
-            atom_name
-        ))),
+        _ => Err(ctx
+            .type_mismatch("Path", value.type_name(), ctx.span_for_span(span))
+            .with_suggestion(format!(
+                "{} expects a Path as its first argument",
+                atom_name
+            ))),
     }
 }
 
@@ -876,16 +831,12 @@ pub fn validate_string_value<'a>(
     value: &'a Value,
     context: &str,
     ctx: &EvaluationContext,
-) -> Result<&'a str, OldSutraError> {
+) -> Result<&'a str, SutraError> {
     match value {
         Value::String(s) => Ok(s),
-        _ => Err(errors::type_mismatch(
-            "String",
-            value.type_name(),
-            &ctx.source,
-            ctx.span_for_span(ctx.current_span),
-        )
-        .with_suggestion(format!("Expected a String for {}", context))),
+        _ => Err(ctx
+            .type_mismatch("String", value.type_name(), ctx.span_for_span(ctx.current_span))
+            .with_suggestion(format!("Expected a String for {}", context))),
     }
 }
 
@@ -917,15 +868,12 @@ pub fn validate_list_value<'a>(
     value: &'a Value,
     context: &str,
     ctx: &EvaluationContext,
-) -> Result<(), OldSutraError> {
+) -> Result<(), SutraError> {
     match value {
         Value::Cons(_) | Value::Nil => Ok(()),
-        _ => Err(errors::type_mismatch(
-            "List",
-            value.type_name(),
-            &ctx.source,
-            ctx.span_for_span(ctx.current_span),
-        ).with_suggestion(format!("Expected a List for {}", context))),
+        _ => Err(ctx
+            .type_mismatch("List", value.type_name(), ctx.span_for_span(ctx.current_span))
+            .with_suggestion(format!("Expected a List for {}", context))),
     }
 }
 
@@ -938,6 +886,7 @@ mod tests {
     use super::*;
     use crate::{
         atoms::{NullSink, SharedOutput},
+        errors::SourceContext,
         runtime::{eval::EvaluationContextBuilder, world::World},
     };
     use std::{cell::RefCell, rc::Rc};
@@ -1070,7 +1019,7 @@ mod tests {
         assert!(err.to_string().contains("expected at least 3, got 1"));
 
         let err = validate_even_arity(&args, "my_atom", &ctx).unwrap_err();
-        assert!(err.to_string().contains("expected even number, got 1"));
+        assert!(err.to_string().contains("expected an even number of arguments, got 1"));
     }
 
     #[test]

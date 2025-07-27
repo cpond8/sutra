@@ -153,13 +153,13 @@ macro_rules! spanned_expr {
 // ============================================================================
 
 /// Type alias for top-level program parsing results
-type ProgramParseResult = Result<Vec<AstNode>, OldSutraError>;
+type ProgramParseResult = Result<Vec<AstNode>, SutraError>;
 
 /// Type alias for individual expression parsing results
-type ExpressionParseResult = Result<AstNode, OldSutraError>;
+type ExpressionParseResult = Result<AstNode, SutraError>;
 
 /// Type alias for symbol parsing results
-type SymbolParseResult = Result<String, OldSutraError>;
+type SymbolParseResult = Result<String, SutraError>;
 
 // ============================================================================
 // CONSTANTS
@@ -219,8 +219,8 @@ pub fn parse(source_text: &str, source_context: source::SourceContext) -> Progra
 
     // Extract the root program node
     let root_pair = pairs.peek().ok_or_else(|| {
-        errors::parse_empty(
-            &state.source,
+        state.report(
+            ErrorKind::EmptyExpression,
             SourceSpan::new(0.into(), source_text.len().into()),
         )
     })?;
@@ -274,12 +274,12 @@ fn build_ast_from_rule(pair: Pair<Rule>, state: &mut ParserState) -> ExpressionP
         Rule::define_form => build_define_form_ast(pair, state),
         Rule::spread_arg => build_spread_arg_ast(pair, state),
 
-        rule => Err(errors::parse_malformed(
-            format!("unsupported rule: {rule:?}"),
-            &state.source,
+        rule => Err(state.report(
+            ErrorKind::MalformedConstruct {
+                construct: format!("unsupported rule: {rule:?}"),
+            },
             to_source_span(get_span(&pair)),
-        )
-        .with_suggestion("This syntax is not supported")),
+        )),
     }
 }
 
@@ -304,7 +304,7 @@ fn build_expression_ast(pair: Pair<Rule>, state: &mut ParserState) -> Expression
     let mut inner_pairs = pair.clone().into_inner();
     let sub_expression = inner_pairs
         .next()
-        .ok_or_else(|| errors::parse_empty(&state.source, to_source_span(get_span(&pair))))?;
+        .ok_or_else(|| state.report(ErrorKind::EmptyExpression, to_source_span(get_span(&pair))))?;
     build_ast_from_rule(sub_expression, state)
 }
 
@@ -326,9 +326,7 @@ fn build_param_list_ast(pair: Pair<Rule>, state: &mut ParserState) -> Expression
     let param_items_container = pair
         .into_inner()
         .next()
-        .ok_or_else(|| {
-            errors::parse_missing("parameter list", &state.source, to_source_span(span))
-        })?
+        .ok_or_else(|| state.missing_element("parameter list", to_source_span(span)))?
         .into_inner()
         .collect::<Vec<_>>();
 
@@ -367,7 +365,7 @@ fn build_atom_ast(pair: Pair<Rule>, state: &mut ParserState) -> ExpressionParseR
         .clone()
         .into_inner()
         .next()
-        .ok_or_else(|| errors::parse_empty(&state.source, to_source_span(pair_span)))?;
+        .ok_or_else(|| state.report(ErrorKind::EmptyExpression, to_source_span(pair_span)))?;
     build_ast_from_rule(inner_expression, state)
 }
 
@@ -375,9 +373,14 @@ fn build_atom_ast(pair: Pair<Rule>, state: &mut ParserState) -> ExpressionParseR
 fn build_number_ast(pair: Pair<Rule>, state: &mut ParserState) -> ExpressionParseResult {
     let span = get_span(&pair);
     let number_text = pair.as_str();
-    let number_value = number_text.parse::<f64>().map_err(|e| {
-        errors::parse_invalid_value("number", e.to_string(), &state.source, to_source_span(span))
-            .with_suggestion("Use valid decimal notation")
+    let number_value = number_text.parse::<f64>().map_err(|_| {
+        state.report(
+            ErrorKind::InvalidLiteral {
+                literal_type: "number".to_string(),
+                value: number_text.to_string(),
+            },
+            to_source_span(span),
+        )
     })?;
     Ok(spanned_expr!(Expr::Number(number_value, span), span))
 }
@@ -389,13 +392,13 @@ fn build_boolean_ast(pair: Pair<Rule>, state: &mut ParserState) -> ExpressionPar
     match boolean_text {
         "true" => Ok(spanned_expr!(Expr::Bool(true, span), span)),
         "false" => Ok(spanned_expr!(Expr::Bool(false, span), span)),
-        _ => Err(errors::parse_invalid_value(
-            "boolean",
-            boolean_text,
-            &state.source,
+        _ => Err(state.report(
+            ErrorKind::InvalidLiteral {
+                literal_type: "boolean".to_string(),
+                value: boolean_text.to_string(),
+            },
             to_source_span(span),
-        )
-        .with_suggestion("Use 'true' or 'false'")),
+        )),
     }
 }
 
@@ -431,10 +434,10 @@ fn build_symbol_ast(pair: Pair<Rule>, state: &mut ParserState) -> ExpressionPars
 fn build_quote_ast(pair: Pair<Rule>, state: &mut ParserState) -> ExpressionParseResult {
     let span = get_span(&pair);
     let quoted_expression = build_ast_from_rule(
-        pair.clone().into_inner().next().ok_or_else(|| {
-            errors::parse_malformed("quote", &state.source, to_source_span(span))
-                .with_suggestion("Quote requires an expression: '(expression)")
-        })?,
+        pair.clone()
+            .into_inner()
+            .next()
+            .ok_or_else(|| state.missing_element("expression after quote", to_source_span(span)))?,
         state,
     )?;
     Ok(spanned_expr!(
@@ -469,10 +472,10 @@ fn build_define_form_ast(pair: Pair<Rule>, state: &mut ParserState) -> Expressio
 fn build_spread_arg_ast(pair: Pair<Rule>, state: &mut ParserState) -> ExpressionParseResult {
     let span = get_span(&pair);
     let spread_symbol_node = build_symbol_ast(
-        pair.clone().into_inner().next().ok_or_else(|| {
-            errors::parse_malformed("spread", &state.source, to_source_span(span))
-                .with_suggestion("Use ...symbol for spread syntax")
-        })?,
+        pair.clone()
+            .into_inner()
+            .next()
+            .ok_or_else(|| state.missing_element("symbol after spread", to_source_span(span)))?,
         state,
     )?;
     Ok(spanned_expr!(
@@ -555,19 +558,19 @@ fn validate_path_components(
     components: &[&str],
     span: Span,
     state: &mut ParserState,
-) -> Result<(), OldSutraError> {
+) -> Result<(), SutraError> {
     let has_invalid_component = components
         .iter()
         .any(|&component| component.is_empty() || component == "..");
 
     if has_invalid_component {
-        return Err(errors::parse_invalid_value(
-            "path",
-            components.join("."),
-            &state.source,
+        return Err(state.report(
+            ErrorKind::InvalidLiteral {
+                literal_type: "path".to_string(),
+                value: components.join("."),
+            },
             to_source_span(span),
-        )
-        .with_suggestion("Use valid path components separated by dots"));
+        ));
     }
 
     Ok(())
@@ -578,42 +581,43 @@ fn validate_and_extract_parameter(
     param_item: &Pair<Rule>,
     found_rest: bool,
     state: &mut ParserState,
-) -> Result<(String, bool), OldSutraError> {
+) -> Result<(String, bool), SutraError> {
     let span = get_span(param_item);
     match param_item.as_rule() {
         Rule::symbol if !found_rest => Ok((extract_symbol(param_item, state)?, false)),
         Rule::spread_arg if !found_rest => {
             let mut spread_inner = param_item.clone().into_inner();
-            let symbol_pair = spread_inner.next().ok_or_else(|| {
-                errors::parse_malformed("spread", &state.source, to_source_span(span))
-                    .with_suggestion("Provide a symbol after ... operator")
-            })?;
+            let symbol_pair = spread_inner
+                .next()
+                .ok_or_else(|| state.missing_element("symbol after ...", to_source_span(span)))?;
             Ok((extract_symbol(&symbol_pair, state)?, true))
         }
-        Rule::symbol => Err(errors::parse_parameter_order(
-            &state.source,
-            to_source_span(span),
+        Rule::symbol => Err(state.report(
+            ErrorKind::ParameterOrderViolation {
+                rest_span: to_source_span(span),
+            },
             to_source_span(span),
         )),
-        _ => Err(errors::parse_invalid_value(
-            "parameter",
-            format!("{:?}", param_item.as_rule()),
-            &state.source,
+        _ => Err(state.report(
+            ErrorKind::InvalidLiteral {
+                literal_type: "parameter".to_string(),
+                value: format!("{:?}", param_item.as_rule()),
+            },
             to_source_span(span),
-        )
-        .with_suggestion("Parameters must be symbols or spread operators")),
+        )),
     }
 }
 
 /// Extracts symbol string from a pest pair
 fn extract_symbol(pair: &Pair<Rule>, state: &mut ParserState) -> SymbolParseResult {
     if pair.as_rule() != Rule::symbol {
-        return Err(errors::parse_malformed(
-            "symbol",
-            &state.source,
+        return Err(state.report(
+            ErrorKind::UnexpectedToken {
+                expected: "symbol".to_string(),
+                found: format!("{:?}", pair.as_rule()),
+            },
             to_source_span(get_span(pair)),
-        )
-        .with_suggestion("Expected a symbol"));
+        ));
     }
     Ok(pair.as_str().to_string())
 }
@@ -660,18 +664,15 @@ fn unescape_string(pair: Pair<Rule>) -> SymbolParseResult {
 fn extract_form_parts(
     pair: Pair<Rule>,
     state: &mut ParserState,
-) -> Result<(AstNode, AstNode, Span), OldSutraError> {
+) -> Result<(AstNode, AstNode, Span), SutraError> {
     let span = get_span(&pair);
     let mut form_pairs = pair.clone().into_inner();
 
-    let param_list_pair = form_pairs.next().ok_or_else(|| {
-        errors::parse_missing("parameter list", &state.source, to_source_span(span))
-    })?;
+    let param_list_pair =
+        form_pairs.next().ok_or_else(|| state.missing_element("parameter list", to_source_span(span)))?;
     let param_list = build_param_list_ast(param_list_pair, state)?;
 
-    let body_pair = form_pairs.next().ok_or_else(|| {
-        errors::parse_missing("function body", &state.source, to_source_span(span))
-    })?;
+    let body_pair = form_pairs.next().ok_or_else(|| state.missing_element("function body", to_source_span(span)))?;
     let body = build_expression_ast(body_pair, state)?;
 
     Ok((param_list, body, span))
@@ -682,17 +683,17 @@ fn extract_form_parts(
 // ============================================================================
 
 /// Creates parse error from pest error
-fn create_parse_error(e: Error<Rule>, state: &mut ParserState) -> OldSutraError {
+fn create_parse_error(e: Error<Rule>, state: &mut ParserState) -> SutraError {
     let error_span = pest_location_to_span(e.location.clone());
-    let (custom_msg, help, diagnostic_span) =
+    let (custom_msg, _help, diagnostic_span) =
         improve_parse_error_message(&e.to_string(), state, error_span);
 
-    let mut err =
-        errors::parse_malformed(custom_msg, &state.source, to_source_span(diagnostic_span));
-    if let Some(help_str) = help {
-        err = err.with_suggestion(help_str);
-    }
-    err
+    state.report(
+        ErrorKind::MalformedConstruct {
+            construct: custom_msg,
+        },
+        to_source_span(diagnostic_span),
+    )
 }
 
 /// Converts pest parse errors to user-friendly SutraError messages
@@ -793,6 +794,10 @@ fn count_parens(s: &str) -> (usize, usize) {
 }
 
 // Helper to convert ast::Span to miette::SourceSpan
+#[deprecated(
+    since = "0.8.0",
+    note = "This function can hide the creation of empty spans. Use explicit `SourceSpan::from` or `errors::unspanned()` instead."
+)]
 pub fn to_source_span(span: Span) -> SourceSpan {
     SourceSpan::new(span.start.into(), (span.end - span.start).into())
 }

@@ -497,3 +497,10 @@ impl SutraError {
         }
     }
 }
+
+/// Creates a placeholder span for errors not tied to a specific source code
+/// location, such as I/O errors or internal application state failures.
+/// This makes the intent of using an empty span explicit and searchable.
+pub fn unspanned() -> miette::SourceSpan {
+    miette::SourceSpan::from(0..0)
+}

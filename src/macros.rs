@@ -47,9 +47,16 @@ use miette::NamedSource;
 use serde::{Deserialize, Serialize};
 
 use crate::prelude::*;
-use crate::{ast::ParamList, runtime::source::SourceContext, syntax::parser::to_source_span};
+use crate::{
+    ast::ParamList,
+    errors::ErrorKind,
+    errors::ErrorReporting,
+    validation::semantic::ValidationContext,
+    runtime::source::SourceContext,
+    syntax::parser::to_source_span,
+};
 
-use crate::errors;
+use crate::errors::{self, SutraError};
 
 // ============================================================================
 // MODULE DECLARATIONS
@@ -90,7 +97,7 @@ pub const MAX_MACRO_RECURSION_DEPTH: usize = 128;
 // ============================================================================
 
 /// Type alias for macro expansion results
-pub type MacroExpansionResult = Result<AstNode, OldSutraError>;
+pub type MacroExpansionResult = Result<AstNode, SutraError>;
 
 /// Type alias for macro storage and lookup
 pub type MacroMap = HashMap<String, MacroDefinition>;
@@ -99,7 +106,7 @@ pub type MacroMap = HashMap<String, MacroDefinition>;
 pub type MacroLookupResult<'a> = Option<(MacroOrigin, &'a MacroDefinition)>;
 
 /// Type alias for macro registration results
-pub type MacroRegistrationResult = Result<Option<MacroDefinition>, OldSutraError>;
+pub type MacroRegistrationResult = Result<Option<MacroDefinition>, SutraError>;
 
 /// Type alias for macro expansion trace
 pub type MacroTrace = Vec<MacroExpansionStep>;
@@ -158,16 +165,12 @@ impl MacroValidationContext {
         name: String,
         definition: MacroDefinition,
         target: &mut HashMap<String, MacroDefinition>,
-    ) -> Result<(), OldSutraError> {
+    ) -> Result<(), SutraError> {
         // Step 1: Check for duplicates if validation is enabled
         if self.check_duplicates && target.contains_key(&name) {
             let sc = SourceContext::fallback("MacroValidationContext::validate_and_insert");
-            return Err(errors::runtime_general(
-                format!("duplicate macro name '{}'", name),
-                "macro registration",
-                &sc,
-                to_source_span(Span::default()), // No precise span available for macro registration error.
-            ));
+            let context = ValidationContext { source: sc, phase: "macro registration".to_string() };
+            return Err(context.report(ErrorKind::DuplicateDefinition { symbol: name, original_location: errors::unspanned() }, errors::unspanned()));
         }
 
         // Step 4: Insert the macro
@@ -180,7 +183,7 @@ impl MacroValidationContext {
         &self,
         macros: Vec<(String, MacroTemplate)>,
         target: &mut HashMap<String, MacroDefinition>,
-    ) -> Result<(), OldSutraError> {
+    ) -> Result<(), SutraError> {
         for (name, template) in macros {
             self.validate_and_insert(name, MacroDefinition::Template(template), target)?;
         }
@@ -238,7 +241,7 @@ impl MacroRegistrationConfig {
 /// - Return `Result<AstNode, SutraError>` (the expanded form)
 /// - Be pure transformations with no side effects
 /// - Maintain span information for error reporting
-pub type MacroFunction = fn(&AstNode, &SourceContext) -> Result<AstNode, OldSutraError>;
+pub type MacroFunction = fn(&AstNode, &SourceContext) -> Result<AstNode, SutraError>;
 
 /// A declarative macro defined by a template.
 ///
@@ -258,35 +261,21 @@ impl MacroTemplate {
     ///
     /// # Errors
     /// Returns an error if duplicate parameter names are found.
-    pub fn new(params: ParamList, body: Box<AstNode>) -> Result<Self, OldSutraError> {
+    pub fn new(params: ParamList, body: Box<AstNode>) -> Result<Self, SutraError> {
         // Validate no duplicate parameters
         let mut seen = HashSet::new();
+        let sc = SourceContext::fallback("MacroTemplate::new");
+        let context = ValidationContext { source: sc, phase: "parameter validation".to_string() };
 
         for name in &params.required {
             if !seen.insert(name) {
-                return Err({
-                    let sc = SourceContext::fallback("MacroTemplate::new");
-                    errors::runtime_general(
-                        format!("duplicate parameter name '{}'", name),
-                        "parameter validation",
-                        &sc,
-                        to_source_span(Span::default()),
-                    )
-                });
+                return Err(context.report(ErrorKind::DuplicateDefinition { symbol: name.clone(), original_location: errors::unspanned()}, errors::unspanned()));
             }
         }
 
         if let Some(var) = &params.rest {
             if !seen.insert(var) {
-                return Err({
-                    let sc = SourceContext::fallback("MacroTemplate::new");
-                    errors::runtime_general(
-                        format!("duplicate parameter name '{}'", var),
-                        "parameter validation",
-                        &sc,
-                        to_source_span(Span::default()),
-                    )
-                });
+                return Err(context.report(ErrorKind::DuplicateDefinition { symbol: var.clone(), original_location: errors::unspanned()}, errors::unspanned()));
             }
         }
 
@@ -439,27 +428,18 @@ impl MacroRegistry {
         &self,
         name: &str,
         config: &MacroRegistrationConfig,
-    ) -> Result<(), OldSutraError> {
+    ) -> Result<(), SutraError> {
+        let sc = SourceContext::fallback("MacroRegistry::validate_registration");
+        let context = ValidationContext { source: sc, phase: "macro validation".to_string() };
+
         // Step 1: Validate name is not empty (if name validation is enabled)
         if config.validate_name && name.is_empty() {
-            let sc = SourceContext::fallback("MacroRegistry::validate_registration");
-            return Err(errors::runtime_general(
-                "macro name cannot be empty".to_string(),
-                "macro validation",
-                &sc,
-                to_source_span(Span::default()), // No precise span available for macro registration error.
-            ));
+            return Err(context.report(ErrorKind::InvalidMacro { macro_name: "".to_string(), reason: "Macro name cannot be empty.".to_string()}, errors::unspanned()));
         }
 
         // Step 2: Check for duplicate names (if duplicate checking is enabled)
         if config.check_duplicates && self.macros.contains_key(name) {
-            let sc = SourceContext::fallback("MacroRegistry::validate_registration");
-            return Err(errors::runtime_general(
-                format!("macro '{}' is already registered", name),
-                "macro validation",
-                &sc,
-                to_source_span(Span::default()), // No precise span available for macro registration error.
-            ));
+            return Err(context.report(ErrorKind::DuplicateDefinition { symbol: name.to_string(), original_location: errors::unspanned() }, errors::unspanned()));
         }
 
         // Step 3: Validation successful
@@ -490,12 +470,8 @@ impl MacroRegistry {
         // Step 2: Reject if macro exists and overwrites not allowed
         if !config.allow_overwrite && self.macros.contains_key(name) {
             let sc = SourceContext::fallback("MacroRegistry::register_with_config");
-            return Err(errors::runtime_general(
-                format!("macro '{}' is already registered", name),
-                "macro registration",
-                &sc,
-                to_source_span(Span::default()), // No precise span available for macro registration error.
-            ));
+            let context = ValidationContext { source: sc, phase: "macro registration".to_string() };
+            return Err(context.report(ErrorKind::DuplicateDefinition { symbol: name.to_string(), original_location: errors::unspanned() }, errors::unspanned()));
         }
 
         // Step 3: Insert macro and return any previous definition
@@ -528,7 +504,7 @@ impl MacroRegistry {
     ///
     /// # Errors
     /// Returns an error if a macro with this name is already registered or if the name is empty.
-    pub fn register_or_error(&mut self, name: &str, func: MacroFunction) -> Result<(), OldSutraError> {
+    pub fn register_or_error(&mut self, name: &str, func: MacroFunction) -> Result<(), SutraError> {
         self.register_with_config(
             name,
             MacroDefinition::Fn(func),
@@ -570,7 +546,7 @@ impl MacroRegistry {
         &mut self,
         name: &str,
         template: MacroTemplate,
-    ) -> Result<(), OldSutraError> {
+    ) -> Result<(), SutraError> {
         self.register_with_config(
             name,
             MacroDefinition::Template(template),

@@ -585,6 +585,21 @@ impl EvaluationContext {
 }
 ```
 
+#### Handling Non-Source Errors
+
+For errors not tied to a specific source location (e.g., I/O failures, internal state errors), a default or zero-length span is necessary but obscures intent. To make these cases explicit and searchable, a dedicated helper function should be used.
+
+```rust
+/// Creates an explicit placeholder span for errors not tied to a specific
+/// source-code location. This makes the intent of using an empty span
+/// explicit and provides a single, searchable pattern.
+pub fn unspanned() -> miette::SourceSpan {
+    miette::SourceSpan::from(0..0)
+}
+```
+
+This function should replace all legitimate uses of `Span::default()` and `SourceSpan::from(0..0)`.
+
 ### Error Context Trait Specifications
 
 **Each context must implement required helper methods:**
@@ -665,32 +680,6 @@ lazy_static! {
         m.insert("type_mismatch", Atom::from("Check the value type"));
         m
     };
-}
-```
-
-### Testing Requirements
-
-**The new system must pass all existing error tests:**
-
-```rust
-// Compatibility tests - ensure no behavioral regressions
-#[test]
-fn test_error_category_compatibility() {
-    // All existing error types must map to same categories
-    // ErrorType::Parse → ErrorCategory::Parse
-    // ErrorType::Eval → ErrorCategory::Runtime
-    // ErrorType::Validation → ErrorCategory::Validation
-    // ErrorType::TypeError → ErrorCategory::Runtime
-    // ErrorType::TestFailure → ErrorCategory::Test
-    assert_eq!(old_parse_error.error_type(), new_parse_error.kind.category());
-}
-
-#[test]
-fn test_miette_output_compatibility() {
-    // Error display format must remain consistent
-    let old_output = format!("{:?}", old_error);
-    let new_output = format!("{:?}", new_error);
-    assert_similar_diagnostic_output(old_output, new_output);
 }
 ```
 

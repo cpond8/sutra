@@ -14,7 +14,8 @@ use crate::{
     validation::semantic,
 };
 
-use crate::errors;
+use crate::errors::{self, ErrorKind, ErrorReporting, SutraError};
+use crate::validation::semantic::ValidationContext;
 use miette::SourceSpan;
 
 // ============================================================================
@@ -59,7 +60,7 @@ impl OutputSink for EngineStdoutSink {
 }
 
 /// Prints a SutraError with full miette diagnostics
-pub fn print_error(error: OldSutraError) {
+pub fn print_error(error: SutraError) {
     let report = Report::new(error);
     eprintln!("{report:?}");
 }
@@ -69,7 +70,7 @@ pub fn print_error(error: OldSutraError) {
 // ============================================================================
 
 /// Type alias for execution results
-type ExecutionResult = Result<(), OldSutraError>;
+type ExecutionResult = Result<(), SutraError>;
 
 /// Type alias for source context used in error reporting
 
@@ -122,7 +123,7 @@ impl MacroProcessor {
     pub fn partition_and_process_macros(
         &self,
         ast_nodes: Vec<AstNode>,
-    ) -> Result<(AstNode, MacroExpansionContext), OldSutraError> {
+    ) -> Result<(AstNode, MacroExpansionContext), SutraError> {
         // Step 1: Partition AST nodes into macro definitions and user code
         let (macro_defs, user_code) = self.partition_ast_nodes(ast_nodes);
 
@@ -148,7 +149,7 @@ impl MacroProcessor {
         &self,
         ast_nodes: Vec<AstNode>,
         env: &mut MacroExpansionContext,
-    ) -> Result<AstNode, OldSutraError> {
+    ) -> Result<AstNode, SutraError> {
         // Step 1: Partition AST nodes into macro definitions and user code
         let (macro_defs, user_code) = self.partition_ast_nodes(ast_nodes);
 
@@ -173,7 +174,7 @@ impl MacroProcessor {
         &self,
         ast: AstNode,
         env: &mut MacroExpansionContext,
-    ) -> Result<AstNode, OldSutraError> {
+    ) -> Result<AstNode, SutraError> {
         expand_macros_recursively(ast, env)
     }
 
@@ -292,17 +293,17 @@ impl ExecutionPipeline {
     // ============================================================================
 
     /// Executes source code with pure execution logic (no I/O, no formatting)
-    pub fn execute_source(source: &str, output: SharedOutput) -> Result<(), OldSutraError> {
+    pub fn execute_source(source: &str, output: SharedOutput) -> Result<(), SutraError> {
         Self::default().execute(source, output, "source")
     }
 
     /// Parses source code with pure parsing logic (no I/O)
-    pub fn parse_source(source: &str) -> Result<Vec<AstNode>, OldSutraError> {
+    pub fn parse_source(source: &str) -> Result<Vec<AstNode>, SutraError> {
         let source_context = SourceContext::from_file("source", source);
         parser::parse(source, source_context)
     }
     /// Expands macros in source code with pure expansion logic (no I/O)
-    pub fn expand_macros_source(source: &str) -> Result<String, OldSutraError> {
+    pub fn expand_macros_source(source: &str) -> Result<String, SutraError> {
         let processor = MacroProcessor::default();
         let source_context = SourceContext::from_file("source", source);
         let ast_nodes = parser::parse(source, source_context)?;
@@ -311,24 +312,30 @@ impl ExecutionPipeline {
     }
 
     /// Reads a file with standardized error handling
-    pub fn read_file(path: &Path) -> Result<String, OldSutraError> {
+    pub fn read_file(path: &Path) -> Result<String, SutraError> {
         let filename = path.to_str().ok_or_else(|| {
-            let sc = SourceContext::fallback("ExecutionPipeline::read_file");
-            errors::runtime_general(
-                "Invalid filename: Could not convert path to string",
-                "file error",
-                &sc,
-                SourceSpan::from(0..0), // No precise span available in file system error context.
+            let context = ValidationContext {
+                source: source::SourceContext::fallback("ExecutionPipeline::read_file"),
+                phase: "file-system".to_string(),
+            };
+            context.report(
+                ErrorKind::InvalidPath {
+                    path: path.to_string_lossy().to_string(),
+                },
+                errors::unspanned(),
             )
         })?;
 
         std::fs::read_to_string(filename).map_err(|error| {
-            let sc = source::SourceContext::fallback("ExecutionPipeline::read_file");
-            errors::runtime_general(
-                format!("Failed to read file: {}", error),
-                "file error",
-                &sc,
-                SourceSpan::from(0..0), // No precise span available in file system error context.
+            let context = ValidationContext {
+                source: source::SourceContext::fallback("ExecutionPipeline::read_file"),
+                phase: "file-system".to_string(),
+            };
+            context.report(
+                ErrorKind::InvalidPath {
+                    path: format!("{} ({})", filename, error),
+                },
+                errors::unspanned(),
             )
         })
     }
@@ -377,7 +384,7 @@ impl ExecutionPipeline {
         nodes: &[AstNode],
         output: SharedOutput,
         source_context: SourceContext,
-    ) -> Result<Value, OldSutraError> {
+    ) -> Result<Value, SutraError> {
         // Step 1: Create a macro processor with the pipeline's configuration.
         let processor = MacroProcessor::new(self.validate, self.max_depth);
         let mut env = self.macro_env.clone();
@@ -433,7 +440,7 @@ impl ExecutionPipeline {
         world: CanonicalWorld,
         output: SharedOutput,
         source: source::SourceContext,
-    ) -> Result<Value, OldSutraError> {
+    ) -> Result<Value, SutraError> {
         eval::evaluate(
             expanded_ast,
             world,

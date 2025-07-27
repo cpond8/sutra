@@ -14,16 +14,17 @@
 
 use std::collections::HashMap;
 
-use crate::prelude::*;
 use crate::{
     ast::Span,
-    errors,
+    errors::{self, ErrorKind, ErrorReporting, SutraError},
     macros::{
         MacroDefinition, MacroExpansionContext, MacroExpansionResult,
         MacroExpansionStep, MacroTemplate, MAX_MACRO_RECURSION_DEPTH,
     },
+    prelude::*,
     runtime::source::SourceContext,
     syntax::parser::to_source_span,
+    validation::semantic::ValidationContext,
 };
 
 /// Expands all macro calls recursively within an AST node, tracing expansions.
@@ -45,12 +46,14 @@ pub fn expand_macros_recursively(
             None => break,
         };
         if depth > MAX_MACRO_RECURSION_DEPTH {
-            return Err(errors::runtime_general(
-                format!("Macro recursion limit of {} exceeded (in '{}')", MAX_MACRO_RECURSION_DEPTH, macro_call),
-                "macro recursion limit",
-                &source_ctx,
+            let context = ValidationContext {
+                source: source_ctx.clone(),
+                phase: "macro-expansion".to_string(),
+            };
+            return Err(context.report(
+                ErrorKind::RecursionLimit,
                 to_source_span(node.span),
-            ).with_suggestion(format!("Check for infinite recursion in macro '{}'.", macro_call)));
+            ));
         }
         let original_node = node.clone();
         let result = match &macro_def {
@@ -115,12 +118,11 @@ fn expand_template(
         Err(e) => return Err(e),
     };
     if depth > MAX_MACRO_RECURSION_DEPTH {
-        return Err(errors::runtime_general(
-            format!("Macro recursion limit of {} exceeded", MAX_MACRO_RECURSION_DEPTH),
-            "recursion limit",
-            source_ctx,
-            to_source_span(*span),
-        ).with_suggestion(format!("Check for infinite recursion in macro '{}'", macro_name)));
+        let context = ValidationContext {
+            source: source_ctx.clone(),
+            phase: "macro-expansion".to_string(),
+        };
+        return Err(context.report(ErrorKind::RecursionLimit, to_source_span(*span)));
     }
     // Arity check
     crate::macros::check_arity(args.len(), &template.params, macro_name, span, source_ctx)?;
@@ -161,12 +163,11 @@ fn substitute_template(
     depth: usize,
 ) -> MacroExpansionResult {
     if depth > MAX_MACRO_RECURSION_DEPTH {
-        return Err(errors::runtime_general(
-            format!("Macro recursion limit of {} exceeded (in substitution)", MAX_MACRO_RECURSION_DEPTH),
-            "macro recursion limit",
-            source_ctx,
-            to_source_span(expr.span),
-        ));
+        let context = ValidationContext {
+            source: source_ctx.clone(),
+            phase: "macro-expansion".to_string(),
+        };
+        return Err(context.report(ErrorKind::RecursionLimit, to_source_span(expr.span)));
     }
     // === Flat, Early-Return Structure ===
     if let Expr::Symbol(name, _) = &*expr.value {
@@ -180,12 +181,15 @@ fn substitute_template(
                 if let Expr::List(elements, _) = &*substituted.value {
                     new_items.extend(elements.clone());
                 } else {
-                    return Err(errors::type_mismatch(
+                    let context = ValidationContext {
+                        source: source_ctx.clone(),
+                        phase: "macro-expansion".to_string(),
+                    };
+                    return Err(context.type_mismatch(
                         "list",
                         substituted.type_name(),
-                        source_ctx,
                         to_source_span(inner.span),
-                    ).with_suggestion("Spread expressions (...) in macros must be bound to a list value."));
+                    ));
                 }
                 continue;
             }
@@ -233,34 +237,34 @@ fn extract_macro_call(node: &AstNode) -> Option<(&str, &[AstNode])> {
 }
 
 /// Extracts macro name and arguments from a macro call, or returns an error if invalid.
-fn extract_macro_call_info(call: &AstNode) -> Result<(&str, &[AstNode], &Span), OldSutraError> {
+fn extract_macro_call_info(call: &AstNode) -> Result<(&str, &[AstNode], &Span), SutraError> {
+    let context = ValidationContext {
+        source: SourceContext::from_file("macro-expander", format!("{:?}", call)),
+        phase: "macro-expansion".to_string(),
+    };
     let Expr::List(items, span) = &*call.value else {
-        let sc = SourceContext::from_file("macro-expander", format!("{:?}", call));
-        return Err(errors::runtime_general(
-            "Macro call must be a list expression",
-            "macro call",
-            &sc,
+        return Err(context.report(
+            ErrorKind::MalformedConstruct {
+                construct: "macro call".to_string(),
+            },
             to_source_span(call.span),
-        ).with_suggestion("Macros must be called using list syntax, like `(my-macro ...)`."));
+        ));
     };
     if items.is_empty() {
-        let sc = SourceContext::from_file("macro-expander", format!("{:?}", call));
-        return Err(errors::runtime_general(
-            "Macro call cannot be empty",
-            "macro call",
-            &sc,
+        return Err(context.report(
+            ErrorKind::EmptyExpression,
             to_source_span(*span),
         ));
     }
     let first = &items[0];
     let Expr::Symbol(macro_name, _) = &*first.value else {
-        let sc = SourceContext::from_file("macro-expander", format!("{:?}", call));
-        return Err(errors::runtime_general(
-            "Macro call head must be a symbol",
-            "macro call",
-            &sc,
+        return Err(context.report(
+            ErrorKind::UnexpectedToken {
+                expected: "symbol".to_string(),
+                found: first.value.type_name().to_string(),
+            },
             to_source_span(first.span),
-        ).with_suggestion("The first element of a macro call must be the macro's name."));
+        ));
     };
     Ok((macro_name, &items[1..], span))
 }

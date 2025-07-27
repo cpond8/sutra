@@ -109,34 +109,6 @@ impl EvaluationContext {
     }
 }
 
-impl EvaluationContext {
-    /// Create a general runtime error with automatic test context attachment
-    pub fn create_error(&self, message: impl Into<String>, span: SourceSpan) -> OldSutraError {
-        let mut err = errors::runtime_general(message, "runtime error", &self.source, span);
-
-        if let (Some(ref tf), Some(ref tn)) = (&self.test_file, &self.test_name) {
-            err = err.with_test_context(tf.clone(), tn.clone());
-        }
-
-        err
-    }
-
-    /// Create a type mismatch error with automatic test context attachment
-    pub fn create_type_mismatch_error(
-        &self,
-        expected: impl Into<String>,
-        actual: impl Into<String>,
-        span: SourceSpan,
-    ) -> OldSutraError {
-        let mut err = errors::type_mismatch(expected, actual, &self.source, span);
-
-        if let (Some(ref tf), Some(ref tn)) = (&self.test_file, &self.test_name) {
-            err = err.with_test_context(tf.clone(), tn.clone());
-        }
-
-        err
-    }
-}
 
 // ===================================================================================================
 // PUBLIC API: Evaluation Helpers
@@ -158,14 +130,13 @@ impl EvaluationContext {
             }
             _ => {
                 // Not a callable value.
-                Err(self.create_error(
-                    format!(
-                        "The value of type '{}' is not a callable function.",
-                        callable.type_name()
-                    ),
+                Err(self.report(
+                    ErrorKind::TypeMismatch {
+                        expected: "callable".to_string(),
+                        actual: callable.type_name().to_string(),
+                    },
                     self.span_for_span(self.current_span),
-                )
-                .with_suggestion("Expected a Lambda or NativeEagerFn."))
+                ))
             }
         }
     }
@@ -254,9 +225,7 @@ pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext)
 
     // Step 1: Check recursion limit
     if context.depth > context.max_depth {
-        return Err(context
-            .create_error("Recursion limit exceeded", context.span_for_node(expr))
-            .with_suggestion("Reduce recursion depth or increase the limit"));
+        return Err(context.report(ErrorKind::RecursionLimit, context.span_for_node(expr)));
     }
 
     // Step 2: Handle each expression type based on its structure
@@ -324,15 +293,13 @@ fn evaluate_list(items: &[AstNode], span: &Span, context: &mut EvaluationContext
             eager_fn(&arg_values, context)
         }
         Value::NativeLazyFn(lazy_fn) => lazy_fn(tail, context, span),
-        _ => Err(context
-            .create_error(
-                format!(
-                    "The value of type '{}' is not a callable function.",
-                    callable_val.type_name()
-                ),
-                context.span_for_node(head),
-            )
-            .with_suggestion("Ensure the first element of a list is a lambda or native function.")),
+        _ => Err(context.report(
+            ErrorKind::TypeMismatch {
+                expected: "callable".to_string(),
+                actual: callable_val.type_name().to_string(),
+            },
+            context.span_for_node(head),
+        )),
     }
 }
 
@@ -371,12 +338,13 @@ fn evaluate_literal_value(expr: &AstNode, context: &mut EvaluationContext) -> At
         Expr::Number(n, _) => Value::Number(*n),
         Expr::Bool(b, _) => Value::Bool(*b),
         _ => {
-            return Err(context
-                .create_error(
-                    "eval_literal_value called with non-literal expression",
-                    context.span_for_node(expr),
-                )
-                .with_suggestion("This should not happen - please report as a bug"));
+            return Err(context.report(
+                ErrorKind::InvalidOperation {
+                    operation: "evaluate_literal_value".to_string(),
+                    operand_type: expr.value.type_name().to_string(),
+                },
+                context.span_for_node(expr),
+            ));
         }
     };
     Ok(value)
@@ -386,23 +354,24 @@ fn evaluate_literal_value(expr: &AstNode, context: &mut EvaluationContext) -> At
 fn evaluate_invalid_expr(expr: &AstNode, context: &mut EvaluationContext) -> AtomResult {
     match &*expr.value {
         // Parameter lists cannot be evaluated at runtime
-        Expr::ParamList(_) => Err(context
-            .create_error(
-                "Cannot evaluate parameter list (ParamList AST node) at runtime",
-                context.span_for_node(expr),
-            )
-            .with_suggestion("Parameter lists are only valid in lambda definitions")),
+        Expr::ParamList(_) => Err(context.report(
+            ErrorKind::InvalidOperation {
+                operation: "evaluate".to_string(),
+                operand_type: "ParamList".to_string(),
+            },
+            context.span_for_node(expr),
+        )),
 
         // Symbols need resolution - may succeed or fail
         Expr::Symbol(symbol_name, span) => Ok(resolve_symbol(symbol_name, span, context)?),
 
         // Spread arguments are only valid in function calls
-        Expr::Spread(_) => Err(context
-            .create_error(
-                "Spread argument not allowed outside of call position (list context)",
-                context.span_for_node(expr),
-            )
-            .with_suggestion("Use spread only in function call arguments")),
+        Expr::Spread(_) => Err(context.report(
+            ErrorKind::MalformedConstruct {
+                construct: "spread argument".to_string(),
+            },
+            context.span_for_node(expr),
+        )),
 
         // This should never happen with valid expressions
         _ => unreachable!("evaluate_invalid_expr called with valid expression type"),
@@ -415,7 +384,7 @@ fn resolve_symbol(
     symbol_name: &str,
     span: &Span,
     context: &mut EvaluationContext,
-) -> Result<Value, OldSutraError> {
+) -> Result<Value, SutraError> {
     // 1. Lexical environment (innermost to outermost)
     if let Some(value) = context.get_lexical_var(symbol_name) {
         return Ok(value.clone());
@@ -428,12 +397,7 @@ fn resolve_symbol(
     }
 
     // 3. Undefined
-    Err(context
-        .create_error(
-            format!("Undefined symbol '{}'", symbol_name),
-            context.span_for_span(*span),
-        )
-        .with_suggestion(format!("Define '{}' before using it", symbol_name)))
+    Err(context.undefined_symbol(symbol_name, context.span_for_span(*span)))
 }
 
 // ===================================================================================================
@@ -444,7 +408,7 @@ fn resolve_symbol(
 fn evaluate_eager_args(
     args: &[AstNode],
     context: &mut EvaluationContext,
-) -> Result<Vec<Value>, OldSutraError> {
+) -> Result<Vec<Value>, SutraError> {
     let mut values = Vec::new();
     for arg in args {
         values.push(evaluate_ast_node(arg, context)?);
@@ -456,7 +420,7 @@ fn evaluate_eager_args(
 fn flatten_spread_args(
     tail: &[AstNode],
     context: &mut EvaluationContext,
-) -> Result<Vec<AstNode>, OldSutraError> {
+) -> Result<Vec<AstNode>, SutraError> {
     // Step 1: Process each argument
     let mut flat_tail = Vec::new();
 
@@ -471,7 +435,7 @@ fn flatten_spread_args(
 fn process_single_argument(
     arg: &AstNode,
     context: &mut EvaluationContext,
-) -> Result<Vec<AstNode>, OldSutraError> {
+) -> Result<Vec<AstNode>, SutraError> {
     // Handle non-spread expressions
     let Expr::Spread(expr) = &*arg.value else {
         return Ok(vec![arg.clone()]);
@@ -491,12 +455,10 @@ fn extract_list_items(
     value: Value,
     expr: &AstNode,
     context: &mut EvaluationContext,
-) -> Result<Vec<Value>, OldSutraError> {
+) -> Result<Vec<Value>, SutraError> {
     match value {
         Value::Cons(_) | Value::Nil => Ok(value.try_into_iter().collect::<Vec<Value>>()),
-        _ => Err(context
-            .create_type_mismatch_error("list", value.type_name(), context.span_for_node(expr))
-            .with_suggestion("Use a list for spread operations")),
+        _ => Err(context.type_mismatch("list", value.type_name(), context.span_for_node(expr))),
     }
 }
 
@@ -535,7 +497,7 @@ fn is_truthy(val: &Value) -> bool {
 pub fn evaluate_condition_as_bool(
     condition: &AstNode,
     context: &mut EvaluationContext,
-) -> Result<bool, OldSutraError> {
+) -> Result<bool, SutraError> {
     let cond_val = evaluate_ast_node(condition, context)?;
     Ok(is_truthy(&cond_val))
 }

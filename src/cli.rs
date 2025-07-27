@@ -13,13 +13,11 @@ use clap::{Parser, Subcommand};
 use crate::prelude::*;
 use crate::{
     engine::{print_error, EngineStdoutSink as StdoutSink, ExecutionPipeline},
+    errors::{self, ErrorKind, ErrorReporting, SutraError},
     runtime::source::SourceContext,
     test::runner::TestRunner,
-    validation::grammar,
+    validation::{grammar, semantic::ValidationContext},
 };
-
-use crate::errors;
-use miette::SourceSpan;
 
 // ============================================================================
 // CLI ARGUMENTS - Command-line argument definitions
@@ -105,7 +103,7 @@ pub fn run() {
             let output = SharedOutput::new(StdoutSink);
             let pipeline = ExecutionPipeline::default();
             if let Err(e) = pipeline.execute(&source, output, &file.display().to_string()) {
-                print_error(e);
+                print_error(e.into());
                 process::exit(1);
             }
         }
@@ -127,7 +125,7 @@ pub fn run() {
             let output = SharedOutput::new(StdoutSink);
             let pipeline = ExecutionPipeline::default();
             if let Err(e) = pipeline.execute(&source, output, "<eval>") {
-                print_error(e);
+                print_error(e.into());
                 process::exit(1);
             }
         }
@@ -152,7 +150,7 @@ pub fn run() {
         ArgsCommand::Ast { file } => {
             let source = read_file_or_exit(&file);
             let ast = ExecutionPipeline::parse_source(&source).unwrap_or_else(|e| {
-                print_error(e);
+                print_error(e.into());
                 process::exit(1);
             });
             print_ast(&ast);
@@ -169,13 +167,17 @@ pub fn run() {
         ArgsCommand::ValidateGrammar => {
             let validation_result = grammar::validate_grammar("src/syntax/grammar.pest")
                 .unwrap_or_else(|e| {
-                    let source_ctx = SourceContext::from_file("sutra-cli", "");
-                    print_error(errors::runtime_general(
-                        format!("Failed to validate grammar: {}", e),
-                        "sutra-cli".to_string(),
-                        &source_ctx,
-                        SourceSpan::from(0..0), // No precise span available here
-                    ));
+                    let context = ValidationContext {
+                        source: SourceContext::from_file("sutra-cli", ""),
+                        phase: "grammar-validation".to_string(),
+                    };
+                    let err = context.report(
+                        ErrorKind::InvalidPath {
+                            path: format!("Failed to validate grammar: {}", e),
+                        },
+                        errors::unspanned(),
+                    );
+                    print_error(err);
                     process::exit(1);
                 });
             let valid = validation_result.is_valid();
@@ -288,7 +290,7 @@ fn read_file_or_exit(path: &Path) -> String {
 
 fn process_file_with_pipeline<F>(file: &Path, processor: F)
 where
-    F: FnOnce(&str) -> Result<String, OldSutraError>,
+    F: FnOnce(&str) -> Result<String, SutraError>,
 {
     let source = read_file_or_exit(file);
     let result = processor(&source).unwrap_or_else(|e| {
