@@ -428,7 +428,7 @@ impl ExecutionPipeline {
         source_context: SourceContext,
     ) -> Result<Value, SutraError> {
         use crate::syntax::parser;
-        
+
         let env = self.macro_env.clone();
 
         // Wrap user code in a (do ...) block if needed

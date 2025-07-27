@@ -5,10 +5,9 @@
 use std::io::{self, Write};
 
 use crate::{
-    atoms::{EngineStdoutSink, SharedOutput}, 
-    build_canonical_macro_env, 
-    build_canonical_world,
-    errors::print_error, 
+    atoms::{EngineStdoutSink, SharedOutput},
+    build_canonical_macro_env, build_canonical_world,
+    errors::print_error,
     macros::MacroSystem,
     prelude::*,
 };
@@ -38,8 +37,8 @@ impl ReplState {
         let output = SharedOutput::new(EngineStdoutSink);
 
         // Use the same execution logic as SutraEngine
-        use crate::{syntax::parser, evaluate, errors::SourceContext};
-        
+        use crate::{errors::SourceContext, evaluate, syntax::parser};
+
         let source_context = SourceContext::from_file(&source_name, input);
         let execution_result = parser::parse(input, source_context.clone())
             .and_then(|ast_nodes| {
@@ -47,7 +46,12 @@ impl ReplState {
                 self.macro_env.expand(program)
             })
             .and_then(|expanded| {
-                evaluate(&expanded, self.world.clone(), output.clone(), source_context)
+                evaluate(
+                    &expanded,
+                    self.world.clone(),
+                    output.clone(),
+                    source_context,
+                )
             });
 
         match execution_result {
