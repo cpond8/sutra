@@ -23,12 +23,6 @@ use crate::{
 /// Maximum recursion depth for macro expansion to prevent infinite loops
 const MAX_RECURSION_DEPTH: usize = 100;
 
-/// Expected arity for single-argument macros
-const SINGLE_ARG_ARITY: usize = 1;
-
-/// Expected arity for two-argument macros
-const DUAL_ARG_ARITY: usize = 2;
-
 /// Expected arity for macro definitions (define name params body)
 const MACRO_DEFINITION_ARITY: usize = 3;
 
@@ -273,33 +267,46 @@ fn substitute_template(
     node: &AstNode,
     bindings: &HashMap<String, AstNode>,
 ) -> Result<AstNode, SutraError> {
-    match &*node.value {
-        Expr::Symbol(name, _) => Ok(bindings.get(name).cloned().unwrap_or_else(|| node.clone())),
-        Expr::List(items, span) => {
-            let mut new_items = Vec::new();
-            for item in items {
-                if let Expr::Spread(inner) = &*item.value {
-                    let substituted = substitute_template(inner, bindings)?;
-                    if let Expr::List(elements, _) = &*substituted.value {
-                        new_items.extend(elements.clone());
-                    } else {
-                        return Err(create_type_error(
-                            "list",
-                            substituted.value.type_name(),
-                            inner.span,
-                        ));
-                    }
-                } else {
-                    new_items.push(substitute_template(item, bindings)?);
-                }
-            }
-            Ok(Spanned {
-                value: Expr::List(new_items, *span).into(),
-                span: node.span,
-            })
-        }
-        _ => Ok(node.clone()),
+    // Handle symbol substitution
+    if let Expr::Symbol(name, _) = &*node.value {
+        return Ok(bindings.get(name).cloned().unwrap_or_else(|| node.clone()));
     }
+
+    // Handle list processing
+    let Expr::List(items, span) = &*node.value else {
+        // Not a list, return unchanged
+        return Ok(node.clone());
+    };
+
+    let mut new_items = Vec::new();
+
+    for item in items {
+        // Handle spread operator
+        let Expr::Spread(inner) = &*item.value else {
+            // Not a spread, substitute normally
+            new_items.push(substitute_template(item, bindings)?);
+            continue;
+        };
+
+        // Process spread inner expression
+        let substituted = substitute_template(inner, bindings)?;
+
+        // Extract list elements from substituted result
+        let Expr::List(elements, _) = &*substituted.value else {
+            return Err(create_type_error(
+                "list",
+                substituted.value.type_name(),
+                inner.span,
+            ));
+        };
+
+        new_items.extend(elements.clone());
+    }
+
+    Ok(Spanned {
+        value: Expr::List(new_items, *span).into(),
+        span: node.span,
+    })
 }
 
 // ============================================================================
@@ -386,51 +393,8 @@ fn extract_args_from_call(call: &AstNode) -> Result<(Vec<AstNode>, Span), SutraE
 // PATH CANONICALIZATION
 // ============================================================================
 
-/// Convert expressions to canonical paths
-fn canonical_path_from_expr(expr: &AstNode) -> Result<AstNode, SutraError> {
-    let path = match &*expr.value {
-        Expr::Symbol(s, _) if s.contains('.') => Path(s.split('.').map(String::from).collect()),
-        Expr::Symbol(s, _) => Path(vec![s.clone()]),
-        Expr::Path(p, _) => p.clone(),
-        Expr::List(items, _) => {
-            let mut parts = Vec::new();
-            for item in items {
-                match &*item.value {
-                    Expr::Symbol(s, _) | Expr::String(s, _) => parts.push(s.clone()),
-                    _ => {
-                        return Err(create_error(
-                            ErrorKind::InvalidOperation {
-                                operation: "path_conversion".to_string(),
-                                operand_type: "Path elements must be symbols or strings"
-                                    .to_string(),
-                            },
-                            "path_conversion",
-                            "invalid_element",
-                            expr.span,
-                        ));
-                    }
-                }
-            }
-            Path(parts)
-        }
-        _ => {
-            return Err(create_error(
-                ErrorKind::InvalidOperation {
-                    operation: "path_conversion".to_string(),
-                    operand_type: "Expression cannot be converted to a path".to_string(),
-                },
-                "path_conversion",
-                "unsupported_type",
-                expr.span,
-            ));
-        }
-    };
-
-    Ok(Spanned {
-        value: Expr::Path(path, expr.span).into(),
-        span: expr.span,
-    })
-}
+// Note: Path canonicalization has been moved to atoms/world.rs
+// This section is preserved for potential future template macro needs
 
 // ============================================================================
 // ERROR HELPERS
@@ -468,175 +432,8 @@ fn create_type_error(expected: &str, actual: &str, span: Span) -> SutraError {
 // ============================================================================
 
 /// Register all built-in macros
-fn register_builtins(system: &mut MacroSystem) {
-    system.register("set!".to_string(), MacroDefinition::Function(expand_set));
-    system.register("get".to_string(), MacroDefinition::Function(expand_get));
-    system.register("del!".to_string(), MacroDefinition::Function(expand_del));
-    system.register(
-        "exists?".to_string(),
-        MacroDefinition::Function(expand_exists),
-    );
-    system.register("inc!".to_string(), MacroDefinition::Function(expand_inc));
-    system.register("dec!".to_string(), MacroDefinition::Function(expand_dec));
-    system.register("add!".to_string(), MacroDefinition::Function(expand_add));
-    system.register("sub!".to_string(), MacroDefinition::Function(expand_sub));
-    system.register("print".to_string(), MacroDefinition::Function(expand_print));
-}
-
-// ============================================================================
-// BUILT-IN MACRO HELPERS
-// ============================================================================
-
-/// Validate arity and create error if mismatch
-fn validate_arity(args: &[AstNode], expected: usize, span: Span) -> Result<(), SutraError> {
-    if args.len() != expected {
-        return Err(create_arity_error(&expected.to_string(), args.len(), span));
-    }
-    Ok(())
-}
-
-/// Create a simple core function call: (core/function_name canonical_path ...)
-fn create_core_call(
-    function_name: &str,
-    path: AstNode,
-    extra_args: &[AstNode],
-    span: Span,
-) -> AstNode {
-    let mut items = vec![
-        Spanned {
-            value: Expr::Symbol(format!("core/{}", function_name), span).into(),
-            span,
-        },
-        path,
-    ];
-    items.extend(extra_args.iter().cloned());
-
-    Spanned {
-        value: Expr::List(items, span).into(),
-        span,
-    }
-}
-
-/// Create arithmetic update: (core/set! path (operator (core/get path) value))
-fn create_arithmetic_update(path: AstNode, operator: &str, value: AstNode, span: Span) -> AstNode {
-    let get_call = create_core_call("get", path.clone(), &[], span);
-    let arithmetic_expr = Spanned {
-        value: Expr::List(
-            vec![
-                Spanned {
-                    value: Expr::Symbol(operator.to_string(), span).into(),
-                    span,
-                },
-                get_call,
-                value,
-            ],
-            span,
-        )
-        .into(),
-        span,
-    };
-    create_core_call("set!", path, &[arithmetic_expr], span)
-}
-
-/// Expand (set! path value) to (core/set! canonical_path value)
-fn expand_set(call: &AstNode) -> Result<AstNode, SutraError> {
-    let (args, span) = extract_args_from_call(call)?;
-    validate_arity(&args, DUAL_ARG_ARITY, span)?;
-    let canonical_path = canonical_path_from_expr(&args[0])?;
-    Ok(create_core_call(
-        "set!",
-        canonical_path,
-        &[args[1].clone()],
-        span,
-    ))
-}
-
-/// Expand (get path) to (core/get canonical_path)
-fn expand_get(call: &AstNode) -> Result<AstNode, SutraError> {
-    let (args, span) = extract_args_from_call(call)?;
-    validate_arity(&args, SINGLE_ARG_ARITY, span)?;
-    let canonical_path = canonical_path_from_expr(&args[0])?;
-    Ok(create_core_call("get", canonical_path, &[], span))
-}
-
-/// Expand (del! path) to (core/del! canonical_path)
-fn expand_del(call: &AstNode) -> Result<AstNode, SutraError> {
-    let (args, span) = extract_args_from_call(call)?;
-    validate_arity(&args, SINGLE_ARG_ARITY, span)?;
-    let canonical_path = canonical_path_from_expr(&args[0])?;
-    Ok(create_core_call("del!", canonical_path, &[], span))
-}
-
-/// Expand (exists? path) to (core/exists? canonical_path)
-fn expand_exists(call: &AstNode) -> Result<AstNode, SutraError> {
-    let (args, span) = extract_args_from_call(call)?;
-    validate_arity(&args, SINGLE_ARG_ARITY, span)?;
-    let canonical_path = canonical_path_from_expr(&args[0])?;
-    Ok(create_core_call("exists?", canonical_path, &[], span))
-}
-
-/// Expand (inc! path) to (core/set! path (+ (core/get path) 1))
-fn expand_inc(call: &AstNode) -> Result<AstNode, SutraError> {
-    let (args, span) = extract_args_from_call(call)?;
-    validate_arity(&args, SINGLE_ARG_ARITY, span)?;
-    let canonical_path = canonical_path_from_expr(&args[0])?;
-    let one = Spanned {
-        value: Expr::Number(1.0, span).into(),
-        span,
-    };
-    Ok(create_arithmetic_update(canonical_path, "+", one, span))
-}
-
-/// Expand (dec! path) to (core/set! path (- (core/get path) 1))
-fn expand_dec(call: &AstNode) -> Result<AstNode, SutraError> {
-    let (args, span) = extract_args_from_call(call)?;
-    validate_arity(&args, SINGLE_ARG_ARITY, span)?;
-    let canonical_path = canonical_path_from_expr(&args[0])?;
-    let one = Spanned {
-        value: Expr::Number(1.0, span).into(),
-        span,
-    };
-    Ok(create_arithmetic_update(canonical_path, "-", one, span))
-}
-
-/// Expand (add! path value) to (core/set! path (+ (core/get path) value))
-fn expand_add(call: &AstNode) -> Result<AstNode, SutraError> {
-    let (args, span) = extract_args_from_call(call)?;
-    validate_arity(&args, DUAL_ARG_ARITY, span)?;
-    let canonical_path = canonical_path_from_expr(&args[0])?;
-    Ok(create_arithmetic_update(
-        canonical_path,
-        "+",
-        args[1].clone(),
-        span,
-    ))
-}
-
-/// Expand (sub! path value) to (core/set! path (- (core/get path) value))
-fn expand_sub(call: &AstNode) -> Result<AstNode, SutraError> {
-    let (args, span) = extract_args_from_call(call)?;
-    validate_arity(&args, DUAL_ARG_ARITY, span)?;
-    let canonical_path = canonical_path_from_expr(&args[0])?;
-    Ok(create_arithmetic_update(
-        canonical_path,
-        "-",
-        args[1].clone(),
-        span,
-    ))
-}
-
-/// Expand (print ...) to (core/print ...)
-fn expand_print(call: &AstNode) -> Result<AstNode, SutraError> {
-    let (args, span) = extract_args_from_call(call)?;
-
-    let mut items = vec![Spanned {
-        value: Expr::Symbol("core/print".to_string(), span).into(),
-        span,
-    }];
-    items.extend(args);
-
-    Ok(Spanned {
-        value: Expr::List(items, span).into(),
-        span,
-    })
+fn register_builtins(_system: &mut MacroSystem) {
+    // Note: Most world state operations (set!, get, del!, exists?, inc!, dec!, add!, sub!, print)
+    // are now implemented as direct atoms rather than macros.
+    // Only template macros and complex transformations remain here.
 }

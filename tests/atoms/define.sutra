@@ -55,7 +55,7 @@
     (add5 7)))  ; => 12
 
 (test "define: error on undefined function"
-  (expect (error Eval))
+  (expect (error Runtime))
   (undefined-function 1 2 3))  ; => error
 
 (test "define: function with no parameters"

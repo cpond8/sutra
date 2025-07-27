@@ -9,7 +9,7 @@
   (car (list "a" "b")))
 
 (test "car errors on empty list"
-  (expect (error Eval))
+  (expect (error Runtime))
   (car (list)))
 
 (test "car errors on non-list argument"
@@ -29,7 +29,7 @@
   (cdr (list "a" "b")))
 
 (test "cdr errors on empty list"
-  (expect (error Eval))
+  (expect (error Runtime))
   (cdr (list)))
 
 (test "cdr errors on non-list argument"

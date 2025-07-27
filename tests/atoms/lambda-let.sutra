@@ -20,17 +20,17 @@
    1 2 3))  ; => 6
 
 (test "lambda: arity error (too few)"
-  (expect (error Eval)) ; because the arity of lambdas can only be checked at runtime
+  (expect (error Runtime)) ; because the arity of lambdas can only be checked at runtime
   ((lambda (x y) (+ x y))
    1))  ; => arity error
 
 (test "lambda: arity error (too many)"
-  (expect (error Eval)) ; because the arity of lambdas can only be checked at runtime
+  (expect (error Runtime)) ; because the arity of lambdas can only be checked at runtime
   ((lambda (x y) (+ x y))
    1 2 3))  ; => arity error
 
 (test "lambda: error on non-list parameter"
-  (expect (error Eval))
+  (expect (error Runtime))
   ((lambda 42 (+ x y))
    1 2))  ; => error on non-list parameter
 
@@ -74,6 +74,6 @@
     c))  ; => 15
 
 (test "let: error on non-pair binding"
-  (expect (error Eval))
+  (expect (error Runtime))
   (let (42)
     (+ 1 2)))  ; => error on non-pair binding

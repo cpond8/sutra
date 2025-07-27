@@ -57,6 +57,6 @@
       (assert-eq 42 (closure)))))
 
 (test "closures-unbound-symbol-error"
-  (expect (error Eval))
+  (expect (error Runtime))
   (let ((unbound-lambda (lambda () unbound-symbol)))
     (unbound-lambda)))

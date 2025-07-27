@@ -109,11 +109,16 @@ impl Value {
     }
 
     /// Returns true if the value is considered "truthy" in a boolean context.
-    /// In Sutra, `nil` and `false` are falsey. Everything else is truthy.
+    /// In Sutra, `nil`, `false`, `0`, empty strings, and empty collections are falsy.
+    /// Everything else is truthy.
     pub fn is_truthy(&self) -> bool {
         match self {
-            Value::Nil => false,
+            Value::Nil => false, // This includes empty lists
             Value::Bool(b) => *b,
+            Value::Number(n) => *n != 0.0,
+            Value::String(s) => !s.is_empty(),
+            Value::Map(m) => !m.is_empty(),
+            Value::Quote(inner) => inner.is_truthy(),
             _ => true,
         }
     }
@@ -603,20 +608,7 @@ pub fn evaluate_condition_as_bool(
     context: &mut EvaluationContext,
 ) -> Result<bool, SutraError> {
     let result = evaluate_ast_node(condition, context)?;
-    Ok(is_truthy(&result.value))
-}
-
-/// Check if value is truthy
-fn is_truthy(val: &Value) -> bool {
-    match val {
-        Value::Bool(false) => false,
-        Value::Nil => false,
-        Value::Number(n) => *n != 0.0,
-        Value::String(s) => !s.is_empty(),
-        Value::Map(m) => !m.is_empty(),
-        Value::Quote(inner) => is_truthy(inner),
-        _ => true,
-    }
+    Ok(result.value.is_truthy())
 }
 
 // ============================================================================

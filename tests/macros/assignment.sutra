@@ -25,12 +25,12 @@
       (get non.existent.path))  ; => nil
 
 (test "assignment: set! arity error (too few)"
-      (expect (error Validation)
+      (expect (error Runtime)
               (tags "assignment"))
       (set! player.health))  ; set! expects exactly 2 arguments, got 1
 
 (test "assignment: get arity error (zero args)"
-      (expect (error Validation)
+      (expect (error Runtime)
               (tags "assignment"))
       (get))  ; get expects exactly 1 argument, got 0
 
@@ -55,12 +55,12 @@
         (get player.mana)))  ; => 5
 
 (test "assignment: add! type error"
-      (expect (error Eval)
+      (expect (error Runtime)
               (tags "assignment"))
       (add! player.score "five"))  ; add! expects number, got string
 
 (test "assignment: add! arity error (too few)"
-      (expect (error Validation)
+      (expect (error Runtime)
               (tags "assignment"))
       (add! player.score))  ; add! expects exactly 2 arguments, got 1
 
@@ -85,12 +85,12 @@
         (get lives)))  ; => 4
 
 (test "assignment: inc! arity error (zero args)"
-      (expect (error Validation)
+      (expect (error Runtime)
               (tags "assignment"))
       (inc!))  ; inc! expects exactly 1 argument, got 0
 
 (test "assignment: dec! arity error (zero args)"
-      (expect (error Validation)
+      (expect (error Runtime)
               (tags "assignment"))
       (dec!))  ; dec! expects exactly 1 argument, got 0
 
@@ -107,6 +107,6 @@
         (get temp.value)))  ; => nil
 
 (test "assignment: del! arity error (zero args)"
-      (expect (error Validation)
+      (expect (error Runtime)
               (tags "assignment"))
       (del!))  ; del! expects exactly 1 argument, got 0

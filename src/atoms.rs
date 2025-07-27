@@ -376,10 +376,14 @@ fn register_logic_atoms(world: &mut World) {
 }
 
 fn register_world_atoms(world: &mut World) {
-    register_eager!(world, "core/set!", world::ATOM_CORE_SET);
-    register_eager!(world, "core/get", world::ATOM_CORE_GET);
-    register_eager!(world, "core/del!", world::ATOM_CORE_DEL);
-    register_eager!(world, "core/exists?", world::ATOM_EXISTS);
+    register_eager!(world, "set!", world::ATOM_SET);
+    register_eager!(world, "get", world::ATOM_GET);
+    register_eager!(world, "del!", world::ATOM_DEL);
+    register_eager!(world, "exists?", world::ATOM_EXISTS);
+    register_eager!(world, "inc!", world::ATOM_INC);
+    register_eager!(world, "dec!", world::ATOM_DEC);
+    register_eager!(world, "add!", world::ATOM_ADD);
+    register_eager!(world, "sub!", world::ATOM_SUB);
     register_eager!(world, "path", world::ATOM_PATH);
 }
 
@@ -405,7 +409,6 @@ fn register_execution_atoms(world: &mut World) {
 
 fn register_external_atoms(world: &mut World) {
     register_eager!(world, "print", external::ATOM_PRINT);
-    register_eager!(world, "core/print", external::ATOM_PRINT);
     register_eager!(world, "output", external::ATOM_OUTPUT);
     register_eager!(world, "rand", external::ATOM_RAND);
 }

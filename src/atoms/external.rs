@@ -66,13 +66,13 @@ impl crate::atoms::OutputSink for EngineStdoutSink {
 
 /// Emits output to the output sink.
 ///
-/// Usage: (core/print <value>)
+/// Usage: (print <value>)
 ///   - <value>: Any value
 ///
 ///   Returns: Nil. Emits output.
 ///
 /// Example:
-///   (core/print "hello")
+///   (print "hello")
 pub const ATOM_PRINT: NativeFn = |args, context, call_span| {
     if args.len() != 1 {
         return Err(context.arity_mismatch("1", args.len(), to_source_span(*call_span)));
