@@ -4,18 +4,302 @@ use miette::{NamedSource, Report};
 
 use crate::prelude::*;
 use crate::{
-    atoms::{OutputSink, SharedOutput},
+    atoms::{
+        build_canonical_macro_env, build_canonical_world, helpers::AtomResult, OutputSink,
+        SharedOutput,
+    },
     macros::{
         expand_macros_recursively, parse_macro_definition, MacroDefinition, MacroExpansionContext,
         MacroValidationContext,
     },
-    runtime::{self, eval, source, world},
     syntax::parser,
     validation::semantic,
 };
 
-use crate::errors::{self, ErrorKind, ErrorReporting, SutraError};
+use crate::errors::{
+    self, DiagnosticInfo, ErrorKind, ErrorReporting, FileContext, SourceContext, SourceInfo,
+    SutraError,
+};
 use crate::validation::ValidationContext;
+
+// Import Lambda and ConsCell types from ast module
+use crate::ast::value::{ConsCell, Lambda};
+
+// ============================================================================
+// EVALUATION CONTEXT - Simplified evaluation state
+// ============================================================================
+
+/// Simplified evaluation context with essential state only
+pub struct EvaluationContext {
+    pub world: CanonicalWorld,
+    pub output: SharedOutput,
+    pub source: SourceContext,
+    pub depth: usize,
+    pub max_depth: usize,
+    pub env: HashMap<String, Value>, // Single environment instead of stack
+}
+
+impl EvaluationContext {
+    /// Create a new evaluation context
+    pub fn new(world: CanonicalWorld, output: SharedOutput, source: SourceContext) -> Self {
+        let mut env = HashMap::new();
+        env.insert("nil".to_string(), Value::Nil);
+
+        Self {
+            world,
+            output,
+            source,
+            depth: 0,
+            max_depth: 1000,
+            env,
+        }
+    }
+
+    /// Create context with custom settings
+    pub fn with_settings(
+        world: CanonicalWorld,
+        output: SharedOutput,
+        source: SourceContext,
+        max_depth: usize,
+    ) -> Self {
+        let mut ctx = Self::new(world, output, source);
+        ctx.max_depth = max_depth;
+        ctx
+    }
+
+    /// Set a variable in the environment
+    pub fn set_var(&mut self, name: &str, value: Value) {
+        self.env.insert(name.to_string(), value);
+    }
+
+    /// Get a variable from the environment
+    pub fn get_var(&self, name: &str) -> Option<&Value> {
+        self.env.get(name)
+    }
+
+    /// Create a new lexical frame for let/lambda
+    pub fn with_new_frame(&self) -> Self {
+        let mut new = Self {
+            world: Rc::clone(&self.world),
+            output: self.output.clone(),
+            source: self.source.clone(),
+            depth: self.depth,
+            max_depth: self.max_depth,
+            env: self.env.clone(),
+        };
+        new.env.insert("nil".to_string(), Value::Nil);
+        new
+    }
+
+    /// Extract span information for error reporting
+    pub fn span_for_node(&self, node: &AstNode) -> miette::SourceSpan {
+        crate::errors::to_source_span(node.span)
+    }
+}
+
+impl ErrorReporting for EvaluationContext {
+    fn report(&self, kind: ErrorKind, span: miette::SourceSpan) -> SutraError {
+        SutraError {
+            kind: kind.clone(),
+            source_info: SourceInfo {
+                source: self.source.to_named_source(),
+                primary_span: span,
+                file_context: FileContext::Runtime { test_info: None },
+            },
+            diagnostic_info: DiagnosticInfo {
+                help: None,
+                related_spans: Vec::new(),
+                error_code: format!("sutra::engine::{}", kind.code_suffix()),
+                is_warning: false,
+            },
+        }
+    }
+}
+
+// ============================================================================
+// CORE EVALUATION - Simplified evaluation engine
+// ============================================================================
+
+/// Main evaluation entry point
+pub fn evaluate(
+    expr: &AstNode,
+    world: CanonicalWorld,
+    output: SharedOutput,
+    source: SourceContext,
+) -> AtomResult {
+    let mut context = EvaluationContext::new(world, output, source);
+    evaluate_ast_node(expr, &mut context)
+}
+
+/// Core recursive evaluator
+pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext) -> AtomResult {
+    // Check recursion limit
+    if context.depth > context.max_depth {
+        return Err(context.report(ErrorKind::RecursionLimit, context.span_for_node(expr)));
+    }
+
+    // Evaluate based on expression type
+    match &*expr.value {
+        Expr::List(items, _) => evaluate_call(items, context),
+        Expr::Quote(inner, _) => Ok(Value::Quote(Box::new(ast_to_value(inner)))),
+        Expr::Symbol(name, _) => resolve_symbol(name, context),
+        Expr::String(s, _) => Ok(Value::String(s.clone())),
+        Expr::Number(n, _) => Ok(Value::Number(*n)),
+        Expr::Bool(b, _) => Ok(Value::Bool(*b)),
+        Expr::Path(p, _) => Ok(Value::Path(p.clone())),
+        Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            let is_true = evaluate_condition_as_bool(condition, context)?;
+            if is_true {
+                evaluate_ast_node(then_branch, context)
+            } else {
+                evaluate_ast_node(else_branch, context)
+            }
+        }
+        _ => Err(context.report(
+            ErrorKind::InvalidOperation {
+                operation: "evaluate".to_string(),
+                operand_type: expr.value.type_name().to_string(),
+            },
+            context.span_for_node(expr),
+        )),
+    }
+}
+
+/// Evaluate function calls
+fn evaluate_call(items: &[AstNode], context: &mut EvaluationContext) -> AtomResult {
+    if items.is_empty() {
+        return Ok(Value::Nil);
+    }
+
+    let head = &items[0];
+    let tail = &items[1..];
+
+    // Resolve callable
+    let callable = if let Expr::Symbol(name, _) = &*head.value {
+        resolve_symbol(name, context)?
+    } else {
+        evaluate_ast_node(head, context)?
+    };
+
+    // Evaluate arguments
+    let args = evaluate_args(tail, context)?;
+
+    // Dispatch call
+    match callable {
+        Value::Lambda(lambda) => call_lambda(&lambda, &args, context),
+        Value::NativeEagerFn(func) => func(&args, context),
+        Value::NativeLazyFn(func) => func(tail, context, &head.span),
+        _ => Err(context.report(
+            ErrorKind::TypeMismatch {
+                expected: "callable".to_string(),
+                actual: callable.type_name().to_string(),
+            },
+            context.span_for_node(head),
+        )),
+    }
+}
+
+/// Evaluate arguments for function calls
+fn evaluate_args(
+    args: &[AstNode],
+    context: &mut EvaluationContext,
+) -> Result<Vec<Value>, SutraError> {
+    let mut values = Vec::new();
+    for arg in args {
+        values.push(evaluate_ast_node(arg, context)?);
+    }
+    Ok(values)
+}
+
+/// Resolve symbol to value
+fn resolve_symbol(name: &str, context: &mut EvaluationContext) -> Result<Value, SutraError> {
+    // Check local environment first
+    if let Some(value) = context.get_var(name) {
+        return Ok(value.clone());
+    }
+
+    // Check global world state
+    let world_path = Path(vec![name.to_string()]);
+    if let Some(value) = context.world.borrow().state.get(&world_path) {
+        return Ok(value.clone());
+    }
+
+    // Undefined
+    Err(context.report(
+        ErrorKind::UndefinedSymbol {
+            symbol: name.to_string(),
+        },
+        context.span_for_node(&AstNode {
+            value: Arc::new(Expr::Symbol(name.to_string(), Span::default())),
+            span: Span::default(),
+        }),
+    ))
+}
+
+/// Convert AST to quoted value
+fn ast_to_value(node: &AstNode) -> Value {
+    match &*node.value {
+        Expr::Symbol(s, _) => Value::Symbol(s.clone()),
+        Expr::Number(n, _) => Value::Number(*n),
+        Expr::Bool(b, _) => Value::Bool(*b),
+        Expr::String(s, _) => Value::String(s.clone()),
+        Expr::List(items, _) => {
+            let mut result = Value::Nil;
+            for item in items.iter().rev() {
+                let cell = ConsCell {
+                    car: ast_to_value(item),
+                    cdr: result,
+                };
+                result = Value::Cons(Rc::new(cell));
+            }
+            result
+        }
+        Expr::Quote(inner, _) => Value::Quote(Box::new(ast_to_value(inner))),
+        Expr::Path(p, _) => Value::Path(p.clone()),
+        _ => Value::Nil,
+    }
+}
+
+/// Evaluate condition as boolean
+pub fn evaluate_condition_as_bool(
+    condition: &AstNode,
+    context: &mut EvaluationContext,
+) -> Result<bool, SutraError> {
+    let value = evaluate_ast_node(condition, context)?;
+    Ok(is_truthy(&value))
+}
+
+/// Check if value is truthy
+fn is_truthy(val: &Value) -> bool {
+    match val {
+        Value::Bool(false) => false,
+        Value::Nil => false,
+        Value::Number(n) => *n != 0.0,
+        Value::String(s) => !s.is_empty(),
+        Value::Map(m) => !m.is_empty(),
+        Value::Quote(inner) => is_truthy(inner),
+        _ => true,
+    }
+}
+
+/// Call lambda function
+fn call_lambda(lambda: &Lambda, args: &[Value], context: &mut EvaluationContext) -> AtomResult {
+    // Create new lexical frame
+    let mut new_context = context.with_new_frame();
+
+    // Bind parameters
+    for (param, arg) in lambda.params.required.iter().zip(args.iter()) {
+        new_context.set_var(param, arg.clone());
+    }
+
+    // Evaluate body
+    evaluate_ast_node(&lambda.body, &mut new_context)
+}
 
 // ============================================================================
 // OUTPUT TYPES - Generic output handling for CLI and testing
@@ -127,7 +411,7 @@ impl MacroProcessor {
         let (macro_defs, user_code) = self.partition_ast_nodes(ast_nodes);
 
         // Step 2: Build canonical macro environment
-        let mut env = world::build_canonical_macro_env()?;
+        let mut env = build_canonical_macro_env()?;
 
         // Step 3: Process user-defined macros
         self.process_macro_definitions(macro_defs, &mut env)?;
@@ -210,7 +494,7 @@ impl MacroProcessor {
         expanded: &AstNode,
         env: &MacroExpansionContext,
         world: &World,
-        source_context: &source::SourceContext,
+        source_context: &SourceContext,
     ) -> ExecutionResult {
         // Step 1: Check if validation is enabled
         if !self.validate {
@@ -266,8 +550,8 @@ pub struct ExecutionPipeline {
 impl Default for ExecutionPipeline {
     fn default() -> Self {
         Self {
-            world: runtime::build_canonical_world(),
-            macro_env: world::build_canonical_macro_env().unwrap_or_else(|e| {
+            world: build_canonical_world(),
+            macro_env: build_canonical_macro_env().unwrap_or_else(|e| {
                 eprintln!("Warning: Failed to load standard macros: {}", e);
                 // Create a minimal macro environment with only core macros
                 MacroExpansionContext {
@@ -311,7 +595,7 @@ impl ExecutionPipeline {
     pub fn read_file(path: &Path) -> Result<String, SutraError> {
         let filename = path.to_str().ok_or_else(|| {
             let context = ValidationContext {
-                source: source::SourceContext::fallback("ExecutionPipeline::read_file"),
+                source: SourceContext::fallback("ExecutionPipeline::read_file"),
                 phase: "file-system".to_string(),
             };
             context.report(
@@ -324,7 +608,7 @@ impl ExecutionPipeline {
 
         std::fs::read_to_string(filename).map_err(|error| {
             let context = ValidationContext {
-                source: source::SourceContext::fallback("ExecutionPipeline::read_file"),
+                source: SourceContext::fallback("ExecutionPipeline::read_file"),
                 phase: "file-system".to_string(),
             };
             context.report(
@@ -344,14 +628,14 @@ impl ExecutionPipeline {
 
     /// Gets the macro registry (pure access, no I/O)
     pub fn get_macro_registry() -> MacroExpansionContext {
-        world::build_canonical_macro_env().expect("Standard macro env should build")
+        build_canonical_macro_env().expect("Standard macro env should build")
     }
 
     /// Lists all available atoms (pure access, no I/O)
     pub fn list_atoms() -> Vec<String> {
-        let world = runtime::build_canonical_world();
+        let world = build_canonical_world();
         let world = world.borrow();
-        if let Some(Value::Map(map)) = world.state.get(&world::Path(vec![])) {
+        if let Some(Value::Map(map)) = world.state.get(&crate::atoms::Path(vec![])) {
             map.keys().cloned().collect()
         } else {
             vec![]
@@ -392,15 +676,7 @@ impl ExecutionPipeline {
         processor.validate_expanded_ast(&expanded, &env, &self.world.borrow(), &source_context)?;
 
         // Step 4: Evaluate the final AST, using the pipeline's world and output sink.
-        eval::evaluate(
-            &expanded,
-            self.world.clone(),
-            output,
-            source_context,
-            self.max_depth,
-            None,
-            None,
-        )
+        evaluate(&expanded, self.world.clone(), output, source_context)
     }
 
     /// Executes Sutra source code through the complete pipeline.
@@ -435,16 +711,8 @@ impl ExecutionPipeline {
         expanded_ast: &AstNode,
         world: CanonicalWorld,
         output: SharedOutput,
-        source: source::SourceContext,
+        source: SourceContext,
     ) -> Result<Value, SutraError> {
-        eval::evaluate(
-            expanded_ast,
-            world,
-            output,
-            source,
-            self.max_depth,
-            None,
-            None,
-        )
+        evaluate(expanded_ast, world, output, source)
     }
 }

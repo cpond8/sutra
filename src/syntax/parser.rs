@@ -44,7 +44,7 @@
 use crate::errors::{
     to_source_span, DiagnosticInfo, ErrorKind, ErrorReporting, FileContext, SourceInfo, SutraError,
 };
-use crate::{ast::ParamList, prelude::*, runtime::source};
+use crate::{ast::ParamList, prelude::*, errors::SourceContext};
 use miette::{LabeledSpan, SourceSpan};
 use pest::{
     error::{Error, InputLocation},
@@ -64,7 +64,7 @@ use pest_derive::Parser;
 /// parsing state.
 struct ParserState {
     /// The source context, containing the source code and its identifier.
-    pub source: source::SourceContext,
+    pub source: SourceContext,
 }
 
 impl ParserState {
@@ -204,7 +204,7 @@ struct SutraParser;
 /// # Returns
 /// * `Ok(Vec<Expr>)` - A vector of expressions found at the top level of the source.
 /// * `Err(SutraError)` - If parsing fails.
-pub fn parse(source_text: &str, source_context: source::SourceContext) -> ProgramParseResult {
+pub fn parse(source_text: &str, source_context: SourceContext) -> ProgramParseResult {
     // Handle empty or whitespace-only input gracefully
     if source_text.trim().is_empty() {
         return Ok(vec![]);
@@ -800,7 +800,7 @@ fn count_parens(s: &str) -> (usize, usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime::source::SourceContext;
+    use crate::errors::SourceContext;
 
     #[test]
     fn test_unmatched_opening_paren_error_message() {

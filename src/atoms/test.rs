@@ -22,12 +22,16 @@ use std::{
 use lazy_static::lazy_static;
 use miette::NamedSource;
 
-use crate::atoms::AtomResult;
-use crate::runtime::source::SourceContext;
-use crate::runtime::eval::EvaluationContextBuilder;
-use crate::NativeLazyFn;
-use crate::{helpers, runtime::eval, sub_eval_context, errors::{to_source_span, SutraError, ErrorReporting}};
-use crate::{prelude::*, register_lazy};
+use crate::{
+    ast::{AstNode, Expr, Span, Spanned},
+    atoms::{helpers, helpers::AtomResult},
+    engine::{evaluate_ast_node, EvaluationContext},
+    errors::{to_source_span, ErrorReporting, SourceContext, SutraError},
+    prelude::*,
+};
+
+use crate::atoms::helpers::sub_eval_context;
+use crate::register_lazy;
 
 /// Represents a single test case definition with source context for diagnostics.
 #[derive(Debug, Clone)]
@@ -56,11 +60,7 @@ lazy_static! {
 /// `register-test!` special form updated for AST storage.
 fn register_test_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) -> AtomResult {
     if args.len() < 4 {
-        return Err(ctx.arity_mismatch(
-            "at least 4",
-            args.len(),
-            to_source_span(*span),
-        ));
+        return Err(ctx.arity_mismatch("at least 4", args.len(), to_source_span(*span)));
     }
 
     let name = match &*args[0].value {
@@ -77,7 +77,7 @@ fn register_test_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span
     let expect = args[1].clone();
     let body = args[2..args.len() - 1].to_vec();
 
-    let metadata_val = eval::evaluate_ast_node(&args[args.len() - 1], ctx)?;
+    let metadata_val = evaluate_ast_node(&args[args.len() - 1], ctx)?;
     let metadata = match metadata_val.as_map() {
         Some(m) => m,
         _ => {
@@ -140,7 +140,7 @@ fn value_atom(args: &[AstNode], _ctx: &mut EvaluationContext, _span: &Span) -> A
     let Some(first) = args.first() else {
         return Ok(Value::Nil);
     };
-    eval::evaluate_ast_node(first, _ctx)
+    evaluate_ast_node(first, _ctx)
 }
 
 fn tags_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) -> AtomResult {
@@ -154,7 +154,7 @@ fn tags_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) -> Atom
         value: Arc::new(Expr::List(list_expr_items, *span)),
         span: *span,
     };
-    eval::evaluate_ast_node(&list_expr, ctx)
+    evaluate_ast_node(&list_expr, ctx)
 }
 
 fn test_echo_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) -> AtomResult {
@@ -274,7 +274,7 @@ pub fn register_test_atoms(world: &mut World) {
 
 fn assert_atom(args: &[AstNode], ctx: &mut EvaluationContext, _span: &Span) -> AtomResult {
     helpers::validate_special_form_arity(args, 1, "assert", ctx)?;
-    let value = eval::evaluate_ast_node(&args[0], ctx)?;
+    let value = evaluate_ast_node(&args[0], ctx)?;
     let is_truthy = value.is_truthy();
     if !is_truthy {
         return Err(ctx.invalid_operation(
@@ -288,8 +288,8 @@ fn assert_atom(args: &[AstNode], ctx: &mut EvaluationContext, _span: &Span) -> A
 
 fn assert_eq_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) -> AtomResult {
     helpers::validate_special_form_arity(args, 2, "assert-eq", ctx)?;
-    let expected = eval::evaluate_ast_node(&args[0], ctx)?;
-    let actual = eval::evaluate_ast_node(&args[1], ctx)?;
+    let expected = evaluate_ast_node(&args[0], ctx)?;
+    let actual = evaluate_ast_node(&args[1], ctx)?;
     if expected != actual {
         return Err(ctx.invalid_operation(
             "assertion equality",
@@ -304,10 +304,7 @@ fn assert_eq_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) ->
 // TEST EXECUTION
 // ============================================================================
 
-pub fn run_all_registered_tests(
-    world: &CanonicalWorld,
-    output: &SharedOutput,
-) -> Vec<TestResult> {
+pub fn run_all_registered_tests(world: &CanonicalWorld, output: &SharedOutput) -> Vec<TestResult> {
     let registry = TEST_REGISTRY.lock().unwrap();
     let mut results = Vec::new();
 
@@ -324,14 +321,9 @@ fn execute_single_test(
     world: &CanonicalWorld,
     output: &SharedOutput,
 ) -> TestResult {
-    let source_ctx =
-        SourceContext::from_file(test_def.source_file.name(), &test_def.source_text);
+    let source_ctx = SourceContext::from_file(test_def.source_file.name(), &test_def.source_text);
 
-    let mut ctx =
-        EvaluationContextBuilder::new(source_ctx.clone(), world.clone(), output.clone())
-            .with_test_file(Some(test_def.source_file.name().to_string()))
-            .with_test_name(Some(test_def.name.clone()))
-            .build();
+    let mut ctx = EvaluationContext::new(world.clone(), output.clone(), source_ctx.clone());
 
     let actual_result = match eval_test_body(&test_def.body, &mut ctx) {
         Ok(val) => val,
@@ -344,7 +336,7 @@ fn execute_single_test(
         }
     };
 
-    let expected_result = match eval::evaluate_ast_node(&test_def.expect, &mut ctx) {
+    let expected_result = match evaluate_ast_node(&test_def.expect, &mut ctx) {
         Ok(val) => val,
         Err(e) => {
             return TestResult {
@@ -359,9 +351,7 @@ fn execute_single_test(
     let details = if passed {
         format!("Passed. Got: {actual_result}")
     } else {
-        format!(
-            "Failed. Expected: {expected_result}, Got: {actual_result}",
-        )
+        format!("Failed. Expected: {expected_result}, Got: {actual_result}",)
     };
 
     TestResult {
@@ -374,7 +364,7 @@ fn execute_single_test(
 fn eval_test_body(body: &[AstNode], ctx: &mut EvaluationContext) -> AtomResult {
     let mut result = Ok(Value::Nil);
     for expr in body {
-        result = eval::evaluate_ast_node(expr, ctx);
+        result = evaluate_ast_node(expr, ctx);
         if result.is_err() {
             return result;
         }
@@ -388,12 +378,8 @@ pub fn run_tests_from_file(
     output: &SharedOutput,
 ) -> Result<Vec<TestResult>, SutraError> {
     let source_text = std::fs::read_to_string(path).map_err(|e| {
-        let dummy_ctx = EvaluationContextBuilder::new(
-            SourceContext::default(),
-            world.clone(),
-            output.clone(),
-        )
-        .build();
+        let dummy_ctx =
+            EvaluationContext::new(world.clone(), output.clone(), SourceContext::default());
         dummy_ctx.invalid_operation(
             "reading test file",
             &e.to_string(),
@@ -403,11 +389,10 @@ pub fn run_tests_from_file(
     let source_ctx = SourceContext::from_file(path, &source_text);
     let ast = crate::syntax::parser::parse(&source_text, source_ctx.clone())?;
 
-    let mut reg_ctx =
-        EvaluationContextBuilder::new(source_ctx, world.clone(), output.clone()).build();
+    let mut reg_ctx = EvaluationContext::new(world.clone(), output.clone(), source_ctx);
 
     for expr in ast {
-        let _ = eval::evaluate_ast_node(&expr, &mut reg_ctx)?;
+        let _ = evaluate_ast_node(&expr, &mut reg_ctx)?;
     }
 
     Ok(run_all_registered_tests(world, output))

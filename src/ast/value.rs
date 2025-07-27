@@ -10,7 +10,7 @@ use std::{collections::HashMap, fmt, rc::Rc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    atoms::helpers::AtomResult, runtime::eval::EvaluationContext, AstNode, ParamList, Path, Span,
+    atoms::helpers::AtomResult, engine::EvaluationContext, AstNode, ParamList, Path, Span,
 };
 
 /// Eagerly evaluated native function: receives evaluated arguments.

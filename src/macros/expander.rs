@@ -16,11 +16,12 @@ use std::collections::HashMap;
 
 use crate::{
     ast::{Expr, Spanned},
-    errors::{ErrorKind, ErrorReporting, SutraError, to_source_span},
+    errors::{to_source_span, ErrorKind, ErrorReporting, SourceContext, SutraError},
+    macros::{
+        MacroExpansionContext, MacroExpansionResult, MacroExpansionStep, MAX_MACRO_RECURSION_DEPTH,
+    },
     prelude::*,
-    runtime::source::SourceContext,
     validation::ValidationContext,
-    macros::{MacroExpansionContext, MacroExpansionResult, MacroExpansionStep, MAX_MACRO_RECURSION_DEPTH},
     MacroTemplate,
 };
 

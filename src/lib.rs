@@ -3,20 +3,19 @@ pub use crate::{
         value::{NativeEagerFn, NativeLazyFn, Value},
         AstNode, Expr, ParamList, Span, Spanned,
     },
-    atoms::{SharedOutput, StateContext},
+    atoms::{SharedOutput, StateContext, Path, World, build_canonical_world, build_canonical_macro_env},
     engine::{print_error, EngineOutputBuffer, EngineStdoutSink},
     macros::{
         expand_macros_recursively, MacroDefinition, MacroExpansionContext, MacroRegistry,
         MacroTemplate,
     },
-    runtime::world::{Path, World},
     test::{Expectation, TestResult, TestSummary},
 };
 
 // Module aliases for concise imports
 pub use ast::value;
 pub use atoms::helpers;
-pub use runtime::{eval, world};
+pub use engine::{evaluate, EvaluationContext};
 pub use syntax::parser;
 pub use validation::{grammar, semantic};
 
@@ -29,15 +28,15 @@ pub mod prelude {
         atoms::SharedOutput,
         errors::{ErrorKind, SourceContext, SutraError},
         macros::MacroRegistry,
-        runtime::eval::EvaluationContext,
-        runtime::world::World,
-        MacroDefinition, Path,
+        engine::EvaluationContext,
+        atoms::{World, Path},
+        MacroDefinition,
     };
 
     // New canonical world type for shared, mutable state
     pub use std::cell::RefCell;
     pub use std::rc::Rc;
-    pub type CanonicalWorld = Rc<RefCell<crate::runtime::world::World>>;
+    pub type CanonicalWorld = Rc<RefCell<crate::atoms::World>>;
 }
 
 pub mod ast;
@@ -48,7 +47,6 @@ pub mod engine;
 pub mod errors;
 pub mod macros;
 pub mod repl;
-pub mod runtime;
 pub mod syntax;
 pub mod test;
 pub mod validation;

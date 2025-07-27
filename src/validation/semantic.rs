@@ -1,7 +1,6 @@
 use crate::{
-    errors::{to_source_span, ErrorKind, SutraError},
+    errors::{to_source_span, ErrorKind, SourceContext, SutraError},
     prelude::*,
-    runtime::source::SourceContext,
     MacroDefinition,
 };
 

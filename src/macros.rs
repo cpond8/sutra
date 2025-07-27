@@ -48,11 +48,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::prelude::*;
 use crate::{
-    ast::ParamList, errors::ErrorKind, errors::ErrorReporting, runtime::source::SourceContext,
-    validation::ValidationContext,
+    ast::ParamList, errors::ErrorKind, errors::ErrorReporting, validation::ValidationContext,
 };
 
-use crate::errors::{self, DiagnosticInfo, FileContext, SourceInfo, SutraError};
+use crate::errors::{self, DiagnosticInfo, FileContext, SourceContext, SourceInfo, SutraError};
 use miette::SourceSpan;
 
 // ============================================================================

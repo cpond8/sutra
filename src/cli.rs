@@ -13,8 +13,7 @@ use clap::{Parser, Subcommand};
 use crate::prelude::*;
 use crate::{
     engine::{print_error, EngineStdoutSink as StdoutSink, ExecutionPipeline},
-    errors::{self, ErrorKind, ErrorReporting, SutraError},
-    runtime::source::SourceContext,
+    errors::{self, ErrorKind, ErrorReporting, SourceContext, SutraError},
     test::runner::TestRunner,
     validation::{grammar, ValidationContext},
 };
@@ -181,10 +180,7 @@ pub fn run() {
                     process::exit(1);
                 });
             let valid = validation_errors.is_empty();
-            let errors = validation_errors
-                .iter()
-                .map(|e| e.to_string())
-                .collect();
+            let errors = validation_errors.iter().map(|e| e.to_string()).collect();
             print_validation(valid, errors);
         }
 

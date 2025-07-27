@@ -1,19 +1,21 @@
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use crate::prelude::*;
 use crate::{
-    ast::{value::Lambda, ConsCell},
-    ast::ParamList,
+    ast::{
+        value::{ConsCell, Lambda},
+        AstNode, Expr, ParamList, Span,
+    },
     atoms::helpers::{validate_special_form_arity, validate_special_form_min_arity, AtomResult},
-    errors::{ErrorKind, ErrorReporting},
-    runtime::{eval, world::Path},
+    engine::{evaluate_ast_node, evaluate_condition_as_bool, EvaluationContext},
+    errors::{to_source_span, ErrorKind, ErrorReporting, SutraError},
+    prelude::*,
 };
 
 fn find_and_capture_free_variables(
     body: &AstNode,
     params: &ParamList,
-    context: &eval::EvaluationContext,
+    context: &EvaluationContext,
 ) -> HashMap<String, Value> {
     fn collect_symbols(node: &AstNode, symbols: &mut HashSet<String>) {
         match &*node.value {
@@ -79,7 +81,7 @@ pub const ATOM_DEFINE: NativeLazyFn = |args, context, span| {
     // 2. Handle variable definition: (define my-var 100)
     if let Expr::Symbol(name, _) = &*name_expr.value {
         // Evaluate the value expression in the current context.
-        let value = eval::evaluate_ast_node(value_expr, context)?;
+        let value = evaluate_ast_node(value_expr, context)?;
 
         // Patch: Set in lexical frame if in local scope, else global world state
         if context.lexical_env.len() > 1 {
@@ -250,9 +252,9 @@ pub const ATOM_IF: NativeLazyFn = |args, context, _span| {
     let then_branch = &args[1];
     let else_branch = &args[2];
 
-    let is_true = eval::evaluate_condition_as_bool(condition, context)?;
+    let is_true = evaluate_condition_as_bool(condition, context)?;
     let branch = if is_true { then_branch } else { else_branch };
-    eval::evaluate_ast_node(branch, context)
+    evaluate_ast_node(branch, context)
 };
 
 /// Implements the (cond ...) special form with lazy evaluation.
@@ -283,7 +285,7 @@ pub const ATOM_COND: NativeLazyFn = |args, context, _span| {
 
         if is_else {
             if clause.len() > 1 {
-                return eval::evaluate_ast_node(&clause[1], context);
+                return evaluate_ast_node(&clause[1], context);
             } else {
                 return Err(context.report(
                     ErrorKind::InvalidOperation {
@@ -295,10 +297,10 @@ pub const ATOM_COND: NativeLazyFn = |args, context, _span| {
             }
         }
 
-        let is_true = eval::evaluate_condition_as_bool(condition, context)?;
+        let is_true = evaluate_condition_as_bool(condition, context)?;
         if is_true {
             if clause.len() > 1 {
-                return eval::evaluate_ast_node(&clause[1], context);
+                return evaluate_ast_node(&clause[1], context);
             } else {
                 // If condition is true and there's no expression, return true
                 return Ok(Value::Bool(true));
@@ -313,7 +315,7 @@ pub const ATOM_COND: NativeLazyFn = |args, context, _span| {
 pub const ATOM_AND: NativeLazyFn = |args, context, _span| {
     let mut last_val = Value::Bool(true);
     for arg in args {
-        let val = eval::evaluate_ast_node(arg, context)?;
+        let val = evaluate_ast_node(arg, context)?;
         if !val.is_truthy() {
             return Ok(Value::Bool(false));
         }
@@ -325,7 +327,7 @@ pub const ATOM_AND: NativeLazyFn = |args, context, _span| {
 /// Implements the (or ...) special form with short-circuiting.
 pub const ATOM_OR: NativeLazyFn = |args, context, _span| {
     for arg in args {
-        let val = eval::evaluate_ast_node(arg, context)?;
+        let val = evaluate_ast_node(arg, context)?;
         if val.is_truthy() {
             return Ok(val);
         }
@@ -451,7 +453,7 @@ pub const ATOM_LET: NativeLazyFn = |args, context, span| {
                 ));
             }
         };
-        let value = eval::evaluate_ast_node(value_expr, &mut new_context)?;
+        let value = evaluate_ast_node(value_expr, &mut new_context)?;
         new_context.set_lexical_var(&name, value);
     }
 
@@ -479,16 +481,12 @@ pub const ATOM_LET: NativeLazyFn = |args, context, span| {
         }
     };
 
-    eval::evaluate_ast_node(body, &mut new_context)
+    evaluate_ast_node(body, &mut new_context)
 };
 
 /// Applies a Lambda value to arguments in the given evaluation context.
-pub fn call_lambda(
-    lambda: &Lambda,
-    args: &[Value],
-    context: &mut eval::EvaluationContext,
-) -> AtomResult {
-    let mut new_context = eval::EvaluationContext {
+pub fn call_lambda(lambda: &Lambda, args: &[Value], context: &mut EvaluationContext) -> AtomResult {
+    let mut new_context = EvaluationContext {
         world: Rc::clone(&context.world),
         output: context.output.clone(),
         source: context.source.clone(),
@@ -527,5 +525,5 @@ pub fn call_lambda(
     }
 
     // Evaluate body in new context
-    eval::evaluate_ast_node(&lambda.body, &mut new_context)
+    evaluate_ast_node(&lambda.body, &mut new_context)
 }

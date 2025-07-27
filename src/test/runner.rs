@@ -1,12 +1,11 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crate::{
-    atoms::SharedOutput,
+    atoms::{build_canonical_macro_env, build_canonical_world, SharedOutput},
     discovery::ASTDefinition,
-    engine::{EngineOutputBuffer, ExecutionPipeline, MacroProcessor},
-    errors::{to_source_span, ErrorCategory, ErrorKind, ErrorReporting, SutraError},
+    engine::{evaluate, EngineOutputBuffer, ExecutionPipeline, MacroProcessor},
+    errors::{to_source_span, ErrorCategory, ErrorKind, ErrorReporting, SourceContext, SutraError},
     prelude::*,
-    runtime::{self, eval, source},
     syntax::parser,
     validation::ValidationContext,
 };
@@ -20,16 +19,15 @@ impl TestRunner {
         output: SharedOutput,
         test_file: Option<String>,
         test_name: Option<String>,
-        source_file: source::SourceContext,
+        source_file: SourceContext,
     ) -> Result<(), SutraError> {
         // Use a macro processor to handle expansion and evaluation correctly
         let processor = MacroProcessor::default().with_test_context(
             test_file.clone().unwrap_or_default(),
             test_name.clone().unwrap_or_default(),
         );
-        let world = runtime::build_canonical_world();
-        let mut macro_env =
-            runtime::world::build_canonical_macro_env().expect("Standard macro env should build");
+        let world = build_canonical_world();
+        let mut macro_env = build_canonical_macro_env().expect("Standard macro env should build");
 
         // Try macro expansion
         let expanded_node =
@@ -47,15 +45,7 @@ impl TestRunner {
         )?;
 
         // Use the builder for evaluation context
-        let result = eval::evaluate(
-            &expanded_node,
-            world,
-            output.clone(),
-            source_context,
-            1000,
-            test_file,
-            test_name,
-        )?;
+        let result = evaluate(&expanded_node, world, output.clone(), source_context)?;
 
         // If the result is not nil, emit it to the output buffer
         if !result.is_nil() {
@@ -67,7 +57,7 @@ impl TestRunner {
 
     pub fn execute_ast(
         nodes: &[AstNode],
-        source_context: &source::SourceContext,
+        source_context: &SourceContext,
     ) -> Result<Value, SutraError> {
         let pipeline = ExecutionPipeline::default();
         let output = SharedOutput::new(crate::engine::EngineOutputBuffer::new());
@@ -155,7 +145,7 @@ impl TestRunner {
         test_form: &ASTDefinition,
         expected: &Expectation,
         actual: Value,
-        source_context: &source::SourceContext,
+        source_context: &SourceContext,
     ) -> Result<(), SutraError> {
         let context = ValidationContext {
             source: source_context.clone(),
@@ -195,7 +185,7 @@ impl TestRunner {
         test_form: &ASTDefinition,
         expected: &Expectation,
         actual_error: SutraError,
-        source_context: &source::SourceContext,
+        source_context: &SourceContext,
     ) -> Result<(), SutraError> {
         let context = ValidationContext {
             source: source_context.clone(),

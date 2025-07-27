@@ -10,10 +10,8 @@
 
 use crate::prelude::*;
 use crate::{
-    errors::to_source_span,
-    errors::{ErrorKind, ErrorReporting},
+    errors::{to_source_span, ErrorKind, ErrorReporting, SourceContext},
     macros::MacroExpansionResult as macro_result,
-    runtime::source::SourceContext,
     validation::ValidationContext,
 };
 

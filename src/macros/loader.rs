@@ -7,8 +7,7 @@ use std::{collections::HashSet, fs, path::Path};
 use crate::prelude::*;
 use crate::{
     ast::ParamList,
-    errors::{self, ErrorKind, ErrorReporting, SutraError, to_source_span},
-    runtime::source::SourceContext,
+    errors::{self, to_source_span, ErrorKind, ErrorReporting, SourceContext, SutraError},
     syntax::parser,
     validation::ValidationContext,
     MacroTemplate,
@@ -172,9 +171,11 @@ pub fn parse_macro_definition(expr: &AstNode) -> Result<(String, MacroTemplate),
             ));
         }
     } else {
-        return Err(
-            context.type_mismatch("symbol", items[0].value.type_name(), to_source_span(items[0].span))
-        );
+        return Err(context.type_mismatch(
+            "symbol",
+            items[0].value.type_name(),
+            to_source_span(items[0].span),
+        ));
     }
 
     let param_list = if let Expr::ParamList(pl) = &*items[1].value {

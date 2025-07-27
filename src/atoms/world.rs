@@ -15,9 +15,8 @@
 
 use crate::prelude::*;
 use crate::{
-    errors::{ErrorReporting},
-    helpers,
-    NativeEagerFn,
+    errors::{to_source_span, ErrorReporting},
+    helpers, NativeEagerFn,
 };
 
 // ============================================================================
@@ -27,8 +26,8 @@ use crate::{
 /// Sets a value at a path in the world state.
 /// `(core/set! <path> <value>)`
 pub const ATOM_CORE_SET: NativeEagerFn = |args, context| {
-    helpers::validate_binary_arity(args, "core/set!", context)?;
-    let path = helpers::validate_path_arg(&args[0], context.current_span, "core/set!", context)?;
+    helpers::validate_binary_arity(args, "core/set!", to_source_span(args[0].span), context)?;
+    let path = helpers::validate_path_arg(&args[0], args[0].span, "core/set!", context)?;
     let value = args[1].clone();
     context.world.borrow_mut().set(path, value);
     Ok(Value::Nil)
@@ -37,8 +36,8 @@ pub const ATOM_CORE_SET: NativeEagerFn = |args, context| {
 /// Gets a value at a path in the world state.
 /// `(core/get <path>)`
 pub const ATOM_CORE_GET: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "core/get", context)?;
-    let path = helpers::validate_path_arg(&args[0], context.current_span, "core/get", context)?;
+    helpers::validate_unary_arity(args, "core/get", to_source_span(args[0].span), context)?;
+    let path = helpers::validate_path_arg(&args[0], args[0].span, "core/get", context)?;
     let value = context
         .world
         .borrow()
@@ -51,8 +50,8 @@ pub const ATOM_CORE_GET: NativeEagerFn = |args, context| {
 /// Deletes a value at a path in the world state.
 /// `(core/del! <path>)`
 pub const ATOM_CORE_DEL: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "core/del!", context)?;
-    let path = helpers::validate_path_arg(&args[0], context.current_span, "core/del!", context)?;
+    helpers::validate_unary_arity(args, "core/del!", to_source_span(args[0].span), context)?;
+    let path = helpers::validate_path_arg(&args[0], args[0].span, "core/del!", context)?;
     context.world.borrow_mut().del(path);
     Ok(Value::Nil)
 };
@@ -60,8 +59,8 @@ pub const ATOM_CORE_DEL: NativeEagerFn = |args, context| {
 /// Returns true if a path exists in the world state.
 /// `(core/exists? <path>)`
 pub const ATOM_EXISTS: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "core/exists?", context)?;
-    let path = helpers::validate_path_arg(&args[0], context.current_span, "core/exists?", context)?;
+    helpers::validate_unary_arity(args, "core/exists?", to_source_span(args[0].span), context)?;
+    let path = helpers::validate_path_arg(&args[0], args[0].span, "core/exists?", context)?;
     let exists = context.world.borrow().get(path).is_some();
     Ok(Value::Bool(exists))
 };
@@ -69,16 +68,14 @@ pub const ATOM_EXISTS: NativeEagerFn = |args, context| {
 /// Creates a path from a string.
 /// `(path <string>)`
 pub const ATOM_PATH: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "path", context)?;
+    helpers::validate_unary_arity(args, "path", to_source_span(args[0].span), context)?;
     match &args[0] {
         Value::String(s) => {
             let path = Path(vec![s.clone()]);
             Ok(Value::Path(path))
         }
-        _ => Err(context.type_mismatch(
-            "String",
-            args[0].type_name(),
-            context.span_for_span(context.current_span),
-        )),
+        _ => {
+            Err(context.type_mismatch("String", args[0].type_name(), to_source_span(args[0].span)))
+        }
     }
 };

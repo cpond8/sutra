@@ -13,13 +13,12 @@
 //! - **Meta-Programming**: Function application with argument flattening
 //! - **State Threading**: Proper world state propagation through execution
 
-use crate::prelude::*;
 use crate::{
-    ast,
-    errors::{ErrorKind, ErrorReporting},
-    helpers,
-    runtime::{eval, world},
-    NativeLazyFn,
+    ast::{Expr, Spanned},
+    atoms::helpers,
+    engine::evaluate_ast_node,
+    errors::{to_source_span, ErrorKind, ErrorReporting},
+    prelude::*,
 };
 use std::sync::Arc;
 
@@ -43,7 +42,7 @@ pub const ATOM_DO: NativeLazyFn = |args, context, _parent_span| {
     let mut last_value = Value::default();
 
     for arg in args.iter() {
-        last_value = eval::evaluate_ast_node(arg, context)?;
+        last_value = evaluate_ast_node(arg, context)?;
     }
 
     Ok(last_value)
@@ -64,18 +63,14 @@ pub const ATOM_DO: NativeLazyFn = |args, context, _parent_span| {
 pub const ATOM_ERROR: NativeLazyFn = |args, context, _parent_span| {
     let val = helpers::eval_single_arg(args, context)?;
     let Value::String(msg) = val else {
-        return Err(context.type_mismatch(
-            "String",
-            val.type_name(),
-            context.span_for_span(Span::default()),
-        ));
+        return Err(context.type_mismatch("String", val.type_name(), to_source_span(args[0].span)));
     };
     Err(context.report(
         ErrorKind::InvalidOperation {
             operation: "user error".to_string(),
             operand_type: msg,
         },
-        context.span_for_span(Span::default()),
+        to_source_span(args[0].span),
     ))
 };
 
@@ -106,23 +101,26 @@ pub const ATOM_APPLY: NativeLazyFn = |args, context, parent_span| {
     let normal_args = helpers::eval_apply_normal_args(&args[1..args.len() - 1], context)?;
 
     // 4. Evaluate the last argument and extract list elements
-    let list_val = eval::evaluate_ast_node(&args[args.len() - 1], context)?;
+    let list_val = evaluate_ast_node(&args[args.len() - 1], context)?;
     let mut list_args = Vec::new();
     let mut current = &list_val;
+    let list_span = args[args.len() - 1].span;
     loop {
         match current {
             Value::Cons(boxed) => {
-                let expr = ast::expr_from_value_with_span(boxed.car.clone(), *parent_span)
-                    .map_err(|msg| context.report(
-                        ErrorKind::InvalidOperation {
-                            operation: "value-to-ast conversion".to_string(),
-                            operand_type: msg,
-                        },
-                        context.span_for_span(*parent_span),
-                    ))?;
+                let expr = crate::ast::expr_from_value_with_span(boxed.car.clone(), list_span)
+                    .map_err(|msg| {
+                        context.report(
+                            ErrorKind::InvalidOperation {
+                                operation: "value-to-ast conversion".to_string(),
+                                operand_type: msg,
+                            },
+                            to_source_span(list_span),
+                        )
+                    })?;
                 list_args.push(Spanned {
                     value: Arc::new(expr),
-                    span: *parent_span,
+                    span: list_span,
                 });
                 current = &boxed.cdr;
             }
@@ -131,7 +129,7 @@ pub const ATOM_APPLY: NativeLazyFn = |args, context, parent_span| {
                 return Err(context.type_mismatch(
                     "proper List",
                     current.type_name(),
-                    context.span_for_span(*parent_span),
+                    to_source_span(list_span),
                 ));
             }
         }
@@ -144,13 +142,13 @@ pub const ATOM_APPLY: NativeLazyFn = |args, context, parent_span| {
     call_items.extend(list_args);
 
     let call_expr = Spanned {
-        value: Arc::new(Expr::List(call_items, *parent_span)),
-        span: *parent_span,
+        value: Arc::new(Expr::List(call_items, list_span)),
+        span: list_span,
     };
 
     // 6. Evaluate the call expression
     let mut sub_context = helpers::sub_eval_context!(context);
-    crate::runtime::eval::evaluate_ast_node(&call_expr, &mut sub_context)
+    evaluate_ast_node(&call_expr, &mut sub_context)
 };
 
 /// Executes a body of code for each element in a collection.
@@ -176,13 +174,13 @@ pub const ATOM_FOR_EACH: NativeLazyFn = |args, context, _parent_span| {
                     operation: "for-each definition".to_string(),
                     operand_type: "first argument must be a symbol".to_string(),
                 },
-                context.span_for_node(&args[0]),
+                to_source_span(args[0].span),
             ));
         }
     };
 
     // Second argument is the collection to iterate over.
-    let collection_val = eval::evaluate_ast_node(&args[1], context)?;
+    let collection_val = evaluate_ast_node(&args[1], context)?;
     let body_exprs = &args[2..];
 
     // Ensure we have a list to iterate over.
@@ -190,11 +188,11 @@ pub const ATOM_FOR_EACH: NativeLazyFn = |args, context, _parent_span| {
         return Err(context.type_mismatch(
             "List or Nil",
             collection_val.type_name(),
-            context.span_for_node(&args[1]),
+            to_source_span(args[1].span),
         ));
     }
 
-    let path = world::Path(vec![var_name]);
+    let path = crate::atoms::Path(vec![var_name]);
 
     for item_val in collection_val.try_into_iter() {
         let mut sub_context = helpers::sub_eval_context!(context);
@@ -203,7 +201,7 @@ pub const ATOM_FOR_EACH: NativeLazyFn = |args, context, _parent_span| {
 
         // Execute the body expressions.
         for expr in body_exprs {
-            eval::evaluate_ast_node(expr, &mut sub_context)?;
+            evaluate_ast_node(expr, &mut sub_context)?;
         }
     }
 

@@ -9,10 +9,11 @@
 //! - **Consistency**: Standardized error messages and evaluation patterns
 //! - **Safety**: All functions handle ownership and borrowing correctly
 
-use crate::prelude::*;
 use crate::{
-    errors::{ErrorReporting, SutraError},
-    runtime::eval::{evaluate_ast_node, EvaluationContext},
+    ast::{AstNode, Expr, Span, Spanned},
+    engine::{evaluate_ast_node, EvaluationContext},
+    errors::{to_source_span, ErrorKind, ErrorReporting, SutraError},
+    prelude::*,
 };
 use std::sync::Arc;
 
@@ -51,44 +52,38 @@ pub trait ExtractValue<T> {
 }
 
 impl ExtractValue<f64> for Value {
-    fn extract(&self, context: &EvaluationContext) -> Result<f64, SutraError> {
+    fn extract(&self, _context: &EvaluationContext) -> Result<f64, SutraError> {
         if let Value::Number(n) = self {
             return Ok(*n);
         }
 
-        Err(context.type_mismatch(
-            "Number",
-            self.type_name(),
-            context.span_for_span(context.current_span),
-        ))
+        // TODO: ExtractValue trait needs to be redesigned to accept a span parameter
+        // Currently there's no way to pass the actual node span to this method
+        todo!("ExtractValue trait needs span parameter for proper error reporting")
     }
 }
 
 impl ExtractValue<bool> for Value {
-    fn extract(&self, context: &EvaluationContext) -> Result<bool, SutraError> {
+    fn extract(&self, _context: &EvaluationContext) -> Result<bool, SutraError> {
         if let Value::Bool(b) = self {
             return Ok(*b);
         }
 
-        Err(context.type_mismatch(
-            "Boolean",
-            self.type_name(),
-            context.span_for_span(context.current_span),
-        ))
+        // TODO: ExtractValue trait needs to be redesigned to accept a span parameter
+        // Currently there's no way to pass the actual node span to this method
+        todo!("ExtractValue trait needs span parameter for proper error reporting")
     }
 }
 
 impl ExtractValue<Path> for Value {
-    fn extract(&self, context: &EvaluationContext) -> Result<Path, SutraError> {
+    fn extract(&self, _context: &EvaluationContext) -> Result<Path, SutraError> {
         if let Value::Path(path) = self {
             return Ok(path.clone());
         }
 
-        Err(context.type_mismatch(
-            "Path",
-            self.type_name(),
-            context.span_for_span(context.current_span),
-        ))
+        // TODO: ExtractValue trait needs to be redesigned to accept a span parameter
+        // Currently there's no way to pass the actual node span to this method
+        todo!("ExtractValue trait needs span parameter for proper error reporting")
     }
 }
 
@@ -107,7 +102,7 @@ impl ExtractValue<Path> for Value {
 #[macro_export]
 macro_rules! sub_eval_context {
     ($parent:expr) => {{
-        let mut new_context = $parent.clone_with_new_lexical_frame();
+        let mut new_context = $parent.with_new_frame();
         new_context.depth += 1;
         new_context
     }};
@@ -137,11 +132,9 @@ pub fn eval_n_args<const N: usize>(
     context: &mut EvaluationContext,
 ) -> ArrayResult<N> {
     if args.len() != N {
-        return Err(context.arity_mismatch(
-            &N.to_string(),
-            args.len(),
-            context.span_for_span(context.current_span),
-        ));
+        // Use the span from any available arg, or first arg span for meaningful errors
+        let span = context.span_for_node(&args[0]);
+        return Err(context.arity_mismatch(&N.to_string(), args.len(), span));
     }
 
     let mut values = Vec::with_capacity(N);
@@ -153,12 +146,17 @@ pub fn eval_n_args<const N: usize>(
     // Convert Vec to array - this is safe because we checked length above
     // The try_into() should never fail given the length check, but we handle it defensively
     let values_array: [Value; N] = values.try_into().map_err(|_| {
-        context
-            .internal_error(
-                "Failed to convert evaluated arguments to array",
-                context.span_for_span(context.current_span),
-            )
-            .with_suggestion("This is an internal engine error. Please report this as a bug.")
+        // Use first arg span for internal error
+        let span = if !args.is_empty() {
+            context.span_for_node(&args[0])
+        } else {
+            // This should never happen - we already checked length above
+            return context.internal_error(
+                "Programming error: Failed to convert Vec to array despite length check. This indicates a bug in eval_n_args.",
+                to_source_span(Span { start: 0, end: 0 })
+            );
+        };
+        context.internal_error("Failed to convert evaluated arguments to array", span)
     })?;
 
     Ok(values_array)
@@ -199,6 +197,7 @@ pub fn extract_numbers(
 /// * `args` - The arguments to validate
 /// * `expected` - The expected number of arguments
 /// * `atom_name` - The name of the atom for error messages
+/// * `span` - The source span for error reporting
 ///
 /// # Returns
 /// * `Ok(())` if arity matches
@@ -206,21 +205,18 @@ pub fn extract_numbers(
 ///
 /// # Example
 /// ```ignore
-/// validate_arity(args, 2, "eq?")?;
+/// validate_arity(args, 2, "eq?", span)?;
 /// ```
 pub fn validate_arity(
     args: &[Value],
     expected: usize,
     atom_name: &str,
+    span: miette::SourceSpan,
     ctx: &EvaluationContext,
 ) -> ValidationResult {
     if args.len() != expected {
         return Err(ctx
-            .arity_mismatch(
-                &expected.to_string(),
-                args.len(),
-                ctx.span_for_span(ctx.current_span),
-            )
+            .arity_mismatch(&expected.to_string(), args.len(), span)
             .with_suggestion(format!("{} expects {} arguments", atom_name, expected)));
     }
     Ok(())
@@ -233,6 +229,7 @@ pub fn validate_arity(
 /// * `args` - The arguments to validate
 /// * `min_expected` - The minimum number of arguments required
 /// * `atom_name` - The name of the atom for error messages
+/// * `span` - The source span for error reporting
 ///
 /// # Returns
 /// * `Ok(())` if arity meets minimum requirement
@@ -240,21 +237,18 @@ pub fn validate_arity(
 ///
 /// # Example
 /// ```ignore
-/// validate_min_arity(args, 1, "min")?;
+/// validate_min_arity(args, 1, "min", span)?;
 /// ```
 pub fn validate_min_arity(
     args: &[Value],
     min_expected: usize,
     atom_name: &str,
+    span: miette::SourceSpan,
     ctx: &EvaluationContext,
 ) -> ValidationResult {
     if args.len() < min_expected {
         return Err(ctx
-            .arity_mismatch(
-                &format!("at least {}", min_expected),
-                args.len(),
-                ctx.span_for_span(ctx.current_span),
-            )
+            .arity_mismatch(&format!("at least {}", min_expected), args.len(), span)
             .with_suggestion(format!(
                 "{} expects at least {} arguments",
                 atom_name, min_expected
@@ -269,6 +263,7 @@ pub fn validate_min_arity(
 /// # Arguments
 /// * `args` - The arguments to validate
 /// * `atom_name` - The name of the atom for error messages
+/// * `span` - The source span for error reporting
 ///
 /// # Returns
 /// * `Ok(())` if exactly one argument
@@ -276,14 +271,15 @@ pub fn validate_min_arity(
 ///
 /// # Example
 /// ```ignore
-/// validate_unary_arity(args, "abs")?;
+/// validate_unary_arity(args, "abs", span)?;
 /// ```
 pub fn validate_unary_arity(
     args: &[Value],
     atom_name: &str,
+    span: miette::SourceSpan,
     ctx: &EvaluationContext,
 ) -> ValidationResult {
-    validate_arity(args, 1, atom_name, ctx)
+    validate_arity(args, 1, atom_name, span, ctx)
 }
 
 /// Validates that the number of arguments is exactly two.
@@ -292,6 +288,7 @@ pub fn validate_unary_arity(
 /// # Arguments
 /// * `args` - The arguments to validate
 /// * `atom_name` - The name of the atom for error messages
+/// * `span` - The source span for error reporting
 ///
 /// # Returns
 /// * `Ok(())` if exactly two arguments
@@ -299,14 +296,15 @@ pub fn validate_unary_arity(
 ///
 /// # Example
 /// ```ignore
-/// validate_binary_arity(args, "eq?")?;
+/// validate_binary_arity(args, "eq?", span)?;
 /// ```
 pub fn validate_binary_arity(
     args: &[Value],
     atom_name: &str,
+    span: miette::SourceSpan,
     ctx: &EvaluationContext,
 ) -> ValidationResult {
-    validate_arity(args, 2, atom_name, ctx)
+    validate_arity(args, 2, atom_name, span, ctx)
 }
 
 /// Validates that the number of arguments is at least two.
@@ -315,6 +313,7 @@ pub fn validate_binary_arity(
 /// # Arguments
 /// * `args` - The arguments to validate
 /// * `atom_name` - The name of the atom for error messages
+/// * `span` - The source span for error reporting
 ///
 /// # Returns
 /// * `Ok(())` if at least two arguments
@@ -322,20 +321,17 @@ pub fn validate_binary_arity(
 ///
 /// # Example
 /// ```ignore
-/// validate_sequence_arity(args, "eq?")?;
+/// validate_sequence_arity(args, "eq?", span)?;
 /// ```
 pub fn validate_sequence_arity(
     args: &[Value],
     atom_name: &str,
+    span: miette::SourceSpan,
     ctx: &EvaluationContext,
 ) -> ValidationResult {
     if args.len() < 2 {
         return Err(ctx
-            .arity_mismatch(
-                "at least 2",
-                args.len(),
-                ctx.span_for_span(ctx.current_span),
-            )
+            .arity_mismatch("at least 2", args.len(), span)
             .with_suggestion(format!("{} expects at least 2 arguments", atom_name)));
     }
     Ok(())
@@ -347,6 +343,7 @@ pub fn validate_sequence_arity(
 /// # Arguments
 /// * `args` - The arguments to validate
 /// * `atom_name` - The name of the atom for error messages
+/// * `span` - The source span for error reporting
 ///
 /// # Returns
 /// * `Ok(())` if even number of arguments
@@ -354,20 +351,17 @@ pub fn validate_sequence_arity(
 ///
 /// # Example
 /// ```ignore
-/// validate_even_arity(args, "core/map")?;
+/// validate_even_arity(args, "core/map", span)?;
 /// ```
 pub fn validate_even_arity(
     args: &[Value],
     atom_name: &str,
+    span: miette::SourceSpan,
     ctx: &EvaluationContext,
 ) -> ValidationResult {
     if args.len() % 2 != 0 {
         return Err(ctx
-            .arity_mismatch(
-                "even number",
-                args.len(),
-                ctx.span_for_span(ctx.current_span),
-            )
+            .arity_mismatch("even number", args.len(), span)
             .with_suggestion(format!(
                 "{} expects an even number of arguments, got {}",
                 atom_name,
@@ -383,6 +377,7 @@ pub fn validate_even_arity(
 /// # Arguments
 /// * `args` - The arguments to validate
 /// * `atom_name` - The name of the atom for error messages
+/// * `span` - The source span for error reporting
 ///
 /// # Returns
 /// * `Ok(())` if no arguments
@@ -390,16 +385,17 @@ pub fn validate_even_arity(
 ///
 /// # Example
 /// ```ignore
-/// validate_zero_arity(args, "rand")?;
+/// validate_zero_arity(args, "rand", span)?;
 /// ```
 pub fn validate_zero_arity(
     args: &[Value],
     atom_name: &str,
+    span: miette::SourceSpan,
     ctx: &EvaluationContext,
 ) -> ValidationResult {
     if args.len() != 0 {
         return Err(ctx
-            .arity_mismatch("0", args.len(), ctx.span_for_span(ctx.current_span))
+            .arity_mismatch("0", args.len(), span)
             .with_suggestion(format!("{} expects no arguments", atom_name)));
     }
     Ok(())
@@ -428,12 +424,9 @@ pub fn validate_special_form_arity(
     ctx: &EvaluationContext,
 ) -> ValidationResult {
     if args.len() != expected {
+        let span = ctx.span_for_node(&args[0]);
         return Err(ctx
-            .arity_mismatch(
-                &expected.to_string(),
-                args.len(),
-                ctx.span_for_span(ctx.current_span),
-            )
+            .arity_mismatch(&expected.to_string(), args.len(), span)
             .with_suggestion(format!("{} expects {} arguments", atom_name, expected)));
     }
     Ok(())
@@ -462,12 +455,9 @@ pub fn validate_special_form_min_arity(
     ctx: &EvaluationContext,
 ) -> ValidationResult {
     if args.len() < min_expected {
+        let span = ctx.span_for_node(&args[0]);
         return Err(ctx
-            .arity_mismatch(
-                &format!("at least {}", min_expected),
-                args.len(),
-                ctx.span_for_span(ctx.current_span),
-            )
+            .arity_mismatch(&format!("at least {}", min_expected), args.len(), span)
             .with_suggestion(format!(
                 "{} expects at least {} arguments",
                 atom_name, min_expected
@@ -497,7 +487,15 @@ where
 
     if let Some(validate) = validator {
         validate(n1, n2).map_err(|msg| {
-            context.invalid_operation(msg, "Number", context.span_for_span(context.current_span))
+            // Use the span from the first argument for validation errors
+            let span = context.span_for_node(&args[0]);
+            context.report(
+                ErrorKind::InvalidOperation {
+                    operation: "numeric validation".to_string(),
+                    operand_type: msg.to_string(),
+                },
+                span,
+            )
         })?;
     }
 
@@ -516,11 +514,8 @@ where
     F: Fn(f64, f64) -> f64,
 {
     if args.len() < 2 {
-        return Err(context.arity_mismatch(
-            "at least 2",
-            args.len(),
-            context.span_for_span(context.current_span),
-        ));
+        let span = context.span_for_node(&args[0]);
+        return Err(context.arity_mismatch("at least 2", args.len(), span));
     }
 
     let values = eval_args(args, context)?;
@@ -622,7 +617,8 @@ where
     F: Fn(f64, f64) -> bool,
 {
     let values = eval_args(args, context)?;
-    validate_sequence_arity(&values, atom_name, context)?;
+    let span = context.span_for_node(&args[0]);
+    validate_sequence_arity(&values, atom_name, span, context)?;
 
     for i in 0..values.len() - 1 {
         let a = values[i].extract(context)?;
@@ -665,7 +661,8 @@ where
     F: Fn(f64, f64) -> f64,
 {
     let values = eval_args(args, context)?;
-    validate_min_arity(&values, 1, atom_name, context)?;
+    let span = context.span_for_node(&args[0]);
+    validate_min_arity(&values, 1, atom_name, span, context)?;
 
     let mut result = init;
     for v in values.iter() {
@@ -721,9 +718,9 @@ pub fn eval_apply_normal_args(
 ) -> Result<Vec<AstNode>, SutraError> {
     let mut evaluated_arg_nodes = Vec::with_capacity(args.len());
     for arg in args {
-        let val = crate::runtime::eval::evaluate_ast_node(arg, context)?;
+        let val = evaluate_ast_node(arg, context)?;
         let expr = crate::ast::expr_from_value_with_span(val, arg.span)
-            .map_err(|msg| context.internal_error(&msg, context.span_for_span(arg.span)))?;
+            .map_err(|msg| context.internal_error(&msg, to_source_span(arg.span)))?;
         evaluated_arg_nodes.push(Spanned {
             value: Arc::new(expr),
             span: arg.span,
@@ -765,7 +762,7 @@ pub fn eval_apply_list_arg(
                             .type_mismatch(
                                 "proper List",
                                 current.type_name(),
-                                context.span_for_span(*parent_span),
+                                to_source_span(*parent_span),
                             )
                             .with_suggestion("The last argument to 'apply' must be a proper list (ending in nil)."));
                     }
@@ -775,11 +772,7 @@ pub fn eval_apply_list_arg(
         }
         _ => {
             return Err(context
-                .type_mismatch(
-                    "List",
-                    list_val.type_name(),
-                    context.span_for_span(*parent_span),
-                )
+                .type_mismatch("List", list_val.type_name(), to_source_span(*parent_span))
                 .with_suggestion("The last argument to 'apply' must be a list."))
         }
     }
@@ -825,7 +818,7 @@ pub fn validate_path_arg<'a>(
     match value {
         Value::Path(p) => Ok(p),
         _ => Err(ctx
-            .type_mismatch("Path", value.type_name(), ctx.span_for_span(span))
+            .type_mismatch("Path", value.type_name(), to_source_span(span))
             .with_suggestion(format!(
                 "{} expects a Path as its first argument",
                 atom_name
@@ -846,16 +839,13 @@ pub fn validate_path_arg<'a>(
 pub fn validate_string_value<'a>(
     value: &'a Value,
     context: &str,
+    span: miette::SourceSpan,
     ctx: &EvaluationContext,
 ) -> Result<&'a str, SutraError> {
     match value {
         Value::String(s) => Ok(s),
         _ => Err(ctx
-            .type_mismatch(
-                "String",
-                value.type_name(),
-                ctx.span_for_span(ctx.current_span),
-            )
+            .type_mismatch("String", value.type_name(), span)
             .with_suggestion(format!("Expected a String for {}", context))),
     }
 }
@@ -887,16 +877,13 @@ pub fn validate_string_value<'a>(
 pub fn validate_list_value<'a>(
     value: &'a Value,
     context: &str,
+    span: miette::SourceSpan,
     ctx: &EvaluationContext,
 ) -> Result<(), SutraError> {
     match value {
         Value::Cons(_) | Value::Nil => Ok(()),
         _ => Err(ctx
-            .type_mismatch(
-                "List",
-                value.type_name(),
-                ctx.span_for_span(ctx.current_span),
-            )
+            .type_mismatch("List", value.type_name(), span)
             .with_suggestion(format!("Expected a List for {}", context))),
     }
 }
@@ -909,9 +896,10 @@ pub fn validate_list_value<'a>(
 mod tests {
     use super::*;
     use crate::{
+        atoms::World,
         atoms::{NullSink, SharedOutput},
+        engine::EvaluationContext,
         errors::SourceContext,
-        runtime::{eval::EvaluationContextBuilder, world::World},
     };
     use std::{cell::RefCell, rc::Rc};
 
@@ -919,7 +907,11 @@ mod tests {
         let source = SourceContext::from_file("test.sutra", "()");
         let world = Rc::new(RefCell::new(World::new()));
         let output = SharedOutput::new(NullSink);
-        EvaluationContextBuilder::new(source, world, output).build()
+        EvaluationContext::new(world, output, source)
+    }
+
+    fn dummy_span() -> miette::SourceSpan {
+        to_source_span(Span { start: 0, end: 1 })
     }
 
     #[test]
@@ -928,11 +920,11 @@ mod tests {
         let ctx = dummy_context();
 
         // Should succeed with correct arity
-        assert!(validate_arity(&args, 2, "test", &ctx).is_ok());
+        assert!(validate_arity(&args, 2, "test", dummy_span(), &ctx).is_ok());
 
         // Should fail with wrong arity
-        assert!(validate_arity(&args, 1, "test", &ctx).is_err());
-        assert!(validate_arity(&args, 3, "test", &ctx).is_err());
+        assert!(validate_arity(&args, 1, "test", dummy_span(), &ctx).is_err());
+        assert!(validate_arity(&args, 3, "test", dummy_span(), &ctx).is_err());
     }
 
     #[test]
@@ -941,13 +933,17 @@ mod tests {
         let ctx = dummy_context();
 
         // Should succeed with exactly one argument
-        assert!(validate_unary_arity(&args, "test", &ctx).is_ok());
+        assert!(validate_unary_arity(&args, "test", dummy_span(), &ctx).is_ok());
 
         // Should fail with wrong arity
-        assert!(validate_unary_arity(&[], "test", &ctx).is_err());
-        assert!(
-            validate_unary_arity(&[Value::Number(1.0), Value::Number(2.0)], "test", &ctx).is_err()
-        );
+        assert!(validate_unary_arity(&[], "test", dummy_span(), &ctx).is_err());
+        assert!(validate_unary_arity(
+            &[Value::Number(1.0), Value::Number(2.0)],
+            "test",
+            dummy_span(),
+            &ctx
+        )
+        .is_err());
     }
 
     #[test]
@@ -956,13 +952,14 @@ mod tests {
         let ctx = dummy_context();
 
         // Should succeed with exactly two arguments
-        assert!(validate_binary_arity(&args, "test", &ctx).is_ok());
+        assert!(validate_binary_arity(&args, "test", dummy_span(), &ctx).is_ok());
 
         // Should fail with wrong arity
-        assert!(validate_binary_arity(&[Value::Number(1.0)], "test", &ctx).is_err());
+        assert!(validate_binary_arity(&[Value::Number(1.0)], "test", dummy_span(), &ctx).is_err());
         assert!(validate_binary_arity(
             &[Value::Number(1.0), Value::Number(2.0), Value::Number(3.0)],
             "test",
+            dummy_span(),
             &ctx
         )
         .is_err());
@@ -972,42 +969,46 @@ mod tests {
     fn test_validate_min_arity() {
         let args = vec![Value::Number(1.0), Value::Number(2.0)];
         let ctx = dummy_context();
+        let span = dummy_span();
 
         // Should succeed with sufficient arguments
-        assert!(validate_min_arity(&args, 1, "test", &ctx).is_ok());
-        assert!(validate_min_arity(&args, 2, "test", &ctx).is_ok());
+        assert!(validate_min_arity(&args, 1, "test", span, &ctx).is_ok());
+        assert!(validate_min_arity(&args, 2, "test", span, &ctx).is_ok());
 
         // Should fail with insufficient arguments
-        assert!(validate_min_arity(&args, 3, "test", &ctx).is_err());
+        assert!(validate_min_arity(&args, 3, "test", span, &ctx).is_err());
     }
 
     #[test]
     fn test_validate_sequence_arity() {
         let args = vec![Value::Number(1.0), Value::Number(2.0)];
         let ctx = dummy_context();
+        let span = dummy_span();
 
         // Should succeed with at least two arguments
-        assert!(validate_sequence_arity(&args, "test", &ctx).is_ok());
+        assert!(validate_sequence_arity(&args, "test", span, &ctx).is_ok());
         assert!(validate_sequence_arity(
             &[Value::Number(1.0), Value::Number(2.0), Value::Number(3.0)],
             "test",
+            span,
             &ctx
         )
         .is_ok());
 
         // Should fail with fewer than two arguments
-        assert!(validate_sequence_arity(&[], "test", &ctx).is_err());
-        assert!(validate_sequence_arity(&[Value::Number(1.0)], "test", &ctx).is_err());
+        assert!(validate_sequence_arity(&[], "test", span, &ctx).is_err());
+        assert!(validate_sequence_arity(&[Value::Number(1.0)], "test", span, &ctx).is_err());
     }
 
     #[test]
     fn test_validate_even_arity() {
         let args = vec![Value::Number(1.0), Value::Number(2.0)];
         let ctx = dummy_context();
+        let span = dummy_span();
 
         // Should succeed with even number of arguments (including 0)
-        assert!(validate_even_arity(&[], "test", &ctx).is_ok());
-        assert!(validate_even_arity(&args, "test", &ctx).is_ok());
+        assert!(validate_even_arity(&[], "test", span, &ctx).is_ok());
+        assert!(validate_even_arity(&args, "test", span, &ctx).is_ok());
         assert!(validate_even_arity(
             &[
                 Value::Number(1.0),
@@ -1016,15 +1017,17 @@ mod tests {
                 Value::Number(4.0)
             ],
             "test",
+            span,
             &ctx
         )
         .is_ok());
 
         // Should fail with odd number of arguments
-        assert!(validate_even_arity(&[Value::Number(1.0)], "test", &ctx).is_err());
+        assert!(validate_even_arity(&[Value::Number(1.0)], "test", span, &ctx).is_err());
         assert!(validate_even_arity(
             &[Value::Number(1.0), Value::Number(2.0), Value::Number(3.0)],
             "test",
+            span,
             &ctx
         )
         .is_err());
@@ -1034,33 +1037,39 @@ mod tests {
     fn test_error_messages() {
         let args = vec![Value::Number(1.0)];
         let ctx = dummy_context();
+        let span = dummy_span();
 
         // Test that error messages are descriptive
-        let err = validate_arity(&args, 2, "my_atom", &ctx).unwrap_err();
+        let err = validate_arity(&args, 2, "my_atom", span, &ctx).unwrap_err();
         assert!(err.to_string().contains("expected 2, got 1"));
 
-        let err = validate_min_arity(&args, 3, "my_atom", &ctx).unwrap_err();
+        let err = validate_min_arity(&args, 3, "my_atom", span, &ctx).unwrap_err();
         assert!(err.to_string().contains("expected at least 3, got 1"));
 
-        let err = validate_even_arity(&args, "my_atom", &ctx).unwrap_err();
+        let err = validate_even_arity(&args, "my_atom", span, &ctx).unwrap_err();
         assert!(err
             .to_string()
-            .contains("expected an even number of arguments, got 1"));
+            .contains("expects an even number of arguments, got 1"));
     }
 
     #[test]
     fn test_validate_zero_arity() {
         let args = vec![Value::Number(1.0)];
         let ctx = dummy_context();
+        let span = dummy_span();
 
         // Should fail with any arguments
-        assert!(validate_zero_arity(&args, "test", &ctx).is_err());
-        assert!(
-            validate_zero_arity(&[Value::Number(1.0), Value::Number(2.0)], "test", &ctx).is_err()
-        );
+        assert!(validate_zero_arity(&args, "test", span, &ctx).is_err());
+        assert!(validate_zero_arity(
+            &[Value::Number(1.0), Value::Number(2.0)],
+            "test",
+            span,
+            &ctx
+        )
+        .is_err());
 
         // Should succeed with no arguments
-        assert!(validate_zero_arity(&[], "test", &ctx).is_ok());
+        assert!(validate_zero_arity(&[], "test", span, &ctx).is_ok());
     }
 
     #[test]

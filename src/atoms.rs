@@ -33,13 +33,236 @@
 //     arguments. This is essential for special forms that manage control flow
 //     (e.g., `if`, `lambda`, `let`).
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fmt, fs, rc::Rc, sync::Arc};
+
+use miette::NamedSource;
+use rand::{RngCore, SeedableRng};
+use rand_xoshiro::Xoshiro256StarStar;
+use serde::{Deserialize, Serialize};
 
 // Core types via prelude
 use crate::prelude::*;
 
 // Domain modules with aliases
 use crate::atoms::helpers::AtomResult;
+use crate::macros::{MacroExpansionContext, MacroRegistry};
+
+// Using a concrete, seedable PRNG for determinism.
+type SmallRng = Xoshiro256StarStar;
+
+// ============================================================================
+// WORLD STATE - Simplified state management
+// ============================================================================
+
+/// A canonical, type-safe representation of a path into the world state.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Path(pub Vec<String>);
+
+impl fmt::Display for Path {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0.join("."))
+    }
+}
+
+/// Simplified world state with root map structure
+#[derive(Debug)]
+pub struct WorldState {
+    data: Value,
+}
+
+impl WorldState {
+    pub fn new() -> Self {
+        Self {
+            data: Value::Map(HashMap::new()),
+        }
+    }
+
+    pub fn get(&self, path: &Path) -> Option<&Value> {
+        let mut current = &self.data;
+        for key in &path.0 {
+            let Value::Map(map) = current else {
+                return None;
+            };
+            let value = map.get(key.as_str())?;
+            current = value;
+        }
+        Some(current)
+    }
+
+    pub fn set(&mut self, path: &Path, val: Value) {
+        if path.0.is_empty() {
+            return;
+        }
+        set_recursive_mut(&mut self.data, &path.0, val);
+    }
+
+    pub fn del(&mut self, path: &Path) {
+        if path.0.is_empty() {
+            return;
+        }
+        del_recursive_mut(&mut self.data, &path.0);
+    }
+}
+
+impl Default for WorldState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Top-level world container with state, PRNG, and macro environment
+#[derive(Debug)]
+pub struct World {
+    pub state: WorldState,
+    pub prng: SmallRng,
+    pub macros: MacroExpansionContext,
+}
+
+impl World {
+    pub fn new() -> Self {
+        let source = SourceContext::fallback("world state").to_named_source();
+        Self {
+            state: WorldState::new(),
+            prng: SmallRng::from_entropy(),
+            macros: MacroExpansionContext::new(source),
+        }
+    }
+
+    pub fn from_seed(seed: [u8; 32]) -> Self {
+        let source = SourceContext::fallback("world state").to_named_source();
+        Self {
+            state: WorldState::new(),
+            prng: SmallRng::from_seed(seed),
+            macros: MacroExpansionContext::new(source),
+        }
+    }
+
+    pub fn get(&self, path: &Path) -> Option<&Value> {
+        self.state.get(path)
+    }
+
+    pub fn set(&mut self, path: &Path, val: Value) {
+        self.state.set(path, val);
+    }
+
+    pub fn del(&mut self, path: &Path) {
+        self.state.del(path);
+    }
+
+    pub fn next_u32(&mut self) -> u32 {
+        self.prng.next_u32()
+    }
+}
+
+/// Recursive helper for mutable set operations
+fn set_recursive_mut(current: &mut Value, path_segments: &[String], val: Value) {
+    let Some(key) = path_segments.first() else {
+        return;
+    };
+
+    let remaining_segments = &path_segments[1..];
+
+    // Ensure the current value is a map, upgrading if necessary.
+    if !matches!(current, Value::Map(_)) {
+        *current = Value::Map(HashMap::new());
+    }
+
+    let Value::Map(map) = current else {
+        unreachable!(); // Should have been upgraded above
+    };
+
+    if remaining_segments.is_empty() {
+        map.insert(key.clone(), val);
+    } else {
+        let child = map
+            .entry(key.clone())
+            .or_insert_with(|| Value::Map(HashMap::new()));
+        set_recursive_mut(child, remaining_segments, val);
+    }
+}
+
+/// Recursive helper for mutable delete operations
+fn del_recursive_mut(current: &mut Value, path_segments: &[String]) {
+    let Some(key) = path_segments.first() else {
+        return;
+    };
+
+    let Value::Map(map) = current else {
+        return; // Can't delete from a non-map value.
+    };
+
+    if path_segments.len() == 1 {
+        map.remove(key);
+    } else if let Some(child) = map.get_mut(key) {
+        del_recursive_mut(child, &path_segments[1..]);
+        // Clean up empty maps after deletion
+        if let Value::Map(child_map) = child {
+            if child_map.is_empty() {
+                map.remove(key);
+            }
+        }
+    }
+}
+
+/// Builds and returns a canonical, fully-populated world for evaluation.
+pub fn build_canonical_world() -> CanonicalWorld {
+    let mut world = World::new();
+    register_all_atoms(&mut world);
+    Rc::new(RefCell::new(world))
+}
+
+/// Builds and returns the canonical macro environment
+pub fn build_canonical_macro_env() -> Result<MacroExpansionContext, SutraError> {
+    use crate::macros::{
+        load_macros_from_file, std_macros::register_std_macros, MacroValidationContext,
+    };
+
+    let mut core_registry = MacroRegistry::new();
+    register_std_macros(&mut core_registry);
+
+    let user_macros = load_macros_from_file("src/macros/std_macros.sutra")?;
+    let mut processed_macros = HashMap::new();
+    let mut ctx = MacroValidationContext::for_standard_library();
+    ctx.source_context = Some(Arc::new(NamedSource::new(
+        "std_macros.sutra",
+        String::new(),
+    )));
+    ctx.validate_and_insert_many(user_macros, &mut processed_macros)?;
+
+    let source = Arc::new(NamedSource::new(
+        "std_macros.sutra",
+        fs::read_to_string("src/macros/std_macros.sutra").unwrap_or_default(),
+    ));
+
+    Ok(MacroExpansionContext {
+        user_macros: processed_macros,
+        core_macros: core_registry.macros,
+        trace: Vec::new(),
+        source,
+    })
+}
+
+// ============================================================================
+// STATE CONTEXT IMPLEMENTATION
+// ============================================================================
+
+impl StateContext for WorldState {
+    fn get(&self, path: &Path) -> Option<&Value> {
+        self.get(path)
+    }
+
+    fn set(&mut self, path: &Path, value: Value) {
+        set_recursive_mut(&mut self.data, &path.0, value);
+    }
+
+    fn del(&mut self, path: &Path) {
+        del_recursive_mut(&mut self.data, &path.0);
+    }
+
+    fn exists(&self, path: &Path) -> bool {
+        self.get(path).is_some()
+    }
+}
 
 // ============================================================================
 // NEW ATOM ARCHITECTURE TYPES

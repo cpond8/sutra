@@ -6,9 +6,8 @@ use std::{
 use walkdir::WalkDir;
 
 use crate::{
-    errors::{ErrorReporting, to_source_span, unspanned},
+    errors::{to_source_span, unspanned, ErrorReporting, SourceContext},
     prelude::*,
-    runtime::source::SourceContext,
     syntax::parser,
     validation::ValidationContext,
 };
@@ -96,10 +95,8 @@ impl TestDiscoverer {
     ) -> Result<Vec<ASTDefinition>, SutraError> {
         let path_str = file_path.as_ref().display().to_string();
         let source = fs::read_to_string(file_path.as_ref()).map_err(|e| {
-            let context = ValidationContext::new(
-                SourceContext::fallback(&path_str),
-                "discovery".to_string(),
-            );
+            let context =
+                ValidationContext::new(SourceContext::fallback(&path_str), "discovery".to_string());
             context.report(
                 ErrorKind::InvalidPath {
                     path: format!("Failed to read file '{}': {}", path_str, e),
