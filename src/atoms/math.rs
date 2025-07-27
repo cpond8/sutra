@@ -3,7 +3,7 @@
 
 use crate::prelude::*;
 use crate::{
-    errors,
+    errors::{ErrorReporting, ErrorKind},
     helpers::{self, ExtractValue},
     NativeEagerFn,
 };
@@ -88,12 +88,11 @@ pub const ATOM_DIV: NativeEagerFn = |args, context| {
     let first: f64 = args[0].extract(context)?;
     if args.len() == 1 {
         if first == 0.0 {
-            return Err(errors::runtime_general(
-                "division by zero",
-                "math error",
-                &context.source,
-                // It is not currently possible to propagate a proper span to `extract`.
-                // This is a known limitation that should be addressed in a future refactoring.
+            return Err(context.report(
+                ErrorKind::InvalidOperation {
+                    operation: "division".to_string(),
+                    operand_type: "zero".to_string(),
+                },
                 context.span_for_span(context.current_span),
             ));
         }
@@ -103,10 +102,11 @@ pub const ATOM_DIV: NativeEagerFn = |args, context| {
     for arg in args.iter().skip(1) {
         let n: f64 = arg.extract(context)?;
         if n == 0.0 {
-            return Err(errors::runtime_general(
-                "division by zero",
-                "math error",
-                &context.source,
+            return Err(context.report(
+                ErrorKind::InvalidOperation {
+                    operation: "division".to_string(),
+                    operand_type: "zero".to_string(),
+                },
                 context.span_for_span(context.current_span),
             ));
         }
@@ -131,10 +131,11 @@ pub const ATOM_MOD: NativeEagerFn = |args, context| {
     let a: f64 = args[0].extract(context)?;
     let b: f64 = args[1].extract(context)?;
     if b == 0.0 {
-        return Err(errors::runtime_general(
-            "modulo by zero",
-            "math error",
-            &context.source,
+        return Err(context.report(
+            ErrorKind::InvalidOperation {
+                operation: "modulo".to_string(),
+                operand_type: "zero".to_string(),
+            },
             context.span_for_span(context.current_span),
         ));
     }

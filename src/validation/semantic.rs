@@ -1,10 +1,10 @@
 pub mod ast_validator;
 
 use crate::{
-    prelude::*, runtime::source, semantic::ast_validator::AstValidator,
-    errors::{
-        DiagnosticInfo, ErrorKind, ErrorReporting, FileContext, SourceInfo, SutraError,
-    },
+    errors::{DiagnosticInfo, ErrorKind, ErrorReporting, FileContext, SourceInfo, SutraError},
+    prelude::*,
+    runtime::source,
+    semantic::ast_validator::AstValidator,
     validation::ValidationResult,
 };
 use miette::SourceSpan;
@@ -15,6 +15,17 @@ pub struct ValidationContext {
 }
 
 impl ValidationContext {
+    pub fn new(source: source::SourceContext, phase: String) -> Self {
+        Self { source, phase }
+    }
+
+    pub fn is_special_form(&self, name: &str) -> bool {
+        matches!(
+            name,
+            "define" | "if" | "lambda" | "let" | "do" | "error" | "apply"
+        )
+    }
+
     /// Generate context-appropriate help for validation errors
     fn generate_validation_help(&self, kind: &ErrorKind) -> Option<String> {
         match kind {
@@ -24,15 +35,18 @@ impl ValidationContext {
             ErrorKind::InvalidPath { path } => {
                 Some(format!("The path '{}' is not valid or cannot be resolved", path))
             }
-            ErrorKind::ArityMismatch { expected, actual } => {
-                Some(format!("Expected {} arguments, but got {}. Check the function signature.", expected, actual))
-            }
-            ErrorKind::DuplicateDefinition { symbol, .. } => {
-                Some(format!("The symbol '{}' is already defined. Use a different name or check for conflicting definitions.", symbol))
-            }
-            ErrorKind::ScopeViolation { symbol, scope } => {
-                Some(format!("The symbol '{}' is not accessible in {} scope. Check variable visibility rules.", symbol, scope))
-            }
+            ErrorKind::ArityMismatch { expected, actual } => Some(format!(
+                "Expected {} arguments, but got {}. Check the function signature.",
+                expected, actual
+            )),
+            ErrorKind::DuplicateDefinition { symbol, .. } => Some(format!(
+                "The symbol '{}' is already defined. Use a different name or check for conflicting definitions.",
+                symbol
+            )),
+            ErrorKind::ScopeViolation { symbol, scope } => Some(format!(
+                "The symbol '{}' is not accessible in {} scope. Check variable visibility rules.",
+                symbol, scope
+            )),
             _ => None,
         }
     }
@@ -53,7 +67,9 @@ impl ErrorReporting for ValidationContext {
             source_info: SourceInfo {
                 source: self.source.to_named_source(),
                 primary_span: span,
-                file_context: FileContext::Validation { phase: self.current_phase().into() },
+                file_context: FileContext::Validation {
+                    phase: self.current_phase().into(),
+                },
             },
             diagnostic_info: DiagnosticInfo {
                 help,
@@ -65,6 +81,7 @@ impl ErrorReporting for ValidationContext {
     }
 }
 
+// ATTN: Please verify if this function is still needed, or if it has been made vestigial.
 /// Validates an expanded AST for macro and atom correctness.
 /// Returns a ValidationResult with any errors found.
 ///
@@ -72,10 +89,11 @@ impl ErrorReporting for ValidationContext {
 pub fn validate_expanded_ast(
     ast: &AstNode,
     macros: &MacroRegistry,
-    atoms: &World,
+    world: &World,
     source: &source::SourceContext,
 ) -> ValidationResult {
     let mut result = ValidationResult::new();
-    AstValidator::validate_node(ast, macros, atoms, &mut result, source);
+    let context = ValidationContext::new(source.clone(), "semantic".to_string());
+    AstValidator::validate_node(ast, &context, &mut result);
     result
 }

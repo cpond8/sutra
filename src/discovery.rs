@@ -5,17 +5,21 @@ use std::{
 
 use walkdir::WalkDir;
 
-use crate::{errors, prelude::*, runtime::source, syntax::parser};
-
-use crate::errors::{ErrorKind, ErrorReporting, SutraError};
-use crate::validation::semantic::ValidationContext;
+use crate::{
+    atoms::{TestDefinition, test::TestResult},
+    errors::{ErrorReporting, to_source_span, unspanned},
+    prelude::*,
+    runtime::source::SourceContext,
+    syntax::parser,
+    validation::semantic::ValidationContext,
+};
 
 // =====================
 // Type Aliases for Complex Types
 // =====================
 
 /// Source file context for diagnostics
-pub type SourceFile = source::SourceContext;
+pub type SourceFile = SourceContext;
 
 /// Result of test form extraction - either a valid test or None
 pub type TestFormResult = Result<Option<ASTDefinition>, SutraError>;
@@ -57,15 +61,15 @@ impl TestDiscoverer {
         let mut files = Vec::new();
         for entry in WalkDir::new(root) {
             let entry = entry.map_err(|e| {
-                let context = ValidationContext {
-                    source: source::SourceContext::fallback("TestDiscoverer::discover_test_files"),
-                    phase: "discovery".to_string(),
-                };
+                let context = ValidationContext::new(
+                    SourceContext::fallback("TestDiscoverer::discover_test_files"),
+                    "discovery".to_string(),
+                );
                 context.report(
                     ErrorKind::InvalidPath {
                         path: format!("Failed to walk directory: {}", e),
                     },
-                    errors::unspanned(),
+                    unspanned(),
                 )
             })?;
 
@@ -93,19 +97,19 @@ impl TestDiscoverer {
     ) -> Result<Vec<ASTDefinition>, SutraError> {
         let path_str = file_path.as_ref().display().to_string();
         let source = fs::read_to_string(file_path.as_ref()).map_err(|e| {
-            let context = ValidationContext {
-                source: source::SourceContext::fallback(&path_str),
-                phase: "discovery".to_string(),
-            };
+            let context = ValidationContext::new(
+                SourceContext::fallback(&path_str),
+                "discovery".to_string(),
+            );
             context.report(
                 ErrorKind::InvalidPath {
                     path: format!("Failed to read file '{}': {}", path_str, e),
                 },
-                errors::unspanned(),
+                unspanned(),
             )
         })?;
 
-        let source_file = source::SourceContext::from_file(path_str, &source);
+        let source_file = SourceContext::from_file(path_str, &source);
         let ast = parser::parse(&source, source_file.clone())?;
 
         Self::extract_tests_from_ast(ast, source_file)
@@ -168,15 +172,12 @@ impl TestDiscoverer {
         source_file: SourceFile,
     ) -> Result<ASTDefinition, SutraError> {
         if items.len() < 2 {
-            let context = ValidationContext {
-                source: source_file.clone(),
-                phase: "discovery".to_string(),
-            };
+            let context = ValidationContext::new(source_file.clone(), "discovery".to_string());
             return Err(context.report(
                 ErrorKind::MalformedConstruct {
                     construct: "test form".to_string(),
                 },
-                parser::to_source_span(span),
+                to_source_span(span),
             ));
         }
 
@@ -200,16 +201,13 @@ impl TestDiscoverer {
         source_file: &SourceFile,
     ) -> Result<String, SutraError> {
         let Expr::String(s, _) = &*name_node.value else {
-            let context = ValidationContext {
-                source: source_file.clone(),
-                phase: "discovery".to_string(),
-            };
+            let context = ValidationContext::new(source_file.clone(), "discovery".to_string());
             return Err(context.report(
                 ErrorKind::InvalidLiteral {
                     literal_type: "test name".to_string(),
                     value: name_node.value.to_string(),
                 },
-                parser::to_source_span(name_node.span),
+                to_source_span(name_node.span),
             ));
         };
         Ok(s.clone())

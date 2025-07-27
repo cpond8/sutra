@@ -7,10 +7,9 @@ use std::{collections::HashSet, fs, path::Path};
 use crate::prelude::*;
 use crate::{
     ast::ParamList,
-    errors::{self, ErrorKind, ErrorReporting, SutraError},
+    errors::{self, ErrorKind, ErrorReporting, SutraError, to_source_span},
     runtime::source::SourceContext,
     syntax::parser,
-    syntax::parser::to_source_span,
     validation::semantic::ValidationContext,
     MacroTemplate,
 };
@@ -48,10 +47,10 @@ pub fn parse_macros_from_source(source: &str) -> MacroParseResult {
 pub fn load_macros_from_file<P: AsRef<Path>>(path: P) -> MacroParseResult {
     let path_str = path.as_ref().to_string_lossy();
     let source = fs::read_to_string(&path).map_err(|e| {
-        let context = ValidationContext {
-            source: SourceContext::from_file(path_str.to_string(), e.to_string()),
-            phase: "macro-loading".to_string(),
-        };
+        let context = ValidationContext::new(
+            SourceContext::from_file(path_str.to_string(), e.to_string()),
+            "macro-loading".to_string(),
+        );
         context.report(
             ErrorKind::InvalidPath {
                 path: format!("Unable to read macro file '{}'", path_str),
@@ -73,10 +72,7 @@ pub fn check_arity(
 ) -> Result<(), SutraError> {
     let required_len = params.required.len();
     let has_variadic = params.rest.is_some();
-    let context = ValidationContext {
-        source: source.clone(),
-        phase: "macro-expansion".to_string(),
-    };
+    let context = ValidationContext::new(source.clone(), "macro-expansion".to_string());
 
     if args_len < required_len {
         let span = to_source_span(*span);
@@ -105,10 +101,10 @@ fn try_parse_macro_form(
     let (macro_name, template) = parse_macro_definition(expr)?;
 
     if !names_seen.insert(macro_name.clone()) {
-        let context = ValidationContext {
-            source: SourceContext::from_file(&macro_name, format!("{:?}", expr)),
-            phase: "macro-loading".to_string(),
-        };
+        let context = ValidationContext::new(
+            SourceContext::from_file(&macro_name, format!("{:?}", expr)),
+            "macro-loading".to_string(),
+        );
         return Err(context.report(
             ErrorKind::DuplicateDefinition {
                 symbol: macro_name,
@@ -146,10 +142,10 @@ pub fn is_macro_definition(expr: &AstNode) -> bool {
 /// Parses a macro definition AST node into a (name, MacroTemplate) pair.
 pub fn parse_macro_definition(expr: &AstNode) -> Result<(String, MacroTemplate), SutraError> {
     let full_source = &format!("{:?}", expr);
-    let context = ValidationContext {
-        source: SourceContext::from_file("macro definition", full_source.clone()),
-        phase: "macro-definition".to_string(),
-    };
+    let context = ValidationContext::new(
+        SourceContext::from_file("macro definition", full_source.clone()),
+        "macro-definition".to_string(),
+    );
 
     let (items, span) = if let Expr::List(items, span) = &*expr.value {
         (items, span)

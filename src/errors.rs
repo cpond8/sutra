@@ -1,249 +1,14 @@
 //! Sutra Error Handling - Unified Encapsulated API
 //!
-//! This module provides the ONLY way to create and interact with Sutra errors.
 //! All internal implementation is completely hidden to prevent misuse.
 
-mod builders;
-mod context;
-mod internal;
-
 use miette::{Diagnostic, SourceSpan};
-use std::fmt;
 use miette::{LabeledSpan, NamedSource};
+use std::fmt;
 use std::sync::Arc;
 
 // Instead, we now use the dedicated struct.
 pub use crate::runtime::source::SourceContext;
-
-// Re-export only the error type enum for backwards compatibility
-#[deprecated(since = "0.8.0", note = "Please use `ErrorKind` instead")]
-pub use internal::ErrorType;
-
-/// Opaque error type that wraps the internal error implementation.
-///
-/// This type cannot be constructed directly - it must be created through
-/// the constructor functions provided by this module. This ensures all
-/// errors have proper source context and prevents construction errors.
-#[derive(Debug)]
-#[deprecated(since = "0.8.0", note = "Please use the new `SutraError` and its context-based constructors")]
-pub struct OldSutraError(internal::InternalSutraError);
-
-// Implement required traits by delegating to internal error
-impl fmt::Display for OldSutraError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl std::error::Error for OldSutraError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.0.source()
-    }
-}
-
-impl Diagnostic for OldSutraError {
-    fn code<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
-        self.0.code()
-    }
-
-    fn help<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
-        self.0.help()
-    }
-
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        self.0.labels()
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        self.0.source_code()
-    }
-}
-
-impl OldSutraError {
-    /// Get the error type for backwards compatibility
-    #[deprecated(since = "0.8.0", note = "Use `SutraError::kind` and `ErrorKind::category` instead")]
-    pub fn error_type(&self) -> ErrorType {
-        self.0.error_type()
-    }
-
-    /// Check if this is a warning-level error
-    #[deprecated(since = "0.8.0", note = "This is replaced by `SutraError`'s `diagnostic_info.is_warning` field")]
-    pub fn is_warning(&self) -> bool {
-        self.0.is_warning()
-    }
-
-    /// Check if this is a fatal error
-    #[deprecated(since = "0.8.0", note = "Fatal errors are now the default. Non-fatal errors are warnings.")]
-    pub fn is_fatal(&self) -> bool {
-        self.0.is_fatal()
-    }
-
-    /// Get the error category as a string
-    #[deprecated(since = "0.8.0", note = "Use `ErrorKind::category()` which returns an enum `ErrorCategory`")]
-    pub fn category(&self) -> &'static str {
-        self.0.category()
-    }
-}
-
-// ============================================================================
-// PUBLIC CONSTRUCTOR FUNCTIONS - The only way to create errors
-// ============================================================================
-
-/// Create a parse error for missing syntax elements
-#[deprecated(since = "0.8.0", note = "Use context.missing_element() instead")]
-pub fn parse_missing(
-    element: impl Into<String>,
-    source: &SourceContext,
-    span: impl Into<SourceSpan>,
-) -> OldSutraError {
-    builders::build_parse_missing(element.into(), source.to_named_source(), span.into())
-}
-
-/// Create a parse error for malformed syntax constructs
-#[deprecated(since = "0.8.0", note = "Use context.report() with ErrorKind::MalformedConstruct instead")]
-pub fn parse_malformed(
-    construct: impl Into<String>,
-    source: &SourceContext,
-    span: impl Into<SourceSpan>,
-) -> OldSutraError {
-    builders::build_parse_malformed(construct.into(), source.to_named_source(), span.into())
-}
-
-/// Create a parse error for invalid values
-#[deprecated(since = "0.8.0", note = "Use context.report() with ErrorKind::InvalidLiteral instead")]
-pub fn parse_invalid_value(
-    item_type: impl Into<String>,
-    value: impl Into<String>,
-    source: &SourceContext,
-    span: impl Into<SourceSpan>,
-) -> OldSutraError {
-    builders::build_parse_invalid_value(
-        item_type.into(),
-        value.into(),
-        source.to_named_source(),
-        span.into(),
-    )
-}
-
-/// Create a parse error for empty expressions
-#[deprecated(since = "0.8.0", note = "Use context.report() with ErrorKind::EmptyExpression instead")]
-pub fn parse_empty(source: &SourceContext, span: impl Into<SourceSpan>) -> OldSutraError {
-    builders::build_parse_empty(source.to_named_source(), span.into())
-}
-
-/// Create a parse error for parameter ordering
-#[deprecated(since = "0.8.0", note = "Use context.report() with ErrorKind::ParameterOrderViolation instead")]
-pub fn parse_parameter_order(
-    source: &SourceContext,
-    span: impl Into<SourceSpan>,
-    rest_span: impl Into<SourceSpan>,
-) -> OldSutraError {
-    builders::build_parse_parameter_order(source.to_named_source(), span.into(), rest_span.into())
-}
-
-/// Create a runtime error for undefined symbols
-#[deprecated(since = "0.8.0", note = "Use context.undefined_symbol() instead")]
-pub fn runtime_undefined_symbol(
-    symbol: impl Into<String>,
-    source: &SourceContext,
-    span: impl Into<SourceSpan>,
-) -> OldSutraError {
-    builders::build_runtime_undefined_symbol(symbol.into(), source.to_named_source(), span.into())
-}
-
-/// Create a general runtime error
-#[deprecated(since = "0.8.0", note = "This is a general-purpose error and should be replaced with a more specific error type.")]
-pub fn runtime_general(
-    message: impl Into<String>,
-    label: impl Into<String>,
-    source: &SourceContext,
-    span: impl Into<SourceSpan>,
-) -> OldSutraError {
-    builders::build_runtime_general(
-        message.into(),
-        label.into(),
-        source.to_named_source(),
-        span.into(),
-    )
-}
-
-/// Create a validation error for incorrect arity
-#[deprecated(since = "0.8.0", note = "Use context.arity_mismatch() instead")]
-pub fn validation_arity(
-    expected: impl Into<String>,
-    actual: usize,
-    source: &SourceContext,
-    span: impl Into<SourceSpan>,
-) -> OldSutraError {
-    builders::build_validation_arity(
-        expected.into(),
-        actual,
-        source.to_named_source(),
-        span.into(),
-    )
-}
-
-/// Create a type mismatch error
-#[deprecated(since = "0.8.0", note = "Use context.type_mismatch() instead")]
-pub fn type_mismatch(
-    expected: impl Into<String>,
-    actual: impl Into<String>,
-    source: &SourceContext,
-    span: impl Into<SourceSpan>,
-) -> OldSutraError {
-    builders::build_type_mismatch(
-        expected.into(),
-        actual.into(),
-        source.to_named_source(),
-        span.into(),
-    )
-}
-
-/// Create a test assertion error
-#[deprecated(since = "0.8.0", note = "Use context.report() with ErrorKind::AssertionFailure instead")]
-pub fn test_assertion(
-    message: impl Into<String>,
-    test_name: impl Into<String>,
-    src: &SourceContext,
-    span: impl Into<SourceSpan>,
-) -> OldSutraError {
-    builders::build_test_assertion(
-        message.into(),
-        test_name.into(),
-        src.to_named_source(),
-        span.into(),
-    )
-}
-
-// ============================================================================
-// ENHANCEMENT METHODS - Fluent API for adding details
-// ============================================================================
-
-impl OldSutraError {
-    /// Add a suggestion to help fix the error
-    #[deprecated(since = "0.8.0", note = "Enhancement is now automatic based on context")]
-    pub fn with_suggestion(self, suggestion: impl Into<String>) -> Self {
-        OldSutraError(self.0.with_suggestion(suggestion.into()))
-    }
-
-    /// Add test context (test file name and test name)
-    #[deprecated(since = "0.8.0", note = "Enhancement is now automatic based on context")]
-    pub fn with_test_context(self, file: impl Into<String>, test_name: impl Into<String>) -> Self {
-        OldSutraError(self.0.with_test_context(file.into(), test_name.into()))
-    }
-
-    /// Add a related span for multi-location diagnostics
-    #[deprecated(since = "0.8.0", note = "Enhancement is now automatic based on context")]
-    pub fn with_related_span(self, span: impl Into<SourceSpan>, label: impl Into<String>) -> Self {
-        OldSutraError(self.0.with_related_span(span.into(), label.into()))
-    }
-
-    /// Mark this error as a warning instead of fatal
-    #[deprecated(since = "0.8.0", note = "Enhancement is now automatic based on context")]
-    pub fn as_warning(self) -> Self {
-        OldSutraError(self.0.as_warning())
-    }
-}
 
 /// The single error type - no wrapper, no variants, just essential data
 #[derive(Debug)]
@@ -257,32 +22,72 @@ pub struct SutraError {
 }
 
 /// All error types as a clean enum - no duplicate fields
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ErrorKind {
     // Parse errors - structural and syntactic issues
-    MissingElement { element: String },
-    MalformedConstruct { construct: String },
-    InvalidLiteral { literal_type: String, value: String },
+    MissingElement {
+        element: String,
+    },
+    MalformedConstruct {
+        construct: String,
+    },
+    InvalidLiteral {
+        literal_type: String,
+        value: String,
+    },
     EmptyExpression,
-    ParameterOrderViolation { rest_span: SourceSpan },
-    UnexpectedToken { expected: String, found: String },
+    ParameterOrderViolation {
+        rest_span: SourceSpan,
+    },
+    UnexpectedToken {
+        expected: String,
+        found: String,
+    },
 
     // Runtime errors - evaluation failures
-    UndefinedSymbol { symbol: String },
-    TypeMismatch { expected: String, actual: String },
-    ArityMismatch { expected: String, actual: usize },
-    InvalidOperation { operation: String, operand_type: String },
+    UndefinedSymbol {
+        symbol: String,
+    },
+    TypeMismatch {
+        expected: String,
+        actual: String,
+    },
+    ArityMismatch {
+        expected: String,
+        actual: usize,
+    },
+    InvalidOperation {
+        operation: String,
+        operand_type: String,
+    },
     RecursionLimit,
     StackOverflow,
 
     // Validation errors - semantic analysis issues
-    InvalidMacro { macro_name: String, reason: String },
-    InvalidPath { path: String },
-    DuplicateDefinition { symbol: String, original_location: SourceSpan },
-    ScopeViolation { symbol: String, scope: String },
+    InvalidMacro {
+        macro_name: String,
+        reason: String,
+    },
+    InvalidPath {
+        path: String,
+    },
+    DuplicateDefinition {
+        symbol: String,
+        original_location: SourceSpan,
+    },
+    ScopeViolation {
+        symbol: String,
+        scope: String,
+    },
+    GeneralValidation {
+        message: String,
+    },
 
     // Test errors
-    AssertionFailure { message: String, test_name: String },
+    AssertionFailure {
+        message: String,
+        test_name: String,
+    },
 }
 
 /// Context-specific source information
@@ -316,44 +121,95 @@ pub trait ErrorReporting {
 
     /// Convenience methods for common error types
     fn missing_element(&self, element: &str, span: SourceSpan) -> SutraError {
-        self.report(ErrorKind::MissingElement { element: element.into() }, span)
+        self.report(
+            ErrorKind::MissingElement {
+                element: element.into(),
+            },
+            span,
+        )
     }
 
     fn type_mismatch(&self, expected: &str, actual: &str, span: SourceSpan) -> SutraError {
-        self.report(ErrorKind::TypeMismatch { expected: expected.into(), actual: actual.into() }, span)
+        self.report(
+            ErrorKind::TypeMismatch {
+                expected: expected.into(),
+                actual: actual.into(),
+            },
+            span,
+        )
     }
 
     fn undefined_symbol(&self, symbol: &str, span: SourceSpan) -> SutraError {
-        self.report(ErrorKind::UndefinedSymbol { symbol: symbol.into() }, span)
+        self.report(
+            ErrorKind::UndefinedSymbol {
+                symbol: symbol.into(),
+            },
+            span,
+        )
     }
 
     fn arity_mismatch(&self, expected: &str, actual: usize, span: SourceSpan) -> SutraError {
-        self.report(ErrorKind::ArityMismatch { expected: expected.into(), actual }, span)
+        self.report(
+            ErrorKind::ArityMismatch {
+                expected: expected.into(),
+                actual,
+            },
+            span,
+        )
     }
 
-    fn invalid_operation(&self, operation: &str, operand_type: &str, span: SourceSpan) -> SutraError {
-        self.report(ErrorKind::InvalidOperation {
-            operation: operation.into(),
-            operand_type: operand_type.into()
-        }, span)
+    fn invalid_operation(
+        &self,
+        operation: &str,
+        operand_type: &str,
+        span: SourceSpan,
+    ) -> SutraError {
+        self.report(
+            ErrorKind::InvalidOperation {
+                operation: operation.into(),
+                operand_type: operand_type.into(),
+            },
+            span,
+        )
+    }
+
+    /// Creates an internal error - these indicate engine bugs, not user errors.
+    /// Use this for situations that should never happen in correct engine operation.
+    fn internal_error(&self, message: &str, span: SourceSpan) -> SutraError {
+        self.report(
+            ErrorKind::InvalidOperation {
+                operation: "internal engine operation".into(),
+                operand_type: format!("INTERNAL ERROR: {}", message),
+            },
+            span,
+        )
+        .with_suggestion("This is an internal engine error. Please report this as a bug.")
     }
 }
-
 
 impl ErrorKind {
     /// Get the error category for test assertions
     pub fn category(&self) -> ErrorCategory {
         match self {
-            Self::MissingElement { .. } | Self::MalformedConstruct { .. } |
-            Self::InvalidLiteral { .. } | Self::EmptyExpression |
-            Self::ParameterOrderViolation { .. } | Self::UnexpectedToken { .. } => ErrorCategory::Parse,
+            Self::MissingElement { .. }
+            | Self::MalformedConstruct { .. }
+            | Self::InvalidLiteral { .. }
+            | Self::EmptyExpression
+            | Self::ParameterOrderViolation { .. }
+            | Self::UnexpectedToken { .. } => ErrorCategory::Parse,
 
-            Self::UndefinedSymbol { .. } | Self::TypeMismatch { .. } |
-            Self::ArityMismatch { .. } | Self::InvalidOperation { .. } |
-            Self::RecursionLimit | Self::StackOverflow => ErrorCategory::Runtime,
+            Self::UndefinedSymbol { .. }
+            | Self::TypeMismatch { .. }
+            | Self::ArityMismatch { .. }
+            | Self::InvalidOperation { .. }
+            | Self::RecursionLimit
+            | Self::StackOverflow => ErrorCategory::Runtime,
 
-            Self::InvalidMacro { .. } | Self::InvalidPath { .. } |
-            Self::DuplicateDefinition { .. } | Self::ScopeViolation { .. } => ErrorCategory::Validation,
+            Self::InvalidMacro { .. }
+            | Self::InvalidPath { .. }
+            | Self::DuplicateDefinition { .. }
+            | Self::ScopeViolation { .. }
+            | Self::GeneralValidation { .. } => ErrorCategory::Validation,
 
             Self::AssertionFailure { .. } => ErrorCategory::Test,
         }
@@ -379,6 +235,7 @@ impl ErrorKind {
             Self::InvalidPath { .. } => "invalid_path",
             Self::DuplicateDefinition { .. } => "duplicate_definition",
             Self::ScopeViolation { .. } => "scope_violation",
+            Self::GeneralValidation { .. } => "general_validation",
             Self::AssertionFailure { .. } => "assertion_failure",
         }
     }
@@ -403,7 +260,10 @@ impl fmt::Display for SutraError {
             ErrorKind::MalformedConstruct { construct } => {
                 write!(f, "Parse error: malformed {}", construct)
             }
-            ErrorKind::InvalidLiteral { literal_type, value } => {
+            ErrorKind::InvalidLiteral {
+                literal_type,
+                value,
+            } => {
                 write!(f, "Parse error: invalid {} '{}'", literal_type, value)
             }
             ErrorKind::EmptyExpression => {
@@ -422,10 +282,21 @@ impl fmt::Display for SutraError {
                 write!(f, "Type error: expected {}, got {}", expected, actual)
             }
             ErrorKind::ArityMismatch { expected, actual } => {
-                write!(f, "Runtime error: incorrect arity, expected {}, got {}", expected, actual)
+                write!(
+                    f,
+                    "Runtime error: incorrect arity, expected {}, got {}",
+                    expected, actual
+                )
             }
-            ErrorKind::InvalidOperation { operation, operand_type } => {
-                write!(f, "Runtime error: invalid operation '{}' on {}", operation, operand_type)
+            ErrorKind::InvalidOperation {
+                operation,
+                operand_type,
+            } => {
+                write!(
+                    f,
+                    "Runtime error: invalid operation '{}' on {}",
+                    operation, operand_type
+                )
             }
             ErrorKind::RecursionLimit => {
                 write!(f, "Runtime error: recursion limit exceeded")
@@ -434,7 +305,11 @@ impl fmt::Display for SutraError {
                 write!(f, "Runtime error: stack overflow")
             }
             ErrorKind::InvalidMacro { macro_name, reason } => {
-                write!(f, "Validation error: invalid macro '{}': {}", macro_name, reason)
+                write!(
+                    f,
+                    "Validation error: invalid macro '{}': {}",
+                    macro_name, reason
+                )
             }
             ErrorKind::InvalidPath { path } => {
                 write!(f, "Validation error: invalid path '{}'", path)
@@ -443,7 +318,14 @@ impl fmt::Display for SutraError {
                 write!(f, "Validation error: duplicate definition of '{}'", symbol)
             }
             ErrorKind::ScopeViolation { symbol, scope } => {
-                write!(f, "Validation error: '{}' not accessible in {} scope", symbol, scope)
+                write!(
+                    f,
+                    "Validation error: '{}' not accessible in {} scope",
+                    symbol, scope
+                )
+            }
+            ErrorKind::GeneralValidation { message } => {
+                write!(f, "Validation error: {}", message)
             }
             ErrorKind::AssertionFailure { message, test_name } => {
                 write!(f, "Test assertion failed in '{}': {}", test_name, message)
@@ -458,13 +340,17 @@ impl Diagnostic for SutraError {
     }
 
     fn help<'a>(&'a self) -> Option<Box<dyn fmt::Display + 'a>> {
-        self.diagnostic_info.help.as_ref().map(|h| Box::new(h) as Box<dyn fmt::Display>)
+        self.diagnostic_info
+            .help
+            .as_ref()
+            .map(|h| Box::new(h) as Box<dyn fmt::Display>)
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        let mut labels = vec![
-            LabeledSpan::new_with_span(Some(self.primary_label()), self.source_info.primary_span)
-        ];
+        let mut labels = vec![LabeledSpan::new_with_span(
+            Some(self.primary_label()),
+            self.source_info.primary_span,
+        )];
         labels.extend(self.diagnostic_info.related_spans.clone());
         Some(Box::new(labels.into_iter()))
     }
@@ -493,8 +379,60 @@ impl SutraError {
             ErrorKind::InvalidPath { .. } => "invalid path".into(),
             ErrorKind::DuplicateDefinition { .. } => "duplicate definition".into(),
             ErrorKind::ScopeViolation { .. } => "scope violation".into(),
+            ErrorKind::GeneralValidation { .. } => "validation issue".into(),
             ErrorKind::AssertionFailure { .. } => "assertion failed here".into(),
         }
+    }
+
+    /// Adds a suggestion/help message to this error.
+    /// This is a builder method that modifies the diagnostic help text.
+    pub fn with_suggestion(mut self, suggestion: impl Into<String>) -> Self {
+        self.diagnostic_info.help = Some(suggestion.into());
+        self
+    }
+
+    /// Adds test context information to this error.
+    /// This is used when errors occur during test execution to provide better diagnostics.
+    pub fn with_test_context(mut self, test_file: String, test_name: String) -> Self {
+        // Update the file context to include test information
+        if let FileContext::Runtime { ref mut test_info } = self.source_info.file_context {
+            *test_info = Some((test_file, test_name));
+        }
+        self
+    }
+}
+
+/// Standalone constructor for grammar validation phase.
+///
+/// This is a special case. The grammar validator does not have access to an `ErrorReporting`
+/// context, so this function encapsulates the logic for creating validation errors,
+/// ensuring that `SutraError` structs are not constructed manually in the validators.
+pub fn grammar_validation_error(
+    message: String,
+    rule_definition: &str,
+    is_warning: bool,
+) -> SutraError {
+    let code_suffix = if is_warning { "warning" } else { "error" };
+    let source = Arc::new(NamedSource::new(
+        "grammar_validation",
+        rule_definition.to_string(),
+    ));
+
+    SutraError {
+        kind: ErrorKind::GeneralValidation { message },
+        source_info: SourceInfo {
+            source,
+            primary_span: (0..rule_definition.len()).into(),
+            file_context: FileContext::Validation {
+                phase: "Grammar Structure".into(),
+            },
+        },
+        diagnostic_info: DiagnosticInfo {
+            help: None,
+            related_spans: vec![],
+            error_code: format!("validation.grammar.{}", code_suffix),
+            is_warning,
+        },
     }
 }
 
@@ -503,4 +441,11 @@ impl SutraError {
 /// This makes the intent of using an empty span explicit and searchable.
 pub fn unspanned() -> miette::SourceSpan {
     miette::SourceSpan::from(0..0)
+}
+
+/// Converts a Sutra AST Span to a miette SourceSpan.
+/// This is a utility function for the new error system to bridge between
+/// the AST span representation and the error reporting span format.
+pub fn to_source_span(span: crate::ast::Span) -> miette::SourceSpan {
+    miette::SourceSpan::from(span.start..span.end)
 }

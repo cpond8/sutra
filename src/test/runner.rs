@@ -4,7 +4,7 @@ use crate::{
     atoms::SharedOutput,
     discovery::ASTDefinition,
     engine::{EngineOutputBuffer, ExecutionPipeline, MacroProcessor},
-    errors::{self, ErrorCategory, ErrorKind, ErrorReporting, SutraError},
+    errors::{to_source_span, ErrorCategory, ErrorKind, ErrorReporting, SutraError},
     prelude::*,
     runtime::{self, eval, source},
     syntax::parser,
@@ -88,7 +88,9 @@ impl TestRunner {
             && test_form.body.len() == 1
             && matches!(*test_form.body[0].value, Expr::String(_, _))
         {
-            let Expr::String(ref code, _) = *test_form.body[0].value else { unreachable!() };
+            let Expr::String(ref code, _) = *test_form.body[0].value else {
+                unreachable!()
+            };
             let parse_result = parser::parse(code, source_context.clone());
             return match parse_result {
                 Err(e) if e.kind.category() == ErrorCategory::Parse => Ok(()),
@@ -271,8 +273,7 @@ impl TestRunner {
 
         Err(context.report(
             ErrorKind::AssertionFailure {
-                message: "missing (value <expected>) or (error <type>) in expect form"
-                    .to_string(),
+                message: "missing (value <expected>) or (error <type>) in expect form".to_string(),
                 test_name: test_form.name.clone(),
             },
             to_source_span(test_form.span),
@@ -338,7 +339,11 @@ impl TestRunner {
             Expr::Bool(b, _) => Ok(Value::Bool(*b)),
             Expr::Symbol(s, _) if s == "nil" => Ok(Value::Nil),
             Expr::Symbol(s, _) => Ok(Value::Symbol(s.clone())),
-            Expr::Quote(inner, _) => Ok(Value::Quote(Box::new(Self::extract_value(inner, test_form, source_context)?))),
+            Expr::Quote(inner, _) => Ok(Value::Quote(Box::new(Self::extract_value(
+                inner,
+                test_form,
+                source_context,
+            )?))),
             Expr::List(items, _) => {
                 let mut result = Value::Nil;
                 for item in items.iter().rev() {
@@ -351,7 +356,7 @@ impl TestRunner {
                 Ok(result)
             }
             _ => Err(context.report(
-                ErrorKind::AssertionFailure{
+                ErrorKind::AssertionFailure {
                     message: "unsupported expected value type".to_string(),
                     test_name: test_form.name.clone(),
                 },

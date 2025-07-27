@@ -27,11 +27,10 @@ pub mod prelude {
             AstNode, Expr, Span, Spanned,
         },
         atoms::SharedOutput,
-        errors::{ErrorType, SourceContext, OldSutraError},
+        errors::{ErrorKind, SourceContext, SutraError},
         macros::MacroRegistry,
         runtime::eval::EvaluationContext,
         runtime::world::World,
-        syntax::parser::to_source_span,
         MacroDefinition, Path,
     };
 

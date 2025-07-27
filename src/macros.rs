@@ -48,15 +48,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::prelude::*;
 use crate::{
-    ast::ParamList,
-    errors::ErrorKind,
-    errors::ErrorReporting,
+    ast::ParamList, errors::ErrorKind, errors::ErrorReporting, runtime::source::SourceContext,
     validation::semantic::ValidationContext,
-    runtime::source::SourceContext,
-    syntax::parser::to_source_span,
 };
 
-use crate::errors::{self, SutraError};
+use crate::errors::{self, DiagnosticInfo, FileContext, SourceInfo, SutraError};
+use miette::SourceSpan;
 
 // ============================================================================
 // MODULE DECLARATIONS
@@ -168,9 +165,13 @@ impl MacroValidationContext {
     ) -> Result<(), SutraError> {
         // Step 1: Check for duplicates if validation is enabled
         if self.check_duplicates && target.contains_key(&name) {
-            let sc = SourceContext::fallback("MacroValidationContext::validate_and_insert");
-            let context = ValidationContext { source: sc, phase: "macro registration".to_string() };
-            return Err(context.report(ErrorKind::DuplicateDefinition { symbol: name, original_location: errors::unspanned() }, errors::unspanned()));
+            return Err(self.report(
+                ErrorKind::DuplicateDefinition {
+                    symbol: name,
+                    original_location: errors::unspanned(),
+                },
+                errors::unspanned(),
+            ));
         }
 
         // Step 4: Insert the macro
@@ -188,6 +189,44 @@ impl MacroValidationContext {
             self.validate_and_insert(name, MacroDefinition::Template(template), target)?;
         }
         Ok(())
+    }
+}
+
+impl ErrorReporting for MacroValidationContext {
+    fn report(&self, kind: ErrorKind, span: SourceSpan) -> SutraError {
+        let source = self
+            .source_context
+            .clone()
+            .unwrap_or_else(|| Arc::new(NamedSource::new("macro_validation", "".to_string())));
+
+        SutraError {
+            kind: kind.clone(),
+            source_info: SourceInfo {
+                source,
+                primary_span: span,
+                file_context: FileContext::Validation {
+                    phase: "macro registration".into(),
+                },
+            },
+            diagnostic_info: DiagnosticInfo {
+                help: self.generate_validation_help(&kind),
+                related_spans: Vec::new(),
+                error_code: format!("sutra::validation::{}", kind.code_suffix()),
+                is_warning: false,
+            },
+        }
+    }
+}
+
+impl MacroValidationContext {
+    /// Generate context-appropriate help for validation errors
+    fn generate_validation_help(&self, kind: &ErrorKind) -> Option<String> {
+        match kind {
+            ErrorKind::DuplicateDefinition { symbol, .. } => {
+                Some(format!("The macro '{}' is already defined. Use a different name or check for conflicting definitions.", symbol))
+            }
+            _ => None,
+        }
     }
 }
 
@@ -265,17 +304,29 @@ impl MacroTemplate {
         // Validate no duplicate parameters
         let mut seen = HashSet::new();
         let sc = SourceContext::fallback("MacroTemplate::new");
-        let context = ValidationContext { source: sc, phase: "parameter validation".to_string() };
+        let context = ValidationContext::new(sc, "parameter validation".to_string());
 
         for name in &params.required {
             if !seen.insert(name) {
-                return Err(context.report(ErrorKind::DuplicateDefinition { symbol: name.clone(), original_location: errors::unspanned()}, errors::unspanned()));
+                return Err(context.report(
+                    ErrorKind::DuplicateDefinition {
+                        symbol: name.clone(),
+                        original_location: errors::unspanned(),
+                    },
+                    errors::unspanned(),
+                ));
             }
         }
 
         if let Some(var) = &params.rest {
             if !seen.insert(var) {
-                return Err(context.report(ErrorKind::DuplicateDefinition { symbol: var.clone(), original_location: errors::unspanned()}, errors::unspanned()));
+                return Err(context.report(
+                    ErrorKind::DuplicateDefinition {
+                        symbol: var.clone(),
+                        original_location: errors::unspanned(),
+                    },
+                    errors::unspanned(),
+                ));
             }
         }
 
@@ -430,16 +481,28 @@ impl MacroRegistry {
         config: &MacroRegistrationConfig,
     ) -> Result<(), SutraError> {
         let sc = SourceContext::fallback("MacroRegistry::validate_registration");
-        let context = ValidationContext { source: sc, phase: "macro validation".to_string() };
+        let context = ValidationContext::new(sc, "macro validation".to_string());
 
         // Step 1: Validate name is not empty (if name validation is enabled)
         if config.validate_name && name.is_empty() {
-            return Err(context.report(ErrorKind::InvalidMacro { macro_name: "".to_string(), reason: "Macro name cannot be empty.".to_string()}, errors::unspanned()));
+            return Err(context.report(
+                ErrorKind::InvalidMacro {
+                    macro_name: "".to_string(),
+                    reason: "Macro name cannot be empty.".to_string(),
+                },
+                errors::unspanned(),
+            ));
         }
 
         // Step 2: Check for duplicate names (if duplicate checking is enabled)
         if config.check_duplicates && self.macros.contains_key(name) {
-            return Err(context.report(ErrorKind::DuplicateDefinition { symbol: name.to_string(), original_location: errors::unspanned() }, errors::unspanned()));
+            return Err(context.report(
+                ErrorKind::DuplicateDefinition {
+                    symbol: name.to_string(),
+                    original_location: errors::unspanned(),
+                },
+                errors::unspanned(),
+            ));
         }
 
         // Step 3: Validation successful
@@ -470,8 +533,14 @@ impl MacroRegistry {
         // Step 2: Reject if macro exists and overwrites not allowed
         if !config.allow_overwrite && self.macros.contains_key(name) {
             let sc = SourceContext::fallback("MacroRegistry::register_with_config");
-            let context = ValidationContext { source: sc, phase: "macro registration".to_string() };
-            return Err(context.report(ErrorKind::DuplicateDefinition { symbol: name.to_string(), original_location: errors::unspanned() }, errors::unspanned()));
+            let context = ValidationContext::new(sc, "macro registration".to_string());
+            return Err(context.report(
+                ErrorKind::DuplicateDefinition {
+                    symbol: name.to_string(),
+                    original_location: errors::unspanned(),
+                },
+                errors::unspanned(),
+            ));
         }
 
         // Step 3: Insert macro and return any previous definition

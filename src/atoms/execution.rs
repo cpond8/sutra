@@ -16,7 +16,7 @@
 use crate::prelude::*;
 use crate::{
     ast,
-    errors,
+    errors::{ErrorKind, ErrorReporting},
     helpers,
     runtime::{eval, world},
     NativeLazyFn,
@@ -64,17 +64,17 @@ pub const ATOM_DO: NativeLazyFn = |args, context, _parent_span| {
 pub const ATOM_ERROR: NativeLazyFn = |args, context, _parent_span| {
     let val = helpers::eval_single_arg(args, context)?;
     let Value::String(msg) = val else {
-        return Err(errors::type_mismatch(
+        return Err(context.type_mismatch(
             "String",
             val.type_name(),
-            &context.source,
             context.span_for_span(Span::default()),
         ));
     };
-    Err(errors::runtime_general(
-        msg,
-        "user error",
-        &context.source,
+    Err(context.report(
+        ErrorKind::InvalidOperation {
+            operation: "user error".to_string(),
+            operand_type: msg,
+        },
         context.span_for_span(Span::default()),
     ))
 };
@@ -113,7 +113,13 @@ pub const ATOM_APPLY: NativeLazyFn = |args, context, parent_span| {
         match current {
             Value::Cons(boxed) => {
                 let expr = ast::expr_from_value_with_span(boxed.car.clone(), *parent_span)
-                    .map_err(|msg| errors::runtime_general(msg, "value-to-ast", &context.source, context.span_for_span(*parent_span)))?;
+                    .map_err(|msg| context.report(
+                        ErrorKind::InvalidOperation {
+                            operation: "value-to-ast conversion".to_string(),
+                            operand_type: msg,
+                        },
+                        context.span_for_span(*parent_span),
+                    ))?;
                 list_args.push(Spanned {
                     value: Arc::new(expr),
                     span: *parent_span,
@@ -122,12 +128,11 @@ pub const ATOM_APPLY: NativeLazyFn = |args, context, parent_span| {
             }
             Value::Nil => break,
             _ => {
-                return Err(errors::type_mismatch(
+                return Err(context.type_mismatch(
                     "proper List",
                     current.type_name(),
-                    &context.source,
                     context.span_for_span(*parent_span),
-                ).with_suggestion("The last argument to 'apply' must be a proper list (ending in nil)."));
+                ));
             }
         }
     }
@@ -166,10 +171,11 @@ pub const ATOM_FOR_EACH: NativeLazyFn = |args, context, _parent_span| {
     let var_name = match &*args[0].value {
         Expr::Symbol(s, _) => s.clone(),
         _ => {
-            return Err(errors::runtime_general(
-                "for-each: first argument must be a symbol",
-                "invalid definition",
-                &context.source,
+            return Err(context.report(
+                ErrorKind::InvalidOperation {
+                    operation: "for-each definition".to_string(),
+                    operand_type: "first argument must be a symbol".to_string(),
+                },
                 context.span_for_node(&args[0]),
             ));
         }
@@ -181,10 +187,9 @@ pub const ATOM_FOR_EACH: NativeLazyFn = |args, context, _parent_span| {
 
     // Ensure we have a list to iterate over.
     if !matches!(&collection_val, &Value::Cons(_) | &Value::Nil) {
-        return Err(errors::type_mismatch(
+        return Err(context.type_mismatch(
             "List or Nil",
             collection_val.type_name(),
-            &context.source,
             context.span_for_node(&args[1]),
         ));
     }

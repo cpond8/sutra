@@ -19,8 +19,8 @@
 //! ```
 
 // All functions are now first-class values in the world state. There is no separate atom registry.
-use std::{collections::HashMap, rc::Rc};
 use std::sync::Arc;
+use std::{collections::HashMap, rc::Rc};
 
 use miette::SourceSpan;
 
@@ -28,11 +28,11 @@ use miette::SourceSpan;
 use crate::prelude::*;
 
 // Domain modules with aliases
+use crate::atoms::{helpers::AtomResult, special_forms};
+use crate::errors::{to_source_span, SourceContext};
 use crate::errors::{
     DiagnosticInfo, ErrorKind, ErrorReporting, FileContext, SourceInfo, SutraError,
 };
-use crate::atoms::{helpers::AtomResult, special_forms};
-use crate::errors::{self, SourceContext};
 
 // ===================================================================================================
 // CORE DATA STRUCTURES: Evaluation Context
@@ -108,7 +108,6 @@ impl EvaluationContext {
         to_source_span(span)
     }
 }
-
 
 // ===================================================================================================
 // PUBLIC API: Evaluation Helpers
@@ -247,7 +246,12 @@ pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext)
         }
 
         // If expressions must be handled as special forms, not direct evaluation
-        Expr::If { condition, then_branch, else_branch, .. } => {
+        Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
             let is_true = evaluate_condition_as_bool(condition, context)?;
             if is_true {
                 evaluate_ast_node(then_branch, context)
@@ -462,11 +466,22 @@ fn extract_list_items(
     }
 }
 
-fn convert_values_to_ast_nodes(values: Vec<Value>, span: Span, context: &EvaluationContext) -> Result<Vec<AstNode>, OldSutraError> {
+fn convert_values_to_ast_nodes(
+    values: Vec<Value>,
+    span: Span,
+    context: &EvaluationContext,
+) -> Result<Vec<AstNode>, SutraError> {
     let mut nodes = Vec::with_capacity(values.len());
     for value in values {
-        let expr = crate::ast::expr_from_value_with_span(value, span)
-            .map_err(|msg| errors::runtime_general(msg, "value-to-ast", &context.source, context.span_for_span(span)))?;
+        let expr = crate::ast::expr_from_value_with_span(value, span).map_err(|msg| {
+            context.report(
+                ErrorKind::InvalidOperation {
+                    operation: "value-to-ast".to_string(),
+                    operand_type: "conversion".to_string(),
+                },
+                context.span_for_span(span),
+            )
+        })?;
         nodes.push(Spanned {
             value: Arc::new(expr),
             span,
@@ -552,9 +567,11 @@ impl ErrorReporting for EvaluationContext {
                 source: self.source.to_named_source(),
                 primary_span: span,
                 file_context: FileContext::Runtime {
-                    test_info: self.test_file.as_ref()
+                    test_info: self
+                        .test_file
+                        .as_ref()
                         .zip(self.test_name.as_ref())
-                        .map(|(f, n)| (f.clone(), n.clone()))
+                        .map(|(f, n)| (f.clone(), n.clone())),
                 },
             },
             diagnostic_info: DiagnosticInfo {

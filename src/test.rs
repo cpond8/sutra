@@ -1,4 +1,7 @@
-use crate::{errors::ErrorType, errors::OldSutraError, Value};
+use crate::{
+    errors::{ErrorKind, SutraError},
+    Value,
+};
 
 /// Type-safe expectation enum for test assertions.
 /// This replaces fragile string-based expectation handling.
@@ -7,7 +10,7 @@ pub enum Expectation {
     /// Expect a specific value result
     Value(Value),
     /// Expect a specific error type
-    Error(ErrorType),
+    Error(ErrorKind),
     /// Expect specific output to be produced
     Output(String),
 }
@@ -19,15 +22,15 @@ impl Expectation {
     }
 
     /// Creates an Error expectation
-    pub fn error(error_type: ErrorType) -> Self {
+    pub fn error(error_type: ErrorKind) -> Self {
         Self::Error(error_type)
     }
 
     /// Checks if this expectation matches the given result
-    pub fn matches(&self, result: &Result<Value, OldSutraError>) -> bool {
+    pub fn matches(&self, result: &Result<Value, SutraError>) -> bool {
         match (self, result) {
             (Expectation::Value(expected), Ok(actual)) => expected == actual,
-            (Expectation::Error(expected_type), Err(error)) => &error.error_type() == expected_type,
+            (Expectation::Error(expected_type), Err(error)) => &error.kind == expected_type,
             _ => false,
         }
     }

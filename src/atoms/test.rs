@@ -26,7 +26,7 @@ use crate::atoms::AtomResult;
 use crate::runtime::source::SourceContext;
 use crate::runtime::eval::EvaluationContextBuilder;
 use crate::NativeLazyFn;
-use crate::{helpers, runtime::eval, sub_eval_context, syntax::parser::to_source_span};
+use crate::{helpers, runtime::eval, sub_eval_context, errors::{to_source_span, SutraError, ErrorReporting}};
 use crate::{prelude::*, register_lazy};
 
 /// Represents a single test case definition with source context for diagnostics.
@@ -56,11 +56,9 @@ lazy_static! {
 /// `register-test!` special form updated for AST storage.
 fn register_test_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) -> AtomResult {
     if args.len() < 4 {
-        return Err(ctx.create_error(
-            format!(
-                "Expected at least 4 arguments (name, expect, metadata, and at least one body expression), but got {}",
-                args.len()
-            ),
+        return Err(ctx.arity_mismatch(
+            "at least 4",
+            args.len(),
             to_source_span(*span),
         ));
     }
@@ -68,7 +66,7 @@ fn register_test_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span
     let name = match &*args[0].value {
         Expr::String(s, _) => s.clone(),
         _ => {
-            return Err(ctx.create_type_mismatch_error(
+            return Err(ctx.type_mismatch(
                 "String",
                 args[0].value.type_name(),
                 to_source_span(args[0].span),
@@ -83,7 +81,7 @@ fn register_test_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span
     let metadata = match metadata_val.as_map() {
         Some(m) => m,
         _ => {
-            return Err(ctx.create_type_mismatch_error(
+            return Err(ctx.type_mismatch(
                 "Map",
                 metadata_val.type_name(),
                 to_source_span(args[args.len() - 1].span),
@@ -96,8 +94,9 @@ fn register_test_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span
             let source = match std::fs::read_to_string(file_path) {
                 Ok(s) => s,
                 Err(e) => {
-                    return Err(ctx.create_error(
-                        format!("Failed to read source file: {}", e),
+                    return Err(ctx.invalid_operation(
+                        "reading source file",
+                        &e.to_string(),
                         to_source_span(Span::default()),
                     ))
                 }
@@ -108,8 +107,9 @@ fn register_test_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span
             )
         }
         _ => {
-            return Err(ctx.create_error(
-                "Test metadata must contain :source-file string",
+            return Err(ctx.invalid_operation(
+                "test metadata validation",
+                "metadata must contain :source-file string",
                 to_source_span(args[args.len() - 1].span),
             ));
         }
@@ -125,8 +125,9 @@ fn register_test_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span
     };
 
     let mut registry = TEST_REGISTRY.lock().map_err(|_| {
-        ctx.create_error(
-            "Test registry mutex poisoned",
+        ctx.invalid_operation(
+            "test registry access",
+            "mutex poisoned",
             to_source_span(Span::default()),
         )
     })?;
@@ -276,8 +277,9 @@ fn assert_atom(args: &[AstNode], ctx: &mut EvaluationContext, _span: &Span) -> A
     let value = eval::evaluate_ast_node(&args[0], ctx)?;
     let is_truthy = value.is_truthy();
     if !is_truthy {
-        return Err(ctx.create_error(
-            format!("Assertion failed: expected truthy value, got {value}"),
+        return Err(ctx.invalid_operation(
+            "assertion",
+            &format!("expected truthy value, got {value}"),
             to_source_span(args[0].span),
         ));
     }
@@ -289,8 +291,9 @@ fn assert_eq_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) ->
     let expected = eval::evaluate_ast_node(&args[0], ctx)?;
     let actual = eval::evaluate_ast_node(&args[1], ctx)?;
     if expected != actual {
-        return Err(ctx.create_error(
-            format!("Assertion failed: expected {expected}, got {actual}"),
+        return Err(ctx.invalid_operation(
+            "assertion equality",
+            &format!("expected {expected}, got {actual}"),
             to_source_span(*span),
         ));
     }
@@ -383,7 +386,7 @@ pub fn run_tests_from_file(
     path: &str,
     world: &CanonicalWorld,
     output: &SharedOutput,
-) -> Result<Vec<TestResult>, OldSutraError> {
+) -> Result<Vec<TestResult>, SutraError> {
     let source_text = std::fs::read_to_string(path).map_err(|e| {
         let dummy_ctx = EvaluationContextBuilder::new(
             SourceContext::default(),
@@ -391,8 +394,9 @@ pub fn run_tests_from_file(
             output.clone(),
         )
         .build();
-        dummy_ctx.create_error(
-            format!("Failed to read test file: {e}"),
+        dummy_ctx.invalid_operation(
+            "reading test file",
+            &e.to_string(),
             to_source_span(Span::default()),
         )
     })?;

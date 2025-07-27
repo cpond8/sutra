@@ -11,7 +11,7 @@
 
 use crate::prelude::*;
 use crate::{
-    errors::{self, ErrorReporting, SutraError},
+    errors::{ErrorReporting, SutraError},
     runtime::eval::{evaluate_ast_node, EvaluationContext},
 };
 use std::sync::Arc;
@@ -137,9 +137,11 @@ pub fn eval_n_args<const N: usize>(
     context: &mut EvaluationContext,
 ) -> ArrayResult<N> {
     if args.len() != N {
-        return Err(
-            context.arity_mismatch(&N.to_string(), args.len(), context.span_for_span(context.current_span))
-        );
+        return Err(context.arity_mismatch(
+            &N.to_string(),
+            args.len(),
+            context.span_for_span(context.current_span),
+        ));
     }
 
     let mut values = Vec::with_capacity(N);
@@ -329,7 +331,11 @@ pub fn validate_sequence_arity(
 ) -> ValidationResult {
     if args.len() < 2 {
         return Err(ctx
-            .arity_mismatch("at least 2", args.len(), ctx.span_for_span(ctx.current_span))
+            .arity_mismatch(
+                "at least 2",
+                args.len(),
+                ctx.span_for_span(ctx.current_span),
+            )
             .with_suggestion(format!("{} expects at least 2 arguments", atom_name)));
     }
     Ok(())
@@ -357,7 +363,11 @@ pub fn validate_even_arity(
 ) -> ValidationResult {
     if args.len() % 2 != 0 {
         return Err(ctx
-            .arity_mismatch("even number", args.len(), ctx.span_for_span(ctx.current_span))
+            .arity_mismatch(
+                "even number",
+                args.len(),
+                ctx.span_for_span(ctx.current_span),
+            )
             .with_suggestion(format!(
                 "{} expects an even number of arguments, got {}",
                 atom_name,
@@ -486,7 +496,9 @@ where
     let (n1, n2) = extract_numbers(&val1, &val2, context)?;
 
     if let Some(validate) = validator {
-        validate(n1, n2).map_err(|msg| context.invalid_operation(msg, "Number", context.span_for_span(context.current_span)))?;
+        validate(n1, n2).map_err(|msg| {
+            context.invalid_operation(msg, "Number", context.span_for_span(context.current_span))
+        })?;
     }
 
     Ok(op(n1, n2))
@@ -763,7 +775,11 @@ pub fn eval_apply_list_arg(
         }
         _ => {
             return Err(context
-                .type_mismatch("List", list_val.type_name(), context.span_for_span(*parent_span))
+                .type_mismatch(
+                    "List",
+                    list_val.type_name(),
+                    context.span_for_span(*parent_span),
+                )
                 .with_suggestion("The last argument to 'apply' must be a list."))
         }
     }
@@ -835,7 +851,11 @@ pub fn validate_string_value<'a>(
     match value {
         Value::String(s) => Ok(s),
         _ => Err(ctx
-            .type_mismatch("String", value.type_name(), ctx.span_for_span(ctx.current_span))
+            .type_mismatch(
+                "String",
+                value.type_name(),
+                ctx.span_for_span(ctx.current_span),
+            )
             .with_suggestion(format!("Expected a String for {}", context))),
     }
 }
@@ -872,7 +892,11 @@ pub fn validate_list_value<'a>(
     match value {
         Value::Cons(_) | Value::Nil => Ok(()),
         _ => Err(ctx
-            .type_mismatch("List", value.type_name(), ctx.span_for_span(ctx.current_span))
+            .type_mismatch(
+                "List",
+                value.type_name(),
+                ctx.span_for_span(ctx.current_span),
+            )
             .with_suggestion(format!("Expected a List for {}", context))),
     }
 }
@@ -1019,7 +1043,9 @@ mod tests {
         assert!(err.to_string().contains("expected at least 3, got 1"));
 
         let err = validate_even_arity(&args, "my_atom", &ctx).unwrap_err();
-        assert!(err.to_string().contains("expected an even number of arguments, got 1"));
+        assert!(err
+            .to_string()
+            .contains("expected an even number of arguments, got 1"));
     }
 
     #[test]

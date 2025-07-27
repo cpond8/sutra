@@ -42,9 +42,9 @@
 //
 
 use crate::errors::{
-    DiagnosticInfo, ErrorKind, ErrorReporting, FileContext, SourceInfo, SutraError,
+    to_source_span, DiagnosticInfo, ErrorKind, ErrorReporting, FileContext, SourceInfo, SutraError,
 };
-use crate::{ast::ParamList, errors, prelude::*, runtime::source};
+use crate::{ast::ParamList, prelude::*, runtime::source};
 use miette::{LabeledSpan, SourceSpan};
 use pest::{
     error::{Error, InputLocation},
@@ -71,18 +71,19 @@ impl ParserState {
     /// Generate context-appropriate help messages for parse errors
     fn generate_parse_help(&self, kind: &ErrorKind) -> Option<String> {
         match kind {
-            ErrorKind::MissingElement { element } => {
-                Some(format!("Add the missing {} to complete the expression", element))
-            }
+            ErrorKind::MissingElement { element } => Some(format!(
+                "Add the missing {} to complete the expression",
+                element
+            )),
             ErrorKind::MalformedConstruct { construct } => {
                 Some(format!("Check the syntax of the {} construct", construct))
             }
             ErrorKind::InvalidLiteral { literal_type, .. } => {
                 Some(format!("Check the format of the {} literal", literal_type))
             }
-            ErrorKind::EmptyExpression => {
-                Some("Empty expressions are not allowed. Add content or remove the parentheses.".into())
-            }
+            ErrorKind::EmptyExpression => Some(
+                "Empty expressions are not allowed. Add content or remove the parentheses.".into(),
+            ),
             ErrorKind::UnexpectedToken { expected, .. } => {
                 Some(format!("Expected {} here. Check the syntax.", expected))
             }
@@ -94,7 +95,10 @@ impl ParserState {
     fn find_related_spans(&self, kind: &ErrorKind, _primary_span: SourceSpan) -> Vec<LabeledSpan> {
         match kind {
             ErrorKind::ParameterOrderViolation { rest_span } => {
-                vec![LabeledSpan::new_with_span(Some("rest parameter here".into()), *rest_span)]
+                vec![LabeledSpan::new_with_span(
+                    Some("rest parameter here".into()),
+                    *rest_span,
+                )]
             }
             ErrorKind::MissingElement { element } if element == "closing parenthesis" => {
                 // TODO: Implement logic to find matching opening parenthesis
@@ -122,7 +126,9 @@ impl ErrorReporting for ParserState {
             source_info: SourceInfo {
                 source: self.source.to_named_source(),
                 primary_span: span,
-                file_context: FileContext::ParseTime { parser_state: self.debug_info() },
+                file_context: FileContext::ParseTime {
+                    parser_state: self.debug_info(),
+                },
             },
             diagnostic_info: DiagnosticInfo {
                 help: self.generate_parse_help(&kind),
@@ -668,11 +674,14 @@ fn extract_form_parts(
     let span = get_span(&pair);
     let mut form_pairs = pair.clone().into_inner();
 
-    let param_list_pair =
-        form_pairs.next().ok_or_else(|| state.missing_element("parameter list", to_source_span(span)))?;
+    let param_list_pair = form_pairs
+        .next()
+        .ok_or_else(|| state.missing_element("parameter list", to_source_span(span)))?;
     let param_list = build_param_list_ast(param_list_pair, state)?;
 
-    let body_pair = form_pairs.next().ok_or_else(|| state.missing_element("function body", to_source_span(span)))?;
+    let body_pair = form_pairs
+        .next()
+        .ok_or_else(|| state.missing_element("function body", to_source_span(span)))?;
     let body = build_expression_ast(body_pair, state)?;
 
     Ok((param_list, body, span))
@@ -791,15 +800,6 @@ fn count_parens(s: &str) -> (usize, usize) {
         ')' | '}' => (open, close + 1),
         _ => (open, close),
     })
-}
-
-// Helper to convert ast::Span to miette::SourceSpan
-#[deprecated(
-    since = "0.8.0",
-    note = "This function can hide the creation of empty spans. Use explicit `SourceSpan::from` or `errors::unspanned()` instead."
-)]
-pub fn to_source_span(span: Span) -> SourceSpan {
-    SourceSpan::new(span.start.into(), (span.end - span.start).into())
 }
 
 #[cfg(test)]

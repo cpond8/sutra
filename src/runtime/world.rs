@@ -11,13 +11,12 @@ use crate::prelude::*;
 // Domain modules with aliases
 use crate::{
     atoms::StateContext,
-    errors::{self, ErrorKind, ErrorReporting, SutraError},
+    errors::SutraError,
     macros::{
         load_macros_from_file, std_macros::register_std_macros, MacroDefinition,
         MacroExpansionContext, MacroValidationContext,
     },
     runtime::source::SourceContext,
-    validation::semantic::ValidationContext,
 };
 
 // Using a concrete, seedable PRNG for determinism.

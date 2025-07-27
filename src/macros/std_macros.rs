@@ -10,10 +10,12 @@
 
 use crate::prelude::*;
 use crate::{
-    macros::MacroExpansionResult as macro_result, runtime::source::SourceContext, syntax::parser,
+    macros::{MacroExpansionResult as macro_result}, 
+    errors::to_source_span, 
+    runtime::source::SourceContext, 
+    validation::semantic::ValidationContext,
+    errors::{ErrorReporting, ErrorKind},
 };
-
-use crate::errors;
 
 // ===================================================================================================
 // SYSTEM OVERVIEW
@@ -44,7 +46,7 @@ const CORE_GET: CoreOpName = "core/get";
 
 /// Converts a user-facing expression (`Symbol`, `List`, or `Path`) into a canonical `Path`.
 /// This is the only function in the engine that understands path syntax.
-fn expr_to_path(expr: &AstNode, source: &SourceContext) -> Result<Path, OldSutraError> {
+fn expr_to_path(expr: &AstNode, source: &SourceContext) -> Result<Path, SutraError> {
     let value = &*expr.value;
 
     // Handle dotted symbol syntax: `player.score` or plain symbol: `player`
@@ -66,11 +68,13 @@ fn expr_to_path(expr: &AstNode, source: &SourceContext) -> Result<Path, OldSutra
             match item_value {
                 Expr::Symbol(s, _) | Expr::String(s, _) => parts.push(s.clone()),
                 _ => {
-                    return Err(errors::runtime_general(
-                        "Path elements must be symbols or strings".to_string(),
-                        "path conversion",
-                        source,
-                        parser::to_source_span(expr.span),
+                    let context = ValidationContext::new(source.clone(), "macro_expansion".to_string());
+                    return Err(context.report(
+                        ErrorKind::InvalidOperation {
+                            operation: "path_conversion".to_string(),
+                            operand_type: "Path elements must be symbols or strings".to_string(),
+                        },
+                        to_source_span(expr.span),
                     ));
                 }
             }
@@ -81,11 +85,13 @@ fn expr_to_path(expr: &AstNode, source: &SourceContext) -> Result<Path, OldSutra
 
     // Fallback for unsupported expression types
     {
-        Err(errors::runtime_general(
-            "Expression cannot be converted to a path".to_string(),
-            "path conversion",
-            source,
-            parser::to_source_span(expr.span),
+        let context = ValidationContext::new(source.clone(), "macro_expansion".to_string());
+        Err(context.report(
+            ErrorKind::InvalidOperation {
+                operation: "path_conversion".to_string(),
+                operand_type: "Expression cannot be converted to a path".to_string(),
+            },
+            to_source_span(expr.span),
         ))
     }
 }
@@ -139,11 +145,12 @@ fn create_number(value: f64, span: &Span) -> AstNode {
 }
 
 /// Creates a validation error with consistent formatting for macro arity mismatches.
-fn create_arity_error(op_name: &str, expected: usize, got: usize) -> OldSutraError {
+fn create_arity_error(op_name: &str, expected: usize, got: usize) -> SutraError {
     {
         let sc = SourceContext::from_file("macro", op_name);
-        let span = parser::to_source_span(Span::default());
-        errors::validation_arity(format!("at least {}", expected), got, &sc, span)
+        let context = ValidationContext::new(sc, "macro_expansion".to_string());
+        let span = to_source_span(Span::default());
+        context.arity_mismatch(&format!("at least {}", expected), got, span)
     }
 }
 
@@ -162,11 +169,13 @@ fn create_flexible_path_op(
 ) -> macro_result {
     let Expr::List(items, span) = &*expr.value else {
         let sc = SourceContext::from_file(op_name, format!("{:?}", expr));
-        return Err(errors::runtime_general(
-            "Expected list form for macro".to_string(),
-            "macro expansion",
-            &sc,
-            parser::to_source_span(expr.span),
+        let context = ValidationContext::new(sc, "macro_expansion".to_string());
+        return Err(context.report(
+            ErrorKind::InvalidOperation {
+                operation: "macro_expansion".to_string(),
+                operand_type: "Expected list form for macro".to_string(),
+            },
+            to_source_span(expr.span),
         ));
     };
 
@@ -205,11 +214,13 @@ fn create_assignment_macro(
 ) -> macro_result {
     let Expr::List(items, span) = &*expr.value else {
         let sc = SourceContext::from_file("create_assignment_macro", format!("{:?}", expr));
-        return Err(errors::runtime_general(
-            "Expected list form for macro".to_string(),
-            "macro expansion",
-            &sc,
-            parser::to_source_span(expr.span),
+        let context = ValidationContext::new(sc, "macro_expansion".to_string());
+        return Err(context.report(
+            ErrorKind::InvalidOperation {
+                operation: "macro_expansion".to_string(),
+                operand_type: "Expected list form for macro".to_string(),
+            },
+            to_source_span(expr.span),
         ));
     };
 
@@ -248,11 +259,13 @@ fn create_unary_assignment_macro(
 ) -> macro_result {
     let Expr::List(items, span) = &*expr.value else {
         let sc = SourceContext::from_file("create_unary_assignment_macro", format!("{:?}", expr));
-        return Err(errors::runtime_general(
-            "Expected list form for macro".to_string(),
-            "macro expansion",
-            &sc,
-            parser::to_source_span(expr.span),
+        let context = ValidationContext::new(sc, "macro_expansion".to_string());
+        return Err(context.report(
+            ErrorKind::InvalidOperation {
+                operation: "macro_expansion".to_string(),
+                operand_type: "Expected list form for macro".to_string(),
+            },
+            to_source_span(expr.span),
         ));
     };
 
@@ -348,11 +361,13 @@ pub fn expand_dec(expr: &AstNode, source: &SourceContext) -> macro_result {
 /// Expands `(print ...)` to `(core/print ...)`, letting the atom handle arity validation.
 pub fn expand_print(expr: &AstNode, _source: &SourceContext) -> macro_result {
     let Expr::List(items, span) = &*expr.value else {
-        return Err(errors::runtime_general(
-            "Expected list form for macro".to_string(),
-            "macro expansion",
-            &_source,
-            parser::to_source_span(expr.span),
+        let context = ValidationContext::new(_source.clone(), "macro_expansion".to_string());
+        return Err(context.report(
+            ErrorKind::InvalidOperation {
+                operation: "macro_expansion".to_string(),
+                operand_type: "Expected list form for macro".to_string(),
+            },
+            to_source_span(expr.span),
         ));
     };
     let mut new_items = vec![create_symbol("core/print", span)];

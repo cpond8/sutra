@@ -228,14 +228,11 @@ impl MacroProcessor {
         let mut validation_result =
             semantic::validate_expanded_ast(expanded, &macro_registry, world, source_context);
 
-        // Step 4: Add test context to any validation errors
-        if let (Some(ref tf), Some(ref tn)) = (&self.test_file, &self.test_name) {
-            validation_result.errors = validation_result
-                .errors
-                .into_iter()
-                .map(|error| error.with_test_context(tf.clone(), tn.clone()))
-                .collect();
-        }
+        // Step 4: Test context is handled automatically by EvaluationContext
+        // when it creates errors, so no post-processing needed here
+        
+        // TODO: Ensure Engine passes test_file/test_name to EvaluationContext
+        // when creating the evaluation context, rather than modifying errors afterward
 
         // Step 5: Handle validation results
         if !validation_result.is_valid() {

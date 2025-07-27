@@ -356,34 +356,6 @@ impl EvaluationContext {
 }
 ```
 
-## Simplified Call Sites
-
-**All complexity moved into context types - call sites become trivial:**
-
-```rust
-// Parse errors - rich diagnostics automatically added
-return Err(parser_state.missing_element("closing parenthesis", span));
-return Err(parser_state.report(ErrorKind::InvalidLiteral {
-    literal_type: "number".into(),
-    value: invalid_text.into()
-}, span));
-
-// Runtime errors - test context automatically attached
-return Err(context.type_mismatch("Number", value.type_name(), node_span));
-return Err(context.undefined_symbol(&symbol_name, symbol_span));
-return Err(context.invalid_operation("division", "string", operation_span));
-
-// Validation errors - validation context provides appropriate enhancement
-return Err(validator.report(ErrorKind::InvalidMacro {
-    macro_name: name.into(),
-    reason: "macro not found in current scope".into()
-}, span));
-return Err(validator.report(ErrorKind::DuplicateDefinition {
-    symbol: duplicate_name.into(),
-    original_location: original_span
-}, span));
-```
-
 ## Error Classification and Testing
 
 **Simple, predictable classification:**
@@ -585,6 +557,34 @@ impl EvaluationContext {
 }
 ```
 
+#### Simplified Call Sites
+
+**All complexity moved into context types - call sites become trivial:**
+
+```rust
+// Parse errors - rich diagnostics automatically added
+return Err(parser_state.missing_element("closing parenthesis", span));
+return Err(parser_state.report(ErrorKind::InvalidLiteral {
+    literal_type: "number".into(),
+    value: invalid_text.into()
+}, span));
+
+// Runtime errors - test context automatically attached
+return Err(context.type_mismatch("Number", value.type_name(), node_span));
+return Err(context.undefined_symbol(&symbol_name, symbol_span));
+return Err(context.invalid_operation("division", "string", operation_span));
+
+// Validation errors - validation context provides appropriate enhancement
+return Err(validator.report(ErrorKind::InvalidMacro {
+    macro_name: name.into(),
+    reason: "macro not found in current scope".into()
+}, span));
+return Err(validator.report(ErrorKind::DuplicateDefinition {
+    symbol: duplicate_name.into(),
+    original_location: original_span
+}, span));
+```
+
 #### Handling Non-Source Errors
 
 For errors not tied to a specific source location (e.g., I/O failures, internal state errors), a default or zero-length span is necessary but obscures intent. To make these cases explicit and searchable, a dedicated helper function should be used.
@@ -599,73 +599,6 @@ pub fn unspanned() -> miette::SourceSpan {
 ```
 
 This function should replace all legitimate uses of `Span::default()` and `SourceSpan::from(0..0)`.
-
-### Error Context Trait Specifications
-
-**Each context must implement required helper methods:**
-
-```rust
-// ParserState required methods
-impl ParserState {
-    fn debug_info(&self) -> String {
-        format!("Parser at line {}, col {}", self.line, self.col)
-    }
-
-    fn find_matching_opener(&self, close_span: SourceSpan) -> Option<SourceSpan> {
-        // Scan backwards to find matching opening bracket/paren
-    }
-
-    fn to_named_source(&self) -> Arc<NamedSource<String>> {
-        self.source.to_named_source()
-    }
-}
-
-// EvaluationContext required methods
-impl EvaluationContext {
-    fn find_similar_symbols(&self, symbol: &str) -> Vec<String> {
-        // Use Levenshtein distance to find close matches in current scope
-        self.world.find_similar_names(symbol, 3) // max distance 3
-    }
-
-    fn to_named_source(&self) -> Arc<NamedSource<String>> {
-        self.source.to_named_source()
-    }
-}
-```
-
-### Performance Considerations
-
-**Const error codes for zero-cost diagnostics:**
-
-```rust
-impl ErrorKind {
-    /// Generate error codes at compile time to avoid runtime string formatting
-    const fn code_suffix(&self) -> &'static str {
-        match self {
-            Self::MissingElement { .. } => "missing_element",
-            Self::TypeMismatch { .. } => "type_mismatch",
-            Self::UndefinedSymbol { .. } => "undefined_symbol",
-            Self::InvalidOperation { .. } => "invalid_operation",
-            Self::DuplicateDefinition { .. } => "duplicate_definition",
-            // ... rest of variants
-        }
-    }
-}
-
-// Error code generation becomes zero-cost
-impl ErrorReporting for ParserState {
-    fn report(&self, kind: ErrorKind, span: SourceSpan) -> SutraError {
-        SutraError {
-            // ... other fields
-            diagnostic_info: DiagnosticInfo {
-                // No runtime string formatting - resolved at compile time
-                error_code: format!("sutra::parse::{}", kind.code_suffix()),
-                // ... other fields
-            },
-        }
-    }
-}
-```
 
 **String interning for common error messages:**
 

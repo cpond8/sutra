@@ -15,8 +15,8 @@
 
 use crate::prelude::*;
 use crate::{
-    errors,
-    helpers::{self, ExtractValue},
+    errors::{ErrorReporting},
+    helpers,
     NativeEagerFn,
 };
 
@@ -75,10 +75,9 @@ pub const ATOM_PATH: NativeEagerFn = |args, context| {
             let path = Path(vec![s.clone()]);
             Ok(Value::Path(path))
         }
-        _ => Err(errors::type_mismatch(
+        _ => Err(context.type_mismatch(
             "String",
             args[0].type_name(),
-            &context.source,
             context.span_for_span(context.current_span),
         )),
     }

@@ -1,10 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-// Domain modules with aliases
-use crate::ast::Span;
 use crate::errors;
-use crate::runtime::source::SourceContext;
-use crate::syntax::parser::to_source_span;
 use crate::validation::{Rule, ValidationReporter, ValidationResult, GRAMMAR_CONSTANTS};
 
 /// Validates grammar rules for various correctness issues
@@ -21,21 +17,12 @@ impl GrammarValidators {
                 continue;
             }
 
-            let source_ctx = SourceContext::from_file("grammar_validation", &rule.definition);
-            let warning = errors::runtime_general(
-                &format!(
-                    "Rule '{}' has duplicate pattern: {}",
-                    rule.name,
-                    rule.definition.trim()
-                ),
-                "duplicate pattern",
-                &source_ctx,
-                to_source_span(Span {
-                    start: 0,
-                    end: rule.definition.len(),
-                }),
-            )
-            .as_warning();
+            let message = format!(
+                "Rule '{}' has duplicate pattern: {}",
+                rule.name,
+                rule.definition.trim()
+            );
+            let warning = errors::grammar_validation_error(message, &rule.definition, true);
             result.report_warning(warning);
         }
     }
@@ -63,19 +50,11 @@ impl GrammarValidators {
                 continue;
             }
 
-            let source_ctx = SourceContext::from_file("grammar_validation", &rule.definition);
-            let error = errors::runtime_general(
-                &format!(
-                    "Rule '{}' references undefined rule '{}'",
-                    rule.name, reference
-                ),
-                "undefined rule",
-                &source_ctx,
-                to_source_span(Span {
-                    start: 0,
-                    end: rule.definition.len(),
-                }),
+            let message = format!(
+                "Rule '{}' references undefined rule '{}'",
+                rule.name, reference
             );
+            let error = errors::grammar_validation_error(message, &rule.definition, false);
             result.report_error(error);
         }
     }
@@ -96,20 +75,11 @@ impl GrammarValidators {
                 continue;
             }
 
-            let source_ctx = SourceContext::from_file("grammar_validation", &rule.definition);
-            let warning = errors::runtime_general(
-                &format!(
-                    "Rule '{}' uses '{}' as both inline pattern and reference",
-                    rule.name, pattern
-                ),
-                "conflicting rule usage",
-                &source_ctx,
-                to_source_span(Span {
-                    start: 0,
-                    end: rule.definition.len(),
-                }),
-            )
-            .as_warning();
+            let message = format!(
+                "Rule '{}' uses '{}' as both inline pattern and reference",
+                rule.name, pattern
+            );
+            let warning = errors::grammar_validation_error(message, &rule.definition, true);
             result.report_warning(warning);
         }
     }
@@ -124,13 +94,9 @@ impl GrammarValidators {
                 continue;
             }
 
-            let source_ctx = SourceContext::from_file("grammar_validation", "// Grammar content");
-            let error = errors::runtime_general(
-                &format!("Critical rule '{}' is missing from the grammar", critical),
-                "missing critical rule",
-                &source_ctx,
-                to_source_span(Span { start: 0, end: 0 }),
-            );
+            let message = format!("Critical rule '{}' is missing from the grammar", critical);
+            // For a missing rule, the definition context is empty.
+            let error = errors::grammar_validation_error(message, "", false);
             result.report_error(error);
         }
     }

@@ -13,9 +13,9 @@
 //! - **Deterministic Where Possible**: Consistent behavior within constraints
 //! - **Minimal External Dependencies**: Simple implementations
 
-use crate::errors;
 use crate::prelude::*;
 use crate::{helpers, NativeEagerFn};
+use crate::errors::{ErrorKind, ErrorReporting};
 
 // ============================================================================
 // I/O OPERATIONS
@@ -67,10 +67,11 @@ pub const ATOM_OUTPUT: NativeEagerFn = |args, context| {
 pub const ATOM_RAND: NativeEagerFn = |args, context| {
     helpers::validate_zero_arity(args, "rand", context)?;
     // If randomness is not available, return a canonical error
-    Err(errors::runtime_general(
-        "Random number generation is not available in this context.",
-        "unsupported operation",
-        &context.source,
+    Err(context.report(
+        ErrorKind::InvalidOperation {
+            operation: "random number generation".to_string(),
+            operand_type: "unsupported in this context".to_string(),
+        },
         context.span_for_span(context.current_span),
     ))
 };

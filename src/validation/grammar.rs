@@ -1,7 +1,7 @@
 pub mod parser;
 pub mod validators;
 
-use crate::errors::OldSutraError;
+use crate::errors::SutraError;
 
 // =====================
 // Core Data Structures
@@ -18,8 +18,8 @@ pub struct Rule {
 
 #[derive(Debug)]
 pub struct ValidationResult {
-    pub errors: Vec<OldSutraError>,
-    pub warnings: Vec<OldSutraError>,
+    pub errors: Vec<SutraError>,
+    pub warnings: Vec<SutraError>,
     pub suggestions: Vec<String>, // Keep suggestions as strings for now
 }
 
@@ -74,16 +74,16 @@ pub const GRAMMAR_CONSTANTS: GrammarConstants = GrammarConstants {
 // =====================
 
 pub trait ValidationReporter {
-    fn report_error(&mut self, error: OldSutraError);
-    fn report_warning(&mut self, warning: OldSutraError);
+    fn report_error(&mut self, error: SutraError);
+    fn report_warning(&mut self, warning: SutraError);
     fn report_suggestion(&mut self, message: impl Into<String>);
 }
 
 impl ValidationReporter for ValidationResult {
-    fn report_error(&mut self, error: OldSutraError) {
+    fn report_error(&mut self, error: SutraError) {
         self.errors.push(error);
     }
-    fn report_warning(&mut self, warning: OldSutraError) {
+    fn report_warning(&mut self, warning: SutraError) {
         self.warnings.push(warning);
     }
     fn report_suggestion(&mut self, message: impl Into<String>) {

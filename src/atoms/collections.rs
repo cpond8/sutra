@@ -19,7 +19,7 @@
 use std::rc::Rc;
 
 use crate::ast::ConsCell;
-use crate::errors::{ErrorReporting, SutraError};
+use crate::errors::ErrorReporting;
 use crate::prelude::*;
 use crate::{helpers, NativeEagerFn};
 
@@ -93,7 +93,9 @@ pub const ATOM_HAS: NativeEagerFn = |args, context| {
     let collection_val = args[0].clone();
     let search_val = &args[1];
     let found = match collection_val {
-        Value::Cons(_) | Value::Nil => collection_val.try_into_iter().any(|item| &item == search_val),
+        Value::Cons(_) | Value::Nil => collection_val
+            .try_into_iter()
+            .any(|item| &item == search_val),
         Value::Map(map) => {
             let key = helpers::validate_string_value(search_val, "map key", context)?;
             map.contains_key(key)
@@ -133,9 +135,11 @@ pub const ATOM_CORE_STR_PLUS: NativeEagerFn = |args, context| {
     let mut result = String::new();
     for val in args {
         let Value::String(s) = val else {
-            return Err(
-                context.type_mismatch("String", val.type_name(), context.span_for_span(context.current_span))
-            );
+            return Err(context.type_mismatch(
+                "String",
+                val.type_name(),
+                context.span_for_span(context.current_span),
+            ));
         };
         result.push_str(&s);
     }
@@ -163,13 +167,11 @@ pub const ATOM_CAR: NativeEagerFn = |args, context| {
     match list_val {
         Value::Cons(cell) => Ok(cell.car.clone()),
         Value::Nil => Ok(Value::Nil), // car of nil is nil
-        _ => Err(context
-            .type_mismatch(
-                "List or Nil",
-                list_val.type_name(),
-                context.span_for_span(context.current_span),
-            )
-            .with_suggestion("Expected a List or Nil for car")),
+        _ => Err(context.type_mismatch(
+            "List or Nil",
+            list_val.type_name(),
+            context.span_for_span(context.current_span),
+        )),
     }
 };
 
@@ -191,13 +193,11 @@ pub const ATOM_CDR: NativeEagerFn = |args, context| {
     match list_val {
         Value::Cons(cell) => Ok(cell.cdr.clone()),
         Value::Nil => Ok(Value::Nil), // cdr of nil is nil
-        _ => Err(context
-            .type_mismatch(
-                "List or Nil",
-                list_val.type_name(),
-                context.span_for_span(context.current_span),
-            )
-            .with_suggestion("Expected a List or Nil for cdr")),
+        _ => Err(context.type_mismatch(
+            "List or Nil",
+            list_val.type_name(),
+            context.span_for_span(context.current_span),
+        )),
     }
 };
 
@@ -251,13 +251,11 @@ pub const ATOM_APPEND: NativeEagerFn = |args, context| {
                 new_list_items.extend(arg.clone().try_into_iter());
             }
             _ => {
-                return Err(context
-                    .type_mismatch(
-                        "List or Nil",
-                        arg.type_name(),
-                        context.span_for_span(context.current_span),
-                    )
-                    .with_suggestion("`append` only works on lists or nil"));
+                return Err(context.type_mismatch(
+                    "List or Nil",
+                    arg.type_name(),
+                    context.span_for_span(context.current_span),
+                ));
             }
         }
     }

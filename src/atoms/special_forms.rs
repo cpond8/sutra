@@ -6,7 +6,7 @@ use crate::{
     ast::{value::Lambda, ConsCell},
     ast::ParamList,
     atoms::helpers::{validate_special_form_arity, validate_special_form_min_arity, AtomResult},
-    errors,
+    errors::{ErrorKind, ErrorReporting},
     runtime::{eval, world::Path},
 };
 
@@ -103,10 +103,11 @@ pub const ATOM_DEFINE: NativeLazyFn = |args, context, span| {
     }
 
     // 5. If the first argument is not a symbol, list, or param list, it's an error.
-    Err(errors::runtime_general(
-        "define: first argument must be a symbol or a list for function definition",
-        "invalid definition",
-        &context.source,
+    Err(context.report(
+        ErrorKind::InvalidOperation {
+            operation: "define".to_string(),
+            operand_type: "invalid argument type".to_string(),
+        },
         context.span_for_node(name_expr),
     ))
 };
@@ -118,12 +119,13 @@ fn handle_function_definition_list(
     value_expr: &AstNode,
     context: &mut EvaluationContext,
     span: &Span,
-) -> Result<Value, OldSutraError> {
+) -> Result<Value, SutraError> {
     if items.is_empty() {
-        return Err(errors::runtime_general(
-            "define: function definition requires a name",
-            "invalid definition",
-            &context.source,
+        return Err(context.report(
+            ErrorKind::InvalidOperation {
+                operation: "define".to_string(),
+                operand_type: "function definition requires a name".to_string(),
+            },
             context.span_for_span(*span),
         ));
     }
@@ -132,10 +134,11 @@ fn handle_function_definition_list(
     let function_name = match &*items[0].value {
         Expr::Symbol(s, _) => s.clone(),
         _ => {
-            return Err(errors::runtime_general(
-                "define: function name must be a symbol",
-                "invalid definition",
-                &context.source,
+            return Err(context.report(
+                ErrorKind::InvalidOperation {
+                    operation: "define".to_string(),
+                    operand_type: "function name must be a symbol".to_string(),
+                },
                 context.span_for_node(&items[0]),
             ));
         }
@@ -154,19 +157,21 @@ fn handle_function_definition_list(
                     rest = Some(s.clone());
                     break; // No params after a variadic parameter.
                 } else {
-                    return Err(errors::runtime_general(
-                        "define: spread parameter must be a symbol",
-                        "invalid definition",
-                        &context.source,
+                    return Err(context.report(
+                        ErrorKind::TypeMismatch {
+                            expected: "symbol".to_string(),
+                            actual: "non-symbol".to_string(),
+                        },
                         context.span_for_node(spread_expr),
                     ));
                 }
             }
             _ => {
-                return Err(errors::runtime_general(
-                    "define: function parameters must be symbols",
-                    "invalid definition",
-                    &context.source,
+                return Err(context.report(
+                    ErrorKind::TypeMismatch {
+                        expected: "symbol".to_string(),
+                        actual: "non-symbol".to_string(),
+                    },
                     context.span_for_node(param_node),
                 ));
             }
@@ -187,12 +192,13 @@ fn handle_function_definition_paramlist(
     param_list: &crate::ast::ParamList,
     value_expr: &AstNode,
     context: &mut EvaluationContext,
-) -> Result<Value, OldSutraError> {
+) -> Result<Value, SutraError> {
     if param_list.required.is_empty() {
-        return Err(errors::runtime_general(
-            "define: function definition requires a name",
-            "invalid definition",
-            &context.source,
+        return Err(context.report(
+            ErrorKind::InvalidOperation {
+                operation: "define".to_string(),
+                operand_type: "function definition requires a name".to_string(),
+            },
             context.span_for_span(param_list.span),
         ));
     }
@@ -216,7 +222,7 @@ fn create_and_store_lambda(
     params: crate::ast::ParamList,
     value_expr: &AstNode,
     context: &mut EvaluationContext,
-) -> Result<Value, OldSutraError> {
+) -> Result<Value, SutraError> {
     let body = Box::new(value_expr.clone());
     let captured_env = find_and_capture_free_variables(&body, &params, context);
 
@@ -255,10 +261,11 @@ pub const ATOM_COND: NativeLazyFn = |args, context, _span| {
         let clause = match &*clause_node.value {
             Expr::List(items, _) => items,
             _ => {
-                return Err(errors::runtime_general(
-                    "cond: each clause must be a list",
-                    "invalid clause",
-                    &context.source,
+                return Err(context.report(
+                    ErrorKind::InvalidOperation {
+                        operation: "cond".to_string(),
+                        operand_type: "each clause must be a list".to_string(),
+                    },
                     context.span_for_node(clause_node),
                 ));
             }
@@ -278,10 +285,11 @@ pub const ATOM_COND: NativeLazyFn = |args, context, _span| {
             if clause.len() > 1 {
                 return eval::evaluate_ast_node(&clause[1], context);
             } else {
-                return Err(errors::runtime_general(
-                    "cond: 'else' clause must have an expression",
-                    "invalid else clause",
-                    &context.source,
+                return Err(context.report(
+                    ErrorKind::InvalidOperation {
+                        operation: "cond".to_string(),
+                        operand_type: "'else' clause must have an expression".to_string(),
+                    },
                     context.span_for_node(clause_node),
                 ));
             }
@@ -332,10 +340,11 @@ pub const ATOM_LAMBDA: NativeLazyFn = |args, context, span| {
     let param_list = match &*args[0].value {
         Expr::ParamList(pl) => pl.clone(),
         _ => {
-            return Err(errors::runtime_general(
-                "lambda: first argument must be a parameter list",
-                "invalid definition",
-                &context.source,
+            return Err(context.report(
+                ErrorKind::InvalidOperation {
+                    operation: "lambda".to_string(),
+                    operand_type: "first argument must be a parameter list".to_string(),
+                },
                 context.span_for_span(*span),
             ));
         }
@@ -345,20 +354,22 @@ pub const ATOM_LAMBDA: NativeLazyFn = |args, context, span| {
     let mut seen = std::collections::HashSet::new();
     for name in &param_list.required {
         if !seen.insert(name) {
-            return Err(errors::runtime_general(
-                format!("lambda: duplicate parameter '{}'", name),
-                "invalid definition",
-                &context.source,
+            return Err(context.report(
+                ErrorKind::DuplicateDefinition {
+                    symbol: name.clone(),
+                    original_location: context.span_for_span(*span),
+                },
                 context.span_for_span(*span),
             ));
         }
     }
     if let Some(rest) = &param_list.rest {
         if !seen.insert(rest) {
-            return Err(errors::runtime_general(
-                format!("lambda: duplicate variadic parameter '{}'", rest),
-                "invalid definition",
-                &context.source,
+            return Err(context.report(
+                ErrorKind::DuplicateDefinition {
+                    symbol: rest.clone(),
+                    original_location: context.span_for_span(*span),
+                },
                 context.span_for_span(*span),
             ));
         }
@@ -403,10 +414,11 @@ pub const ATOM_LET: NativeLazyFn = |args, context, span| {
     let bindings = match &*args[0].value {
         Expr::List(pairs, _) => pairs,
         _ => {
-            return Err(errors::runtime_general(
-                "let: first argument must be a list of bindings",
-                "invalid definition",
-                &context.source,
+            return Err(context.report(
+                ErrorKind::InvalidOperation {
+                    operation: "let".to_string(),
+                    operand_type: "first argument must be a list of bindings".to_string(),
+                },
                 context.span_for_span(*span),
             ));
         }
@@ -420,19 +432,21 @@ pub const ATOM_LET: NativeLazyFn = |args, context, span| {
             Expr::List(items, _) if items.len() == 2 => match &*items[0].value {
                 Expr::Symbol(name, _) => (name.clone(), &items[1]),
                 _ => {
-                    return Err(errors::runtime_general(
-                        "let: binding name must be a symbol",
-                        "invalid definition",
-                        &context.source,
+                    return Err(context.report(
+                        ErrorKind::TypeMismatch {
+                            expected: "symbol".to_string(),
+                            actual: "non-symbol".to_string(),
+                        },
                         context.span_for_span(*span),
                     ));
                 }
             },
             _ => {
-                return Err(errors::runtime_general(
-                    "let: each binding must be a (name value) pair",
-                    "invalid definition",
-                    &context.source,
+                return Err(context.report(
+                    ErrorKind::InvalidOperation {
+                        operation: "let".to_string(),
+                        operand_type: "each binding must be a (name value) pair".to_string(),
+                    },
                     context.span_for_span(*span),
                 ));
             }
@@ -491,16 +505,9 @@ pub fn call_lambda(
     let fixed = lambda.params.required.len();
     let variadic = lambda.params.rest.is_some();
     if (!variadic && args.len() != fixed) || (variadic && args.len() < fixed) {
-        let msg = format!(
-            "lambda: expected {}{} arguments, got {}",
-            fixed,
-            if variadic { "+" } else { "" },
-            args.len()
-        );
-        return Err(errors::runtime_general(
-            msg,
-            "arity error",
-            &context.source,
+        return Err(context.arity_mismatch(
+            &format!("{}{}", fixed, if variadic { "+" } else { "" }),
+            args.len(),
             context.span_for_span(Span::default()),
         ));
     }

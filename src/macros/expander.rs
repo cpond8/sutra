@@ -15,16 +15,13 @@
 use std::collections::HashMap;
 
 use crate::{
-    ast::Span,
-    errors::{self, ErrorKind, ErrorReporting, SutraError},
-    macros::{
-        MacroDefinition, MacroExpansionContext, MacroExpansionResult,
-        MacroExpansionStep, MacroTemplate, MAX_MACRO_RECURSION_DEPTH,
-    },
+    ast::{Expr, Spanned},
+    errors::{ErrorKind, ErrorReporting, SutraError, to_source_span},
     prelude::*,
     runtime::source::SourceContext,
-    syntax::parser::to_source_span,
     validation::semantic::ValidationContext,
+    macros::{MacroExpansionContext, MacroExpansionResult, MacroExpansionStep, MAX_MACRO_RECURSION_DEPTH},
+    MacroTemplate,
 };
 
 /// Expands all macro calls recursively within an AST node, tracing expansions.
@@ -46,18 +43,14 @@ pub fn expand_macros_recursively(
             None => break,
         };
         if depth > MAX_MACRO_RECURSION_DEPTH {
-            let context = ValidationContext {
-                source: source_ctx.clone(),
-                phase: "macro-expansion".to_string(),
-            };
-            return Err(context.report(
-                ErrorKind::RecursionLimit,
-                to_source_span(node.span),
-            ));
+            let context = ValidationContext::new(source_ctx.clone(), "macro-expansion".to_string());
+            return Err(context.report(ErrorKind::RecursionLimit, to_source_span(node.span)));
         }
         let original_node = node.clone();
         let result = match &macro_def {
-            MacroDefinition::Template(template) => expand_template(template, &node, env, &source_ctx, depth)?,
+            MacroDefinition::Template(template) => {
+                expand_template(template, &node, env, &source_ctx, depth)?
+            }
             MacroDefinition::Fn(func) => func(&node, &source_ctx)?,
         };
         env.trace.push(MacroExpansionStep {
@@ -71,13 +64,22 @@ pub fn expand_macros_recursively(
     }
     // === Phase 2: Recursive Subform Expansion ===
     if let Expr::List(items, span) = &*node.value {
-        let new_items = items.iter()
+        let new_items = items
+            .iter()
             .map(|item| expand_macros_recursively(item.clone(), env))
             .collect::<Result<Vec<_>, _>>()?;
-        return Ok(Spanned { value: Expr::List(new_items, *span).into(), span: node.span });
+        return Ok(Spanned {
+            value: Expr::List(new_items, *span).into(),
+            span: node.span,
+        });
     }
     match &*node.value {
-        Expr::If { condition, then_branch, else_branch, span } => {
+        Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+            span,
+        } => {
             let new_condition = expand_macros_recursively(condition.as_ref().clone(), env)?;
             let new_then = expand_macros_recursively(then_branch.as_ref().clone(), env)?;
             let new_else = expand_macros_recursively(else_branch.as_ref().clone(), env)?;
@@ -87,17 +89,24 @@ pub fn expand_macros_recursively(
                     then_branch: Box::new(new_then),
                     else_branch: Box::new(new_else),
                     span: *span,
-                }.into(),
+                }
+                .into(),
                 span: node.span,
             });
         }
         Expr::Quote(inner, span) => {
             let new_inner = expand_macros_recursively(inner.as_ref().clone(), env)?;
-            return Ok(Spanned { value: Expr::Quote(Box::new(new_inner), *span).into(), span: node.span });
+            return Ok(Spanned {
+                value: Expr::Quote(Box::new(new_inner), *span).into(),
+                span: node.span,
+            });
         }
         Expr::Spread(inner) => {
             let new_inner = expand_macros_recursively(inner.as_ref().clone(), env)?;
-            return Ok(Spanned { value: Expr::Spread(Box::new(new_inner)).into(), span: node.span });
+            return Ok(Spanned {
+                value: Expr::Spread(Box::new(new_inner)).into(),
+                span: node.span,
+            });
         }
         _ => return Ok(node),
     }
@@ -118,10 +127,7 @@ fn expand_template(
         Err(e) => return Err(e),
     };
     if depth > MAX_MACRO_RECURSION_DEPTH {
-        let context = ValidationContext {
-            source: source_ctx.clone(),
-            phase: "macro-expansion".to_string(),
-        };
+        let context = ValidationContext::new(source_ctx.clone(), "macro-expansion".to_string());
         return Err(context.report(ErrorKind::RecursionLimit, to_source_span(*span)));
     }
     // Arity check
@@ -163,10 +169,7 @@ fn substitute_template(
     depth: usize,
 ) -> MacroExpansionResult {
     if depth > MAX_MACRO_RECURSION_DEPTH {
-        let context = ValidationContext {
-            source: source_ctx.clone(),
-            phase: "macro-expansion".to_string(),
-        };
+        let context = ValidationContext::new(source_ctx.clone(), "macro-expansion".to_string());
         return Err(context.report(ErrorKind::RecursionLimit, to_source_span(expr.span)));
     }
     // === Flat, Early-Return Structure ===
@@ -181,10 +184,8 @@ fn substitute_template(
                 if let Expr::List(elements, _) = &*substituted.value {
                     new_items.extend(elements.clone());
                 } else {
-                    let context = ValidationContext {
-                        source: source_ctx.clone(),
-                        phase: "macro-expansion".to_string(),
-                    };
+                    let context =
+                        ValidationContext::new(source_ctx.clone(), "macro-expansion".to_string());
                     return Err(context.type_mismatch(
                         "list",
                         substituted.type_name(),
@@ -196,12 +197,24 @@ fn substitute_template(
             let substituted = substitute_template(item, bindings, env, source_ctx, depth + 1)?;
             new_items.push(substituted);
         }
-        return Ok(Spanned { value: Expr::List(new_items, *span).into(), span: expr.span });
+        return Ok(Spanned {
+            value: Expr::List(new_items, *span).into(),
+            span: expr.span,
+        });
     }
     if let Expr::Quote(inner, span) = &*expr.value {
-        return Ok(Spanned { value: Expr::Quote(inner.clone(), *span).into(), span: expr.span });
+        return Ok(Spanned {
+            value: Expr::Quote(inner.clone(), *span).into(),
+            span: expr.span,
+        });
     }
-    if let Expr::If { condition, then_branch, else_branch, span } = &*expr.value {
+    if let Expr::If {
+        condition,
+        then_branch,
+        else_branch,
+        span,
+    } = &*expr.value
+    {
         let new_condition = substitute_template(condition, bindings, env, source_ctx, depth + 1)?;
         let new_then = substitute_template(then_branch, bindings, env, source_ctx, depth + 1)?;
         let new_else = substitute_template(else_branch, bindings, env, source_ctx, depth + 1)?;
@@ -211,13 +224,17 @@ fn substitute_template(
                 then_branch: Box::new(new_then),
                 else_branch: Box::new(new_else),
                 span: *span,
-            }.into(),
+            }
+            .into(),
             span: expr.span,
         });
     }
     if let Expr::Spread(inner) = &*expr.value {
         let new_inner = substitute_template(inner, bindings, env, source_ctx, depth + 1)?;
-        return Ok(Spanned { value: Expr::Spread(Box::new(new_inner)).into(), span: expr.span });
+        return Ok(Spanned {
+            value: Expr::Spread(Box::new(new_inner)).into(),
+            span: expr.span,
+        });
     }
     // All other cases: return as-is
     Ok(expr.clone())
@@ -238,10 +255,10 @@ fn extract_macro_call(node: &AstNode) -> Option<(&str, &[AstNode])> {
 
 /// Extracts macro name and arguments from a macro call, or returns an error if invalid.
 fn extract_macro_call_info(call: &AstNode) -> Result<(&str, &[AstNode], &Span), SutraError> {
-    let context = ValidationContext {
-        source: SourceContext::from_file("macro-expander", format!("{:?}", call)),
-        phase: "macro-expansion".to_string(),
-    };
+    let context = ValidationContext::new(
+        SourceContext::from_file("macro-expander", format!("{:?}", call)),
+        "macro-expansion".to_string(),
+    );
     let Expr::List(items, span) = &*call.value else {
         return Err(context.report(
             ErrorKind::MalformedConstruct {
@@ -251,10 +268,7 @@ fn extract_macro_call_info(call: &AstNode) -> Result<(&str, &[AstNode], &Span), 
         ));
     };
     if items.is_empty() {
-        return Err(context.report(
-            ErrorKind::EmptyExpression,
-            to_source_span(*span),
-        ));
+        return Err(context.report(ErrorKind::EmptyExpression, to_source_span(*span)));
     }
     let first = &items[0];
     let Expr::Symbol(macro_name, _) = &*first.value else {
