@@ -41,8 +41,11 @@
 // | list_elem       | build_expression_ast | AstNode             | Delegates to expression               |
 //
 
+use crate::errors::{
+    DiagnosticInfo, ErrorKind, ErrorReporting, FileContext, SourceInfo, SutraError,
+};
 use crate::{ast::ParamList, errors, prelude::*, runtime::source};
-use miette::SourceSpan;
+use miette::{LabeledSpan, SourceSpan};
 use pest::{
     error::{Error, InputLocation},
     iterators::Pair,
@@ -64,6 +67,73 @@ struct ParserState {
     pub source: source::SourceContext,
 }
 
+impl ParserState {
+    /// Generate context-appropriate help messages for parse errors
+    fn generate_parse_help(&self, kind: &ErrorKind) -> Option<String> {
+        match kind {
+            ErrorKind::MissingElement { element } => {
+                Some(format!("Add the missing {} to complete the expression", element))
+            }
+            ErrorKind::MalformedConstruct { construct } => {
+                Some(format!("Check the syntax of the {} construct", construct))
+            }
+            ErrorKind::InvalidLiteral { literal_type, .. } => {
+                Some(format!("Check the format of the {} literal", literal_type))
+            }
+            ErrorKind::EmptyExpression => {
+                Some("Empty expressions are not allowed. Add content or remove the parentheses.".into())
+            }
+            ErrorKind::UnexpectedToken { expected, .. } => {
+                Some(format!("Expected {} here. Check the syntax.", expected))
+            }
+            _ => None,
+        }
+    }
+
+    /// Find related spans for multi-location diagnostics
+    fn find_related_spans(&self, kind: &ErrorKind, _primary_span: SourceSpan) -> Vec<LabeledSpan> {
+        match kind {
+            ErrorKind::ParameterOrderViolation { rest_span } => {
+                vec![LabeledSpan::new_with_span(Some("rest parameter here".into()), *rest_span)]
+            }
+            ErrorKind::MissingElement { element } if element == "closing parenthesis" => {
+                // TODO: Implement logic to find matching opening parenthesis
+                vec![]
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    // TODO: Implement this method to provide detailed parser state.
+    fn debug_info(&self) -> String {
+        "Parser at unimplemented location".to_string()
+    }
+
+    // TODO: Implement this method to find matching opener for diagnostics.
+    fn find_matching_opener(&self, _close_span: SourceSpan) -> Option<SourceSpan> {
+        None
+    }
+}
+
+impl ErrorReporting for ParserState {
+    fn report(&self, kind: ErrorKind, span: SourceSpan) -> SutraError {
+        SutraError {
+            kind: kind.clone(),
+            source_info: SourceInfo {
+                source: self.source.to_named_source(),
+                primary_span: span,
+                file_context: FileContext::ParseTime { parser_state: self.debug_info() },
+            },
+            diagnostic_info: DiagnosticInfo {
+                help: self.generate_parse_help(&kind),
+                related_spans: self.find_related_spans(&kind, span),
+                error_code: format!("sutra::parse::{}", kind.code_suffix()),
+                is_warning: false,
+            },
+        }
+    }
+}
+
 // ============================================================================
 // MACROS
 // ============================================================================
@@ -83,13 +153,13 @@ macro_rules! spanned_expr {
 // ============================================================================
 
 /// Type alias for top-level program parsing results
-type ProgramParseResult = Result<Vec<AstNode>, SutraError>;
+type ProgramParseResult = Result<Vec<AstNode>, OldSutraError>;
 
 /// Type alias for individual expression parsing results
-type ExpressionParseResult = Result<AstNode, SutraError>;
+type ExpressionParseResult = Result<AstNode, OldSutraError>;
 
 /// Type alias for symbol parsing results
-type SymbolParseResult = Result<String, SutraError>;
+type SymbolParseResult = Result<String, OldSutraError>;
 
 // ============================================================================
 // CONSTANTS
@@ -485,7 +555,7 @@ fn validate_path_components(
     components: &[&str],
     span: Span,
     state: &mut ParserState,
-) -> Result<(), SutraError> {
+) -> Result<(), OldSutraError> {
     let has_invalid_component = components
         .iter()
         .any(|&component| component.is_empty() || component == "..");
@@ -508,7 +578,7 @@ fn validate_and_extract_parameter(
     param_item: &Pair<Rule>,
     found_rest: bool,
     state: &mut ParserState,
-) -> Result<(String, bool), SutraError> {
+) -> Result<(String, bool), OldSutraError> {
     let span = get_span(param_item);
     match param_item.as_rule() {
         Rule::symbol if !found_rest => Ok((extract_symbol(param_item, state)?, false)),
@@ -590,7 +660,7 @@ fn unescape_string(pair: Pair<Rule>) -> SymbolParseResult {
 fn extract_form_parts(
     pair: Pair<Rule>,
     state: &mut ParserState,
-) -> Result<(AstNode, AstNode, Span), SutraError> {
+) -> Result<(AstNode, AstNode, Span), OldSutraError> {
     let span = get_span(&pair);
     let mut form_pairs = pair.clone().into_inner();
 
@@ -612,7 +682,7 @@ fn extract_form_parts(
 // ============================================================================
 
 /// Creates parse error from pest error
-fn create_parse_error(e: Error<Rule>, state: &mut ParserState) -> SutraError {
+fn create_parse_error(e: Error<Rule>, state: &mut ParserState) -> OldSutraError {
     let error_span = pest_location_to_span(e.location.clone());
     let (custom_msg, help, diagnostic_span) =
         improve_parse_error_message(&e.to_string(), state, error_span);

@@ -28,6 +28,9 @@ use miette::SourceSpan;
 use crate::prelude::*;
 
 // Domain modules with aliases
+use crate::errors::{
+    DiagnosticInfo, ErrorKind, ErrorReporting, FileContext, SourceInfo, SutraError,
+};
 use crate::atoms::{helpers::AtomResult, special_forms};
 use crate::errors::{self, SourceContext};
 
@@ -108,7 +111,7 @@ impl EvaluationContext {
 
 impl EvaluationContext {
     /// Create a general runtime error with automatic test context attachment
-    pub fn create_error(&self, message: impl Into<String>, span: SourceSpan) -> SutraError {
+    pub fn create_error(&self, message: impl Into<String>, span: SourceSpan) -> OldSutraError {
         let mut err = errors::runtime_general(message, "runtime error", &self.source, span);
 
         if let (Some(ref tf), Some(ref tn)) = (&self.test_file, &self.test_name) {
@@ -124,7 +127,7 @@ impl EvaluationContext {
         expected: impl Into<String>,
         actual: impl Into<String>,
         span: SourceSpan,
-    ) -> SutraError {
+    ) -> OldSutraError {
         let mut err = errors::type_mismatch(expected, actual, &self.source, span);
 
         if let (Some(ref tf), Some(ref tn)) = (&self.test_file, &self.test_name) {
@@ -412,7 +415,7 @@ fn resolve_symbol(
     symbol_name: &str,
     span: &Span,
     context: &mut EvaluationContext,
-) -> Result<Value, SutraError> {
+) -> Result<Value, OldSutraError> {
     // 1. Lexical environment (innermost to outermost)
     if let Some(value) = context.get_lexical_var(symbol_name) {
         return Ok(value.clone());
@@ -441,7 +444,7 @@ fn resolve_symbol(
 fn evaluate_eager_args(
     args: &[AstNode],
     context: &mut EvaluationContext,
-) -> Result<Vec<Value>, SutraError> {
+) -> Result<Vec<Value>, OldSutraError> {
     let mut values = Vec::new();
     for arg in args {
         values.push(evaluate_ast_node(arg, context)?);
@@ -453,7 +456,7 @@ fn evaluate_eager_args(
 fn flatten_spread_args(
     tail: &[AstNode],
     context: &mut EvaluationContext,
-) -> Result<Vec<AstNode>, SutraError> {
+) -> Result<Vec<AstNode>, OldSutraError> {
     // Step 1: Process each argument
     let mut flat_tail = Vec::new();
 
@@ -468,7 +471,7 @@ fn flatten_spread_args(
 fn process_single_argument(
     arg: &AstNode,
     context: &mut EvaluationContext,
-) -> Result<Vec<AstNode>, SutraError> {
+) -> Result<Vec<AstNode>, OldSutraError> {
     // Handle non-spread expressions
     let Expr::Spread(expr) = &*arg.value else {
         return Ok(vec![arg.clone()]);
@@ -488,7 +491,7 @@ fn extract_list_items(
     value: Value,
     expr: &AstNode,
     context: &mut EvaluationContext,
-) -> Result<Vec<Value>, SutraError> {
+) -> Result<Vec<Value>, OldSutraError> {
     match value {
         Value::Cons(_) | Value::Nil => Ok(value.try_into_iter().collect::<Vec<Value>>()),
         _ => Err(context
@@ -497,7 +500,7 @@ fn extract_list_items(
     }
 }
 
-fn convert_values_to_ast_nodes(values: Vec<Value>, span: Span, context: &EvaluationContext) -> Result<Vec<AstNode>, SutraError> {
+fn convert_values_to_ast_nodes(values: Vec<Value>, span: Span, context: &EvaluationContext) -> Result<Vec<AstNode>, OldSutraError> {
     let mut nodes = Vec::with_capacity(values.len());
     for value in values {
         let expr = crate::ast::expr_from_value_with_span(value, span)
@@ -532,9 +535,72 @@ fn is_truthy(val: &Value) -> bool {
 pub fn evaluate_condition_as_bool(
     condition: &AstNode,
     context: &mut EvaluationContext,
-) -> Result<bool, SutraError> {
+) -> Result<bool, OldSutraError> {
     let cond_val = evaluate_ast_node(condition, context)?;
     Ok(is_truthy(&cond_val))
 }
 
 // The `capture_lexical_env` function was here, but is no longer used after the refactor.
+
+impl EvaluationContext {
+    /// Generate context-appropriate help for runtime errors
+    fn generate_runtime_help(&self, kind: &ErrorKind) -> Option<String> {
+        match kind {
+            ErrorKind::TypeMismatch { expected, actual } => {
+                Some(format!("Expected {}, but got {}. Check the value type.", expected, actual))
+            }
+            ErrorKind::UndefinedSymbol { symbol } => {
+                let suggestions = self.find_similar_symbols(symbol);
+                if !suggestions.is_empty() {
+                    Some(format!("Did you mean one of: {}?", suggestions.join(", ")))
+                } else {
+                    Some("Check that the symbol is defined before use.".into())
+                }
+            }
+            ErrorKind::ArityMismatch { expected, actual } => {
+                Some(format!("This function expects {} arguments, but received {}", expected, actual))
+            }
+            ErrorKind::InvalidOperation { operation, operand_type } => {
+                Some(format!("The operation '{}' cannot be performed on {}. Check the operation requirements.", operation, operand_type))
+            }
+            ErrorKind::RecursionLimit => {
+                Some("The function has called itself too many times. Check for infinite recursion or increase the recursion limit.".into())
+            }
+            ErrorKind::StackOverflow => {
+                Some("The call stack has grown too large. This usually indicates infinite recursion or very deep function calls.".into())
+            }
+            _ => None,
+        }
+    }
+
+    /// Find similar symbol names for suggestion purposes
+    // TODO: Implement this using a real edit distance algorithm
+    fn find_similar_symbols(&self, _target: &str) -> Vec<String> {
+        // Implementation would use edit distance algorithm
+        // to find similar symbols in the current scope
+        vec![]
+    }
+}
+
+impl ErrorReporting for EvaluationContext {
+    fn report(&self, kind: ErrorKind, span: SourceSpan) -> SutraError {
+        SutraError {
+            kind: kind.clone(),
+            source_info: SourceInfo {
+                source: self.source.to_named_source(),
+                primary_span: span,
+                file_context: FileContext::Runtime {
+                    test_info: self.test_file.as_ref()
+                        .zip(self.test_name.as_ref())
+                        .map(|(f, n)| (f.clone(), n.clone()))
+                },
+            },
+            diagnostic_info: DiagnosticInfo {
+                help: self.generate_runtime_help(&kind),
+                related_spans: Vec::new(), // Runtime errors typically don't have related spans
+                error_code: format!("sutra::runtime::{}", kind.code_suffix()),
+                is_warning: false,
+            },
+        }
+    }
+}

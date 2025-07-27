@@ -118,7 +118,7 @@ fn handle_function_definition_list(
     value_expr: &AstNode,
     context: &mut EvaluationContext,
     span: &Span,
-) -> Result<Value, SutraError> {
+) -> Result<Value, OldSutraError> {
     if items.is_empty() {
         return Err(errors::runtime_general(
             "define: function definition requires a name",
@@ -187,7 +187,7 @@ fn handle_function_definition_paramlist(
     param_list: &crate::ast::ParamList,
     value_expr: &AstNode,
     context: &mut EvaluationContext,
-) -> Result<Value, SutraError> {
+) -> Result<Value, OldSutraError> {
     if param_list.required.is_empty() {
         return Err(errors::runtime_general(
             "define: function definition requires a name",
@@ -216,7 +216,7 @@ fn create_and_store_lambda(
     params: crate::ast::ParamList,
     value_expr: &AstNode,
     context: &mut EvaluationContext,
-) -> Result<Value, SutraError> {
+) -> Result<Value, OldSutraError> {
     let body = Box::new(value_expr.clone());
     let captured_env = find_and_capture_free_variables(&body, &params, context);
 

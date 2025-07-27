@@ -21,22 +21,22 @@ use std::sync::Arc;
 // ============================================================================
 
 /// Convenient type alias for atom return values - modern Rust idiom
-pub type AtomResult = Result<Value, SutraError>;
+pub type AtomResult = Result<Value, OldSutraError>;
 
 /// Type alias for evaluation context to reduce verbosity
 pub type EvalContext<'a> = &'a mut EvaluationContext;
 
 /// Type alias for functions that return multiple values with world state
-pub type MultiValueResult = Result<Vec<Value>, SutraError>;
+pub type MultiValueResult = Result<Vec<Value>, OldSutraError>;
 
 /// Type alias for functions that return typed arrays with world state
-pub type ArrayResult<const N: usize> = Result<[Value; N], SutraError>;
+pub type ArrayResult<const N: usize> = Result<[Value; N], OldSutraError>;
 
 /// Type alias for binary operations returning two values and world
-pub type BinaryResult = Result<(Value, Value), SutraError>;
+pub type BinaryResult = Result<(Value, Value), OldSutraError>;
 
 /// Type alias for validation functions that return unit
-pub type ValidationResult = Result<(), SutraError>;
+pub type ValidationResult = Result<(), OldSutraError>;
 
 // ============================================================================
 // TRAIT-BASED TYPE EXTRACTION
@@ -47,11 +47,11 @@ pub type ValidationResult = Result<(), SutraError>;
 pub trait ExtractValue<T> {
     /// Extracts a value of type T from this Value.
     /// The `context` is optional to support both eager and lazy evaluation patterns.
-    fn extract(&self, context: &EvaluationContext) -> Result<T, SutraError>;
+    fn extract(&self, context: &EvaluationContext) -> Result<T, OldSutraError>;
 }
 
 impl ExtractValue<f64> for Value {
-    fn extract(&self, context: &EvaluationContext) -> Result<f64, SutraError> {
+    fn extract(&self, context: &EvaluationContext) -> Result<f64, OldSutraError> {
         if let Value::Number(n) = self {
             return Ok(*n);
         }
@@ -66,7 +66,7 @@ impl ExtractValue<f64> for Value {
 }
 
 impl ExtractValue<bool> for Value {
-    fn extract(&self, context: &EvaluationContext) -> Result<bool, SutraError> {
+    fn extract(&self, context: &EvaluationContext) -> Result<bool, OldSutraError> {
         if let Value::Bool(b) = self {
             return Ok(*b);
         }
@@ -81,7 +81,7 @@ impl ExtractValue<bool> for Value {
 }
 
 impl ExtractValue<Path> for Value {
-    fn extract(&self, context: &EvaluationContext) -> Result<Path, SutraError> {
+    fn extract(&self, context: &EvaluationContext) -> Result<Path, OldSutraError> {
         if let Value::Path(path) = self {
             return Ok(path.clone());
         }
@@ -195,7 +195,7 @@ pub fn extract_numbers(
     val1: &Value,
     val2: &Value,
     context: &EvaluationContext,
-) -> Result<(f64, f64), SutraError> {
+) -> Result<(f64, f64), OldSutraError> {
     let n1 = val1.extract(context)?;
     let n2 = val2.extract(context)?;
     Ok((n1, n2))
@@ -744,7 +744,7 @@ where
 pub fn eval_apply_normal_args(
     args: &[AstNode],
     context: &mut EvaluationContext,
-) -> Result<Vec<AstNode>, SutraError> {
+) -> Result<Vec<AstNode>, OldSutraError> {
     let mut evaluated_arg_nodes = Vec::with_capacity(args.len());
     for arg in args {
         let val = crate::runtime::eval::evaluate_ast_node(arg, context)?;
@@ -764,7 +764,7 @@ pub fn eval_apply_list_arg(
     arg: &AstNode,
     context: &mut EvaluationContext,
     parent_span: &Span,
-) -> Result<Vec<AstNode>, SutraError> {
+) -> Result<Vec<AstNode>, OldSutraError> {
     let list_val = evaluate_ast_node(arg, context)?;
     match list_val {
         Value::Cons(_) | Value::Nil => {
@@ -846,7 +846,7 @@ pub fn validate_path_arg<'a>(
     span: Span,
     atom_name: &str,
     ctx: &EvaluationContext,
-) -> Result<&'a Path, SutraError> {
+) -> Result<&'a Path, OldSutraError> {
     match value {
         Value::Path(p) => Ok(p),
         _ => Err(errors::type_mismatch(
@@ -876,7 +876,7 @@ pub fn validate_string_value<'a>(
     value: &'a Value,
     context: &str,
     ctx: &EvaluationContext,
-) -> Result<&'a str, SutraError> {
+) -> Result<&'a str, OldSutraError> {
     match value {
         Value::String(s) => Ok(s),
         _ => Err(errors::type_mismatch(
@@ -917,7 +917,7 @@ pub fn validate_list_value<'a>(
     value: &'a Value,
     context: &str,
     ctx: &EvaluationContext,
-) -> Result<(), SutraError> {
+) -> Result<(), OldSutraError> {
     match value {
         Value::Cons(_) | Value::Nil => Ok(()),
         _ => Err(errors::type_mismatch(

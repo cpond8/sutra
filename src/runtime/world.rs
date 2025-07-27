@@ -207,7 +207,7 @@ pub fn build_default_macro_registry() -> MacroRegistry {
 ///
 /// # Safety
 /// This function is pure and has no side effects. All state is explicit.
-pub fn build_canonical_macro_env() -> Result<MacroExpansionContext, SutraError> {
+pub fn build_canonical_macro_env() -> Result<MacroExpansionContext, OldSutraError> {
     let core_macros = build_core_macro_registry();
     let user_macros = load_and_process_user_macros("src/macros/std_macros.sutra")?;
     let source = Arc::new(NamedSource::new(
@@ -261,7 +261,7 @@ fn build_core_macro_registry() -> MacroRegistry {
 /// - Duplicate macro names are found within the file
 fn load_and_process_user_macros(
     path: &str,
-) -> Result<HashMap<String, MacroDefinition>, SutraError> {
+) -> Result<HashMap<String, MacroDefinition>, OldSutraError> {
     // Load macros from file with error logging
     let macros = load_macros_from_file(path).map_err(|e| {
         #[cfg(debug_assertions)]

@@ -4,7 +4,7 @@
 //! error types with proper validation and defaults.
 
 use super::internal::InternalSutraError;
-use crate::errors::SutraError;
+use crate::errors::OldSutraError;
 use miette::{NamedSource, SourceSpan};
 use std::sync::Arc;
 
@@ -13,8 +13,8 @@ pub(super) fn build_parse_missing(
     element: String,
     src: Arc<NamedSource<String>>,
     span: SourceSpan,
-) -> SutraError {
-    SutraError(InternalSutraError::ParseMissing {
+) -> OldSutraError {
+    OldSutraError(InternalSutraError::ParseMissing {
         element,
         src,
         span,
@@ -31,8 +31,8 @@ pub(super) fn build_parse_malformed(
     construct: String,
     src: Arc<NamedSource<String>>,
     span: SourceSpan,
-) -> SutraError {
-    SutraError(InternalSutraError::ParseMalformed {
+) -> OldSutraError {
+    OldSutraError(InternalSutraError::ParseMalformed {
         construct,
         src,
         span,
@@ -50,8 +50,8 @@ pub(super) fn build_parse_invalid_value(
     value: String,
     src: Arc<NamedSource<String>>,
     span: SourceSpan,
-) -> SutraError {
-    SutraError(InternalSutraError::ParseInvalidValue {
+) -> OldSutraError {
+    OldSutraError(InternalSutraError::ParseInvalidValue {
         item_type,
         value,
         src,
@@ -69,8 +69,8 @@ pub(super) fn build_runtime_undefined_symbol(
     symbol: String,
     src: Arc<NamedSource<String>>,
     span: SourceSpan,
-) -> SutraError {
-    SutraError(InternalSutraError::RuntimeUndefinedSymbol {
+) -> OldSutraError {
+    OldSutraError(InternalSutraError::RuntimeUndefinedSymbol {
         symbol,
         src,
         span,
@@ -88,8 +88,8 @@ pub(super) fn build_runtime_general(
     label: String,
     src: Arc<NamedSource<String>>,
     span: SourceSpan,
-) -> SutraError {
-    SutraError(InternalSutraError::RuntimeGeneral {
+) -> OldSutraError {
+    OldSutraError(InternalSutraError::RuntimeGeneral {
         message,
         label,
         src,
@@ -108,8 +108,8 @@ pub(super) fn build_validation_arity(
     actual: usize,
     src: Arc<NamedSource<String>>,
     span: SourceSpan,
-) -> SutraError {
-    SutraError(InternalSutraError::ValidationArity {
+) -> OldSutraError {
+    OldSutraError(InternalSutraError::ValidationArity {
         expected,
         actual,
         src,
@@ -123,8 +123,8 @@ pub(super) fn build_validation_arity(
 }
 
 /// Build a ParseEmpty error
-pub(super) fn build_parse_empty(src: Arc<NamedSource<String>>, span: SourceSpan) -> SutraError {
-    SutraError(InternalSutraError::ParseEmpty {
+pub(super) fn build_parse_empty(src: Arc<NamedSource<String>>, span: SourceSpan) -> OldSutraError {
+    OldSutraError(InternalSutraError::ParseEmpty {
         src,
         span,
         help: None,
@@ -140,8 +140,8 @@ pub(super) fn build_parse_parameter_order(
     src: Arc<NamedSource<String>>,
     span: SourceSpan,
     rest_span: SourceSpan,
-) -> SutraError {
-    SutraError(InternalSutraError::ParseParameterOrder {
+) -> OldSutraError {
+    OldSutraError(InternalSutraError::ParseParameterOrder {
         src,
         span,
         rest_span,
@@ -159,8 +159,8 @@ pub(super) fn build_type_mismatch(
     actual: String,
     src: Arc<NamedSource<String>>,
     span: SourceSpan,
-) -> SutraError {
-    SutraError(InternalSutraError::TypeMismatch {
+) -> OldSutraError {
+    OldSutraError(InternalSutraError::TypeMismatch {
         expected,
         actual,
         src,
@@ -179,9 +179,9 @@ pub(super) fn build_test_assertion(
     test_name: String,
     src: Arc<NamedSource<String>>,
     span: SourceSpan,
-) -> SutraError {
+) -> OldSutraError {
     let test_file = src.name().to_string();
-    SutraError(InternalSutraError::TestAssertion {
+    OldSutraError(InternalSutraError::TestAssertion {
         message,
         test_name,
         test_file,

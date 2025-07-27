@@ -90,7 +90,7 @@ pub const MAX_MACRO_RECURSION_DEPTH: usize = 128;
 // ============================================================================
 
 /// Type alias for macro expansion results
-pub type MacroExpansionResult = Result<AstNode, SutraError>;
+pub type MacroExpansionResult = Result<AstNode, OldSutraError>;
 
 /// Type alias for macro storage and lookup
 pub type MacroMap = HashMap<String, MacroDefinition>;
@@ -99,7 +99,7 @@ pub type MacroMap = HashMap<String, MacroDefinition>;
 pub type MacroLookupResult<'a> = Option<(MacroOrigin, &'a MacroDefinition)>;
 
 /// Type alias for macro registration results
-pub type MacroRegistrationResult = Result<Option<MacroDefinition>, SutraError>;
+pub type MacroRegistrationResult = Result<Option<MacroDefinition>, OldSutraError>;
 
 /// Type alias for macro expansion trace
 pub type MacroTrace = Vec<MacroExpansionStep>;
@@ -158,7 +158,7 @@ impl MacroValidationContext {
         name: String,
         definition: MacroDefinition,
         target: &mut HashMap<String, MacroDefinition>,
-    ) -> Result<(), SutraError> {
+    ) -> Result<(), OldSutraError> {
         // Step 1: Check for duplicates if validation is enabled
         if self.check_duplicates && target.contains_key(&name) {
             let sc = SourceContext::fallback("MacroValidationContext::validate_and_insert");
@@ -180,7 +180,7 @@ impl MacroValidationContext {
         &self,
         macros: Vec<(String, MacroTemplate)>,
         target: &mut HashMap<String, MacroDefinition>,
-    ) -> Result<(), SutraError> {
+    ) -> Result<(), OldSutraError> {
         for (name, template) in macros {
             self.validate_and_insert(name, MacroDefinition::Template(template), target)?;
         }
@@ -238,7 +238,7 @@ impl MacroRegistrationConfig {
 /// - Return `Result<AstNode, SutraError>` (the expanded form)
 /// - Be pure transformations with no side effects
 /// - Maintain span information for error reporting
-pub type MacroFunction = fn(&AstNode, &SourceContext) -> Result<AstNode, SutraError>;
+pub type MacroFunction = fn(&AstNode, &SourceContext) -> Result<AstNode, OldSutraError>;
 
 /// A declarative macro defined by a template.
 ///
@@ -258,7 +258,7 @@ impl MacroTemplate {
     ///
     /// # Errors
     /// Returns an error if duplicate parameter names are found.
-    pub fn new(params: ParamList, body: Box<AstNode>) -> Result<Self, SutraError> {
+    pub fn new(params: ParamList, body: Box<AstNode>) -> Result<Self, OldSutraError> {
         // Validate no duplicate parameters
         let mut seen = HashSet::new();
 
@@ -439,7 +439,7 @@ impl MacroRegistry {
         &self,
         name: &str,
         config: &MacroRegistrationConfig,
-    ) -> Result<(), SutraError> {
+    ) -> Result<(), OldSutraError> {
         // Step 1: Validate name is not empty (if name validation is enabled)
         if config.validate_name && name.is_empty() {
             let sc = SourceContext::fallback("MacroRegistry::validate_registration");
@@ -528,7 +528,7 @@ impl MacroRegistry {
     ///
     /// # Errors
     /// Returns an error if a macro with this name is already registered or if the name is empty.
-    pub fn register_or_error(&mut self, name: &str, func: MacroFunction) -> Result<(), SutraError> {
+    pub fn register_or_error(&mut self, name: &str, func: MacroFunction) -> Result<(), OldSutraError> {
         self.register_with_config(
             name,
             MacroDefinition::Fn(func),
@@ -570,7 +570,7 @@ impl MacroRegistry {
         &mut self,
         name: &str,
         template: MacroTemplate,
-    ) -> Result<(), SutraError> {
+    ) -> Result<(), OldSutraError> {
         self.register_with_config(
             name,
             MacroDefinition::Template(template),

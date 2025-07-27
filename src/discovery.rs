@@ -17,7 +17,7 @@ use miette::SourceSpan;
 pub type SourceFile = source::SourceContext;
 
 /// Result of test form extraction - either a valid test or None
-pub type TestFormResult = Result<Option<ASTDefinition>, SutraError>;
+pub type TestFormResult = Result<Option<ASTDefinition>, OldSutraError>;
 
 /// Result of parsing test form structure components
 pub type TestFormComponents = (Option<AstNode>, Vec<AstNode>);
@@ -52,7 +52,7 @@ impl TestDiscoverer {
     /// Recursively scans a directory for `.sutra` files.
     ///
     /// The returned list of files is sorted to ensure deterministic execution order.
-    pub fn discover_test_files<P: AsRef<Path>>(root: P) -> Result<Vec<PathBuf>, SutraError> {
+    pub fn discover_test_files<P: AsRef<Path>>(root: P) -> Result<Vec<PathBuf>, OldSutraError> {
         let mut files = Vec::new();
         for entry in WalkDir::new(root) {
             let entry = entry.map_err(|e| {
@@ -87,7 +87,7 @@ impl TestDiscoverer {
     /// in AST form and preserves source context for diagnostics.
     pub fn extract_tests_from_file<P: AsRef<Path>>(
         file_path: P,
-    ) -> Result<Vec<ASTDefinition>, SutraError> {
+    ) -> Result<Vec<ASTDefinition>, OldSutraError> {
         let path_str = file_path.as_ref().display().to_string();
         let source = fs::read_to_string(file_path.as_ref()).map_err(|e| {
             let sc = source::SourceContext::from_file(
@@ -112,7 +112,7 @@ impl TestDiscoverer {
     pub fn extract_tests_from_ast(
         ast: Vec<AstNode>,
         source_file: SourceFile,
-    ) -> Result<Vec<ASTDefinition>, SutraError> {
+    ) -> Result<Vec<ASTDefinition>, OldSutraError> {
         let mut tests = Vec::new();
         for node in ast {
             let test_form = Self::validate_and_extract_test_form(node, &source_file)?;
@@ -163,7 +163,7 @@ impl TestDiscoverer {
         items: &[AstNode],
         span: Span,
         source_file: SourceFile,
-    ) -> Result<ASTDefinition, SutraError> {
+    ) -> Result<ASTDefinition, OldSutraError> {
         if items.len() < 2 {
             return Err(errors::runtime_general(
                 "Invalid test form: expected at least a name".to_string(),
@@ -191,7 +191,7 @@ impl TestDiscoverer {
     fn extract_and_validate_test_name(
         name_node: &AstNode,
         source_file: &SourceFile,
-    ) -> Result<String, SutraError> {
+    ) -> Result<String, OldSutraError> {
         let Expr::String(s, _) = &*name_node.value else {
             return Err(errors::runtime_general(
                 "Invalid test form: test name must be a string".to_string(),
@@ -208,7 +208,7 @@ impl TestDiscoverer {
     /// Test forms can have two structures:
     /// - `(test "name" body...)` - no expect form
     /// - `(test "name" (expect ...) body...)`
-    fn extract_expect_form_and_body(items: &[AstNode]) -> Result<TestFormComponents, SutraError> {
+    fn extract_expect_form_and_body(items: &[AstNode]) -> Result<TestFormComponents, OldSutraError> {
         let Some(second_item) = items.get(2) else {
             let body = items.get(2..).unwrap_or_default().to_vec();
             return Ok((None, body));
@@ -227,7 +227,7 @@ impl TestDiscoverer {
     /// Attempts to extract an expect form from a node.
     ///
     /// An expect form must be a list with "expect" as the first symbol.
-    fn try_extract_expect_form(node: &AstNode) -> Result<Option<AstNode>, SutraError> {
+    fn try_extract_expect_form(node: &AstNode) -> Result<Option<AstNode>, OldSutraError> {
         let Expr::List(expect_items, _) = &*node.value else {
             return Ok(None);
         };

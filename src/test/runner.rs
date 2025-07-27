@@ -20,7 +20,7 @@ impl TestRunner {
         test_file: Option<String>,
         test_name: Option<String>,
         source_file: source::SourceContext,
-    ) -> Result<(), SutraError> {
+    ) -> Result<(), OldSutraError> {
         // Use a macro processor to handle expansion and evaluation correctly
         let processor = MacroProcessor::default().with_test_context(
             test_file.clone().unwrap_or_default(),
@@ -67,13 +67,13 @@ impl TestRunner {
     pub fn execute_ast(
         nodes: &[AstNode],
         source_context: &source::SourceContext,
-    ) -> Result<Value, SutraError> {
+    ) -> Result<Value, OldSutraError> {
         let pipeline = ExecutionPipeline::default();
         let output = SharedOutput::new(crate::engine::EngineOutputBuffer::new());
         pipeline.execute_nodes(nodes, output, source_context.clone())
     }
 
-    pub fn run_single_test(test_form: &ASTDefinition) -> Result<(), SutraError> {
+    pub fn run_single_test(test_form: &ASTDefinition) -> Result<(), OldSutraError> {
         let source_context = &test_form.source_file;
         let expected = Self::extract_expectation(test_form, source_context)?;
 
@@ -142,7 +142,7 @@ impl TestRunner {
         expected: &Expectation,
         actual: Value,
         source_context: &source::SourceContext,
-    ) -> Result<(), SutraError> {
+    ) -> Result<(), OldSutraError> {
         match expected {
             // Success case: actual matches expected value
             Expectation::Value(expected_value) if actual == *expected_value => Ok(()),
@@ -173,9 +173,9 @@ impl TestRunner {
     fn check_error_test(
         test_form: &ASTDefinition,
         expected: &Expectation,
-        actual_error: SutraError,
+        actual_error: OldSutraError,
         source_context: &source::SourceContext,
-    ) -> Result<(), SutraError> {
+    ) -> Result<(), OldSutraError> {
         match expected {
             // Success case: error type matches expected
             Expectation::Error(expected_type) if actual_error.error_type() == *expected_type => {
@@ -207,7 +207,7 @@ impl TestRunner {
     fn extract_expectation(
         test_form: &ASTDefinition,
         source_context: &SourceContext,
-    ) -> Result<Expectation, SutraError> {
+    ) -> Result<Expectation, OldSutraError> {
         // Get expect form from test definition
         let expect = test_form.expect_form.as_ref().ok_or_else(|| {
             errors::test_assertion(
@@ -247,7 +247,7 @@ impl TestRunner {
         item: &AstNode,
         test_form: &ASTDefinition,
         source_context: &SourceContext,
-    ) -> Result<Option<Expectation>, SutraError> {
+    ) -> Result<Option<Expectation>, OldSutraError> {
         let Expr::List(items, _) = &*item.value else {
             return Ok(None);
         };
@@ -290,7 +290,7 @@ impl TestRunner {
         value_node: &AstNode,
         test_form: &ASTDefinition,
         source_context: &SourceContext,
-    ) -> Result<Value, SutraError> {
+    ) -> Result<Value, OldSutraError> {
         // Convert AST node to Value based on type
         match &*value_node.value {
             Expr::Number(n, _) => Ok(Value::Number(*n)),
@@ -323,7 +323,7 @@ impl TestRunner {
         error_node: &AstNode,
         test_form: &ASTDefinition,
         source_context: &SourceContext,
-    ) -> Result<ErrorType, SutraError> {
+    ) -> Result<ErrorType, OldSutraError> {
         // Extract error type symbol
         let Expr::Symbol(error_type, _) = &*error_node.value else {
             return Err(errors::test_assertion(
@@ -355,7 +355,7 @@ impl TestRunner {
         output_node: &AstNode,
         test_form: &ASTDefinition,
         source_context: &SourceContext,
-    ) -> Result<String, SutraError> {
+    ) -> Result<String, OldSutraError> {
         let Expr::String(s, _) = &*output_node.value else {
             return Err(errors::test_assertion(
                 "output expectation must be a string",

@@ -44,7 +44,7 @@ const CORE_GET: CoreOpName = "core/get";
 
 /// Converts a user-facing expression (`Symbol`, `List`, or `Path`) into a canonical `Path`.
 /// This is the only function in the engine that understands path syntax.
-fn expr_to_path(expr: &AstNode, source: &SourceContext) -> Result<Path, SutraError> {
+fn expr_to_path(expr: &AstNode, source: &SourceContext) -> Result<Path, OldSutraError> {
     let value = &*expr.value;
 
     // Handle dotted symbol syntax: `player.score` or plain symbol: `player`
@@ -139,7 +139,7 @@ fn create_number(value: f64, span: &Span) -> AstNode {
 }
 
 /// Creates a validation error with consistent formatting for macro arity mismatches.
-fn create_arity_error(op_name: &str, expected: usize, got: usize) -> SutraError {
+fn create_arity_error(op_name: &str, expected: usize, got: usize) -> OldSutraError {
     {
         let sc = SourceContext::from_file("macro", op_name);
         let span = parser::to_source_span(Span::default());

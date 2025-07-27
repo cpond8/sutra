@@ -288,7 +288,7 @@ fn read_file_or_exit(path: &Path) -> String {
 
 fn process_file_with_pipeline<F>(file: &Path, processor: F)
 where
-    F: FnOnce(&str) -> Result<String, SutraError>,
+    F: FnOnce(&str) -> Result<String, OldSutraError>,
 {
     let source = read_file_or_exit(file);
     let result = processor(&source).unwrap_or_else(|e| {

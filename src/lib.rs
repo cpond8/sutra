@@ -27,7 +27,7 @@ pub mod prelude {
             AstNode, Expr, Span, Spanned,
         },
         atoms::SharedOutput,
-        errors::{ErrorType, SourceContext, SutraError},
+        errors::{ErrorType, SourceContext, OldSutraError},
         macros::MacroRegistry,
         runtime::eval::EvaluationContext,
         runtime::world::World,

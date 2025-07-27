@@ -383,7 +383,7 @@ pub fn run_tests_from_file(
     path: &str,
     world: &CanonicalWorld,
     output: &SharedOutput,
-) -> Result<Vec<TestResult>, SutraError> {
+) -> Result<Vec<TestResult>, OldSutraError> {
     let source_text = std::fs::read_to_string(path).map_err(|e| {
         let dummy_ctx = EvaluationContextBuilder::new(
             SourceContext::default(),

@@ -233,7 +233,7 @@ fn extract_macro_call(node: &AstNode) -> Option<(&str, &[AstNode])> {
 }
 
 /// Extracts macro name and arguments from a macro call, or returns an error if invalid.
-fn extract_macro_call_info(call: &AstNode) -> Result<(&str, &[AstNode], &Span), SutraError> {
+fn extract_macro_call_info(call: &AstNode) -> Result<(&str, &[AstNode], &Span), OldSutraError> {
     let Expr::List(items, span) = &*call.value else {
         let sc = SourceContext::from_file("macro-expander", format!("{:?}", call));
         return Err(errors::runtime_general(

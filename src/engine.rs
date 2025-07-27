@@ -59,7 +59,7 @@ impl OutputSink for EngineStdoutSink {
 }
 
 /// Prints a SutraError with full miette diagnostics
-pub fn print_error(error: SutraError) {
+pub fn print_error(error: OldSutraError) {
     let report = Report::new(error);
     eprintln!("{report:?}");
 }
@@ -69,7 +69,7 @@ pub fn print_error(error: SutraError) {
 // ============================================================================
 
 /// Type alias for execution results
-type ExecutionResult = Result<(), SutraError>;
+type ExecutionResult = Result<(), OldSutraError>;
 
 /// Type alias for source context used in error reporting
 
@@ -122,7 +122,7 @@ impl MacroProcessor {
     pub fn partition_and_process_macros(
         &self,
         ast_nodes: Vec<AstNode>,
-    ) -> Result<(AstNode, MacroExpansionContext), SutraError> {
+    ) -> Result<(AstNode, MacroExpansionContext), OldSutraError> {
         // Step 1: Partition AST nodes into macro definitions and user code
         let (macro_defs, user_code) = self.partition_ast_nodes(ast_nodes);
 
@@ -148,7 +148,7 @@ impl MacroProcessor {
         &self,
         ast_nodes: Vec<AstNode>,
         env: &mut MacroExpansionContext,
-    ) -> Result<AstNode, SutraError> {
+    ) -> Result<AstNode, OldSutraError> {
         // Step 1: Partition AST nodes into macro definitions and user code
         let (macro_defs, user_code) = self.partition_ast_nodes(ast_nodes);
 
@@ -173,7 +173,7 @@ impl MacroProcessor {
         &self,
         ast: AstNode,
         env: &mut MacroExpansionContext,
-    ) -> Result<AstNode, SutraError> {
+    ) -> Result<AstNode, OldSutraError> {
         expand_macros_recursively(ast, env)
     }
 
@@ -292,17 +292,17 @@ impl ExecutionPipeline {
     // ============================================================================
 
     /// Executes source code with pure execution logic (no I/O, no formatting)
-    pub fn execute_source(source: &str, output: SharedOutput) -> Result<(), SutraError> {
+    pub fn execute_source(source: &str, output: SharedOutput) -> Result<(), OldSutraError> {
         Self::default().execute(source, output, "source")
     }
 
     /// Parses source code with pure parsing logic (no I/O)
-    pub fn parse_source(source: &str) -> Result<Vec<AstNode>, SutraError> {
+    pub fn parse_source(source: &str) -> Result<Vec<AstNode>, OldSutraError> {
         let source_context = SourceContext::from_file("source", source);
         parser::parse(source, source_context)
     }
     /// Expands macros in source code with pure expansion logic (no I/O)
-    pub fn expand_macros_source(source: &str) -> Result<String, SutraError> {
+    pub fn expand_macros_source(source: &str) -> Result<String, OldSutraError> {
         let processor = MacroProcessor::default();
         let source_context = SourceContext::from_file("source", source);
         let ast_nodes = parser::parse(source, source_context)?;
@@ -311,7 +311,7 @@ impl ExecutionPipeline {
     }
 
     /// Reads a file with standardized error handling
-    pub fn read_file(path: &Path) -> Result<String, SutraError> {
+    pub fn read_file(path: &Path) -> Result<String, OldSutraError> {
         let filename = path.to_str().ok_or_else(|| {
             let sc = SourceContext::fallback("ExecutionPipeline::read_file");
             errors::runtime_general(
@@ -377,7 +377,7 @@ impl ExecutionPipeline {
         nodes: &[AstNode],
         output: SharedOutput,
         source_context: SourceContext,
-    ) -> Result<Value, SutraError> {
+    ) -> Result<Value, OldSutraError> {
         // Step 1: Create a macro processor with the pipeline's configuration.
         let processor = MacroProcessor::new(self.validate, self.max_depth);
         let mut env = self.macro_env.clone();
@@ -433,7 +433,7 @@ impl ExecutionPipeline {
         world: CanonicalWorld,
         output: SharedOutput,
         source: source::SourceContext,
-    ) -> Result<Value, SutraError> {
+    ) -> Result<Value, OldSutraError> {
         eval::evaluate(
             expanded_ast,
             world,

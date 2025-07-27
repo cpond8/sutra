@@ -11,7 +11,7 @@ use crate::{
 };
 
 /// Type alias for macro parsing results
-type MacroParseResult = Result<Vec<(String, MacroTemplate)>, SutraError>;
+type MacroParseResult = Result<Vec<(String, MacroTemplate)>, OldSutraError>;
 
 // =============================
 // Public API for macro loading
@@ -65,7 +65,7 @@ pub fn check_arity(
     _macro_name: &str,
     span: &Span,
     source: &SourceContext,
-) -> Result<(), SutraError> {
+) -> Result<(), OldSutraError> {
     let required_len = params.required.len();
     let has_variadic = params.rest.is_some();
     if args_len < required_len {
@@ -97,7 +97,7 @@ pub fn check_arity(
 fn try_parse_macro_form(
     expr: &AstNode,
     names_seen: &mut HashSet<String>,
-) -> Result<Option<(String, MacroTemplate)>, SutraError> {
+) -> Result<Option<(String, MacroTemplate)>, OldSutraError> {
     if !is_macro_definition(expr) {
         return Ok(None);
     }
@@ -143,7 +143,7 @@ pub fn is_macro_definition(expr: &AstNode) -> bool {
 }
 
 /// Parses a macro definition AST node into a (name, MacroTemplate) pair.
-pub fn parse_macro_definition(expr: &AstNode) -> Result<(String, MacroTemplate), SutraError> {
+pub fn parse_macro_definition(expr: &AstNode) -> Result<(String, MacroTemplate), OldSutraError> {
     let full_source = &format!("{:?}", expr);
     let (items, span) = if let Expr::List(items, span) = &*expr.value {
         (items, span)
