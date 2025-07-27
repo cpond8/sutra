@@ -44,7 +44,7 @@ use serde::{Deserialize, Serialize};
 use crate::prelude::*;
 
 // Domain modules with aliases
-use crate::macros::{MacroExpansionContext, MacroRegistry};
+use crate::macros::MacroEnvironment;
 
 // Using a concrete, seedable PRNG for determinism.
 type SmallRng = Xoshiro256StarStar;
@@ -114,7 +114,7 @@ impl Default for WorldState {
 pub struct World {
     pub state: WorldState,
     pub prng: SmallRng,
-    pub macros: MacroExpansionContext,
+    pub macros: MacroEnvironment,
 }
 
 impl World {
@@ -123,7 +123,7 @@ impl World {
         Self {
             state: WorldState::new(),
             prng: SmallRng::from_entropy(),
-            macros: MacroExpansionContext::new(source),
+            macros: MacroEnvironment::new(source),
         }
     }
 
@@ -132,7 +132,7 @@ impl World {
         Self {
             state: WorldState::new(),
             prng: SmallRng::from_seed(seed),
-            macros: MacroExpansionContext::new(source),
+            macros: MacroEnvironment::new(source),
         }
     }
 
@@ -211,34 +211,22 @@ pub fn build_canonical_world() -> CanonicalWorld {
 }
 
 /// Builds and returns the canonical macro environment
-pub fn build_canonical_macro_env() -> Result<MacroExpansionContext, SutraError> {
-    use crate::macros::{
-        load_macros_from_file, std_macros::register_std_macros, MacroValidationContext,
-    };
+pub fn build_canonical_macro_env() -> Result<MacroEnvironment, SutraError> {
+    use crate::macros::{load_macros_from_source, std_macros::register_std_macros};
 
-    let mut core_registry = MacroRegistry::new();
-    register_std_macros(&mut core_registry);
-
-    let user_macros = load_macros_from_file("src/macros/std_macros.sutra")?;
-    let mut processed_macros = HashMap::new();
-    let mut ctx = MacroValidationContext::for_standard_library();
-    ctx.source_context = Some(Arc::new(NamedSource::new(
-        "std_macros.sutra",
-        String::new(),
-    )));
-    ctx.validate_and_insert_many(user_macros, &mut processed_macros)?;
-
+    // Step 1: Create environment and register standard macros
     let source = Arc::new(NamedSource::new(
         "std_macros.sutra",
         fs::read_to_string("src/macros/std_macros.sutra").unwrap_or_default(),
     ));
+    let mut env = MacroEnvironment::new(source);
+    register_std_macros(&mut env);
 
-    Ok(MacroExpansionContext {
-        user_macros: processed_macros,
-        core_macros: core_registry.macros,
-        trace: Vec::new(),
-        source,
-    })
+    // Step 2: Load user macros from file
+    let file_content = fs::read_to_string("src/macros/std_macros.sutra").unwrap_or_default();
+    load_macros_from_source(&file_content, &mut env)?;
+
+    Ok(env)
 }
 
 // ============================================================================

@@ -6,15 +6,22 @@ use std::{
     io::{self, Read},
     path::{Path, PathBuf},
     process,
+    sync::Arc,
 };
 
 use clap::{Parser, Subcommand};
+use miette::NamedSource;
 
 use crate::prelude::*;
 use crate::{
-    errors::print_error,
-    atoms::EngineStdoutSink as StdoutSink,
-    errors::{self, ErrorKind, ErrorReporting, SourceContext, SutraError},
+    atoms::{EngineStdoutSink, SharedOutput},
+    build_canonical_macro_env, build_canonical_world,
+    discovery::TestDiscoverer,
+    errors::{self, print_error, ErrorKind, ErrorReporting, SourceContext, SutraError},
+    evaluate,
+    macros::{expand_macros, parse_macro_definition, MacroDefinition, MacroEnvironment},
+    semantic,
+    syntax::parser,
     test::runner::TestRunner,
     validation::{grammar, ValidationContext},
 };
@@ -100,7 +107,7 @@ pub fn run() {
     match args.command {
         ArgsCommand::Run { file } => {
             let source = read_file_or_exit(&file);
-            let output = SharedOutput::new(StdoutSink);
+            let output = SharedOutput::new(EngineStdoutSink);
             let pipeline = ExecutionPipeline::default();
             if let Err(e) = pipeline.execute(&source, output, &file.display().to_string()) {
                 print_error(e.into());
@@ -122,7 +129,7 @@ pub fn run() {
                 }
             };
 
-            let output = SharedOutput::new(StdoutSink);
+            let output = SharedOutput::new(EngineStdoutSink);
             let pipeline = ExecutionPipeline::default();
             if let Err(e) = pipeline.execute(&source, output, "<eval>") {
                 print_error(e.into());
@@ -196,8 +203,6 @@ pub fn run() {
 // ============================================================================
 
 fn run_test_suite(path: PathBuf) {
-    use crate::discovery::TestDiscoverer;
-
     let test_files = match TestDiscoverer::discover_test_files(path) {
         Ok(files) => files,
         Err(e) => {
@@ -355,7 +360,7 @@ pub struct ExecutionPipeline {
     /// Macro environment with canonical macros pre-loaded.
     pub world: crate::prelude::CanonicalWorld,
     /// Macro environment with canonical macros pre-loaded.
-    pub macro_env: crate::macros::MacroExpansionContext,
+    pub macro_env: MacroEnvironment,
     /// Maximum recursion depth for evaluation
     pub max_depth: usize,
     /// Whether to validate expanded AST before evaluation
@@ -364,21 +369,12 @@ pub struct ExecutionPipeline {
 
 impl Default for ExecutionPipeline {
     fn default() -> Self {
-        use crate::atoms::{build_canonical_macro_env, build_canonical_world};
-        use miette::NamedSource;
-        use std::sync::Arc;
-
         Self {
             world: build_canonical_world(),
             macro_env: build_canonical_macro_env().unwrap_or_else(|e| {
                 eprintln!("Warning: Failed to load standard macros: {}", e);
                 // Create a minimal macro environment with only core macros
-                crate::macros::MacroExpansionContext {
-                    user_macros: std::collections::HashMap::new(),
-                    core_macros: std::collections::HashMap::new(),
-                    trace: Vec::new(),
-                    source: Arc::new(NamedSource::new("fallback", String::new())),
-                }
+                MacroEnvironment::new(Arc::new(NamedSource::new("fallback", String::new())))
             }),
             max_depth: 100,
             validate: false, // Keep validation disabled for now
@@ -392,44 +388,54 @@ impl ExecutionPipeline {
     // ============================================================================
 
     /// Executes source code with pure execution logic (no I/O, no formatting)
-    pub fn execute_source(
-        source: &str,
-        output: crate::atoms::SharedOutput,
-    ) -> Result<(), SutraError> {
+    pub fn execute_source(source: &str, output: SharedOutput) -> Result<(), SutraError> {
         Self::default().execute(source, output, "source")
     }
 
     /// Parses source code with pure parsing logic (no I/O)
     pub fn parse_source(source: &str) -> Result<Vec<AstNode>, SutraError> {
-        use crate::syntax::parser;
         let source_context = SourceContext::from_file("source", source);
         parser::parse(source, source_context)
     }
 
     /// Expands macros in source code with pure expansion logic (no I/O)
     pub fn expand_macros_source(source: &str) -> Result<String, SutraError> {
-        use crate::{macros::MacroProcessor, syntax::parser};
-        let processor = MacroProcessor::default();
         let source_context = SourceContext::from_file("source", source);
-        let ast_nodes = parser::parse(source, source_context)?;
-        let (expanded, _env) = processor.partition_and_process_macros(ast_nodes)?;
+        let ast_nodes = parser::parse(source, source_context.clone())?;
+
+        // Create macro environment and load standard macros
+        let mut env = build_canonical_macro_env()?;
+
+        // Process user-defined macros from source
+        let (macro_defs, user_code): (Vec<_>, Vec<_>) =
+            ast_nodes.into_iter().partition(|_expr| false); // Don't partition define forms as macros for now
+
+        for macro_expr in macro_defs {
+            if let Ok((name, template)) = parse_macro_definition(&macro_expr) {
+                env.register_user_macro(name, MacroDefinition::Template(template), false)?;
+            }
+        }
+
+        // Wrap user code in a (do ...) block if needed
+        let program = parser::wrap_in_do(user_code);
+
+        // Expand macros
+        let expanded = expand_macros(program, &mut env)?;
         Ok(expanded.value.pretty())
     }
 
     /// Reads a file with standardized error handling
     pub fn read_file(path: &std::path::Path) -> Result<String, SutraError> {
-        use crate::validation::ValidationContext;
-
         let filename = path.to_str().ok_or_else(|| {
             let context = ValidationContext {
                 source: SourceContext::fallback("ExecutionPipeline::read_file"),
                 phase: "file-system".to_string(),
             };
             context.report(
-                crate::errors::ErrorKind::InvalidPath {
+                ErrorKind::InvalidPath {
                     path: path.to_string_lossy().to_string(),
                 },
-                crate::errors::unspanned(),
+                errors::unspanned(),
             )
         })?;
 
@@ -439,10 +445,10 @@ impl ExecutionPipeline {
                 phase: "file-system".to_string(),
             };
             context.report(
-                crate::errors::ErrorKind::InvalidPath {
+                ErrorKind::InvalidPath {
                     path: format!("{} ({})", filename, error),
                 },
-                crate::errors::unspanned(),
+                errors::unspanned(),
             )
         })
     }
@@ -452,14 +458,12 @@ impl ExecutionPipeline {
     // ============================================================================
 
     /// Gets the macro registry (pure access, no I/O)
-    pub fn get_macro_registry() -> crate::macros::MacroExpansionContext {
-        use crate::atoms::build_canonical_macro_env;
+    pub fn get_macro_registry() -> MacroEnvironment {
         build_canonical_macro_env().expect("Standard macro env should build")
     }
 
     /// Lists all available atoms (pure access, no I/O)
     pub fn list_atoms() -> Vec<String> {
-        use crate::atoms::build_canonical_world;
         let world = build_canonical_world();
         let world = world.borrow();
         if let Some(Value::Map(map)) = world.state.get(&crate::atoms::Path(vec![])) {
@@ -486,23 +490,42 @@ impl ExecutionPipeline {
     pub fn execute_nodes(
         &self,
         nodes: &[AstNode],
-        output: crate::atoms::SharedOutput,
+        output: SharedOutput,
         source_context: SourceContext,
     ) -> Result<Value, SutraError> {
-        use crate::macros::MacroProcessor;
-
-        // Step 1: Create a macro processor with the pipeline's configuration.
-        let processor = MacroProcessor::new(self.validate, self.max_depth);
         let mut env = self.macro_env.clone();
 
-        // Step 2: Expand macros using the pipeline's environment.
-        let expanded = processor.process_with_existing_macros(nodes.to_vec(), &mut env)?;
+        // Step 1: Process user-defined macros from nodes
+        let (macro_defs, user_code): (Vec<_>, Vec<_>) =
+            nodes.iter().cloned().partition(|_expr| false); // Don't partition define forms as macros for now
 
-        // Step 3: Validate the expanded AST.
-        processor.validate_expanded_ast(&expanded, &env, &self.world.borrow(), &source_context)?;
+        for macro_expr in macro_defs {
+            if let Ok((name, template)) = parse_macro_definition(&macro_expr) {
+                env.register_user_macro(name, MacroDefinition::Template(template), false)?;
+            }
+        }
 
-        // Step 4: Evaluate the final AST, using the pipeline's world and output sink.
-        crate::runtime::evaluate(&expanded, self.world.clone(), output, source_context)
+        // Step 2: Wrap user code in a (do ...) block if needed
+        let program = parser::wrap_in_do(user_code);
+
+        // Step 3: Expand macros using the pipeline's environment.
+        let expanded = expand_macros(program, &mut env)?;
+
+        // Step 4: Validate the expanded AST if enabled
+        if self.validate {
+            let validation_errors = semantic::validate_ast_semantics(
+                &expanded,
+                &env,
+                &self.world.borrow(),
+                &source_context,
+            );
+            if !validation_errors.is_empty() {
+                return Err(validation_errors.into_iter().next().unwrap());
+            }
+        }
+
+        // Step 5: Evaluate the final AST, using the pipeline's world and output sink.
+        evaluate(&expanded, self.world.clone(), output, source_context)
     }
 
     /// Executes Sutra source code through the complete pipeline.
@@ -510,11 +533,9 @@ impl ExecutionPipeline {
     pub fn execute(
         &self,
         source_text: &str,
-        output: crate::atoms::SharedOutput,
+        output: SharedOutput,
         filename: &str,
     ) -> Result<(), SutraError> {
-        use crate::syntax::parser;
-
         // Step 1: Create a source context from the raw text.
         let source_context = SourceContext::from_file(filename, source_text);
 
@@ -537,10 +558,10 @@ impl ExecutionPipeline {
     pub fn execute_expanded_ast(
         &self,
         expanded_ast: &AstNode,
-        world: crate::prelude::CanonicalWorld,
-        output: crate::atoms::SharedOutput,
+        world: CanonicalWorld,
+        output: SharedOutput,
         source: SourceContext,
     ) -> Result<Value, SutraError> {
-        crate::runtime::evaluate(expanded_ast, world, output, source)
+        evaluate(expanded_ast, world, output, source)
     }
 }

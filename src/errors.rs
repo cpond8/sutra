@@ -531,7 +531,7 @@ impl ErrorReporting for ValidationContext {
 // ============================================================================
 
 /// Prints a SutraError with full miette diagnostics
-/// 
+///
 /// This provides rich error formatting with source spans, suggestions, and context.
 /// Use this for user-facing error display in CLI and REPL contexts.
 pub fn print_error(error: SutraError) {

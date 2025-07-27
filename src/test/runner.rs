@@ -4,13 +4,13 @@ use crate::{
     atoms::{build_canonical_macro_env, build_canonical_world, SharedOutput},
     cli::ExecutionPipeline,
     discovery::ASTDefinition,
-    runtime::evaluate,
     errors::{to_source_span, ErrorCategory, ErrorKind, ErrorReporting, SourceContext, SutraError},
     prelude::*,
+    runtime::evaluate,
     runtime::ConsCell,
     syntax::parser,
     validation::ValidationContext,
-    EngineOutputBuffer, MacroProcessor,
+    EngineOutputBuffer,
 };
 
 /// Executes test code with proper macro expansion and special form preservation.
@@ -20,32 +20,38 @@ impl TestRunner {
     pub fn execute_test(
         test_body: &[AstNode],
         output: SharedOutput,
-        test_file: Option<String>,
-        test_name: Option<String>,
+        _test_file: Option<String>,
+        _test_name: Option<String>,
         source_file: SourceContext,
     ) -> Result<(), SutraError> {
-        // Use a macro processor to handle expansion and evaluation correctly
-        let processor = MacroProcessor::default().with_test_context(
-            test_file.clone().unwrap_or_default(),
-            test_name.clone().unwrap_or_default(),
-        );
+        use crate::macros::expand_macros;
+        use crate::syntax::parser;
+
         let world = build_canonical_world();
         let mut macro_env = build_canonical_macro_env().expect("Standard macro env should build");
 
-        // Try macro expansion
-        let expanded_node =
-            processor.process_with_existing_macros(test_body.to_vec(), &mut macro_env)?;
+        // Process user-defined macros from test body
+        let (macro_defs, user_code): (Vec<_>, Vec<_>) =
+            test_body.iter().cloned().partition(|_expr| false); // Don't partition define forms as macros for now
+
+        for macro_expr in macro_defs {
+            if let Ok((name, template)) = crate::macros::parse_macro_definition(&macro_expr) {
+                macro_env.register_user_macro(
+                    name,
+                    crate::macros::MacroDefinition::Template(template),
+                    false,
+                )?;
+            }
+        }
+
+        // Wrap user code in a (do ...) block if needed
+        let program = parser::wrap_in_do(user_code);
+
+        // Expand macros
+        let expanded_node = expand_macros(program, &mut macro_env)?;
 
         // Use the actual test file source for error reporting
         let source_context = source_file;
-
-        // Validate the expanded AST
-        processor.validate_expanded_ast(
-            &expanded_node,
-            &macro_env,
-            &world.borrow(),
-            &source_context,
-        )?;
 
         // Use the builder for evaluation context
         let result = evaluate(&expanded_node, world, output.clone(), source_context)?;

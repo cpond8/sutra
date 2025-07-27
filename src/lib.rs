@@ -1,15 +1,12 @@
 pub use crate::{
-    syntax::{AstNode, Expr, ParamList, Span, Spanned},
-    runtime::{ConsCell, Lambda, Value},
     atoms::{
-        build_canonical_macro_env, build_canonical_world, Path, SharedOutput, StateContext, World,
-        EngineOutputBuffer, EngineStdoutSink,
+        build_canonical_macro_env, build_canonical_world, EngineOutputBuffer, EngineStdoutSink,
+        Path, SharedOutput, StateContext, World,
     },
-    errors::{print_error},
-    macros::{
-        expand_macros_recursively, MacroDefinition, MacroExpansionContext, MacroRegistry,
-        MacroTemplate, MacroProcessor,
-    },
+    errors::print_error,
+    macros::{expand_macros_recursively, MacroDefinition, MacroEnvironment, MacroTemplate},
+    runtime::{ConsCell, Lambda, Value},
+    syntax::{AstNode, Expr, ParamList, Span, Spanned},
     test::{Expectation, TestResult, TestSummary},
 };
 
@@ -19,12 +16,12 @@ pub use validation::{grammar, semantic};
 
 pub mod prelude {
     pub use crate::{
-        runtime::{NativeFn, Value, EvaluationContext},
-        syntax::{AstNode, Expr, Span, Spanned},
         atoms::SharedOutput,
         atoms::{Path, World},
         errors::{ErrorKind, SourceContext, SutraError},
-        macros::MacroRegistry,
+        macros::MacroEnvironment,
+        runtime::{EvaluationContext, NativeFn, Value},
+        syntax::{AstNode, Expr, Span, Spanned},
         MacroDefinition,
     };
 

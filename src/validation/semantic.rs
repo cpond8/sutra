@@ -1,5 +1,6 @@
 use crate::{
     errors::{to_source_span, ErrorKind, SourceContext, SutraError},
+    macros::MacroEnvironment,
     prelude::*,
     MacroDefinition,
 };
@@ -8,7 +9,7 @@ use crate::{
 /// Returns all validation errors found.
 pub fn validate_ast_semantics(
     ast: &AstNode,
-    macros: &MacroRegistry,
+    macros: &MacroEnvironment,
     world: &World,
     _source: &SourceContext,
 ) -> Vec<SutraError> {
@@ -19,7 +20,7 @@ pub fn validate_ast_semantics(
 
 fn validate_node(
     node: &AstNode,
-    macros: &MacroRegistry,
+    macros: &MacroEnvironment,
     world: &World,
     errors: &mut Vec<SutraError>,
 ) {
@@ -50,7 +51,7 @@ fn validate_node(
 fn validate_call(
     name: &str,
     nodes: &[AstNode],
-    macros: &MacroRegistry,
+    macros: &MacroEnvironment,
     world: &World,
     errors: &mut Vec<SutraError>,
 ) {
@@ -63,7 +64,7 @@ fn validate_call(
     }
 
     // Check if macro exists and validate arity
-    if let Some(macro_def) = macros.lookup(name) {
+    if let Some((_origin, macro_def)) = macros.lookup_macro(name) {
         if let MacroDefinition::Template(template) = macro_def {
             let required = template.params.required.len();
             let actual = nodes.len() - 1;

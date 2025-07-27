@@ -624,7 +624,7 @@ fn is_truthy(val: &Value) -> bool {
 // ============================================================================
 
 /// Main evaluation entry point
-/// 
+///
 /// This is the primary interface for evaluating AST nodes. It creates an evaluation
 /// context and delegates to the core evaluation logic.
 pub fn evaluate(

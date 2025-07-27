@@ -382,23 +382,29 @@ pub fn expand_print(expr: &AstNode, _source: &SourceContext) -> macro_result {
 ///
 /// Return values are ignored since these are built-in macros that shouldn't conflict.
 #[allow(unused_must_use)]
-pub fn register_std_macros(registry: &mut MacroRegistry) {
+pub fn register_std_macros(env: &mut super::MacroEnvironment) {
     // Core path operations (alphabetical)
-    registry.register("del!", expand_del);
-    registry.register("exists?", expand_exists);
-    registry.register("get", expand_get);
-    registry.register("set!", expand_set);
+    env.register_core_macro("del!".to_string(), super::MacroDefinition::Fn(expand_del));
+    env.register_core_macro(
+        "exists?".to_string(),
+        super::MacroDefinition::Fn(expand_exists),
+    );
+    env.register_core_macro("get".to_string(), super::MacroDefinition::Fn(expand_get));
+    env.register_core_macro("set!".to_string(), super::MacroDefinition::Fn(expand_set));
 
     // Control flow - if is implemented as a special form, not a macro
 
     // Compound assignments (building on core/get and core/set! - alphabetical)
-    registry.register("add!", expand_add);
-    registry.register("dec!", expand_dec);
-    registry.register("inc!", expand_inc);
-    registry.register("sub!", expand_sub);
+    env.register_core_macro("add!".to_string(), super::MacroDefinition::Fn(expand_add));
+    env.register_core_macro("dec!".to_string(), super::MacroDefinition::Fn(expand_dec));
+    env.register_core_macro("inc!".to_string(), super::MacroDefinition::Fn(expand_inc));
+    env.register_core_macro("sub!".to_string(), super::MacroDefinition::Fn(expand_sub));
 
     // I/O utilities
-    registry.register("print", expand_print);
+    env.register_core_macro(
+        "print".to_string(),
+        super::MacroDefinition::Fn(expand_print),
+    );
 
     // Standard macros like cond are now loaded from std_macros.sutra at startup.
 }
