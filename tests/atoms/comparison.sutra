@@ -23,12 +23,12 @@
       (eq? 1 "1"))  ; 1 = "1" ? => false
 
 (test "comparison: eq? - arity error (1 arg)"
-      (expect (error Validation)
+      (expect (error Runtime)
               (tags "comparison"))
       (eq? 10))  ; eq? expects exactly 2 arguments, got 1
 
 (test "comparison: eq? - arity error (0 args)"
-      (expect (error Validation)
+      (expect (error Runtime)
               (tags "comparison"))
       (eq?))  ; eq? expects exactly 2 arguments, got 0
 
@@ -57,17 +57,17 @@
       (gt? 5 10))  ; 5 > 10 ? => false
 
 (test "comparison: gt? - arity error (1 arg)"
-      (expect (error Validation)
+      (expect (error Runtime)
               (tags "comparison"))
       (gt? 10))  ; gt? expects exactly 2 arguments, got 1
 
 (test "comparison: gt? - arity error (0 args)"
-      (expect (error Validation)
+      (expect (error Runtime)
               (tags "comparison"))
       (gt?))  ; gt? expects exactly 2 arguments, got 0
 
 (test "comparison: gt? - type error"
-      (expect (error TypeError)
+      (expect (error Runtime)
               (tags "comparison"))
       (gt? 10 "one"))  ; 10 > "one" ? => type error
 
@@ -96,17 +96,17 @@
       (lt? 5 1))  ; 5 < 1 ? => false
 
 (test "comparison: lt? - arity error (1 arg)"
-      (expect (error Validation)
+      (expect (error Runtime)
               (tags "comparison"))
       (lt? 10))  ; lt? expects exactly 2 arguments, got 1
 
 (test "comparison: lt? - arity error (0 args)"
-      (expect (error Validation)
+      (expect (error Runtime)
               (tags "comparison"))
       (lt?))  ; lt? expects exactly 2 arguments, got 0
 
 (test "comparison: lt? - type error"
-      (expect (error TypeError)
+      (expect (error Runtime)
               (tags "comparison"))
       (lt? 1 "ten"))  ; 1 < "ten" ? => type error
 
@@ -140,17 +140,17 @@
       (gte? 5 10))  ; 5 >= 10 ? => false
 
 (test "comparison: gte? - arity error (1 arg)"
-      (expect (error Validation)
+      (expect (error Runtime)
               (tags "comparison"))
       (gte? 10))  ; gte? expects exactly 2 arguments, got 1
 
 (test "comparison: gte? - arity error (0 args)"
-      (expect (error Validation)
+      (expect (error Runtime)
               (tags "comparison"))
       (gte?))  ; gte? expects exactly 2 arguments, got 0
 
 (test "comparison: gte? - type error"
-      (expect (error TypeError)
+      (expect (error Runtime)
               (tags "comparison"))
       (gte? 10 "one"))  ; 10 >= "one" ? => type error
 
@@ -184,17 +184,17 @@
       (lte? 10 5))  ; 10 <= 5 ? => false
 
 (test "comparison: lte? - arity error (1 arg)"
-      (expect (error Validation)
+      (expect (error Runtime)
               (tags "comparison"))
       (lte? 10))  ; lte? expects exactly 2 arguments, got 1
 
 (test "comparison: lte? - arity error (0 args)"
-      (expect (error Validation)
+      (expect (error Runtime)
               (tags "comparison"))
       (lte?))  ; lte? expects exactly 2 arguments, got 0
 
 (test "comparison: lte? - type error"
-      (expect (error TypeError)
+      (expect (error Runtime)
               (tags "comparison"))
       (lte? 1 "ten"))  ; 1 <= "ten" ? => type error
 

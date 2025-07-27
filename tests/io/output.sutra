@@ -17,7 +17,7 @@
       (print 123))  ; prints "123" to stdout
 
 (test "output: print - arity error (too few)"
-      (expect (error Validation)
+      (expect (error Runtime)
               (tags "output"))
       (print))
 

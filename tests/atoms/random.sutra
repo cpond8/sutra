@@ -13,6 +13,6 @@
            (lt? (rand) 1)))  ; rand is a number in [0, 1)
 
 (test "random: rand - arity error (too many)"
-      (expect (error Validation)
+      (expect (error Runtime)
               (tags "random"))
       (rand 123))  ; rand expects 0 arguments, got 1

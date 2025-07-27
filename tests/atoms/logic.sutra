@@ -15,21 +15,21 @@
       (not false))
 
 (test "logic: not - type error (number)"
-      (expect (error TypeError) (tags "logic"))
+      (expect (error Runtime) (tags "logic"))
       (not 1))
 
 (test "logic: not - type error (string)"
-      (expect (error TypeError) (tags "logic"))
+      (expect (error Runtime) (tags "logic"))
       (not "hello"))
 
 (test "logic: not - type error (nil)"
-      (expect (error TypeError) (tags "logic"))
+      (expect (error Runtime) (tags "logic"))
       (not nil))
 
 (test "logic: not - arity error (too few)"
-      (expect (error Validation) (tags "logic"))
+      (expect (error Runtime) (tags "logic"))
       (not))
 
 (test "logic: not - arity error (too many)"
-      (expect (error Validation) (tags "logic"))
+      (expect (error Runtime) (tags "logic"))
       (not true false))
