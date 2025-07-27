@@ -33,9 +33,8 @@
 //     arguments. This is essential for special forms that manage control flow
 //     (e.g., `if`, `lambda`, `let`).
 
-use std::{cell::RefCell, collections::HashMap, fmt, fs, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, fmt, fs, rc::Rc};
 
-use miette::NamedSource;
 use rand::{RngCore, SeedableRng};
 use rand_xoshiro::Xoshiro256StarStar;
 use serde::{Deserialize, Serialize};
@@ -119,20 +118,18 @@ pub struct World {
 
 impl World {
     pub fn new() -> Self {
-        let source = SourceContext::fallback("world state").to_named_source();
         Self {
             state: WorldState::new(),
             prng: SmallRng::from_entropy(),
-            macros: MacroSystem::new(source),
+            macros: MacroSystem::new(),
         }
     }
 
     pub fn from_seed(seed: [u8; 32]) -> Self {
-        let source = SourceContext::fallback("world state").to_named_source();
         Self {
             state: WorldState::new(),
             prng: SmallRng::from_seed(seed),
-            macros: MacroSystem::new(source),
+            macros: MacroSystem::new(),
         }
     }
 
@@ -212,19 +209,12 @@ pub fn build_canonical_world() -> CanonicalWorld {
 
 /// Builds and returns the canonical macro environment
 pub fn build_canonical_macro_env() -> Result<MacroSystem, SutraError> {
-    use crate::macros::{load_macros_from_source, std_macros::register_std_macros};
-
-    // Step 1: Create environment and register standard macros
-    let source = Arc::new(NamedSource::new(
-        "std_macros.sutra",
-        fs::read_to_string("src/macros/std_macros.sutra").unwrap_or_default(),
-    ));
-    let mut env = MacroSystem::new(source);
-    register_std_macros(&mut env);
+    // Step 1: Create environment (standard macros are auto-registered)
+    let mut env = MacroSystem::new();
 
     // Step 2: Load user macros from file
     let file_content = fs::read_to_string("src/macros/std_macros.sutra").unwrap_or_default();
-    load_macros_from_source(&file_content, &mut env)?;
+    env.load_from_source(&file_content)?;
 
     Ok(env)
 }

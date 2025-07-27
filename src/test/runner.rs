@@ -24,7 +24,6 @@ impl TestRunner {
         _test_name: Option<String>,
         source_file: SourceContext,
     ) -> Result<(), SutraError> {
-        use crate::macros::expand_macros;
         use crate::syntax::parser;
 
         let world = build_canonical_world();
@@ -35,20 +34,28 @@ impl TestRunner {
             test_body.iter().cloned().partition(|_expr| false); // Don't partition define forms as macros for now
 
         for macro_expr in macro_defs {
-            if let Ok((name, template)) = crate::macros::parse_macro_definition(&macro_expr) {
-                macro_env.register_user_macro(
-                    name,
-                    crate::macros::MacroDefinition::Template(template),
-                    false,
-                )?;
+            // Load macro definitions directly into the environment using guard clauses
+            let Expr::List(items, _) = &*macro_expr.value else {
+                continue;
+            };
+            if items.len() != 3 {
+                continue;
             }
+            let Expr::Symbol(def_name, _) = &*items[0].value else {
+                continue;
+            };
+            if def_name != "define" {
+                continue;
+            }
+            // This is a macro definition - let the macro system handle it
+            macro_env.load_from_source(&macro_expr.value.pretty())?;
         }
 
         // Wrap user code in a (do ...) block if needed
         let program = parser::wrap_in_do(user_code);
 
         // Expand macros
-        let expanded_node = expand_macros(program, &mut macro_env)?;
+        let expanded_node = macro_env.expand(program)?;
 
         // Use the actual test file source for error reporting
         let source_context = source_file;

@@ -4,18 +4,30 @@
 
 use std::io::{self, Write};
 
-use crate::{atoms::SharedOutput, cli::ExecutionPipeline, errors::print_error, EngineStdoutSink};
+use crate::{
+    atoms::{EngineStdoutSink, SharedOutput}, 
+    build_canonical_macro_env, 
+    build_canonical_world,
+    errors::print_error, 
+    macros::MacroSystem,
+    prelude::*,
+};
 
 /// REPL state that persists across evaluations
 pub struct ReplState {
-    pipeline: ExecutionPipeline,
+    world: CanonicalWorld,
+    macro_env: MacroSystem,
     line_number: usize,
 }
 
 impl ReplState {
     pub fn new() -> Self {
         Self {
-            pipeline: ExecutionPipeline::default(),
+            world: build_canonical_world(),
+            macro_env: build_canonical_macro_env().unwrap_or_else(|e| {
+                eprintln!("Warning: Failed to load standard macros: {}", e);
+                MacroSystem::new()
+            }),
             line_number: 1,
         }
     }
@@ -25,8 +37,24 @@ impl ReplState {
         let source_name = format!("<repl:{}>", self.line_number);
         let output = SharedOutput::new(EngineStdoutSink);
 
-        match self.pipeline.execute(input, output, &source_name) {
-            Ok(()) => {
+        // Use the same execution logic as SutraEngine
+        use crate::{syntax::parser, evaluate, errors::SourceContext};
+        
+        let source_context = SourceContext::from_file(&source_name, input);
+        let execution_result = parser::parse(input, source_context.clone())
+            .and_then(|ast_nodes| {
+                let program = parser::wrap_in_do(ast_nodes);
+                self.macro_env.expand(program)
+            })
+            .and_then(|expanded| {
+                evaluate(&expanded, self.world.clone(), output.clone(), source_context)
+            });
+
+        match execution_result {
+            Ok(result) => {
+                if !result.is_nil() {
+                    output.emit(&result.to_string(), None);
+                }
                 self.line_number += 1;
                 Ok(())
             }
@@ -129,8 +157,13 @@ fn handle_repl_command(command: &str, state: &mut ReplState) -> ReplCommand {
             print!("\x1B[2J\x1B[1;1H");
             io::stdout().flush().unwrap();
 
-            // Reset pipeline to clear all user-defined variables and functions
-            state.pipeline = ExecutionPipeline::default();
+            // Reset state to clear all user-defined variables and functions
+            state.world = build_canonical_world();
+            state.macro_env = build_canonical_macro_env().unwrap_or_else(|e| {
+                eprintln!("Warning: Failed to load standard macros: {}", e);
+                MacroSystem::new()
+            });
+            state.line_number = 1;
             println!("Context cleared.");
             ReplCommand::Continue
         }

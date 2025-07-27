@@ -4,7 +4,7 @@ pub use crate::{
         Path, SharedOutput, StateContext, World,
     },
     errors::print_error,
-    macros::{expand_macros, MacroDefinition, MacroSystem},
+    macros::{MacroDefinition, MacroSystem},
     runtime::{ConsCell, Lambda, Value},
     syntax::{AstNode, Expr, ParamList, Span, Spanned},
     test::{Expectation, TestResult, TestSummary},
