@@ -24,13 +24,12 @@ use miette::NamedSource;
 
 use crate::{
     ast::{AstNode, Expr, Span, Spanned},
-    atoms::{helpers, helpers::AtomResult},
     engine::{evaluate_ast_node, EvaluationContext},
+    ast::spanned_value::{SpannedResult, SpannedValue},
     errors::{to_source_span, ErrorReporting, SourceContext, SutraError},
     prelude::*,
 };
 
-use crate::atoms::helpers::sub_eval_context;
 use crate::register_lazy;
 
 /// Represents a single test case definition with source context for diagnostics.
@@ -58,9 +57,13 @@ lazy_static! {
 }
 
 /// `register-test!` special form updated for AST storage.
-fn register_test_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) -> AtomResult {
+fn register_test_atom(
+    args: &[AstNode],
+    ctx: &mut EvaluationContext,
+    call_span: &Span,
+) -> SpannedResult {
     if args.len() < 4 {
-        return Err(ctx.arity_mismatch("at least 4", args.len(), to_source_span(*span)));
+        return Err(ctx.arity_mismatch("at least 4", args.len(), to_source_span(*call_span)));
     }
 
     let name = match &*args[0].value {
@@ -77,14 +80,14 @@ fn register_test_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span
     let expect = args[1].clone();
     let body = args[2..args.len() - 1].to_vec();
 
-    let metadata_val = evaluate_ast_node(&args[args.len() - 1], ctx)?;
-    let metadata = match metadata_val.as_map() {
-        Some(m) => m,
+    let metadata_sv = evaluate_ast_node(&args[args.len() - 1], ctx)?;
+    let metadata = match &metadata_sv.value {
+        Value::Map(m) => m,
         _ => {
             return Err(ctx.type_mismatch(
                 "Map",
-                metadata_val.type_name(),
-                to_source_span(args[args.len() - 1].span),
+                metadata_sv.value.type_name(),
+                to_source_span(metadata_sv.span),
             ));
         }
     };
@@ -119,7 +122,7 @@ fn register_test_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span
         name: name.clone(),
         expect,
         body,
-        span: *span,
+        span: *call_span,
         source_file,
         source_text,
     };
@@ -133,42 +136,45 @@ fn register_test_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span
     })?;
     registry.insert(name, test_def);
 
-    Ok(Value::Nil)
+    Ok(SpannedValue {
+        value: Value::Nil,
+        span: *call_span,
+    })
 }
 
-fn value_atom(args: &[AstNode], _ctx: &mut EvaluationContext, _span: &Span) -> AtomResult {
+fn value_atom(args: &[AstNode], _ctx: &mut EvaluationContext, call_span: &Span) -> SpannedResult {
     let Some(first) = args.first() else {
-        return Ok(Value::Nil);
+        return Ok(SpannedValue { value: Value::Nil, span: *call_span });
     };
     evaluate_ast_node(first, _ctx)
 }
 
-fn tags_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) -> AtomResult {
+fn tags_atom(args: &[AstNode], ctx: &mut EvaluationContext, call_span: &Span) -> SpannedResult {
     let mut list_expr_items = Vec::with_capacity(args.len() + 1);
     list_expr_items.push(AstNode {
-        value: Arc::new(Expr::Symbol("list".to_string(), *span)),
-        span: *span,
+        value: Arc::new(Expr::Symbol("list".to_string(), *call_span)),
+        span: *call_span,
     });
     list_expr_items.extend(args.iter().cloned());
     let list_expr = AstNode {
-        value: Arc::new(Expr::List(list_expr_items, *span)),
-        span: *span,
+        value: Arc::new(Expr::List(list_expr_items, *call_span)),
+        span: *call_span,
     };
     evaluate_ast_node(&list_expr, ctx)
 }
 
-fn test_echo_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) -> AtomResult {
+fn test_echo_atom(args: &[AstNode], ctx: &mut EvaluationContext, call_span: &Span) -> SpannedResult {
     let Some(first) = args.first() else {
         let val = Value::String("".to_string());
-        ctx.output.borrow_mut().emit(&val.to_string(), Some(span));
-        return Ok(val);
+        ctx.output.borrow_mut().emit(&val.to_string(), Some(call_span));
+        return Ok(SpannedValue { value: val, span: *call_span });
     };
     let val = match &*first.value {
         Expr::String(s, _) => Value::String(s.clone()),
         _ => Value::String(format!("{}", first.value)),
     };
-    ctx.output.borrow_mut().emit(&val.to_string(), Some(span));
-    Ok(val)
+    ctx.output.borrow_mut().emit(&val.to_string(), Some(call_span));
+    Ok(SpannedValue { value: val, span: *call_span })
 }
 
 fn parse_borrow_stress_args(args: &[AstNode]) -> (i64, String) {
@@ -207,13 +213,13 @@ fn handle_borrow_stress_recursion(
     depth: i64,
     msg: &str,
     span: &Span,
-    test_borrow_stress_atom: NativeLazyFn,
-    test_echo_atom: NativeLazyFn,
-) -> AtomResult {
+    test_borrow_stress_atom: NativeFn,
+    test_echo_atom: NativeFn,
+) -> SpannedResult {
     if depth == 0 {
         return handle_borrow_stress_base_case(ctx, msg, span, test_echo_atom);
     }
-    let mut sub_context = sub_eval_context!(ctx);
+    let mut sub_context = ctx.with_new_frame();
     sub_context.depth = ctx.depth + 1;
     let nested_args = vec![
         Spanned {
@@ -232,9 +238,9 @@ fn handle_borrow_stress_base_case(
     ctx: &mut EvaluationContext,
     msg: &str,
     span: &Span,
-    test_echo_atom: NativeLazyFn,
-) -> AtomResult {
-    let mut sub_context = sub_eval_context!(ctx);
+    test_echo_atom: NativeFn,
+) -> SpannedResult {
+    let mut sub_context = ctx.with_new_frame();
     sub_context.depth = ctx.depth + 1;
     let echo_arg = Spanned {
         value: Arc::new(Expr::String(msg.to_string(), *span)),
@@ -246,20 +252,23 @@ fn handle_borrow_stress_base_case(
 fn test_borrow_stress_atom(
     args: &[AstNode],
     ctx: &mut EvaluationContext,
-    span: &Span,
-) -> AtomResult {
+    call_span: &Span,
+) -> SpannedResult {
     let (depth, msg) = parse_borrow_stress_args(args);
-    emit_borrow_stress_output(ctx, depth, &msg, span, "before");
+    emit_borrow_stress_output(ctx, depth, &msg, call_span, "before");
     handle_borrow_stress_recursion(
         ctx,
         depth,
         &msg,
-        span,
+        call_span,
         test_borrow_stress_atom,
         test_echo_atom,
     )?;
-    emit_borrow_stress_output(ctx, depth, &msg, span, "after");
-    Ok(Value::String(format!("depth:{depth};msg:{msg}")))
+    emit_borrow_stress_output(ctx, depth, &msg, call_span, "after");
+    Ok(SpannedValue {
+        value: Value::String(format!("depth:{depth};msg:{msg}")),
+        span: *call_span,
+    })
 }
 
 pub fn register_test_atoms(world: &mut World) {
@@ -272,32 +281,42 @@ pub fn register_test_atoms(world: &mut World) {
     register_lazy!(world, "assert-eq", assert_eq_atom);
 }
 
-fn assert_atom(args: &[AstNode], ctx: &mut EvaluationContext, _span: &Span) -> AtomResult {
-    helpers::validate_special_form_arity(args, 1, "assert", ctx)?;
-    let value = evaluate_ast_node(&args[0], ctx)?;
-    let is_truthy = value.is_truthy();
+fn assert_atom(args: &[AstNode], ctx: &mut EvaluationContext, call_span: &Span) -> SpannedResult {
+    if args.len() != 1 {
+        return Err(ctx.arity_mismatch("1", args.len(), to_source_span(*call_span)));
+    }
+    let value_sv = evaluate_ast_node(&args[0], ctx)?;
+    let is_truthy = value_sv.value.is_truthy();
     if !is_truthy {
         return Err(ctx.invalid_operation(
             "assertion",
-            &format!("expected truthy value, got {value}"),
-            to_source_span(args[0].span),
+            &format!("expected truthy value, got {}", value_sv.value),
+            to_source_span(value_sv.span),
         ));
     }
-    Ok(Value::Nil)
+    Ok(SpannedValue {
+        value: Value::Nil,
+        span: *call_span,
+    })
 }
 
-fn assert_eq_atom(args: &[AstNode], ctx: &mut EvaluationContext, span: &Span) -> AtomResult {
-    helpers::validate_special_form_arity(args, 2, "assert-eq", ctx)?;
-    let expected = evaluate_ast_node(&args[0], ctx)?;
-    let actual = evaluate_ast_node(&args[1], ctx)?;
-    if expected != actual {
+fn assert_eq_atom(args: &[AstNode], ctx: &mut EvaluationContext, call_span: &Span) -> SpannedResult {
+    if args.len() != 2 {
+        return Err(ctx.arity_mismatch("2", args.len(), to_source_span(*call_span)));
+    }
+    let expected_sv = evaluate_ast_node(&args[0], ctx)?;
+    let actual_sv = evaluate_ast_node(&args[1], ctx)?;
+    if expected_sv.value != actual_sv.value {
         return Err(ctx.invalid_operation(
             "assertion equality",
-            &format!("expected {expected}, got {actual}"),
-            to_source_span(*span),
+            &format!("expected {}, got {}", expected_sv.value, actual_sv.value),
+            to_source_span(*call_span),
         ));
     }
-    Ok(Value::Nil)
+    Ok(SpannedValue {
+        value: Value::Nil,
+        span: *call_span,
+    })
 }
 
 // ============================================================================
@@ -326,7 +345,7 @@ fn execute_single_test(
     let mut ctx = EvaluationContext::new(world.clone(), output.clone(), source_ctx.clone());
 
     let actual_result = match eval_test_body(&test_def.body, &mut ctx) {
-        Ok(val) => val,
+        Ok(sv) => sv.value,
         Err(e) => {
             return TestResult {
                 name: test_def.name.clone(),
@@ -337,7 +356,7 @@ fn execute_single_test(
     };
 
     let expected_result = match evaluate_ast_node(&test_def.expect, &mut ctx) {
-        Ok(val) => val,
+        Ok(sv) => sv.value,
         Err(e) => {
             return TestResult {
                 name: test_def.name.clone(),
@@ -361,15 +380,15 @@ fn execute_single_test(
     }
 }
 
-fn eval_test_body(body: &[AstNode], ctx: &mut EvaluationContext) -> AtomResult {
-    let mut result = Ok(Value::Nil);
+fn eval_test_body(body: &[AstNode], ctx: &mut EvaluationContext) -> SpannedResult {
+    let mut result = SpannedValue {
+        value: Value::Nil,
+        span: Span::default(),
+    };
     for expr in body {
-        result = evaluate_ast_node(expr, ctx);
-        if result.is_err() {
-            return result;
-        }
+        result = evaluate_ast_node(expr, ctx)?;
     }
-    result
+    Ok(result)
 }
 
 pub fn run_tests_from_file(

@@ -1,9 +1,8 @@
 pub use crate::{
-    ast::{
-        value::{NativeEagerFn, NativeLazyFn, Value},
-        AstNode, Expr, ParamList, Span, Spanned,
+    ast::{value::Value, AstNode, Expr, ParamList, Span, Spanned},
+    atoms::{
+        build_canonical_macro_env, build_canonical_world, Path, SharedOutput, StateContext, World,
     },
-    atoms::{SharedOutput, StateContext, Path, World, build_canonical_world, build_canonical_macro_env},
     engine::{print_error, EngineOutputBuffer, EngineStdoutSink},
     macros::{
         expand_macros_recursively, MacroDefinition, MacroExpansionContext, MacroRegistry,
@@ -14,7 +13,6 @@ pub use crate::{
 
 // Module aliases for concise imports
 pub use ast::value;
-pub use atoms::helpers;
 pub use engine::{evaluate, EvaluationContext};
 pub use syntax::parser;
 pub use validation::{grammar, semantic};
@@ -22,14 +20,14 @@ pub use validation::{grammar, semantic};
 pub mod prelude {
     pub use crate::{
         ast::{
-            value::{NativeEagerFn, NativeLazyFn, Value},
+            value::{NativeFn, Value},
             AstNode, Expr, Span, Spanned,
         },
         atoms::SharedOutput,
+        atoms::{Path, World},
+        engine::EvaluationContext,
         errors::{ErrorKind, SourceContext, SutraError},
         macros::MacroRegistry,
-        engine::EvaluationContext,
-        atoms::{World, Path},
         MacroDefinition,
     };
 

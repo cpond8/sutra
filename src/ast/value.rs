@@ -10,15 +10,17 @@ use std::{collections::HashMap, fmt, rc::Rc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    atoms::helpers::AtomResult, engine::EvaluationContext, AstNode, ParamList, Path, Span,
+    ast::spanned_value::SpannedResult, engine::EvaluationContext, AstNode, ParamList, Path, Span,
 };
 
-/// Eagerly evaluated native function: receives evaluated arguments.
-pub type NativeEagerFn = fn(args: &[Value], context: &mut EvaluationContext) -> AtomResult;
-
-/// Lazily evaluated native function: receives unevaluated AST nodes.
-pub type NativeLazyFn =
-    fn(args: &[AstNode], context: &mut EvaluationContext, parent_span: &Span) -> AtomResult;
+/// Unified native function signature.
+///
+/// All native functions (atoms) adhere to this signature. They receive unevaluated
+/// `AstNode` arguments and the evaluation context. They are responsible for evaluating
+/// their arguments as needed, allowing for both lazy and eager evaluation strategies
+/// within a single, consistent framework.
+pub type NativeFn =
+    fn(args: &[AstNode], context: &mut EvaluationContext, call_span: &Span) -> SpannedResult;
 
 /// Canonical runtime value for Sutra evaluation and macro expansion.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -40,12 +42,9 @@ pub enum Value {
     Path(Path),
     /// User-defined lambda function (captures parameter list and body).
     Lambda(Rc<Lambda>),
-    /// Native (Rust) function that evaluates its arguments eagerly.
+    /// Native (Rust) function.
     #[serde(skip)]
-    NativeEagerFn(NativeEagerFn),
-    /// Native (Rust) function that evaluates its arguments lazily.
-    #[serde(skip)]
-    NativeLazyFn(NativeLazyFn),
+    NativeFn(NativeFn),
     Symbol(String),
     Quote(Box<Value>),
 }
@@ -76,8 +75,7 @@ impl PartialEq for Value {
             (Value::Map(a), Value::Map(b)) => a == b,
             (Value::Path(a), Value::Path(b)) => a == b,
             (Value::Lambda(a), Value::Lambda(b)) => a == b,
-            (Value::NativeEagerFn(a), Value::NativeEagerFn(b)) => *a as usize == *b as usize,
-            (Value::NativeLazyFn(a), Value::NativeLazyFn(b)) => *a as usize == *b as usize,
+            (Value::NativeFn(a), Value::NativeFn(b)) => *a as usize == *b as usize,
             (Value::Symbol(a), Value::Symbol(b)) => a == b,
             (Value::Quote(a), Value::Quote(b)) => a == b,
             _ => false,
@@ -97,8 +95,7 @@ impl Value {
             Value::Map(_) => "Map",
             Value::Path(_) => "Path",
             Value::Lambda(_) => "Lambda",
-            Value::NativeEagerFn(_) => "NativeEagerFn",
-            Value::NativeLazyFn(_) => "NativeLazyFn",
+            Value::NativeFn(_) => "NativeFn",
             Value::Symbol(_) => "Symbol",
             Value::Quote(_) => "Quote",
         }
@@ -220,8 +217,7 @@ impl fmt::Display for Value {
             Value::Map(map) => Value::fmt_map(f, map),
             Value::Path(p) => write!(f, "{p}"),
             Value::Lambda(_) => write!(f, "<lambda>"),
-            Value::NativeEagerFn(_) => write!(f, "<native_eager_fn>"),
-            Value::NativeLazyFn(_) => write!(f, "<native_lazy_fn>"),
+            Value::NativeFn(_) => write!(f, "<native_fn>"),
             Value::Symbol(s) => write!(f, "{s}"),
             Value::Quote(v) => write!(f, "'{v}"),
         }

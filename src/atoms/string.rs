@@ -7,9 +7,14 @@
 //! - **`str`**: Converts any value to its string representation.
 //! - **`str+`**: Concatenates multiple values into a single string.
 
-use crate::atoms::AtomResult;
-use crate::helpers;
-use crate::prelude::*;
+use crate::{
+    ast::{
+        spanned_value::SpannedValue,
+        value::{NativeFn, Value},
+    },
+    engine::evaluate_ast_node,
+    errors::{to_source_span, ErrorReporting},
+};
 
 // ============================================================================
 // STRING OPERATIONS
@@ -21,11 +26,18 @@ use crate::prelude::*;
 ///   - <value>: Any value
 ///
 /// Returns: A new String value.
-pub const ATOM_STR: NativeEagerFn =
-    |args: &[Value], context: &mut EvaluationContext| -> AtomResult {
-        helpers::validate_unary_arity(args, "str", context)?;
-        Ok(Value::String(args[0].to_string()))
-    };
+pub const ATOM_STR: NativeFn = |args, context, call_span| {
+    if args.len() != 1 {
+        return Err(context.arity_mismatch("1", args.len(), to_source_span(*call_span)));
+    }
+
+    let val_sv = evaluate_ast_node(&args[0], context)?;
+
+    Ok(SpannedValue {
+        value: Value::String(val_sv.value.to_string()),
+        span: *call_span,
+    })
+};
 
 /// Concatenates multiple values into a single string.
 ///
@@ -33,10 +45,14 @@ pub const ATOM_STR: NativeEagerFn =
 ///   - <value...>: Zero or more values to concatenate.
 ///
 /// Returns: A new String value. If no arguments are provided, returns an empty string.
-pub const ATOM_STR_PLUS: NativeEagerFn = |args: &[Value], _| -> AtomResult {
+pub const ATOM_STR_PLUS: NativeFn = |args, context, call_span| {
     let mut result = String::new();
     for arg in args {
-        result.push_str(&arg.to_string());
+        let val_sv = evaluate_ast_node(arg, context)?;
+        result.push_str(&val_sv.value.to_string());
     }
-    Ok(Value::String(result))
+    Ok(SpannedValue {
+        value: Value::String(result),
+        span: *call_span,
+    })
 };

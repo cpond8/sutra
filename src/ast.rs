@@ -208,7 +208,7 @@ pub fn expr_from_value_with_span(val: Value, span: Span) -> Result<Expr, String>
             Ok(Expr::List(items, span))
         }
         Value::Path(p) => Ok(Expr::Path(p, span)),
-        Value::Lambda(_) | Value::NativeEagerFn(_) | Value::NativeLazyFn(_) => {
+        Value::Lambda(_) | Value::NativeFn(_) => {
             Err("Cannot convert function value to AST expression. This is a logic error.".to_string())
         }
     }
@@ -259,4 +259,5 @@ impl TypeNameTrait for Expr {
 }
 
 pub mod list;
+pub mod spanned_value;
 pub mod value;

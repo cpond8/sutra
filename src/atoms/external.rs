@@ -13,9 +13,12 @@
 //! - **Deterministic Where Possible**: Consistent behavior within constraints
 //! - **Minimal External Dependencies**: Simple implementations
 
-use crate::prelude::*;
-use crate::{helpers, NativeEagerFn};
-use crate::errors::{ErrorKind, ErrorReporting};
+use crate::{
+    ast::spanned_value::SpannedValue,
+    engine::evaluate_ast_node,
+    errors::{to_source_span, ErrorReporting},
+    prelude::*,
+};
 
 // ============================================================================
 // I/O OPERATIONS
@@ -30,10 +33,19 @@ use crate::errors::{ErrorKind, ErrorReporting};
 ///
 /// Example:
 ///   (core/print "hello")
-pub const ATOM_PRINT: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "core/print", context)?;
-    context.output.borrow_mut().emit(&args[0].to_string(), None);
-    Ok(Value::Nil)
+pub const ATOM_PRINT: NativeFn = |args, context, call_span| {
+    if args.len() != 1 {
+        return Err(context.arity_mismatch("1", args.len(), to_source_span(*call_span)));
+    }
+    let spanned_val = evaluate_ast_node(&args[0], context)?;
+    context
+        .output
+        .borrow_mut()
+        .emit(&spanned_val.value.to_string(), Some(&spanned_val.span));
+    Ok(SpannedValue {
+        value: Value::Nil,
+        span: *call_span,
+    })
 };
 
 /// Emits output to the output sink (alias for print).
@@ -45,10 +57,19 @@ pub const ATOM_PRINT: NativeEagerFn = |args, context| {
 ///
 /// Example:
 ///   (output "hello")
-pub const ATOM_OUTPUT: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "output", context)?;
-    context.output.borrow_mut().emit(&args[0].to_string(), None);
-    Ok(Value::Nil)
+pub const ATOM_OUTPUT: NativeFn = |args, context, call_span| {
+    if args.len() != 1 {
+        return Err(context.arity_mismatch("1", args.len(), to_source_span(*call_span)));
+    }
+    let spanned_val = evaluate_ast_node(&args[0], context)?;
+    context
+        .output
+        .borrow_mut()
+        .emit(&spanned_val.value.to_string(), Some(&spanned_val.span));
+    Ok(SpannedValue {
+        value: Value::Nil,
+        span: *call_span,
+    })
 };
 
 // ============================================================================
@@ -64,14 +85,14 @@ pub const ATOM_OUTPUT: NativeEagerFn = |args, context| {
 ///
 /// Example:
 ///   (rand) ; => 0.7234567 (example)
-pub const ATOM_RAND: NativeEagerFn = |args, context| {
-    helpers::validate_zero_arity(args, "rand", context)?;
-    // If randomness is not available, return a canonical error
-    Err(context.report(
-        ErrorKind::InvalidOperation {
-            operation: "random number generation".to_string(),
-            operand_type: "unsupported in this context".to_string(),
-        },
-        context.span_for_span(context.current_span),
-    ))
+pub const ATOM_RAND: NativeFn = |args, context, call_span| {
+    if !args.is_empty() {
+        return Err(context.arity_mismatch("0", args.len(), to_source_span(*call_span)));
+    }
+    let rand_val = context.world.borrow_mut().next_u32();
+    let result = (rand_val as f64) / (u32::MAX as f64);
+    Ok(SpannedValue {
+        value: Value::Number(result),
+        span: *call_span,
+    })
 };

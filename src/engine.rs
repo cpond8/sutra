@@ -4,10 +4,7 @@ use miette::{NamedSource, Report};
 
 use crate::prelude::*;
 use crate::{
-    atoms::{
-        build_canonical_macro_env, build_canonical_world, helpers::AtomResult, OutputSink,
-        SharedOutput,
-    },
+    atoms::{build_canonical_macro_env, build_canonical_world, OutputSink, SharedOutput},
     macros::{
         expand_macros_recursively, parse_macro_definition, MacroDefinition, MacroExpansionContext,
         MacroValidationContext,
@@ -23,7 +20,13 @@ use crate::errors::{
 use crate::validation::ValidationContext;
 
 // Import Lambda and ConsCell types from ast module
-use crate::ast::value::{ConsCell, Lambda};
+use crate::ast::value::ConsCell;
+
+// Import call_lambda function from special_forms
+use crate::atoms::special_forms::call_lambda;
+
+// Import SpannedResult and SpannedValue types
+use crate::ast::spanned_value::{SpannedResult, SpannedValue};
 
 // ============================================================================
 // EVALUATION CONTEXT - Simplified evaluation state
@@ -126,13 +129,14 @@ pub fn evaluate(
     world: CanonicalWorld,
     output: SharedOutput,
     source: SourceContext,
-) -> AtomResult {
+) -> Result<Value, SutraError> {
     let mut context = EvaluationContext::new(world, output, source);
-    evaluate_ast_node(expr, &mut context)
+    let result = evaluate_ast_node(expr, &mut context)?;
+    Ok(result.value)
 }
 
 /// Core recursive evaluator
-pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext) -> AtomResult {
+pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext) -> SpannedResult {
     // Check recursion limit
     if context.depth > context.max_depth {
         return Err(context.report(ErrorKind::RecursionLimit, context.span_for_node(expr)));
@@ -141,12 +145,27 @@ pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext)
     // Evaluate based on expression type
     match &*expr.value {
         Expr::List(items, _) => evaluate_call(items, context),
-        Expr::Quote(inner, _) => Ok(Value::Quote(Box::new(ast_to_value(inner)))),
-        Expr::Symbol(name, _) => resolve_symbol(name, context),
-        Expr::String(s, _) => Ok(Value::String(s.clone())),
-        Expr::Number(n, _) => Ok(Value::Number(*n)),
-        Expr::Bool(b, _) => Ok(Value::Bool(*b)),
-        Expr::Path(p, _) => Ok(Value::Path(p.clone())),
+        Expr::Quote(inner, _) => Ok(SpannedValue {
+            value: Value::Quote(Box::new(ast_to_value(inner))),
+            span: expr.span,
+        }),
+        Expr::Symbol(name, _) => resolve_symbol(name, expr, context),
+        Expr::String(s, _) => Ok(SpannedValue {
+            value: Value::String(s.clone()),
+            span: expr.span,
+        }),
+        Expr::Number(n, _) => Ok(SpannedValue {
+            value: Value::Number(*n),
+            span: expr.span,
+        }),
+        Expr::Bool(b, _) => Ok(SpannedValue {
+            value: Value::Bool(*b),
+            span: expr.span,
+        }),
+        Expr::Path(p, _) => Ok(SpannedValue {
+            value: Value::Path(p.clone()),
+            span: expr.span,
+        }),
         Expr::If {
             condition,
             then_branch,
@@ -171,9 +190,12 @@ pub(crate) fn evaluate_ast_node(expr: &AstNode, context: &mut EvaluationContext)
 }
 
 /// Evaluate function calls
-fn evaluate_call(items: &[AstNode], context: &mut EvaluationContext) -> AtomResult {
+fn evaluate_call(items: &[AstNode], context: &mut EvaluationContext) -> SpannedResult {
     if items.is_empty() {
-        return Ok(Value::Nil);
+        return Ok(SpannedValue {
+            value: Value::Nil,
+            span: items.first().map(|n| n.span).unwrap_or_default(),
+        });
     }
 
     let head = &items[0];
@@ -181,19 +203,22 @@ fn evaluate_call(items: &[AstNode], context: &mut EvaluationContext) -> AtomResu
 
     // Resolve callable
     let callable = if let Expr::Symbol(name, _) = &*head.value {
-        resolve_symbol(name, context)?
+        resolve_symbol(name, head, context)?.value
     } else {
-        evaluate_ast_node(head, context)?
+        evaluate_ast_node(head, context)?.value
     };
-
-    // Evaluate arguments
-    let args = evaluate_args(tail, context)?;
 
     // Dispatch call
     match callable {
-        Value::Lambda(lambda) => call_lambda(&lambda, &args, context),
-        Value::NativeEagerFn(func) => func(&args, context),
-        Value::NativeLazyFn(func) => func(tail, context, &head.span),
+        Value::Lambda(lambda) => {
+            // Evaluate arguments for lambda calls
+            let args = evaluate_args(tail, context)?;
+            call_lambda(&lambda, &args, context, &head.span)
+        }
+        Value::NativeFn(func) => {
+            // Pass unevaluated arguments to native function
+            func(tail, context, &head.span)
+        }
         _ => Err(context.report(
             ErrorKind::TypeMismatch {
                 expected: "callable".to_string(),
@@ -211,22 +236,29 @@ fn evaluate_args(
 ) -> Result<Vec<Value>, SutraError> {
     let mut values = Vec::new();
     for arg in args {
-        values.push(evaluate_ast_node(arg, context)?);
+        let result = evaluate_ast_node(arg, context)?;
+        values.push(result.value);
     }
     Ok(values)
 }
 
 /// Resolve symbol to value
-fn resolve_symbol(name: &str, context: &mut EvaluationContext) -> Result<Value, SutraError> {
+fn resolve_symbol(name: &str, node: &AstNode, context: &mut EvaluationContext) -> SpannedResult {
     // Check local environment first
     if let Some(value) = context.get_var(name) {
-        return Ok(value.clone());
+        return Ok(SpannedValue {
+            value: value.clone(),
+            span: node.span,
+        });
     }
 
     // Check global world state
     let world_path = Path(vec![name.to_string()]);
     if let Some(value) = context.world.borrow().state.get(&world_path) {
-        return Ok(value.clone());
+        return Ok(SpannedValue {
+            value: value.clone(),
+            span: node.span,
+        });
     }
 
     // Undefined
@@ -234,10 +266,7 @@ fn resolve_symbol(name: &str, context: &mut EvaluationContext) -> Result<Value, 
         ErrorKind::UndefinedSymbol {
             symbol: name.to_string(),
         },
-        context.span_for_node(&AstNode {
-            value: Arc::new(Expr::Symbol(name.to_string(), Span::default())),
-            span: Span::default(),
-        }),
+        context.span_for_node(node),
     ))
 }
 
@@ -270,8 +299,8 @@ pub fn evaluate_condition_as_bool(
     condition: &AstNode,
     context: &mut EvaluationContext,
 ) -> Result<bool, SutraError> {
-    let value = evaluate_ast_node(condition, context)?;
-    Ok(is_truthy(&value))
+    let result = evaluate_ast_node(condition, context)?;
+    Ok(is_truthy(&result.value))
 }
 
 /// Check if value is truthy
@@ -285,20 +314,6 @@ fn is_truthy(val: &Value) -> bool {
         Value::Quote(inner) => is_truthy(inner),
         _ => true,
     }
-}
-
-/// Call lambda function
-fn call_lambda(lambda: &Lambda, args: &[Value], context: &mut EvaluationContext) -> AtomResult {
-    // Create new lexical frame
-    let mut new_context = context.with_new_frame();
-
-    // Bind parameters
-    for (param, arg) in lambda.params.required.iter().zip(args.iter()) {
-        new_context.set_var(param, arg.clone());
-    }
-
-    // Evaluate body
-    evaluate_ast_node(&lambda.body, &mut new_context)
 }
 
 // ============================================================================

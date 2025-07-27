@@ -3,12 +3,12 @@ use std::rc::Rc;
 
 use crate::{
     ast::{
-        value::{ConsCell, Lambda},
-        AstNode, Expr, ParamList, Span,
+        spanned_value::{SpannedResult, SpannedValue},
+        value::{ConsCell, Lambda, NativeFn},
+        AstNode, Expr, ParamList, Span, Value,
     },
-    atoms::helpers::{validate_special_form_arity, validate_special_form_min_arity, AtomResult},
-    engine::{evaluate_ast_node, evaluate_condition_as_bool, EvaluationContext},
-    errors::{to_source_span, ErrorKind, ErrorReporting, SutraError},
+    engine::{evaluate_ast_node, EvaluationContext},
+    errors::{to_source_span, ErrorKind, ErrorReporting},
     prelude::*,
 };
 
@@ -62,7 +62,7 @@ fn find_and_capture_free_variables(
     // Capture the values of the free variables from the current environment.
     let mut captured_env = HashMap::new();
     for symbol in symbols {
-        if let Some(value) = context.get_lexical_var(&symbol) {
+        if let Some(value) = context.get_var(&symbol) {
             captured_env.insert(symbol, value.clone());
         }
     }
@@ -71,9 +71,11 @@ fn find_and_capture_free_variables(
 }
 
 /// Implements the (define ...) special form for global bindings.
-pub const ATOM_DEFINE: NativeLazyFn = |args, context, span| {
+pub const ATOM_DEFINE: NativeFn = |args, context, call_span| {
     // 1. Validate arity: (define <name> <value>)
-    validate_special_form_arity(args, 2, "define", context)?;
+    if args.len() != 2 {
+        return Err(context.arity_mismatch("2", args.len(), to_source_span(*call_span)));
+    }
 
     let name_expr = &args[0];
     let value_expr = &args[1];
@@ -81,27 +83,30 @@ pub const ATOM_DEFINE: NativeLazyFn = |args, context, span| {
     // 2. Handle variable definition: (define my-var 100)
     if let Expr::Symbol(name, _) = &*name_expr.value {
         // Evaluate the value expression in the current context.
-        let value = evaluate_ast_node(value_expr, context)?;
+        let spanned_value = evaluate_ast_node(value_expr, context)?;
 
         // Patch: Set in lexical frame if in local scope, else global world state
-        if context.lexical_env.len() > 1 {
-            context.set_lexical_var(name, value.clone());
+        if context.env.len() > 1 {
+            context.set_var(name, spanned_value.value.clone());
         } else {
             let path = Path(vec![name.clone()]);
-            context.world.borrow_mut().set(&path, value.clone());
+            context
+                .world
+                .borrow_mut()
+                .set(&path, spanned_value.value.clone());
         }
 
-        return Ok(value);
+        return Ok(spanned_value);
     }
 
     // 3. Handle function definition: (define (my-func x) (+ x 1))
     if let Expr::List(items, list_span) = &*name_expr.value {
-        return handle_function_definition_list(items, list_span, value_expr, context, span);
+        return handle_function_definition_list(items, list_span, value_expr, context, call_span);
     }
 
     // 4. Handle function definition with ParamList: (define (ParamList { required: ["my-func", "x"], ... }) (+ x 1))
     if let Expr::ParamList(param_list) = &*name_expr.value {
-        return handle_function_definition_paramlist(param_list, value_expr, context);
+        return handle_function_definition_paramlist(param_list, value_expr, context, call_span);
     }
 
     // 5. If the first argument is not a symbol, list, or param list, it's an error.
@@ -120,15 +125,15 @@ fn handle_function_definition_list(
     list_span: &Span,
     value_expr: &AstNode,
     context: &mut EvaluationContext,
-    span: &Span,
-) -> Result<Value, SutraError> {
+    call_span: &Span,
+) -> SpannedResult {
     if items.is_empty() {
         return Err(context.report(
             ErrorKind::InvalidOperation {
                 operation: "define".to_string(),
                 operand_type: "function definition requires a name".to_string(),
             },
-            context.span_for_span(*span),
+            to_source_span(*call_span),
         ));
     }
 
@@ -186,7 +191,7 @@ fn handle_function_definition_list(
         span: *list_span,
     };
 
-    create_and_store_lambda(function_name, params, value_expr, context)
+    create_and_store_lambda(function_name, params, value_expr, context, call_span)
 }
 
 /// Handle function definition when the first argument is a ParamList (current parser format)
@@ -194,14 +199,15 @@ fn handle_function_definition_paramlist(
     param_list: &crate::ast::ParamList,
     value_expr: &AstNode,
     context: &mut EvaluationContext,
-) -> Result<Value, SutraError> {
+    call_span: &Span,
+) -> SpannedResult {
     if param_list.required.is_empty() {
         return Err(context.report(
             ErrorKind::InvalidOperation {
                 operation: "define".to_string(),
                 operand_type: "function definition requires a name".to_string(),
             },
-            context.span_for_span(param_list.span),
+            to_source_span(param_list.span),
         ));
     }
 
@@ -215,7 +221,7 @@ fn handle_function_definition_paramlist(
         span: param_list.span,
     };
 
-    create_and_store_lambda(function_name, function_params, value_expr, context)
+    create_and_store_lambda(function_name, function_params, value_expr, context, call_span)
 }
 
 /// Create a lambda and store it in the appropriate scope
@@ -224,7 +230,8 @@ fn create_and_store_lambda(
     params: crate::ast::ParamList,
     value_expr: &AstNode,
     context: &mut EvaluationContext,
-) -> Result<Value, SutraError> {
+    call_span: &Span,
+) -> SpannedResult {
     let body = Box::new(value_expr.clone());
     let captured_env = find_and_capture_free_variables(&body, &params, context);
 
@@ -235,30 +242,39 @@ fn create_and_store_lambda(
     }));
 
     // Patch: Set in lexical frame if in local scope, else global world state
-    if context.lexical_env.len() > 1 {
-        context.set_lexical_var(&function_name, lambda.clone());
+    if context.env.len() > 1 {
+        context.set_var(&function_name, lambda.clone());
     } else {
         let path = Path(vec![function_name.clone()]);
         context.world.borrow_mut().set(&path, lambda.clone());
     }
 
-    Ok(lambda)
+    Ok(SpannedValue {
+        value: lambda,
+        span: *call_span,
+    })
 }
 
 /// Implements the (if ...) special form with lazy evaluation.
-pub const ATOM_IF: NativeLazyFn = |args, context, _span| {
-    validate_special_form_arity(args, 3, "if", context)?;
+pub const ATOM_IF: NativeFn = |args, context, call_span| {
+    if args.len() != 3 {
+        return Err(context.arity_mismatch("3", args.len(), to_source_span(*call_span)));
+    }
     let condition = &args[0];
     let then_branch = &args[1];
     let else_branch = &args[2];
 
-    let is_true = evaluate_condition_as_bool(condition, context)?;
-    let branch = if is_true { then_branch } else { else_branch };
+    let condition_result = evaluate_ast_node(condition, context)?;
+    let branch = if condition_result.value.is_truthy() {
+        then_branch
+    } else {
+        else_branch
+    };
     evaluate_ast_node(branch, context)
 };
 
 /// Implements the (cond ...) special form with lazy evaluation.
-pub const ATOM_COND: NativeLazyFn = |args, context, _span| {
+pub const ATOM_COND: NativeFn = |args, context, call_span| {
     for clause_node in args {
         let clause = match &*clause_node.value {
             Expr::List(items, _) => items,
@@ -297,47 +313,72 @@ pub const ATOM_COND: NativeLazyFn = |args, context, _span| {
             }
         }
 
-        let is_true = evaluate_condition_as_bool(condition, context)?;
-        if is_true {
+        let condition_result = evaluate_ast_node(condition, context)?;
+        if condition_result.value.is_truthy() {
             if clause.len() > 1 {
                 return evaluate_ast_node(&clause[1], context);
             } else {
-                // If condition is true and there's no expression, return true
-                return Ok(Value::Bool(true));
+                // If condition is true and there's no expression, return the condition result
+                return Ok(condition_result);
             }
         }
     }
 
-    Ok(Value::Nil) // No condition was met
+    Ok(SpannedValue {
+        value: Value::Nil,
+        span: *call_span,
+    }) // No condition was met
 };
 
 /// Implements the (and ...) special form with short-circuiting.
-pub const ATOM_AND: NativeLazyFn = |args, context, _span| {
-    let mut last_val = Value::Bool(true);
-    for arg in args {
-        let val = evaluate_ast_node(arg, context)?;
-        if !val.is_truthy() {
-            return Ok(Value::Bool(false));
-        }
-        last_val = val;
+pub const ATOM_AND: NativeFn = |args, context, call_span| {
+    if args.is_empty() {
+        return Ok(SpannedValue {
+            value: Value::Bool(true),
+            span: *call_span,
+        });
     }
-    Ok(last_val)
+
+    let mut last_result = SpannedValue {
+        value: Value::Bool(true),
+        span: *call_span,
+    };
+
+    for arg in args {
+        let result = evaluate_ast_node(arg, context)?;
+        if !result.value.is_truthy() {
+            return Ok(SpannedValue {
+                value: Value::Bool(false),
+                span: result.span,
+            });
+        }
+        last_result = result;
+    }
+    Ok(last_result)
 };
 
 /// Implements the (or ...) special form with short-circuiting.
-pub const ATOM_OR: NativeLazyFn = |args, context, _span| {
+pub const ATOM_OR: NativeFn = |args, context, call_span| {
+    let mut last_result = SpannedValue {
+        value: Value::Bool(false),
+        span: *call_span,
+    };
     for arg in args {
-        let val = evaluate_ast_node(arg, context)?;
-        if val.is_truthy() {
-            return Ok(val);
+        last_result = evaluate_ast_node(arg, context)?;
+        if last_result.value.is_truthy() {
+            return Ok(last_result);
         }
     }
-    Ok(Value::Bool(false))
+    Ok(last_result)
 };
 
 /// Implements the (lambda ...) special form.
-pub const ATOM_LAMBDA: NativeLazyFn = |args, context, span| {
-    validate_special_form_min_arity(args, 2, "lambda", context)?;
+pub const ATOM_LAMBDA: NativeFn = |args, context, call_span| {
+    if args.len() < 2 {
+        return Err(
+            context.arity_mismatch("at least 2", args.len(), to_source_span(*call_span))
+        );
+    }
     // Parse parameter list
     let param_list = match &*args[0].value {
         Expr::ParamList(pl) => pl.clone(),
@@ -347,7 +388,7 @@ pub const ATOM_LAMBDA: NativeLazyFn = |args, context, span| {
                     operation: "lambda".to_string(),
                     operand_type: "first argument must be a parameter list".to_string(),
                 },
-                context.span_for_span(*span),
+                to_source_span(*call_span),
             ));
         }
     };
@@ -359,9 +400,9 @@ pub const ATOM_LAMBDA: NativeLazyFn = |args, context, span| {
             return Err(context.report(
                 ErrorKind::DuplicateDefinition {
                     symbol: name.clone(),
-                    original_location: context.span_for_span(*span),
+                    original_location: to_source_span(*call_span),
                 },
-                context.span_for_span(*span),
+                to_source_span(*call_span),
             ));
         }
     }
@@ -370,9 +411,9 @@ pub const ATOM_LAMBDA: NativeLazyFn = |args, context, span| {
             return Err(context.report(
                 ErrorKind::DuplicateDefinition {
                     symbol: rest.clone(),
-                    original_location: context.span_for_span(*span),
+                    original_location: to_source_span(*call_span),
                 },
-                context.span_for_span(*span),
+                to_source_span(*call_span),
             ));
         }
     }
@@ -387,31 +428,38 @@ pub const ATOM_LAMBDA: NativeLazyFn = |args, context, span| {
         }
         let do_expr = Expr::List(
             std::iter::once(AstNode {
-                value: std::sync::Arc::new(Expr::Symbol("do".to_string(), *span)),
-                span: *span,
+                value: std::sync::Arc::new(Expr::Symbol("do".to_string(), *call_span)),
+                span: *call_span,
             })
             .chain(exprs)
             .collect(),
-            *span,
+            *call_span,
         );
         Box::new(AstNode {
             value: std::sync::Arc::new(do_expr),
-            span: *span,
+            span: *call_span,
         })
     };
 
     let captured_env = find_and_capture_free_variables(&body, &param_list, context);
 
-    Ok(Value::Lambda(Rc::new(Lambda {
-        params: param_list,
-        body,
-        captured_env,
-    })))
+    Ok(SpannedValue {
+        value: Value::Lambda(Rc::new(Lambda {
+            params: param_list,
+            body,
+            captured_env,
+        })),
+        span: *call_span,
+    })
 };
 
 /// Implements the (let ...) special form.
-pub const ATOM_LET: NativeLazyFn = |args, context, span| {
-    validate_special_form_min_arity(args, 2, "let", context)?;
+pub const ATOM_LET: NativeFn = |args, context, call_span| {
+    if args.len() < 2 {
+        return Err(
+            context.arity_mismatch("at least 2", args.len(), to_source_span(*call_span))
+        );
+    }
     // Parse bindings
     let bindings = match &*args[0].value {
         Expr::List(pairs, _) => pairs,
@@ -421,12 +469,12 @@ pub const ATOM_LET: NativeLazyFn = |args, context, span| {
                     operation: "let".to_string(),
                     operand_type: "first argument must be a list of bindings".to_string(),
                 },
-                context.span_for_span(*span),
+                to_source_span(args[0].span),
             ));
         }
     };
 
-    let mut new_context = context.clone_with_new_lexical_frame();
+    let mut new_context = context.with_new_frame();
 
     // Evaluate and bind each (name value) pair in order
     for pair in bindings {
@@ -439,7 +487,7 @@ pub const ATOM_LET: NativeLazyFn = |args, context, span| {
                             expected: "symbol".to_string(),
                             actual: "non-symbol".to_string(),
                         },
-                        context.span_for_span(*span),
+                        to_source_span(pair.span),
                     ));
                 }
             },
@@ -449,12 +497,12 @@ pub const ATOM_LET: NativeLazyFn = |args, context, span| {
                         operation: "let".to_string(),
                         operand_type: "each binding must be a (name value) pair".to_string(),
                     },
-                    context.span_for_span(*span),
+                    to_source_span(pair.span),
                 ));
             }
         };
-        let value = evaluate_ast_node(value_expr, &mut new_context)?;
-        new_context.set_lexical_var(&name, value);
+        let spanned_value = evaluate_ast_node(value_expr, &mut new_context)?;
+        new_context.set_var(&name, spanned_value.value);
     }
 
     // Body: single or multiple expressions
@@ -468,16 +516,16 @@ pub const ATOM_LET: NativeLazyFn = |args, context, span| {
         }
         let do_expr = Expr::List(
             std::iter::once(AstNode {
-                value: std::sync::Arc::new(Expr::Symbol("do".to_string(), *span)),
-                span: *span,
+                value: std::sync::Arc::new(Expr::Symbol("do".to_string(), *call_span)),
+                span: *call_span,
             })
             .chain(exprs)
             .collect(),
-            *span,
+            *call_span,
         );
         &AstNode {
             value: std::sync::Arc::new(do_expr),
-            span: *span,
+            span: *call_span,
         }
     };
 
@@ -485,19 +533,13 @@ pub const ATOM_LET: NativeLazyFn = |args, context, span| {
 };
 
 /// Applies a Lambda value to arguments in the given evaluation context.
-pub fn call_lambda(lambda: &Lambda, args: &[Value], context: &mut EvaluationContext) -> AtomResult {
-    let mut new_context = EvaluationContext {
-        world: Rc::clone(&context.world),
-        output: context.output.clone(),
-        source: context.source.clone(),
-        max_depth: context.max_depth,
-        depth: context.depth + 1,
-        current_span: context.current_span,
-        lexical_env: vec![lambda.captured_env.clone()],
-        test_file: context.test_file.clone(),
-        test_name: context.test_name.clone(),
-    };
-    new_context.lexical_env.push(HashMap::new());
+pub fn call_lambda(
+    lambda: &Lambda,
+    args: &[Value],
+    context: &mut EvaluationContext,
+    call_span: &Span,
+) -> SpannedResult {
+    let mut new_context = context.with_new_frame();
 
     // Bind parameters in the new top frame
     let fixed = lambda.params.required.len();
@@ -506,11 +548,11 @@ pub fn call_lambda(lambda: &Lambda, args: &[Value], context: &mut EvaluationCont
         return Err(context.arity_mismatch(
             &format!("{}{}", fixed, if variadic { "+" } else { "" }),
             args.len(),
-            context.span_for_span(Span::default()),
+            to_source_span(*call_span),
         ));
     }
     for (name, value) in lambda.params.required.iter().zip(args.iter()) {
-        new_context.set_lexical_var(name, value.clone());
+        new_context.set_var(name, value.clone());
     }
     if let Some(rest) = &lambda.params.rest {
         let rest_args = &args[fixed..];
@@ -521,7 +563,7 @@ pub fn call_lambda(lambda: &Lambda, args: &[Value], context: &mut EvaluationCont
                 cdr: rest_list,
             }));
         }
-        new_context.set_lexical_var(rest, rest_list);
+        new_context.set_var(rest, rest_list);
     }
 
     // Evaluate body in new context

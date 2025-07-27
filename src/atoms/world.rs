@@ -13,10 +13,14 @@
 //! - **Immutable World**: World state is copied and modified, never mutated in place
 //! - **Safe Defaults**: Missing values return `Value::Nil` rather than errors
 
-use crate::prelude::*;
 use crate::{
+    ast::{
+        spanned_value::SpannedValue,
+        value::{NativeFn, Value},
+    },
+    engine::evaluate_ast_node,
     errors::{to_source_span, ErrorReporting},
-    helpers, NativeEagerFn,
+    prelude::Path,
 };
 
 // ============================================================================
@@ -25,57 +29,123 @@ use crate::{
 
 /// Sets a value at a path in the world state.
 /// `(core/set! <path> <value>)`
-pub const ATOM_CORE_SET: NativeEagerFn = |args, context| {
-    helpers::validate_binary_arity(args, "core/set!", to_source_span(args[0].span), context)?;
-    let path = helpers::validate_path_arg(&args[0], args[0].span, "core/set!", context)?;
-    let value = args[1].clone();
-    context.world.borrow_mut().set(path, value);
-    Ok(Value::Nil)
+pub const ATOM_CORE_SET: NativeFn = |args, context, call_span| {
+    if args.len() != 2 {
+        return Err(context.arity_mismatch("2", args.len(), to_source_span(*call_span)));
+    }
+
+    let path_sv = evaluate_ast_node(&args[0], context)?;
+    let path = match &path_sv.value {
+        Value::Path(p) => p,
+        _ => {
+            return Err(context
+                .type_mismatch("Path", path_sv.value.type_name(), to_source_span(path_sv.span)))
+        }
+    };
+
+    let value_sv = evaluate_ast_node(&args[1], context)?;
+    context.world.borrow_mut().set(&path, value_sv.value);
+
+    Ok(SpannedValue {
+        value: Value::Nil,
+        span: *call_span,
+    })
 };
 
 /// Gets a value at a path in the world state.
 /// `(core/get <path>)`
-pub const ATOM_CORE_GET: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "core/get", to_source_span(args[0].span), context)?;
-    let path = helpers::validate_path_arg(&args[0], args[0].span, "core/get", context)?;
-    let value = context
-        .world
-        .borrow()
-        .get(path)
-        .cloned()
-        .unwrap_or_default();
-    Ok(value)
+pub const ATOM_CORE_GET: NativeFn = |args, context, call_span| {
+    if args.len() != 1 {
+        return Err(context.arity_mismatch("1", args.len(), to_source_span(*call_span)));
+    }
+
+    let path_sv = evaluate_ast_node(&args[0], context)?;
+    let path = match &path_sv.value {
+        Value::Path(p) => p,
+        _ => {
+            return Err(context
+                .type_mismatch("Path", path_sv.value.type_name(), to_source_span(path_sv.span)))
+        }
+    };
+
+    let value = context.world.borrow().get(&path).cloned().unwrap_or_default();
+
+    Ok(SpannedValue {
+        value,
+        span: *call_span,
+    })
 };
 
 /// Deletes a value at a path in the world state.
 /// `(core/del! <path>)`
-pub const ATOM_CORE_DEL: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "core/del!", to_source_span(args[0].span), context)?;
-    let path = helpers::validate_path_arg(&args[0], args[0].span, "core/del!", context)?;
-    context.world.borrow_mut().del(path);
-    Ok(Value::Nil)
+pub const ATOM_CORE_DEL: NativeFn = |args, context, call_span| {
+    if args.len() != 1 {
+        return Err(context.arity_mismatch("1", args.len(), to_source_span(*call_span)));
+    }
+
+    let path_sv = evaluate_ast_node(&args[0], context)?;
+    let path = match &path_sv.value {
+        Value::Path(p) => p,
+        _ => {
+            return Err(context
+                .type_mismatch("Path", path_sv.value.type_name(), to_source_span(path_sv.span)))
+        }
+    };
+
+    context.world.borrow_mut().del(&path);
+
+    Ok(SpannedValue {
+        value: Value::Nil,
+        span: *call_span,
+    })
 };
 
 /// Returns true if a path exists in the world state.
 /// `(core/exists? <path>)`
-pub const ATOM_EXISTS: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "core/exists?", to_source_span(args[0].span), context)?;
-    let path = helpers::validate_path_arg(&args[0], args[0].span, "core/exists?", context)?;
-    let exists = context.world.borrow().get(path).is_some();
-    Ok(Value::Bool(exists))
+pub const ATOM_EXISTS: NativeFn = |args, context, call_span| {
+    if args.len() != 1 {
+        return Err(context.arity_mismatch("1", args.len(), to_source_span(*call_span)));
+    }
+
+    let path_sv = evaluate_ast_node(&args[0], context)?;
+    let path = match &path_sv.value {
+        Value::Path(p) => p,
+        _ => {
+            return Err(context
+                .type_mismatch("Path", path_sv.value.type_name(), to_source_span(path_sv.span)))
+        }
+    };
+
+    let exists = context.world.borrow().get(&path).is_some();
+
+    Ok(SpannedValue {
+        value: Value::Bool(exists),
+        span: *call_span,
+    })
 };
 
 /// Creates a path from a string.
 /// `(path <string>)`
-pub const ATOM_PATH: NativeEagerFn = |args, context| {
-    helpers::validate_unary_arity(args, "path", to_source_span(args[0].span), context)?;
-    match &args[0] {
-        Value::String(s) => {
-            let path = Path(vec![s.clone()]);
-            Ok(Value::Path(path))
-        }
-        _ => {
-            Err(context.type_mismatch("String", args[0].type_name(), to_source_span(args[0].span)))
-        }
+pub const ATOM_PATH: NativeFn = |args, context, call_span| {
+    if args.len() != 1 {
+        return Err(context.arity_mismatch("1", args.len(), to_source_span(*call_span)));
     }
+
+    let string_sv = evaluate_ast_node(&args[0], context)?;
+    let s = match &string_sv.value {
+        Value::String(s) => s,
+        _ => {
+            return Err(context.type_mismatch(
+                "String",
+                string_sv.value.type_name(),
+                to_source_span(string_sv.span),
+            ))
+        }
+    };
+
+    let path = Path(vec![s.clone()]);
+    Ok(SpannedValue {
+        value: Value::Path(path),
+        span: *call_span,
+    })
 };

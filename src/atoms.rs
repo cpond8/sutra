@@ -44,7 +44,6 @@ use serde::{Deserialize, Serialize};
 use crate::prelude::*;
 
 // Domain modules with aliases
-use crate::atoms::helpers::AtomResult;
 use crate::macros::{MacroExpansionContext, MacroRegistry};
 
 // Using a concrete, seedable PRNG for determinism.
@@ -318,9 +317,6 @@ impl SharedOutput {
 // MODULAR ATOM IMPLEMENTATIONS
 // ============================================================================
 
-// Core infrastructure shared by all atoms
-pub mod helpers;
-
 // Domain-specific atom modules
 pub mod collections;
 pub mod execution;
@@ -349,14 +345,14 @@ pub use test::{TestDefinition, TEST_REGISTRY};
 #[macro_export]
 macro_rules! register_eager {
     ($world:expr, $name:expr, $func:expr) => {
-        $world.set(&Path(vec![$name.to_string()]), Value::NativeEagerFn($func));
+        $world.set(&Path(vec![$name.to_string()]), Value::NativeFn($func));
     };
 }
 
 #[macro_export]
 macro_rules! register_lazy {
     ($world:expr, $name:expr, $func:expr) => {
-        $world.set(&Path(vec![$name.to_string()]), Value::NativeLazyFn($func));
+        $world.set(&Path(vec![$name.to_string()]), Value::NativeFn($func));
     };
 }
 
