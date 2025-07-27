@@ -10,7 +10,7 @@ use crate::{
     errors::{self, ErrorKind, ErrorReporting, SutraError, to_source_span},
     runtime::source::SourceContext,
     syntax::parser,
-    validation::semantic::ValidationContext,
+    validation::ValidationContext,
     MacroTemplate,
 };
 

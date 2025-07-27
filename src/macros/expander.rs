@@ -19,7 +19,7 @@ use crate::{
     errors::{ErrorKind, ErrorReporting, SutraError, to_source_span},
     prelude::*,
     runtime::source::SourceContext,
-    validation::semantic::ValidationContext,
+    validation::ValidationContext,
     macros::{MacroExpansionContext, MacroExpansionResult, MacroExpansionStep, MAX_MACRO_RECURSION_DEPTH},
     MacroTemplate,
 };

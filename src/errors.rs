@@ -449,3 +449,39 @@ pub fn unspanned() -> miette::SourceSpan {
 pub fn to_source_span(span: crate::ast::Span) -> miette::SourceSpan {
     miette::SourceSpan::from(span.start..span.end)
 }
+
+/// General-purpose error creation context used throughout the codebase
+/// for creating properly contextualized SutraError instances
+pub struct ValidationContext {
+    pub source: SourceContext,
+    pub phase: String,
+}
+
+impl ValidationContext {
+    pub fn new(source: SourceContext, phase: String) -> Self {
+        Self { source, phase }
+    }
+}
+
+impl ErrorReporting for ValidationContext {
+    fn report(&self, kind: ErrorKind, span: SourceSpan) -> SutraError {
+        let error_code = format!("sutra::{}::{}", self.phase, kind.code_suffix());
+
+        SutraError {
+            kind,
+            source_info: SourceInfo {
+                source: self.source.to_named_source(),
+                primary_span: span,
+                file_context: FileContext::Validation {
+                    phase: self.phase.clone(),
+                },
+            },
+            diagnostic_info: DiagnosticInfo {
+                help: None,
+                related_spans: Vec::new(),
+                error_code,
+                is_warning: false,
+            },
+        }
+    }
+}

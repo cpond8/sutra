@@ -14,7 +14,7 @@ use crate::{
     errors::{ErrorKind, ErrorReporting},
     macros::MacroExpansionResult as macro_result,
     runtime::source::SourceContext,
-    validation::semantic::ValidationContext,
+    validation::ValidationContext,
 };
 
 // ===================================================================================================

@@ -2,7 +2,7 @@ use crate::{
     errors::{to_source_span, ErrorKind, SutraError},
     prelude::*,
     runtime::source::SourceContext,
-    MacroDefinition,
+    MacroDefinition, MacroTemplate,
 };
 
 /// Validates an AST for semantic correctness: undefined symbols and macro arity.
@@ -119,7 +119,7 @@ fn create_semantic_error(kind: ErrorKind, node: &AstNode) -> SutraError {
     SutraError {
         kind,
         source_info: SourceInfo {
-            source: Arc::new(NamedSource::new("semantic_validation", "".to_string())),
+            source: Arc::new(NamedSource::new("semantic_validation", "")),
             primary_span: span,
             file_context: FileContext::Validation {
                 phase: "Semantic".into(),

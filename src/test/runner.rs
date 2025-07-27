@@ -8,7 +8,7 @@ use crate::{
     prelude::*,
     runtime::{self, eval, source},
     syntax::parser,
-    validation::semantic::ValidationContext,
+    validation::ValidationContext,
 };
 
 /// Executes test code with proper macro expansion and special form preservation.
@@ -266,7 +266,7 @@ impl TestRunner {
 
         // Look for value or error clause in expect form
         for item in items {
-            if let Some(expectation) = Self::extract_clause(item, test_form, source_context)? {
+            if let Some(expectation) = Self::extract_clause(&item, test_form, source_context)? {
                 return Ok(expectation);
             }
         }

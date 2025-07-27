@@ -15,7 +15,7 @@ use crate::{
 };
 
 use crate::errors::{self, ErrorKind, ErrorReporting, SutraError};
-use crate::validation::semantic::ValidationContext;
+use crate::validation::ValidationContext;
 
 // ============================================================================
 // OUTPUT TYPES - Generic output handling for CLI and testing
@@ -225,7 +225,7 @@ impl MacroProcessor {
 
         // Step 3: Perform semantic validation
         let validation_errors =
-            semantic::validate_expanded_ast(expanded, &macro_registry, world, source_context);
+            semantic::validate_ast_semantics(expanded, &macro_registry, world, source_context);
 
         // Step 4: Test context is handled automatically by EvaluationContext
         // when it creates errors, so no post-processing needed here

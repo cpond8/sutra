@@ -16,7 +16,7 @@ use crate::{
     errors::{self, ErrorKind, ErrorReporting, SutraError},
     runtime::source::SourceContext,
     test::runner::TestRunner,
-    validation::{grammar, semantic::ValidationContext},
+    validation::{grammar, ValidationContext},
 };
 
 // ============================================================================
@@ -165,7 +165,7 @@ pub fn run() {
         }
 
         ArgsCommand::ValidateGrammar => {
-            let validation_result = grammar::validate_grammar("src/syntax/grammar.pest")
+            let validation_errors = grammar::validate_grammar("src/syntax/grammar.pest")
                 .unwrap_or_else(|e| {
                     let context = ValidationContext {
                         source: SourceContext::from_file("sutra-cli", ""),
@@ -180,9 +180,8 @@ pub fn run() {
                     print_error(err);
                     process::exit(1);
                 });
-            let valid = validation_result.is_valid();
-            let errors = validation_result
-                .errors
+            let valid = validation_errors.is_empty();
+            let errors = validation_errors
                 .iter()
                 .map(|e| e.to_string())
                 .collect();

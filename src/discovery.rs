@@ -10,7 +10,7 @@ use crate::{
     prelude::*,
     runtime::source::SourceContext,
     syntax::parser,
-    validation::semantic::ValidationContext,
+    validation::ValidationContext,
 };
 
 // =====================
