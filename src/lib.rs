@@ -59,7 +59,7 @@ mod sutra_harness {
         // Run the actual Sutra test suite as part of `cargo test`
         // This ensures that both `cargo test` and `sutra test` run the same tests
         let test_path = Path::new("tests").to_path_buf();
-        
+
         // Use the same test runner that the CLI uses
         match cli::run_tests(test_path) {
             Ok(()) => {

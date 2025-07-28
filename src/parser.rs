@@ -73,34 +73,20 @@ fn calculate_span(nodes: &[AstNode]) -> Span {
 // ============================================================================
 
 fn build_node(pair: Pair<Rule>, source: &SourceContext) -> Result<AstNode, SutraError> {
-    let span = Span {
-        start: pair.as_span().start(),
-        end: pair.as_span().end(),
-    };
+    let span = extract_span(&pair);
 
     let expr = match pair.as_rule() {
-        Rule::expr => {
-            let inner = pair.into_inner().next().unwrap(); // grammar guarantees inner exists
-            return build_node(inner, source);
-        }
-
-        Rule::atom => {
-            let inner = pair.into_inner().next().unwrap(); // grammar guarantees inner exists
+        // Skip wrapper rules - grammar should handle this directly
+        Rule::expr | Rule::atom => {
+            let inner = pair.into_inner().next().unwrap();
             return build_node(inner, source);
         }
 
         Rule::number => {
-            let text = pair.as_str();
-            let value = text.parse::<f64>().map_err(|_| {
-                make_error(
-                    source,
-                    ErrorKind::InvalidLiteral {
-                        literal_type: "number".into(),
-                        value: text.into(),
-                    },
-                    span,
-                )
-            })?;
+            let value = pair
+                .as_str()
+                .parse::<f64>()
+                .map_err(|_| invalid_literal_error(source, "number", pair.as_str(), span))?;
             Expr::Number(value, span)
         }
 
@@ -108,16 +94,7 @@ fn build_node(pair: Pair<Rule>, source: &SourceContext) -> Result<AstNode, Sutra
             let value = match pair.as_str() {
                 "true" => true,
                 "false" => false,
-                text => {
-                    return Err(make_error(
-                        source,
-                        ErrorKind::InvalidLiteral {
-                            literal_type: "boolean".into(),
-                            value: text.into(),
-                        },
-                        span,
-                    ))
-                }
+                text => return Err(invalid_literal_error(source, "boolean", text, span)),
             };
             Expr::Bool(value, span)
         }
@@ -132,14 +109,7 @@ fn build_node(pair: Pair<Rule>, source: &SourceContext) -> Result<AstNode, Sutra
             if text.contains('.') {
                 let components: Vec<String> = text.split('.').map(String::from).collect();
                 if components.iter().any(|c| c.is_empty()) {
-                    return Err(make_error(
-                        source,
-                        ErrorKind::InvalidLiteral {
-                            literal_type: "path".into(),
-                            value: text.into(),
-                        },
-                        span,
-                    ));
+                    return Err(invalid_literal_error(source, "path", text, span));
                 }
                 Expr::Path(Path(components), span)
             } else {
@@ -154,22 +124,16 @@ fn build_node(pair: Pair<Rule>, source: &SourceContext) -> Result<AstNode, Sutra
         }
 
         Rule::quote => {
-            let inner = pair.into_inner().next().ok_or_else(|| {
-                make_error(
-                    source,
-                    ErrorKind::MissingElement {
-                        element: "expression after quote".into(),
-                    },
-                    span,
-                )
-            })?;
+            let inner = pair
+                .into_inner()
+                .next()
+                .ok_or_else(|| missing_element_error(source, "expression after quote", span))?;
             let quoted = build_node(inner, source)?;
             Expr::Quote(Box::new(quoted), span)
         }
 
         Rule::param_list => {
-            let param_list = build_param_list(pair, source)?;
-            return Ok(param_list);
+            return build_param_list(pair, source);
         }
 
         Rule::lambda_form => {
@@ -181,15 +145,10 @@ fn build_node(pair: Pair<Rule>, source: &SourceContext) -> Result<AstNode, Sutra
         }
 
         Rule::spread_arg => {
-            let symbol_pair = pair.into_inner().next().ok_or_else(|| {
-                make_error(
-                    source,
-                    ErrorKind::MissingElement {
-                        element: "symbol after spread".into(),
-                    },
-                    span,
-                )
-            })?;
+            let symbol_pair = pair
+                .into_inner()
+                .next()
+                .ok_or_else(|| missing_element_error(source, "symbol after spread", span))?;
             let symbol = build_node(symbol_pair, source)?;
             Expr::Spread(Box::new(symbol))
         }
@@ -212,10 +171,7 @@ fn build_node(pair: Pair<Rule>, source: &SourceContext) -> Result<AstNode, Sutra
 }
 
 fn build_param_list(pair: Pair<Rule>, source: &SourceContext) -> Result<AstNode, SutraError> {
-    let span = Span {
-        start: pair.as_span().start(),
-        end: pair.as_span().end(),
-    };
+    let span = extract_span(&pair);
     let param_items: Vec<_> = pair
         .into_inner()
         .next()
@@ -239,28 +195,17 @@ fn build_param_list(pair: Pair<Rule>, source: &SourceContext) -> Result<AstNode,
                 return Err(make_error(
                     source,
                     ErrorKind::ParameterOrderViolation {
-                        rest_span: to_source_span(Span {
-                            start: item.as_span().start(),
-                            end: item.as_span().end(),
-                        }),
+                        rest_span: to_source_span(extract_span(&item)),
                     },
-                    Span {
-                        start: item.as_span().start(),
-                        end: item.as_span().end(),
-                    },
+                    extract_span(&item),
                 ));
             }
             _ => {
-                return Err(make_error(
+                return Err(invalid_literal_error(
                     source,
-                    ErrorKind::InvalidLiteral {
-                        literal_type: "parameter".into(),
-                        value: format!("{:?}", item.as_rule()),
-                    },
-                    Span {
-                        start: item.as_span().start(),
-                        end: item.as_span().end(),
-                    },
+                    "parameter",
+                    &format!("{:?}", item.as_rule()),
+                    extract_span(&item),
                 ));
             }
         }
@@ -278,41 +223,32 @@ fn build_param_list(pair: Pair<Rule>, source: &SourceContext) -> Result<AstNode,
     })
 }
 
-fn build_lambda_form(pair: Pair<Rule>, source: &SourceContext) -> Result<AstNode, SutraError> {
-    let span = Span {
-        start: pair.as_span().start(),
-        end: pair.as_span().end(),
-    };
+fn build_special_form(
+    pair: Pair<Rule>,
+    source: &SourceContext,
+    form_name: &str,
+) -> Result<AstNode, SutraError> {
+    let span = extract_span(&pair);
     let mut inner = pair.into_inner();
 
     let param_list = build_param_list(
-        inner.next().ok_or_else(|| {
-            make_error(
-                source,
-                ErrorKind::MissingElement {
-                    element: "parameter list".into(),
-                },
-                span,
-            )
-        })?,
+        inner
+            .next()
+            .ok_or_else(|| missing_element_error(source, "parameter list", span))?,
         source,
     )?;
 
     let body = build_node(
-        inner.next().ok_or_else(|| {
-            make_error(
-                source,
-                ErrorKind::MissingElement {
-                    element: "function body".into(),
-                },
-                span,
-            )
-        })?,
+        inner
+            .next()
+            .ok_or_else(|| missing_element_error(source, "function body", span))?,
         source,
     )?;
 
+    // Create synthetic form symbol - NOTE: This is an architectural smell
+    // These should be dedicated AST variants, not artificial lists
     let form_symbol = Spanned {
-        value: Expr::Symbol("lambda".to_string(), span).into(),
+        value: Expr::Symbol(form_name.to_string(), span).into(),
         span,
     };
 
@@ -322,53 +258,50 @@ fn build_lambda_form(pair: Pair<Rule>, source: &SourceContext) -> Result<AstNode
     })
 }
 
+fn build_lambda_form(pair: Pair<Rule>, source: &SourceContext) -> Result<AstNode, SutraError> {
+    build_special_form(pair, source, "lambda")
+}
+
 fn build_define_form(pair: Pair<Rule>, source: &SourceContext) -> Result<AstNode, SutraError> {
-    let span = Span {
-        start: pair.as_span().start(),
-        end: pair.as_span().end(),
-    };
-    let mut inner = pair.into_inner();
-
-    let param_list = build_param_list(
-        inner.next().ok_or_else(|| {
-            make_error(
-                source,
-                ErrorKind::MissingElement {
-                    element: "parameter list".into(),
-                },
-                span,
-            )
-        })?,
-        source,
-    )?;
-
-    let body = build_node(
-        inner.next().ok_or_else(|| {
-            make_error(
-                source,
-                ErrorKind::MissingElement {
-                    element: "function body".into(),
-                },
-                span,
-            )
-        })?,
-        source,
-    )?;
-
-    let form_symbol = Spanned {
-        value: Expr::Symbol("define".to_string(), span).into(),
-        span,
-    };
-
-    Ok(Spanned {
-        value: Expr::List(vec![form_symbol, param_list, body], span).into(),
-        span,
-    })
+    build_special_form(pair, source, "define")
 }
 
 // ============================================================================
 // UTILITIES
 // ============================================================================
+
+fn extract_span(pair: &Pair<Rule>) -> Span {
+    Span {
+        start: pair.as_span().start(),
+        end: pair.as_span().end(),
+    }
+}
+
+fn invalid_literal_error(
+    source: &SourceContext,
+    literal_type: &str,
+    value: &str,
+    span: Span,
+) -> SutraError {
+    make_error(
+        source,
+        ErrorKind::InvalidLiteral {
+            literal_type: literal_type.into(),
+            value: value.into(),
+        },
+        span,
+    )
+}
+
+fn missing_element_error(source: &SourceContext, element: &str, span: Span) -> SutraError {
+    make_error(
+        source,
+        ErrorKind::MissingElement {
+            element: element.into(),
+        },
+        span,
+    )
+}
 
 fn unescape_string(text: &str) -> Result<String, SutraError> {
     // Remove surrounding quotes
@@ -377,20 +310,20 @@ fn unescape_string(text: &str) -> Result<String, SutraError> {
     let mut chars = inner.chars();
 
     while let Some(ch) = chars.next() {
-        if ch == '\\' {
-            match chars.next() {
-                Some('n') => result.push('\n'),
-                Some('t') => result.push('\t'),
-                Some('\\') => result.push('\\'),
-                Some('"') => result.push('"'),
-                Some(other) => {
-                    result.push('\\');
-                    result.push(other);
-                }
-                None => result.push('\\'),
-            }
-        } else {
+        if ch != '\\' {
             result.push(ch);
+            continue;
+        }
+        match chars.next() {
+            Some('n') => result.push('\n'),
+            Some('t') => result.push('\t'),
+            Some('\\') => result.push('\\'),
+            Some('"') => result.push('"'),
+            Some(other) => {
+                result.push('\\');
+                result.push(other);
+            }
+            None => result.push('\\'),
         }
     }
 
