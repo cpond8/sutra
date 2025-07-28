@@ -1,0 +1,164 @@
+;; Sutra Core Special Forms Tests
+;;
+;; This suite validates the behavior of special forms including define,
+;; lambda, let, if, do, and cond.
+
+;;;
+;;; 1. Define Special Form
+;;;
+
+(test "define: function definition"
+      (expect (value 7)
+              (tags "define"))
+      (do
+        (define (add x y) (+ x y))
+        (add 3 4)))  ; => 7
+
+(test "define: variable definition"
+      (expect (value 42)
+              (tags "define"))
+      (do
+        (define answer 42)
+        answer))  ; => 42
+
+(test "define: function with multiple expressions"
+      (expect (value 15)
+              (tags "define"))
+      (do
+        (define (complex-func x)
+          (let ((y (+ x 5)))
+            (+ y 10)))
+        (complex-func 0)))  ; => 15
+
+(test "define: variadic function"
+      (expect (value 10)
+              (tags "define"))
+      (do
+        (define (sum x y ...rest)
+          (+ x y (car rest)))
+        (sum 1 2 7)))  ; => 10
+
+(test "define: nested function definitions"
+      (expect (value 8)
+              (tags "define"))
+      (do
+        (define (outer x)
+          (do
+            (define (inner y)
+              (+ x y))
+            (inner 3)))
+        (outer 5)))  ; => 8
+
+(test "define: function that returns lambda"
+      (expect (value 12)
+              (tags "define"))
+      (do
+        (define (make-adder n)
+          (lambda (x)
+            (+ x n)))
+        (define add5 (make-adder 5))
+        (add5 7)))  ; => 12
+
+(test "define: function with no parameters"
+      (expect (value 42)
+              (tags "define"))
+      (do
+        (define (get-answer) 42)
+        (get-answer)))  ; => 42
+
+(test "define: error on undefined function"
+      (expect (error Runtime)
+              (tags "define"))
+      (undefined-function 1 2 3))  ; => error
+
+;;;
+;;; 2. Lambda Special Form
+;;;
+
+(test "lambda: basic invocation"
+      (expect (value 7)
+              (tags "lambda"))
+      ((lambda (x y)
+         (+ x y))
+       3 4))  ; => 7
+
+(test "lambda: variadic arguments"
+      (expect (value 6)
+              (tags "lambda"))
+      ((lambda (x y ...rest)
+         (+ x y (car rest)))
+       1 2 3))  ; => 6
+
+(test "lambda: arity error (too few)"
+      (expect (error Runtime)
+              (tags "lambda"))
+      ((lambda (x y) (+ x y))
+       1))  ; => arity error
+
+(test "lambda: arity error (too many)"
+      (expect (error Runtime)
+              (tags "lambda"))
+      ((lambda (x y) (+ x y))
+       1 2 3))  ; => arity error
+
+(test "lambda: error on non-list parameter"
+      (expect (error Runtime)
+              (tags "lambda"))
+      ((lambda 42 (+ x y))
+       1 2))  ; => error on non-list parameter
+
+(test "lambda: used as argument"
+      (expect (value 3)
+              (tags "lambda"))
+      ((lambda (f x) (f x))
+       (lambda (n) (+ n 1))
+       2))  ; => 3
+
+(test "lambda: higher-order (returns lambda)"
+      (expect (value 15)
+              (tags "lambda"))
+      (let ((add-ten ((lambda (n)
+                       (lambda (x) (+ x n)))
+                     10)))
+        (add-ten 5)))  ; => 15
+
+;;;
+;;; 3. Let Special Form
+;;;
+
+(test "let: basic bindings"
+      (expect (value 12)
+              (tags "let"))
+      (let ((a 5)
+            (b 7))
+        (+ a b)))  ; => 12
+
+(test "let: shadowing outer lexical variable"
+      (expect (value 4)
+              (tags "let"))
+      (let ((x 1))
+        (let ((x 2)
+              (y x))
+          (+ x y))))  ; => 4
+
+(test "let: sequential binding and shadowing"
+      (expect (value 6)
+              (tags "let"))
+      (let ((x 1)
+            (y (+ x 1))
+            (z (+ y 1)))
+        (+ x y z)))  ; => 6
+
+(test "let: bindings visible in later bindings"
+      (expect (value 15)
+              (tags "let"))
+      (let ((a 5)
+            (b (+ a 5))
+            (c (+ b 5)))
+        c))  ; => 15
+
+(test "let: error on non-pair binding"
+      (expect (error Runtime)
+              (tags "let"))
+      (let (42)
+        (+ 1 2)))  ; => error on non-pair binding

@@ -1,6 +1,6 @@
-;; Sutra String Atom Tests
+;; Sutra String Builtin Tests
 ;;
-;; This suite validates the behavior of string manipulation atoms.
+;; This suite validates the behavior of string manipulation builtin functions.
 
 ;;;
 ;;; 1. String Concatenation (str+)

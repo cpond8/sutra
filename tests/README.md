@@ -4,13 +4,20 @@ A comprehensive, author-focused testing framework for the Sutra engine, designed
 
 ---
 
+# Sutra Test Suite & Harness
+
+A comprehensive, author-focused testing framework for the Sutra engine, designed for maximal transparency, compositionality, and reliability. All tests are written in the Verse language, except for Rust-based CLI/integration regression tests.
+
+---
+
 ## Test Suite Structure
 
-- **atoms/**: Primitive operations (math, logic, comparison, string, list, etc.)
-- **macros/**: Macro expansion, assignment, and world state macros
-- **runtime/**: Control flow, consistency, and world state
-- **syntax/**: Parsing, grammar, and security
-- **io/**: Output and display atoms/macros
+- **core/**: Core language constructs (literals, collections, special forms, scoping)
+- **builtins/**: Built-in functions that operate on values (arithmetic, comparison, logic, etc.)
+- **world/**: World state manipulation macros (assignment, persistence)
+- **control/**: Control flow and execution semantics (conditionals, execution, consistency)
+- **io/**: Input/output operations (output, display)
+- **syntax/**: Parsing and syntax validation (grammar errors)
 - **cli_regression.rs**: Rust integration test for CLI error diagnostics
 
 Each `.sutra` file is a suite of Verse-language tests for a specific feature or domain. `cli_regression.rs` is a Rust test that ensures CLI errors are always rendered as miette diagnostics.
@@ -19,35 +26,52 @@ Each `.sutra` file is a suite of Verse-language tests for a specific feature or 
 
 ## Test Types and Coverage
 
-### Atoms
-- **Purpose:** Validate all primitive operations (math, logic, comparison, string, list, etc.)
+### Core Language Constructs
+
+- **Purpose:** Validate fundamental language features and special forms
 - **Examples:**
-  - `math.sutra`: Tests for `+`, `-`, `*`, `/`, `mod`, including edge cases and error handling
-  - `logic.sutra`: Tests for `not`, truthiness, and arity errors
+  - `literals.sutra`: Tests for numbers, booleans, strings, nil parsing and evaluation
+  - `collections.sutra`: Tests for lists, quoting, and basic collection operations
+  - `special_forms.sutra`: Tests for `define`, `lambda`, `let`, including closures and scoping
+  - `scoping.sutra`: Tests for lexical scoping, closures, variable capture, and shadowing
+
+### Built-in Functions
+
+- **Purpose:** Validate all built-in functions that operate on values
+- **Examples:**
+  - `arithmetic.sutra`: Tests for `+`, `-`, `*`, `/`, `mod`, including edge cases and error handling
   - `comparison.sutra`: Tests for `eq?`, `gt?`, `lt?`, and their aliases, including type and arity errors
-  - `define.sutra`: Tests for function/variable definition, closures, variadics, and error cases
+  - `logic.sutra`: Tests for `not`, truthiness, and arity errors
+  - `string.sutra`: Tests for string manipulation functions like `str+`
+  - `list.sutra`: Tests for `car`, `cdr`, `cons`, and other list operations
+  - `random.sutra`: Tests for `rand` and other random functions
 
-### Macros
-- **Purpose:** Validate macro expansion, assignment, and world state manipulation
-- **Examples:**
-  - `assignment.sutra`: Tests for `set!`, `get`, `del!`, `add`, `sub`, `inc!`, `dec!`, including error handling
+### World State Operations
 
-### Runtime
-- **Purpose:** Validate control flow, consistency, and world state
+- **Purpose:** Validate world state manipulation and persistence
 - **Examples:**
-  - `control.sutra`: Tests for `if`, `do`, `cond`, including arity and type errors
+  - `assignment.sutra`: Tests for `set!`, `get`, `del!`, `add!`, `sub!`, `inc!`, `dec!`, including error handling
+  - `persistence.sutra`: Tests for world state consistency and persistence across operations
+
+### Control Flow
+
+- **Purpose:** Validate control flow constructs and execution semantics
+- **Examples:**
+  - `conditionals.sutra`: Tests for `if`, `cond`, including arity and type errors
+  - `execution.sutra`: Tests for `do`, sequencing, and execution order
   - `consistency.sutra`: Ensures test and production execution paths are identical
 
-### Syntax
-- **Purpose:** Validate parsing, grammar, and security
-- **Examples:**
-  - `parsing.sutra`: Tests for numbers, booleans, strings, lists, blocks, and error cases (unclosed, invalid, etc.)
-  - `security.sutra`: Tests for path traversal and invalid path handling
+### Input/Output
 
-### IO
-- **Purpose:** Validate output atoms/macros
+- **Purpose:** Validate input/output operations
 - **Examples:**
-  - `output.sutra`: Tests for `print` and `display`, including arity errors and output matching
+  - `output.sutra`: Tests for `print`, `println`, `display`, including arity errors and output matching
+
+### Syntax and Parsing
+
+- **Purpose:** Validate parsing and syntax error handling
+- **Examples:**
+  - `parsing.sutra`: Tests for grammar error detection (unclosed lists, invalid escapes, etc.)
 
 ### CLI Regression
 - **Purpose:** Ensure all CLI errors are rendered as miette diagnostics

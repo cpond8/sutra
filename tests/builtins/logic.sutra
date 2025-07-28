@@ -1,6 +1,6 @@
-;; Sutra Logic Atom Tests
+;; Sutra Logic Builtin Tests
 ;;
-;; This suite validates the behavior of logical atoms.
+;; This suite validates the behavior of logical builtin functions.
 
 ;;;
 ;;; 1. Negation (not)

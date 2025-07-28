@@ -1,7 +1,7 @@
-;; Sutra Assignment & World Macro Tests
+;; Sutra World State Assignment Tests
 ;;
-;; This suite validates the behavior of macros that interact with the
-;; world state, such as setting, getting, and deleting values.
+;; This suite validates the behavior of world state manipulation macros
+;; such as setting, getting, and deleting values.
 
 ;;;
 ;;; 1. Set and Get

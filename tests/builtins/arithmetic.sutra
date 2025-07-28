@@ -1,8 +1,8 @@
-;; Sutra Math Atom Tests
+;; Sutra Arithmetic Builtin Tests
 ;;
-;; This suite validates the behavior of all mathematical atoms, including
-;; standard operations, edge cases, and error conditions as specified in
-;; the canonical language reference.
+;; This suite validates the behavior of arithmetic builtin functions,
+;; including standard operations, edge cases, and error conditions as
+;; specified in the canonical language reference.
 
 ;;;
 ;;; 1. Addition (+)

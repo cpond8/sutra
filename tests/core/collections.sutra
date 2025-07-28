@@ -1,0 +1,23 @@
+;; Sutra Core Collection Tests
+;;
+;; This suite validates the parsing and evaluation of collections
+;; including lists, quoting, and basic collection operations.
+
+;;;
+;;; 1. Quoted Collections
+;;;
+
+(test "collections: quoted symbol"
+      (expect (value 'foo)
+              (tags "collections"))
+      'foo)  ; => 'foo
+
+(test "collections: quoted list"
+      (expect (value '(1 "two" true))
+              (tags "collections"))
+      '(1 "two" true))  ; => '(1 "two" true)
+
+(test "collections: nested quoted list"
+      (expect (value '(1 (2 (3))))
+              (tags "collections"))
+      '(1 (2 (3))))  ; => '(1 (2 (3)))

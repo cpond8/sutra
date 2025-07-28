@@ -1,0 +1,70 @@
+;; Sutra Core Literal Tests
+;;
+;; This suite validates the parsing and evaluation of literal values
+;; including numbers, booleans, strings, and nil.
+
+;;;
+;;; 1. Number Literals
+;;;
+
+(test "literals: integer"
+      (expect (value 42)
+              (tags "literals"))
+      42)  ; => 42
+
+(test "literals: negative integer"
+      (expect (value -100)
+              (tags "literals"))
+      -100)  ; => -100
+
+(test "literals: float"
+      (expect (value 3.14)
+              (tags "literals"))
+      3.14)  ; => 3.14
+
+;;;
+;;; 2. Boolean Literals
+;;;
+
+(test "literals: true"
+      (expect (value true)
+              (tags "literals"))
+      true)  ; => true
+
+(test "literals: false"
+      (expect (value false)
+              (tags "literals"))
+      false)  ; => false
+
+;;;
+;;; 3. Nil Literal
+;;;
+
+(test "literals: nil"
+      (expect (value nil)
+              (tags "literals"))
+      nil)  ; => nil
+
+;;;
+;;; 4. String Literals
+;;;
+
+(test "literals: simple string"
+      (expect (value "hello")
+              (tags "literals"))
+      "hello")  ; => "hello"
+
+(test "literals: string with escapes"
+      (expect (value "a\nb\"c\\d")
+              (tags "literals"))
+      "a\nb\"c\\d")  ; => "a\nb\"c\\d"
+
+(test "literals: empty string"
+      (expect (value "")
+              (tags "literals"))
+      "")  ; => ""
+
+(test "literals: string with embedded text"
+      (expect (value "...oops")
+              (tags "literals"))
+      "...oops")  ; => "...oops"

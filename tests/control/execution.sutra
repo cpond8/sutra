@@ -1,0 +1,22 @@
+;; Sutra Control Flow - Execution Tests
+;;
+;; This suite validates the behavior of execution constructs like `do`.
+
+;;;
+;;; 1. Do Execution
+;;;
+
+(test "execution: do - empty"
+      (expect (value nil)
+              (tags "execution"))
+      (do))  ; => nil
+
+(test "execution: do - sequence"
+      (expect (value 3)
+              (tags "execution"))
+      (do (set! x 1) (set! y 2) (+ x y)))  ; => 3
+
+(test "execution: do - returns last expression"
+      (expect (value "last")
+              (tags "execution"))
+      (do "first" "second" "last"))  ; => "last"

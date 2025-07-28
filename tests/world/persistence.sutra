@@ -1,0 +1,19 @@
+;; Sutra World State Persistence Tests
+;;
+;; This suite validates that world state operations maintain consistency
+;; and persistence across operations.
+
+(test "persistence: world state consistency"
+      (expect (value 42)
+              (tags "world"))
+      (do
+        (set! test-value 42)
+        (get test-value)))  ; => 42
+
+(test "persistence: world state updates"
+      (expect (value 1)
+              (tags "world"))
+      (do
+        (set! counter 0)
+        (set! counter (+ (get counter) 1))
+        (get counter)))  ; => 1

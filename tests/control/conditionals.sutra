@@ -1,0 +1,81 @@
+;; Sutra Control Flow - Conditional Tests
+;;
+;; This suite validates the behavior of conditional constructs like `if` and `cond`.
+
+;;;
+;;; 1. If Conditional
+;;;
+
+(test "conditionals: if - then branch"
+      (expect (value "then")
+              (tags "conditionals"))
+      (if true "then" "else"))  ; => "then"
+
+(test "conditionals: if - else branch"
+      (expect (value "else")
+              (tags "conditionals"))
+      (if false "then" "else"))  ; => "else"
+
+(test "conditionals: if - truthy condition"
+      (expect (value "taken")
+              (tags "conditionals"))
+      (if 1 "taken" "not-taken"))  ; => "taken"
+
+(test "conditionals: if - falsy condition (nil)"
+      (expect (value "not-taken")
+              (tags "conditionals"))
+      (if nil "taken" "not-taken"))  ; => "not-taken"
+
+(test "conditionals: if - falsy condition (zero)"
+      (expect (value "not-taken")
+              (tags "conditionals"))
+      (if 0 "taken" "not-taken"))  ; => "not-taken"
+
+(test "conditionals: if - falsy condition (empty string)"
+      (expect (value "not-taken")
+              (tags "conditionals"))
+      (if "" "taken" "not-taken"))  ; => "not-taken"
+
+(test "conditionals: if - falsy condition (empty list)"
+      (expect (value "not-taken")
+              (tags "conditionals"))
+      (if '() "taken" "not-taken"))  ; => "not-taken"
+
+(test "conditionals: if - arity error (too few)"
+      (expect (error Runtime)
+              (tags "conditionals"))
+      (if true "then"))  ; if expects exactly 3 arguments, got 2
+
+(test "conditionals: if - arity error (too many)"
+      (expect (error Runtime)
+              (tags "conditionals"))
+      (if true "then" "else" "extra"))  ; if expects exactly 3 arguments, got 4
+
+;;;
+;;; 2. Cond Conditional
+;;;
+
+(test "conditionals: cond - first clause matches"
+      (expect (value "positive")
+              (tags "conditionals"))
+      (cond ((gt? 5 0) "positive") (else "negative")))  ; => "positive"
+
+(test "conditionals: cond - second clause matches"
+      (expect (value "negative")
+              (tags "conditionals"))
+      (cond ((gt? -5 0) "positive") (else "negative")))  ; => "negative"
+
+(test "conditionals: cond - else clause"
+      (expect (value "zero")
+              (tags "conditionals"))
+      (cond ((gt? 0 0) "positive") ((lt? 0 0) "negative") (else "zero")))  ; => "zero"
+
+(test "conditionals: cond - only first match evaluated"
+      (expect (value "first")
+              (tags "conditionals"))
+      (cond (true "first") (true "second")))  ; => "first"
+
+(test "conditionals: cond - no match"
+      (expect (value nil)
+              (tags "conditionals"))
+      (cond ((gt? -5 0) "positive") ((lt? 5 0) "negative")))  ; => nil

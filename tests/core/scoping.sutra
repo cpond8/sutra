@@ -1,0 +1,101 @@
+;; Sutra Core Scoping Tests
+;;
+;; This suite validates lexical scoping, closures, and variable capture
+;; behavior in lambda expressions and let bindings.
+
+;;;
+;;; 1. Basic Closure Capture
+;;;
+
+(test "scoping: basic closure capture"
+      (expect (value 100)
+              (tags "scoping"))
+      (let ((x 100))
+        (let ((my-lambda (lambda () x)))
+          (my-lambda))))  ; => 100
+
+(test "scoping: multiple variable capture"
+      (expect (value 30)
+              (tags "scoping"))
+      (let ((x 10) (y 20))
+        (let ((adder (lambda () (+ x y))))
+          (adder))))  ; => 30
+
+(test "scoping: closure captures from let"
+      (expect (value 42)
+              (tags "scoping"))
+      (let ((val 42))
+        (let ((closure (lambda () val)))
+          (closure))))  ; => 42
+
+;;;
+;;; 2. Variable Shadowing
+;;;
+
+(test "scoping: argument shadowing"
+      (expect (value 25)
+              (tags "scoping"))
+      (let ((x 10) (y 20))
+        (let ((shadow-fn (lambda (x) (+ x y))))
+          (shadow-fn 5))))  ; => 25, x=5 shadows outer x=10
+
+(test "scoping: let shadowing"
+      (expect (value 15)
+              (tags "scoping"))
+      (let ((x 10))
+        (let ((x 5))
+          (let ((f (lambda () (+ x 10))))
+            (f)))))  ; => 15, inner x=5 is captured
+
+;;;
+;;; 3. Nested Closures
+;;;
+
+(test "scoping: nested closure capture"
+      (expect (value 6)
+              (tags "scoping"))
+      (let ((a 1))
+        (let ((b 2))
+          (let ((c 3))
+            (let ((inner-lambda (lambda () (+ a b c))))
+              (inner-lambda))))))  ; => 6
+
+(test "scoping: nested closure shadowing"
+      (expect (value 33)
+              (tags "scoping"))
+      (let ((x 1))
+        (let ((y 2))
+          (let ((outer (lambda (x)
+                         (let ((z 3))
+                           (lambda (y) (+ x y z))))))
+            (let ((inner (outer 10)))
+              (inner 20))))))  ; => 33
+
+;;;
+;;; 4. Closure Independence
+;;;
+
+(test "scoping: closure state independence"
+      (expect (value true)
+              (tags "scoping"))
+      (let ((a 1))
+        (let ((lambda1 (lambda () a))
+              (lambda2 (lambda () a)))
+          (and (eq? 1 (lambda1))
+               (eq? 1 (lambda2))))))  ; => true
+
+(test "scoping: no argument capture"
+      (expect (value 7)
+              (tags "scoping"))
+      (let ((no-capture (lambda (a b) (+ a b))))
+        (no-capture 3 4)))  ; => 7
+
+;;;
+;;; 5. Error Cases
+;;;
+
+(test "scoping: unbound symbol error"
+      (expect (error Runtime)
+              (tags "scoping"))
+      (let ((unbound-lambda (lambda () unbound-symbol)))
+        (unbound-lambda)))  ; => runtime error

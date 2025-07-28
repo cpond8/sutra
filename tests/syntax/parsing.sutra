@@ -1,85 +1,11 @@
 ;; Sutra Syntax & Parsing Tests
 ;;
 ;; This suite validates the core parsing capabilities of the Sutra engine,
-;; ensuring that atoms, collections, and special forms are correctly
-;; recognized according to `src/syntax/grammar.pest`.
+;; focusing on grammar error detection and handling according to
+;; `src/syntax/grammar.pest`.
 
 ;;;
-;;; 1. Atom Parsing
-;;;
-
-(test "parsing: number - integer"
-      (expect (value 42)
-              (tags "parsing"))
-      42)  ; => 42
-
-(test "parsing: number - negative integer"
-      (expect (value -100)
-              (tags "parsing"))
-      -100)  ; => -100
-
-(test "parsing: number - float"
-      (expect (value 3.14)
-              (tags "parsing"))
-      3.14)  ; => 3.14
-
-(test "parsing: boolean - true"
-      (expect (value true)
-              (tags "parsing"))
-      true)  ; => true
-
-(test "parsing: boolean - false"
-      (expect (value false)
-              (tags "parsing"))
-      false)  ; => false
-
-(test "parsing: nil"
-      (expect (value nil)
-              (tags "parsing"))
-      nil)  ; => nil
-
-(test "parsing: string - simple"
-      (expect (value "hello")
-              (tags "parsing"))
-      "hello")  ; => "hello"
-
-(test "parsing: string - with escapes"
-      (expect (value "a\nb\"c\\d")
-              (tags "parsing"))
-      "a\nb\"c\\d")  ; => "a\nb\"c\\d"
-
-(test "parsing: string - empty"
-      (expect (value "")
-              (tags "parsing"))
-      "")  ; => ""
-
-(test "parsing: string - with \"...\""
-      (expect (value "...oops")
-              (tags "parsing"))
-      "...oops")  ; => parse "...oops"
-
-
-(test "parsing: quote - symbol"
-      (expect (value 'foo)
-              (tags "parsing"))
-      'foo)  ; => 'foo
-
-;;;
-;;; 2. Collection Parsing
-;;;
-
-(test "parsing: list - quoted"
-      (expect (value '(1 "two" true))
-              (tags "parsing"))
-      '(1 "two" true))  ; => '(1 "two" true)
-
-(test "parsing: list - nested quoted"
-      (expect (value '(1 (2 (3))))
-              (tags "parsing"))
-      '(1 (2 (3))))  ; => '(1 (2 (3)))
-
-;;;
-;;; 3. Grammar Error Cases
+;;; 1. Grammar Error Cases
 ;;;
 
 (test "parsing: error - unclosed list"

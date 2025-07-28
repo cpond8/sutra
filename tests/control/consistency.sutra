@@ -1,0 +1,15 @@
+;; Sutra Control Flow - Consistency Tests
+;;
+;; This suite validates that control flow and execution maintain consistency
+;; between test and production execution paths.
+
+(test "consistency: symbol resolution"
+      (expect (value 42)
+              (tags "consistency"))
+      (let ((x 42))
+        x))  ; => 42
+
+(test "consistency: pipeline execution"
+      (expect (value 10)
+              (tags "consistency"))
+      (+ (* 2 3) 4))  ; => 10
