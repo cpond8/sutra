@@ -74,6 +74,7 @@ Each `.sutra` file is a suite of Verse-language tests for a specific feature or 
   - `parsing.sutra`: Tests for grammar error detection (unclosed lists, invalid escapes, etc.)
 
 ### CLI Regression
+
 - **Purpose:** Ensure all CLI errors are rendered as miette diagnostics
 - **Implementation:**
   - `cli_regression.rs`: Runs the CLI with invalid input and asserts that the output contains miette-formatted diagnostics (error codes, labels, help, and source context)
@@ -92,9 +93,11 @@ Each `.sutra` file is a suite of Verse-language tests for a specific feature or 
 ## How to Run the Test Suite
 
 - **All Sutra tests:**
+
   ```sh
   cargo test
   ```
+
   This runs all `.sutra` tests via the test harness and the Rust CLI regression test.
 
 - **CLI regression only:**
@@ -157,11 +160,13 @@ Sutra includes an automated Rust regression test (`cli_regression.rs`) that ensu
 ## Advanced Diagnostics: Multi-Label and Error Chaining
 
 Sutra's error system now supports:
+
 - **Multi-label diagnostics:** Errors can highlight multiple locations (spans) across one or more source files, with custom labels for each.
 - **Error chaining:** Errors can wrap a cause (another error), and the full chain is rendered in diagnostics output.
 - **Actionable help:** Errors can include detailed help messages, and help is aggregated from all levels of the error chain.
 
 These features are tested in:
+
 - **Rust unit tests:** See `src/diagnostics.rs` for direct tests of multi-label, chaining, and help rendering using `miette::Report`.
 - **CLI regression test:** `tests/cli_regression.rs` ensures that all CLI errors are rendered as miette diagnostics, including error codes, labels, help, and source context.
 

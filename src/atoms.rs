@@ -314,10 +314,6 @@ pub use external::{EngineOutputBuffer, EngineStdoutSink};
 #[cfg(any(test, feature = "test-atom", debug_assertions))]
 pub mod test;
 
-// Re-exports for concise imports
-#[cfg(any(test, feature = "test-atom", debug_assertions))]
-pub use test::{TestDefinition, TEST_REGISTRY};
-
 // ============================================================================
 // ATOM REGISTRATION SYSTEM
 // ============================================================================
