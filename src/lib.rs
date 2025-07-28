@@ -12,8 +12,10 @@ pub use crate::{
 
 // Module aliases for concise imports
 pub use grammar_validation as grammar;
+pub use grammar_validation::{validate_grammar, validate_grammar_str, Rule};
 pub use runtime::{evaluate, EvaluationContext};
 pub use semantic_validation as semantic;
+pub use semantic_validation::validate_ast_semantics;
 
 pub mod prelude {
     pub use crate::{
@@ -45,7 +47,6 @@ pub mod semantic_validation;
 pub mod syntax;
 pub mod test;
 pub mod test_runner;
-pub mod validation;
 
 #[cfg(test)]
 mod sutra_harness {

@@ -304,7 +304,6 @@ pub mod external;
 pub mod logic;
 pub mod math;
 pub mod special_forms;
-pub mod string;
 pub mod world;
 
 // Re-export output types for external use
@@ -417,8 +416,8 @@ fn register_external_atoms(world: &mut World) {
 }
 
 fn register_string_atoms(world: &mut World) {
-    register_atom!(world, "str", string::ATOM_STR);
-    register_atom!(world, "str+", string::ATOM_STR_PLUS);
+    register_atom!(world, "str", collections::ATOM_STR);
+    register_atom!(world, "str+", collections::ATOM_STR_PLUS);
 }
 
 fn register_special_forms(world: &mut World) {

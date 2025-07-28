@@ -15,13 +15,14 @@ use crate::{
     atoms::{EngineStdoutSink, SharedOutput},
     build_canonical_macro_env, build_canonical_world,
     discovery::TestDiscoverer,
-    errors::{self, print_error, ErrorKind, ErrorReporting, SourceContext, SutraError},
+    errors::{
+        self, print_error, ErrorKind, ErrorReporting, SourceContext, SutraError, ValidationContext,
+    },
     evaluate,
     macros::MacroSystem,
     parser,
-    test_runner::TestRunner,
     test::TestSummary,
-    validation::ValidationContext,
+    test_runner::TestRunner,
 };
 use std::collections::HashMap;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
@@ -256,18 +257,19 @@ fn read_stdin() -> Result<String, SutraError> {
 /// Validate grammar file
 fn validate_grammar() -> Result<(), SutraError> {
     use crate::grammar_validation;
-    let validation_errors = grammar_validation::validate_grammar("src/grammar/grammar.pest").map_err(|e| {
-        let context = ValidationContext {
-            source: SourceContext::from_file("sutra-cli", ""),
-            phase: "grammar-validation".to_string(),
-        };
-        context.report(
-            ErrorKind::InvalidPath {
-                path: format!("Failed to validate grammar: {}", e),
-            },
-            errors::unspanned(),
-        )
-    })?;
+    let validation_errors = grammar_validation::validate_grammar("src/grammar/grammar.pest")
+        .map_err(|e| {
+            let context = ValidationContext {
+                source: SourceContext::from_file("sutra-cli", ""),
+                phase: "grammar-validation".to_string(),
+            };
+            context.report(
+                ErrorKind::InvalidPath {
+                    path: format!("Failed to validate grammar: {}", e),
+                },
+                errors::unspanned(),
+            )
+        })?;
 
     if validation_errors.is_empty() {
         println!("Grammar validation passed");

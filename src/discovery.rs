@@ -6,10 +6,12 @@ use std::{
 use walkdir::WalkDir;
 
 use crate::{
-    errors::{to_source_span, unspanned, ErrorReporting, SourceContext},
+    errors::{
+        to_source_span, unspanned, ErrorKind, ErrorReporting, SourceContext, SutraError,
+        ValidationContext,
+    },
     parser,
-    prelude::*,
-    validation::ValidationContext,
+    syntax::{AstNode, Expr, Span},
 };
 
 // =====================

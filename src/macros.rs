@@ -11,9 +11,8 @@ use std::collections::HashMap;
 
 use crate::prelude::*;
 use crate::{
-    errors::{to_source_span, ErrorKind, ErrorReporting, SourceContext, SutraError},
+    errors::{to_source_span, ErrorKind, ErrorReporting, SourceContext, SutraError, ValidationContext},
     syntax::{parser, ParamList},
-    validation::ValidationContext,
 };
 
 // ============================================================================

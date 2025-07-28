@@ -4,12 +4,11 @@ use crate::{
     atoms::{build_canonical_macro_env, build_canonical_world, SharedOutput},
     cli::ExecutionPipeline,
     discovery::ASTDefinition,
-    errors::{to_source_span, ErrorCategory, ErrorKind, ErrorReporting, SourceContext, SutraError},
+    errors::{to_source_span, ErrorCategory, ErrorKind, ErrorReporting, SourceContext, SutraError, ValidationContext},
     parser,
     prelude::*,
     runtime::evaluate,
     runtime::ConsCell,
-    validation::ValidationContext,
     EngineOutputBuffer,
 };
 
