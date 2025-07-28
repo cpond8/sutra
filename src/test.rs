@@ -67,4 +67,5 @@ pub enum TestResult {
     Failed,
 }
 
-pub mod runner;
+// Re-export test runner for backward compatibility
+pub use crate::test_runner;

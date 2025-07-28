@@ -244,4 +244,5 @@ impl From<Value> for Expr {
     }
 }
 
-pub mod parser;
+// Re-export parser for backward compatibility
+pub use crate::parser;

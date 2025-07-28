@@ -18,9 +18,10 @@ use crate::{
     errors::{self, print_error, ErrorKind, ErrorReporting, SourceContext, SutraError},
     evaluate,
     macros::MacroSystem,
-    syntax::parser,
-    test::{runner::TestRunner, TestSummary},
-    validation::{grammar, ValidationContext},
+    parser,
+    test_runner::TestRunner,
+    test::TestSummary,
+    validation::ValidationContext,
 };
 use std::collections::HashMap;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
@@ -254,7 +255,8 @@ fn read_stdin() -> Result<String, SutraError> {
 
 /// Validate grammar file
 fn validate_grammar() -> Result<(), SutraError> {
-    let validation_errors = grammar::validate_grammar("src/syntax/grammar.pest").map_err(|e| {
+    use crate::grammar_validation;
+    let validation_errors = grammar_validation::validate_grammar("src/grammar/grammar.pest").map_err(|e| {
         let context = ValidationContext {
             source: SourceContext::from_file("sutra-cli", ""),
             phase: "grammar-validation".to_string(),
@@ -604,7 +606,7 @@ impl ExecutionPipeline {
         output: SharedOutput,
         source_context: SourceContext,
     ) -> Result<Value, SutraError> {
-        use crate::syntax::parser;
+        use crate::parser;
 
         let env = self.macro_env.clone();
 

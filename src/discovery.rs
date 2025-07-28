@@ -7,8 +7,8 @@ use walkdir::WalkDir;
 
 use crate::{
     errors::{to_source_span, unspanned, ErrorReporting, SourceContext},
+    parser,
     prelude::*,
-    syntax::parser,
     validation::ValidationContext,
 };
 

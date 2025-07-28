@@ -21,6 +21,24 @@ use crate::{
 };
 
 // ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
+/// Validates that a value is a proper list and returns an iterator over its elements.
+///
+/// This is used by functions that need to iterate over list structures.
+fn validate_and_iterate_list(
+    value: Value,
+    context: &impl ErrorReporting,
+    span: crate::syntax::Span,
+) -> Result<impl Iterator<Item = Value>, crate::errors::SutraError> {
+    match &value {
+        Value::Cons(_) | Value::Nil => Ok(value.try_into_iter()),
+        _ => Err(context.type_mismatch("proper List", value.type_name(), to_source_span(span))),
+    }
+}
+
+// ============================================================================
 // CONTROL FLOW OPERATIONS
 // ============================================================================
 
@@ -77,6 +95,7 @@ pub const ATOM_ERROR: NativeFn = |args, context, call_span| {
             ));
         }
     };
+
     Err(context.report(
         ErrorKind::InvalidOperation {
             operation: "user error".to_string(),
@@ -122,24 +141,9 @@ pub const ATOM_APPLY: NativeFn = |args, context, call_span| {
     let list_sv = evaluate_ast_node(args.last().unwrap(), context)?;
     let list_span = list_sv.span;
 
-    // 5. Unpack the list argument
-    let mut current = list_sv.value;
-    loop {
-        match current {
-            Value::Cons(cell) => {
-                final_args.push(cell.car.clone());
-                current = cell.cdr.clone();
-            }
-            Value::Nil => break,
-            _ => {
-                return Err(context.type_mismatch(
-                    "proper List",
-                    current.type_name(),
-                    to_source_span(list_span),
-                ));
-            }
-        }
-    }
+    // 5. Validate and iterate over the list argument
+    let list_iter = validate_and_iterate_list(list_sv.value, context, list_span)?;
+    final_args.extend(list_iter);
 
     // 6. Dispatch the call
     match callable_sv.value {
@@ -188,7 +192,7 @@ pub const ATOM_FOR_EACH: NativeFn = |args, context, call_span| {
         _ => {
             return Err(context.report(
                 ErrorKind::InvalidOperation {
-                    operation: "for-each definition".to_string(),
+                    operation: "for-each".to_string(),
                     operand_type: "first argument must be a symbol".to_string(),
                 },
                 to_source_span(args[0].span),
@@ -198,30 +202,19 @@ pub const ATOM_FOR_EACH: NativeFn = |args, context, call_span| {
 
     // Second argument is the collection to iterate over.
     let collection_sv = evaluate_ast_node(&args[1], context)?;
+    let collection_span = collection_sv.span;
     let body_exprs = &args[2..];
 
-    let mut current = collection_sv.value;
-    let collection_type = current.type_name();
-    loop {
-        match current {
-            Value::Cons(cell) => {
-                let mut sub_context = context.with_new_frame();
-                sub_context.set_var(&var_name, cell.car.clone());
+    // Validate and iterate over the collection
+    let collection_iter = validate_and_iterate_list(collection_sv.value, context, collection_span)?;
 
-                // Execute the body expressions.
-                for expr in body_exprs {
-                    evaluate_ast_node(expr, &mut sub_context)?;
-                }
-                current = cell.cdr.clone();
-            }
-            Value::Nil => break,
-            _ => {
-                return Err(context.type_mismatch(
-                    "List",
-                    collection_type,
-                    to_source_span(collection_sv.span),
-                ));
-            }
+    for item in collection_iter {
+        let mut sub_context = context.with_new_frame();
+        sub_context.set_var(&var_name, item);
+
+        // Execute the body expressions.
+        for expr in body_exprs {
+            evaluate_ast_node(expr, &mut sub_context)?;
         }
     }
 

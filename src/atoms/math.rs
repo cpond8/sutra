@@ -9,9 +9,75 @@
 //! - **Mathematical Functions**: `abs`, `min`, `max`
 
 use crate::{
-    errors::{to_source_span, ErrorReporting},
-    runtime::{evaluate_ast_node, NativeFn, SpannedValue, Value},
+    errors::{to_source_span, ErrorReporting, SutraError},
+    runtime::{evaluate_ast_node, EvaluationContext, NativeFn, SpannedValue, Value},
+    syntax::{AstNode, Span},
 };
+
+// ============================================================================
+// COMMON HELPERS
+// ============================================================================
+
+/// Evaluates arguments and ensures they are all numbers.
+fn evaluate_numeric_args(
+    args: &[AstNode],
+    context: &mut EvaluationContext,
+) -> Result<Vec<(f64, Span)>, SutraError> {
+    let mut numbers = Vec::with_capacity(args.len());
+    for arg_node in args {
+        let spanned_arg = evaluate_ast_node(arg_node, context)?;
+        match spanned_arg.value {
+            Value::Number(n) => numbers.push((n, spanned_arg.span)),
+            _ => {
+                return Err(context.type_mismatch(
+                    "Number",
+                    spanned_arg.value.type_name(),
+                    to_source_span(spanned_arg.span),
+                ));
+            }
+        }
+    }
+    Ok(numbers)
+}
+
+/// Checks arity requirements and returns appropriate error if not met.
+fn check_arity(
+    actual: usize,
+    expected: &str,
+    operation: &str,
+    call_span: Span,
+    context: &EvaluationContext,
+) -> Result<(), SutraError> {
+    match expected {
+        "at least 1" => {
+            if actual >= 1 {
+                return Ok(());
+            }
+        }
+        "at least 2" => {
+            if actual >= 2 {
+                return Ok(());
+            }
+        }
+        "exactly 1" => {
+            if actual == 1 {
+                return Ok(());
+            }
+        }
+        "exactly 2" => {
+            if actual == 2 {
+                return Ok(());
+            }
+        }
+        _ => return Err(context.arity_mismatch(expected, actual, to_source_span(call_span))),
+    };
+
+    Err(context.arity_mismatch(
+        &format!("{} for '{}'", expected, operation),
+        actual,
+        to_source_span(call_span),
+    ))
+}
 
 // ============================================================================
 // ARITHMETIC OPERATIONS
@@ -27,89 +93,42 @@ use crate::{
 /// Example:
 ///   (+ 1 2 3) ; => 6
 pub const ATOM_ADD: NativeFn = |args, context, call_span| {
-    if args.len() < 2 {
-        return Err(context.arity_mismatch(
-            "at least 2 for '+'",
-            args.len(),
-            to_source_span(*call_span),
-        ));
-    }
-    let mut sum = 0.0;
-    for arg_node in args {
-        let spanned_arg = evaluate_ast_node(arg_node, context)?;
-        let n = match spanned_arg.value {
-            Value::Number(n) => n,
-            _ => {
-                return Err(context.type_mismatch(
-                    "Number",
-                    spanned_arg.value.type_name(),
-                    to_source_span(spanned_arg.span),
-                ));
-            }
-        };
-        sum += n;
-    }
+    check_arity(args.len(), "at least 2", "+", *call_span, context)?;
+    let numbers = evaluate_numeric_args(args, context)?;
+    let sum: f64 = numbers.iter().map(|(n, _)| n).sum();
     Ok(SpannedValue {
         value: Value::Number(sum),
         span: *call_span,
     })
 };
 
-/// Subtracts two numbers.
+/// Subtracts numbers.
 ///
-/// Usage: (- <a> <b>)
-///   - <a>, <b>: Numbers
+/// Usage: (- <a> <b> ...)
+///   - <a>: Number (minuend)
+///   - <b>, ...: Numbers (subtrahends)
 ///
-///   Returns: Number (a - b)
+///   Returns: Number (difference)
+///
+/// Single argument returns negation: (- <a>) => -a
+/// Multiple arguments: (- <a> <b> <c>) => a - b - c
 ///
 /// Example:
 ///   (- 5 2) ; => 3
+///   (- 10) ; => -10
 pub const ATOM_SUB: NativeFn = |args, context, call_span| {
-    if args.is_empty() {
-        return Err(context.arity_mismatch(
-            "at least 1 for '-'",
-            args.len(),
-            to_source_span(*call_span),
-        ));
-    }
+    check_arity(args.len(), "at least 1", "-", *call_span, context)?;
+    let numbers = evaluate_numeric_args(args, context)?;
 
-    let mut evaluated_args = Vec::new();
-    for arg_node in args {
-        evaluated_args.push(evaluate_ast_node(arg_node, context)?);
-    }
-
-    let first = match evaluated_args[0].value {
-        Value::Number(n) => n,
-        _ => {
-            return Err(context.type_mismatch(
-                "Number",
-                evaluated_args[0].value.type_name(),
-                to_source_span(evaluated_args[0].span),
-            ));
-        }
-    };
-
-    if args.len() == 1 {
+    let first = numbers[0].0;
+    if numbers.len() == 1 {
         return Ok(SpannedValue {
             value: Value::Number(-first),
             span: *call_span,
         });
     }
 
-    let mut result = first;
-    for spanned_arg in evaluated_args.iter().skip(1) {
-        let n = match spanned_arg.value {
-            Value::Number(n) => n,
-            _ => {
-                return Err(context.type_mismatch(
-                    "Number",
-                    spanned_arg.value.type_name(),
-                    to_source_span(spanned_arg.span),
-                ));
-            }
-        };
-        result -= n;
-    }
+    let result = numbers.iter().skip(1).fold(first, |acc, (n, _)| acc - n);
     Ok(SpannedValue {
         value: Value::Number(result),
         span: *call_span,
@@ -126,73 +145,43 @@ pub const ATOM_SUB: NativeFn = |args, context, call_span| {
 /// Example:
 ///   (* 2 3 4) ; => 24
 pub const ATOM_MUL: NativeFn = |args, context, call_span| {
-    if args.len() < 2 {
-        return Err(context.arity_mismatch(
-            "at least 2 for '*'",
-            args.len(),
-            to_source_span(*call_span),
-        ));
-    }
-    let mut product = 1.0;
-    for arg_node in args {
-        let spanned_arg = evaluate_ast_node(arg_node, context)?;
-        let n = match spanned_arg.value {
-            Value::Number(n) => n,
-            _ => {
-                return Err(context.type_mismatch(
-                    "Number",
-                    spanned_arg.value.type_name(),
-                    to_source_span(spanned_arg.span),
-                ));
-            }
-        };
-        product *= n;
-    }
+    check_arity(args.len(), "at least 2", "*", *call_span, context)?;
+    let numbers = evaluate_numeric_args(args, context)?;
+    let product: f64 = numbers.iter().map(|(n, _)| n).product();
     Ok(SpannedValue {
         value: Value::Number(product),
         span: *call_span,
     })
 };
 
-/// Divides two numbers.
+/// Divides numbers.
 ///
-/// Usage: (/ <a> <b>)
-///   - <a>, <b>: Numbers
+/// Usage: (/ <a> <b> ...)
+///   - <a>: Number (dividend)
+///   - <b>, ...: Numbers (divisors)
 ///
-///   Returns: Number (a / b)
+///   Returns: Number (quotient)
+///
+/// Single argument returns reciprocal: (/ <a>) => 1/a
+/// Multiple arguments: (/ <a> <b> <c>) => a / b / c
 ///
 /// Example:
 ///   (/ 6 2) ; => 3
+///   (/ 4) ; => 0.25
+///
 /// Note: Errors on division by zero.
 pub const ATOM_DIV: NativeFn = |args, context, call_span| {
-    if args.is_empty() {
-        return Err(context.arity_mismatch(
-            "at least 1 for '/'",
-            args.len(),
-            to_source_span(*call_span),
-        ));
-    }
+    check_arity(args.len(), "at least 1", "/", *call_span, context)?;
+    let numbers = evaluate_numeric_args(args, context)?;
 
-    let mut evaluated_args = Vec::new();
-    for arg_node in args {
-        evaluated_args.push(evaluate_ast_node(arg_node, context)?);
-    }
-
-    let first_span = evaluated_args[0].span;
-    let first = match evaluated_args[0].value {
-        Value::Number(n) => n,
-        _ => {
-            return Err(context.type_mismatch(
-                "Number",
-                evaluated_args[0].value.type_name(),
-                to_source_span(first_span),
-            ))
-        }
-    };
-
-    if args.len() == 1 {
+    let first = numbers[0].0;
+    if numbers.len() == 1 {
         if first == 0.0 {
-            return Err(context.invalid_operation("division", "zero", to_source_span(first_span)));
+            return Err(context.invalid_operation(
+                "division",
+                "zero",
+                to_source_span(numbers[0].1),
+            ));
         }
         return Ok(SpannedValue {
             value: Value::Number(1.0 / first),
@@ -201,26 +190,13 @@ pub const ATOM_DIV: NativeFn = |args, context, call_span| {
     }
 
     let mut result = first;
-    for spanned_arg in evaluated_args.iter().skip(1) {
-        let n = match spanned_arg.value {
-            Value::Number(n) => n,
-            _ => {
-                return Err(context.type_mismatch(
-                    "Number",
-                    spanned_arg.value.type_name(),
-                    to_source_span(spanned_arg.span),
-                ));
-            }
-        };
-        if n == 0.0 {
-            return Err(context.invalid_operation(
-                "division",
-                "zero",
-                to_source_span(spanned_arg.span),
-            ));
+    for (n, span) in numbers.iter().skip(1) {
+        if *n == 0.0 {
+            return Err(context.invalid_operation("division", "zero", to_source_span(*span)));
         }
         result /= n;
     }
+
     Ok(SpannedValue {
         value: Value::Number(result),
         span: *call_span,
@@ -230,48 +206,25 @@ pub const ATOM_DIV: NativeFn = |args, context, call_span| {
 /// Modulo operation.
 ///
 /// Usage: (mod <a> <b>)
-///   - <a>, <b>: Integers
+///   - <a>, <b>: Numbers
 ///
 ///   Returns: Number (a % b)
 ///
 /// Example:
 ///   (mod 5 2) ; => 1
 ///
-/// Note: Errors on division by zero or non-integer input.
+/// Note: Errors on division by zero.
 pub const ATOM_MOD: NativeFn = |args, context, call_span| {
-    if args.len() != 2 {
-        return Err(context.arity_mismatch("2 for 'mod'", args.len(), to_source_span(*call_span)));
-    }
+    check_arity(args.len(), "exactly 2", "mod", *call_span, context)?;
+    let numbers = evaluate_numeric_args(args, context)?;
 
-    let mut eval_args = Vec::new();
-    for arg in args {
-        eval_args.push(evaluate_ast_node(arg, context)?);
-    }
-
-    let a = match eval_args[0].value {
-        Value::Number(n) => n,
-        _ => {
-            return Err(context.type_mismatch(
-                "Number",
-                eval_args[0].value.type_name(),
-                to_source_span(eval_args[0].span),
-            ))
-        }
-    };
-    let b = match eval_args[1].value {
-        Value::Number(n) => n,
-        _ => {
-            return Err(context.type_mismatch(
-                "Number",
-                eval_args[1].value.type_name(),
-                to_source_span(eval_args[1].span),
-            ))
-        }
-    };
+    let (a, _) = numbers[0];
+    let (b, b_span) = numbers[1];
 
     if b == 0.0 {
-        return Err(context.invalid_operation("modulo", "zero", to_source_span(eval_args[1].span)));
+        return Err(context.invalid_operation("modulo", "zero", to_source_span(b_span)));
     }
+
     Ok(SpannedValue {
         value: Value::Number(a % b),
         span: *call_span,
@@ -293,20 +246,9 @@ pub const ATOM_MOD: NativeFn = |args, context, call_span| {
 ///   (abs -5) ; => 5
 ///   (abs 3.14) ; => 3.14
 pub const ATOM_ABS: NativeFn = |args, context, call_span| {
-    if args.len() != 1 {
-        return Err(context.arity_mismatch("1 for 'abs'", args.len(), to_source_span(*call_span)));
-    }
-    let spanned_arg = evaluate_ast_node(&args[0], context)?;
-    let n = match spanned_arg.value {
-        Value::Number(n) => n,
-        _ => {
-            return Err(context.type_mismatch(
-                "Number",
-                spanned_arg.value.type_name(),
-                to_source_span(spanned_arg.span),
-            ));
-        }
-    };
+    check_arity(args.len(), "exactly 1", "abs", *call_span, context)?;
+    let numbers = evaluate_numeric_args(args, context)?;
+    let n = numbers[0].0;
     Ok(SpannedValue {
         value: Value::Number(n.abs()),
         span: *call_span,
@@ -323,29 +265,12 @@ pub const ATOM_ABS: NativeFn = |args, context, call_span| {
 /// Example:
 ///   (min 3 1 4) ; => 1
 pub const ATOM_MIN: NativeFn = |args, context, call_span| {
-    if args.is_empty() {
-        return Err(context.arity_mismatch(
-            "at least 1 for 'min'",
-            args.len(),
-            to_source_span(*call_span),
-        ));
-    }
-
-    let mut min = f64::INFINITY;
-    for arg_node in args {
-        let spanned_arg = evaluate_ast_node(arg_node, context)?;
-        let n = match spanned_arg.value {
-            Value::Number(n) => n,
-            _ => {
-                return Err(context.type_mismatch(
-                    "Number",
-                    spanned_arg.value.type_name(),
-                    to_source_span(spanned_arg.span),
-                ));
-            }
-        };
-        min = min.min(n);
-    }
+    check_arity(args.len(), "at least 1", "min", *call_span, context)?;
+    let numbers = evaluate_numeric_args(args, context)?;
+    let min = numbers
+        .iter()
+        .map(|(n, _)| *n)
+        .fold(f64::INFINITY, f64::min);
     Ok(SpannedValue {
         value: Value::Number(min),
         span: *call_span,
@@ -362,28 +287,12 @@ pub const ATOM_MIN: NativeFn = |args, context, call_span| {
 /// Example:
 ///   (max 3 1 4) ; => 4
 pub const ATOM_MAX: NativeFn = |args, context, call_span| {
-    if args.is_empty() {
-        return Err(context.arity_mismatch(
-            "at least 1 for 'max'",
-            args.len(),
-            to_source_span(*call_span),
-        ));
-    }
-    let mut max = f64::NEG_INFINITY;
-    for arg_node in args {
-        let spanned_arg = evaluate_ast_node(arg_node, context)?;
-        let n = match spanned_arg.value {
-            Value::Number(n) => n,
-            _ => {
-                return Err(context.type_mismatch(
-                    "Number",
-                    spanned_arg.value.type_name(),
-                    to_source_span(spanned_arg.span),
-                ));
-            }
-        };
-        max = max.max(n);
-    }
+    check_arity(args.len(), "at least 1", "max", *call_span, context)?;
+    let numbers = evaluate_numeric_args(args, context)?;
+    let max = numbers
+        .iter()
+        .map(|(n, _)| *n)
+        .fold(f64::NEG_INFINITY, f64::max);
     Ok(SpannedValue {
         value: Value::Number(max),
         span: *call_span,

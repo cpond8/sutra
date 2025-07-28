@@ -37,7 +37,7 @@ impl ReplState {
         let output = SharedOutput::new(EngineStdoutSink);
 
         // Use the same execution logic as SutraEngine
-        use crate::{errors::SourceContext, evaluate, syntax::parser};
+        use crate::{errors::SourceContext, evaluate, parser};
 
         let source_context = SourceContext::from_file(&source_name, input);
         let execution_result = parser::parse(input, source_context.clone())

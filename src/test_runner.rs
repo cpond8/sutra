@@ -5,10 +5,10 @@ use crate::{
     cli::ExecutionPipeline,
     discovery::ASTDefinition,
     errors::{to_source_span, ErrorCategory, ErrorKind, ErrorReporting, SourceContext, SutraError},
+    parser,
     prelude::*,
     runtime::evaluate,
     runtime::ConsCell,
-    syntax::parser,
     validation::ValidationContext,
     EngineOutputBuffer,
 };
@@ -24,7 +24,7 @@ impl TestRunner {
         _test_name: Option<String>,
         source_file: SourceContext,
     ) -> Result<(), SutraError> {
-        use crate::syntax::parser;
+        use crate::parser;
 
         let world = build_canonical_world();
         let mut macro_env = build_canonical_macro_env().expect("Standard macro env should build");

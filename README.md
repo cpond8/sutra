@@ -42,35 +42,47 @@ For a detailed statement of philosophy and guiding principles, see [`docs/philos
 ```
 .
 ├── src/
-│   ├── ast.rs, ast/               # Core AST types and value representations
 │   ├── atoms.rs, atoms/           # Atom system: primitive operations, domain modules
+│   │   ├── collections.rs         # List and collection operations
+│   │   ├── execution.rs           # Control flow and execution atoms
+│   │   ├── external.rs            # External I/O and system operations
+│   │   ├── logic.rs               # Boolean logic and comparison atoms
+│   │   ├── math.rs                # Mathematical operations
+│   │   ├── special_forms.rs       # Special forms (if, let, lambda, etc.)
+│   │   ├── string.rs              # String manipulation operations
+│   │   ├── test.rs                # Testing framework atoms
+│   │   └── world.rs               # World state management atoms
 │   ├── cli.rs                     # Command-line interface and subcommands
-│   ├── repl.rs                    # Interactive REPL (Read-Eval-Print Loop)
-│   ├── diagnostics.rs             # Error types, diagnostics, and reporting
 │   ├── discovery.rs               # Test discovery and harness
-│   ├── engine.rs                  # High-level orchestration and pipeline
-│   ├── error_messages.rs          # Centralized error message constants
+│   ├── errors.rs                  # Error types, diagnostics, and reporting
+│   ├── grammar/                   # Grammar definition files
+│   │   └── grammar.pest           # PEG grammar specification
+│   ├── grammar_validation.rs      # Grammar validation and rule checking
 │   ├── lib.rs                     # Library entry point, module exports
-│   ├── macros.rs, macros/         # Macro system: expansion, registry, std macros
+│   ├── macros.rs                  # Macro system: expansion, registry, definitions
 │   ├── main.rs                    # Binary entry point (CLI launcher)
-│   ├── runtime.rs, runtime/       # Evaluation and world state management
-│   ├── syntax.rs, syntax/         # Parsing and grammar
-│   ├── validation.rs, validation/ # Grammar and semantic validation
-│   └── ...
-├── tests/                     # Test suite: atoms, macros, runtime, syntax, io
-│   ├── atoms/
-│   ├── macros/
-│   ├── runtime/
-│   ├── syntax/
-│   ├── io/
-│   └── ...
-├── docs/                      # Canonical documentation
+│   ├── parser.rs                  # Parsing implementation and AST construction
+│   ├── repl.rs                    # Interactive REPL (Read-Eval-Print Loop)
+│   ├── runtime.rs                 # Evaluation engine and world state management
+│   ├── semantic_validation.rs     # Semantic validation for expanded AST
+│   ├── syntax.rs                  # Core AST types and value representations
+│   ├── test.rs                    # Test framework types and utilities
+│   ├── test_runner.rs             # Test execution and harness implementation
+│   └── validation.rs              # Validation module coordination and re-exports
+├── tests/                         # Test suite: organized by functional domain
+│   ├── builtins/                  # Built-in function tests
+│   ├── control/                   # Control flow and execution tests
+│   ├── core/                      # Core language feature tests
+│   ├── io/                        # Input/output operation tests
+│   ├── syntax/                    # Parsing and syntax tests
+│   └── world/                     # World state management tests
+├── docs/                          # Canonical documentation
 │   ├── canonical-language-reference.md
 │   ├── philosophy.md
 │   └── references/
-├── scripts/                   # Utility scripts (e.g., grammar checks)
-├── Cargo.toml                 # Rust package manifest
-├── Cargo.lock                 # Cargo dependency lockfile
+├── scripts/                       # Utility scripts (e.g., grammar checks)
+├── Cargo.toml                     # Rust package manifest
+├── Cargo.lock                     # Cargo dependency lockfile
 └── ...
 ```
 
@@ -78,66 +90,79 @@ For a detailed statement of philosophy and guiding principles, see [`docs/philos
 
 ## Core Architecture
 
-### 1. **AST Layer (`src/ast.rs`, `src/ast/`)**
+### 1. **Syntax & AST Layer (`src/syntax.rs`)**
 
 Defines the core data structures for representing Sutra expressions, including:
 
-- `Expr`, `AstNode`, `Span`, `ParamList`
-- Value representations (`value.rs`) with `Value` enum supporting `Nil`, `Number`, `String`, `Bool`, `List`, `Map`, `Path`, and `Lambda`
+- `Expr`, `AstNode`, `Span`, `Spanned` for AST representation with source location tracking
+- `ParamList` for function parameter handling
+- Value representations with `Value` enum supporting `Nil`, `Number`, `String`, `Bool`, `List`, `Map`, `Path`, and `Lambda`
 
-### 2. **Atoms System (`src/atoms.rs`, `src/atoms/`)**
+### 2. **Parser (`src/parser.rs`)**
 
-Atoms are the primitive operations of the engine, organized into domain modules:
-
-- `math.rs`, `logic.rs`, `collections.rs`, `execution.rs`, `external.rs`, `string.rs`, `world.rs`, `special_forms.rs`, `test.rs`
-- `helpers.rs` provides shared infrastructure
-- Atoms are registered and managed via the `AtomRegistry` with three calling conventions: `Pure`, `Stateful`, and `SpecialForm`
-
-### 3. **Macro System (`src/macros.rs`, `src/macros/`)**
-
-- Purely syntactic transformation of the AST before evaluation
-- Supports both native Rust macro functions and declarative macro templates
-- Modularized into `expander.rs`, `loader.rs`, `std_macros.rs`
-- User and standard macros loaded from `std_macros.sutra`
-- Supports variadic macro forwarding with spread arguments (`...args`)
-
-### 4. **Parsing & Syntax (`src/syntax.rs`, `src/syntax/`)**
-
-- PEG grammar (`grammar.pest`) with comprehensive rule coverage
-- Parser implementation (`parser.rs`) with robust error reporting
+- PEG grammar-based parser (`src/grammar/grammar.pest`) with comprehensive rule coverage
+- Robust error reporting with source location tracking
 - Supports both s-expression `()` and brace-block `{}` syntaxes
 - Handles quotes, defines, lambdas, spread arguments, and parameter lists
 
-### 5. **Validation (`src/validation.rs`, `src/validation/`)**
+### 3. **Atoms System (`src/atoms.rs`, `src/atoms/`)**
 
-- Grammar validation (`grammar/`) with comprehensive rule checking
-- Semantic validation (`semantic/`) for expanded AST correctness
-- Ensures scripts are well-formed and semantically correct
+Atoms are the primitive operations of the engine, organized into domain modules:
 
-### 6. **Runtime & Evaluation (`src/runtime.rs`, `src/runtime/`)**
+- `math.rs`: Arithmetic operations (`+`, `-`, `*`, `/`, `mod`, `abs`, `min`, `max`)
+- `logic.rs`: Boolean logic and comparisons (`eq?`, `gt?`, `lt?`, `not`, etc.)
+- `collections.rs`: List and collection operations (`list`, `len`, `car`, `cdr`, `cons`, `map`)
+- `execution.rs`: Control flow atoms (`do`, `apply`, `if`, `let`, `cond`)
+- `external.rs`: I/O and system operations (`print`, `output`, `rand`)
+- `string.rs`: String manipulation (`str`, `str+`, `display`)
+- `world.rs`: World state management (`get`, `set!`, `del!`, `exists?`, `path`)
+- `special_forms.rs`: Special syntax forms (`lambda`, `define`, `quote`)
+- `test.rs`: Testing framework support
 
-- Evaluation engine (`eval.rs`) with lexical scoping and recursion control
-- World state management (`world.rs`) with immutable state updates
-- Deterministic PRNG for reproducible execution
+Atoms are registered with three calling conventions: `Pure`, `Stateful`, and `SpecialForm`
 
-### 7. **CLI & REPL (`src/cli.rs`, `src/repl.rs`)**
+### 4. **Macro System (`src/macros.rs`)**
+
+- Purely syntactic transformation of the AST before evaluation
+- Supports both native Rust macro functions and declarative macro templates
+- User and standard macros with variadic support (`...args`)
+- Template-based macro definitions with parameter substitution
+
+### 5. **Validation (`src/grammar_validation.rs`, `src/semantic_validation.rs`)**
+
+- **Grammar validation**: Comprehensive rule checking for PEG grammar correctness
+- **Semantic validation**: AST correctness validation after macro expansion
+- Coordinated through `src/validation.rs` with unified error reporting
+- Ensures scripts are well-formed and semantically correct before evaluation
+
+### 6. **Runtime & Evaluation (`src/runtime.rs`)**
+
+- Evaluation engine with lexical scoping and recursion control
+- World state management with immutable state updates
+- Deterministic execution with controlled side effects
+- Function call handling and lambda evaluation
+
+### 7. **Testing Framework (`src/test.rs`, `src/test_runner.rs`)**
+
+- **Test Discovery**: Automatic discovery and parsing of `.sutra` test files (`src/discovery.rs`)
+- **Test Execution**: Comprehensive test runner with progress tracking
+- **Test Types**: Support for value expectations, error testing, and output validation
+- **Test Forms**: `(test "name" (expect value) body...)` syntax
+
+### 8. **CLI & REPL (`src/cli.rs`, `src/repl.rs`)**
 
 - Command-line interface with comprehensive subcommands
 - Interactive REPL with persistent state and multi-line expression support
-- Direct code evaluation (`eval` command) for quick testing
-- Test discovery and execution with progress tracking
+- Direct code evaluation for quick testing
 - Macro expansion tracing and AST inspection
+- Test execution and progress reporting
 
-### 8. **Testing (`src/discovery.rs`)**
+### 9. **Error Handling (`src/errors.rs`)**
 
-- Test discovery and harness with AST-based test extraction
-- Support for `(test "name" (expect value) body...)` test forms
-
-### 9. **Diagnostics (`src/diagnostics.rs`)**
-
-- Unified error system with `miette`-based diagnostics
-- Error construction macros (`err_msg!`, `err_ctx!`, `err_src!`)
-- Multi-label diagnostics and error chaining
+- Unified error system with rich diagnostic information
+- Source location tracking and error context preservation
+- Multiple error types for different validation and runtime phases
+- Integration with `miette` for rich error display
 
 ---
 
@@ -171,10 +196,12 @@ Atoms are the primitive operations of the engine, organized into domain modules:
 
 ### Testing Framework
 
-- **Test Discovery:** Automatic discovery of `.sutra` test files
-- **Test Forms:** `(test "name" (expect value) body...)` syntax
-- **Error Testing:** `(expect-error error-type)` for testing error conditions
-- **Progress Tracking:** Real-time test execution progress
+- **Test Discovery:** Automatic discovery of `.sutra` test files in the `tests/` directory
+- **Test Forms:** `(test "name" (expect value) body...)` syntax for clear test definitions
+- **Error Testing:** `(expect-error error-type)` for testing error conditions and edge cases
+- **Output Testing:** `(expect-output "text")` for testing printed output
+- **Progress Tracking:** Real-time test execution progress with pass/fail statistics
+- **Test Organization:** Tests organized by functional domain (builtins, control, core, io, syntax, world)
 
 ### Interactive Development
 
@@ -182,6 +209,20 @@ Atoms are the primitive operations of the engine, organized into domain modules:
 - **Direct Evaluation:** `eval` command for quick code testing
 - **Multi-line Support:** Automatic expression completion detection
 - **Context Management:** State clearing and session control
+
+---
+
+## Recent Changes
+
+**Code Organization (July 2025)**: The codebase has been recently reorganized to improve modularity and discoverability:
+
+- Parser moved from `src/syntax/parser.rs` to `src/parser.rs` for top-level visibility
+- Grammar files consolidated in `src/grammar/` directory
+- Validation modules promoted: `validation/grammar.rs` → `grammar_validation.rs`, `validation/semantic.rs` → `semantic_validation.rs`
+- Test runner moved from `src/test/runner.rs` to `src/test_runner.rs`
+- Eliminated unnecessary directory nesting while maintaining backward compatibility through re-exports
+
+This reorganization reduces module indirection, improves code discoverability, and maintains clean separation of concerns.
 
 ---
 
@@ -227,8 +268,8 @@ Key commands:
 - `validate-grammar`: Validate the PEG grammar for errors
 - `format <file>`: Pretty-print and normalize a script
 - `test [path]`: Discover and run all test scripts in a directory (default: `tests`)
-- `listmacros`: List all available macros with documentation
-- `listatoms`: List all available atoms with documentation
+- `list-macros`: List all available macros with documentation
+- `list-atoms`: List all available atoms with documentation
 - `ast <file>`: Show the Abstract Syntax Tree (AST) for a script
 
 ### Interactive Development
@@ -280,14 +321,27 @@ cargo run -- eval
 
 ## Test Suite
 
-Tests are organized by domain:
+Tests are organized by functional domain in the `tests/` directory:
 
-- `tests/atoms/`: Atom operation tests (math, logic, list, string, etc.)
-- `tests/macros/`: Macro expansion and assignment tests
-- `tests/runtime/`: Runtime consistency and control flow
-- `tests/syntax/`: Parsing and security
-- `tests/io/`: Output and IO
-- Each `.sutra` file is a test script; see `tests/README.md` for details.
+- `tests/builtins/`: Built-in function tests (arithmetic, comparison, list, logic, random, string)
+- `tests/control/`: Control flow and execution tests (conditionals, consistency, execution)
+- `tests/core/`: Core language feature tests (collections, literals, scoping, special forms)
+- `tests/io/`: Input/output operation tests
+- `tests/syntax/`: Parsing and syntax validation tests
+- `tests/world/`: World state management tests (assignment, persistence)
+
+Each `.sutra` file contains test scripts using the `(test "name" (expect value) body...)` syntax. Run tests with:
+
+```sh
+# Run all tests
+cargo run -- test
+
+# Run tests in a specific directory
+cargo run -- test tests/core
+
+# Run a specific test file
+cargo run -- test tests/core/literals.sutra
+```
 
 ---
 

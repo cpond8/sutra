@@ -12,7 +12,8 @@ pub use crate::{
 
 // Module aliases for concise imports
 pub use runtime::{evaluate, EvaluationContext};
-pub use validation::{grammar, semantic};
+pub use grammar_validation as grammar;
+pub use semantic_validation as semantic;
 
 pub mod prelude {
     pub use crate::{
@@ -35,11 +36,15 @@ pub mod atoms;
 pub mod cli;
 pub mod discovery;
 pub mod errors;
+pub mod grammar_validation;
 pub mod macros;
+pub mod parser;
 pub mod repl;
 pub mod runtime;
+pub mod semantic_validation;
 pub mod syntax;
 pub mod test;
+pub mod test_runner;
 pub mod validation;
 
 #[cfg(test)]
