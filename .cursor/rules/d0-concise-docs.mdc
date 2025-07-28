@@ -1,0 +1,152 @@
+---
+alwaysApply: false
+---
+
+# Writing Clear, Focused, Reader-Centric Documentation
+
+## Purpose
+
+You are not documenting for completeness. You are documenting for clarity.
+The goal is not to dump everything you know—it is to precisely convey what the *reader* needs to understand, without distraction, drift, or excess.
+
+This is not about copying structure from other docs. This is about understanding:
+**What must the reader *know*, and how can we deliver it in the cleanest possible form?**
+
+You are not here to create a reference archive. You are here to build a *clear lens*.
+
+This is not a checklist. This is a model of how to think.
+
+---
+
+## Core Process
+
+### Phase 1: What does the reader *actually* need?
+
+> I do not start by writing. I start by asking: who is reading this, and what do they need?
+
+* I identify the intended reader’s background, goals, and likely context.
+* I ask:
+
+  * What problem are they trying to solve?
+  * What do they already know?
+  * What are they confused about?
+  * What would frustrate or waste their time?
+* I define the **core payload**: what knowledge must be transferred for this document to succeed?
+
+I write this out clearly before I write anything else.
+
+---
+
+### Phase 2: What structure delivers that most directly?
+
+> Structure is not a formality. It is the delivery vehicle for understanding.
+
+* I design the layout around the reader’s journey, not the internal organization of the system.
+* I frontload what matters most. No preambles. No theory before usefulness.
+* I keep it **linear** and **navigable**: no tangents, no backtracking, no conceptual cliff jumps.
+* I use **headings as promises**—each one answers a question or frames a concept the reader *cares about*.
+
+I sketch the structure before I draft any content. If it isn’t clean and focused, I redesign it.
+
+---
+
+### Phase 3: What can I remove?
+
+> Clarity is subtraction. Good documentation is not everything—it’s only what matters.
+
+* I question every paragraph, example, and note:
+
+  * Is this teaching something essential?
+  * Does it serve the main task or goal?
+  * Would the reader miss it?
+* I cut:
+
+  * Rambling explanations
+  * Defensive disclaimers
+  * Footnote-like trivia
+  * Internal rationale irrelevant to the user
+
+If it doesn’t serve the reader’s purpose *directly*, I cut it.
+
+---
+
+### Phase 4: How do I make this maximally understandable?
+
+> My writing is not a transcript of my knowledge. It is a carefully shaped bridge to theirs.
+
+* I use short, direct sentences.
+* I avoid jargon unless I explain it.
+* I give a clear example immediately after every abstract idea.
+* I do not hedge, pad, or philosophize.
+* I prefer **verbs over nouns**, **actions over descriptions**.
+* I treat every paragraph as a test: does this *teach* something, or just talk?
+
+I revise relentlessly for clarity. If a sentence can be made simpler, it is.
+
+---
+
+### Phase 5: What does the reader walk away with?
+
+> The point is not that they read it. The point is that they *got it*.
+
+* I summarize key takeaways at natural stopping points.
+* I verify that the main question or problem was *actually answered*.
+* I test the flow: can a new reader follow it without confusion?
+* I include only the *minimum working examples* needed to ground understanding.
+
+I finish by asking: if the reader only skimmed this, what would they walk away with?
+If the answer is “not enough,” I restructure and rewrite.
+
+---
+
+## Example Reasoning Pattern
+
+> This guide began as a feature dump: ten options, every flag, and an API reference. But the reader just wants to know: how do I get started, and what should I care about?
+
+> I stripped it down to four sections:
+>
+> 1. What this is and why you’d use it
+> 2. How to set it up in 60 seconds
+> 3. The 3 things you *must* understand
+> 4. A complete example that works out of the box
+
+> I cut five pages of detail. I moved advanced topics to a link. I rewrote each section so it flows top-down, without assumptions. Every heading is a question the reader would naturally ask.
+> The result is shorter, clearer, and actually usable.
+
+---
+
+## Internal Heuristics to Apply
+
+Keep these questions active while writing:
+
+* What is the *reader’s goal*?
+* Is this explaining something, or just listing it?
+* Can this be one sentence shorter?
+* If I cut this, what would break?
+* Is this structure linear and obvious—or wandering?
+* Would someone unfamiliar find this intimidating or welcoming?
+
+---
+
+## Expectations
+
+You will be assessed based on:
+
+* **Reader Clarity**: Would a newcomer grasp this?
+* **Structural Focus**: Does it follow a clear, reader-centered sequence?
+* **Conciseness**: Is every sentence necessary?
+* **Usefulness**: Does it answer the real questions, not the internal ones?
+
+This is not a knowledge dump. This is instructional writing.
+It is judged by what the reader *understands*, not by what the author includes.
+
+---
+
+## Final Directive
+
+You are not here to document everything.
+You are not here to defend a design.
+You are here to teach clearly, quickly, and with ruthless empathy for the reader’s mind.
+
+Find the core message. Shape it simply.
+Cut until what remains is obvious. Then write *that*.

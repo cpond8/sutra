@@ -52,14 +52,22 @@ pub mod test_runner;
 mod sutra_harness {
     use std::path::Path;
 
-    use crate::cli::ArgsCommand;
+    use crate::cli;
+
     #[test]
     fn run_sutra_tests() {
-        // Test that the CLI can handle test execution
-        let command = ArgsCommand::Test {
-            path: Path::new("tests").to_path_buf(),
-        };
-        // This is just a smoke test - actual execution is tested elsewhere
-        assert!(matches!(command, ArgsCommand::Test { .. }));
+        // Run the actual Sutra test suite as part of `cargo test`
+        // This ensures that both `cargo test` and `sutra test` run the same tests
+        let test_path = Path::new("tests").to_path_buf();
+        
+        // Use the same test runner that the CLI uses
+        match cli::run_tests(test_path) {
+            Ok(()) => {
+                // Tests passed - the test runner will have printed results
+            }
+            Err(e) => {
+                panic!("Sutra test suite failed: {}", e);
+            }
+        }
     }
 }

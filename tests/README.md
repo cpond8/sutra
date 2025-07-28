@@ -1,175 +1,262 @@
-# Sutra Test Suite & Harness
+# Writing Tests for Sutra
 
-A comprehensive, author-focused testing framework for the Sutra engine, designed for maximal transparency, compositionality, and reliability. All tests are written in the Verse language, except for Rust-based CLI/integration regression tests.
+This guide shows you how to write effective tests using Sutra's testing framework and how to run the test suite.
 
----
+## What Makes a Good Sutra Test?
 
-# Sutra Test Suite & Harness
+Sutra tests are written in the Sutra language itself—they're just regular Sutra code that uses the `(test ...)` form. When you write a test, you're describing what should happen when Sutra runs your code.
 
-A comprehensive, author-focused testing framework for the Sutra engine, designed for maximal transparency, compositionality, and reliability. All tests are written in the Verse language, except for Rust-based CLI/integration regression tests.
-
----
-
-## Test Suite Structure
-
-- **core/**: Core language constructs (literals, collections, special forms, scoping)
-- **builtins/**: Built-in functions that operate on values (arithmetic, comparison, logic, etc.)
-- **world/**: World state manipulation macros (assignment, persistence)
-- **control/**: Control flow and execution semantics (conditionals, execution, consistency)
-- **io/**: Input/output operations (output, display)
-- **syntax/**: Parsing and syntax validation (grammar errors)
-- **cli_regression.rs**: Rust integration test for CLI error diagnostics
-
-Each `.sutra` file is a suite of Verse-language tests for a specific feature or domain. `cli_regression.rs` is a Rust test that ensures CLI errors are always rendered as miette diagnostics.
-
----
-
-## Test Types and Coverage
-
-### Core Language Constructs
-
-- **Purpose:** Validate fundamental language features and special forms
-- **Examples:**
-  - `literals.sutra`: Tests for numbers, booleans, strings, nil parsing and evaluation
-  - `collections.sutra`: Tests for lists, quoting, and basic collection operations
-  - `special_forms.sutra`: Tests for `define`, `lambda`, `let`, including closures and scoping
-  - `scoping.sutra`: Tests for lexical scoping, closures, variable capture, and shadowing
-
-### Built-in Functions
-
-- **Purpose:** Validate all built-in functions that operate on values
-- **Examples:**
-  - `arithmetic.sutra`: Tests for `+`, `-`, `*`, `/`, `mod`, including edge cases and error handling
-  - `comparison.sutra`: Tests for `eq?`, `gt?`, `lt?`, and their aliases, including type and arity errors
-  - `logic.sutra`: Tests for `not`, truthiness, and arity errors
-  - `string.sutra`: Tests for string manipulation functions like `str+`
-  - `list.sutra`: Tests for `car`, `cdr`, `cons`, and other list operations
-  - `random.sutra`: Tests for `rand` and other random functions
-
-### World State Operations
-
-- **Purpose:** Validate world state manipulation and persistence
-- **Examples:**
-  - `assignment.sutra`: Tests for `set!`, `get`, `del!`, `add!`, `sub!`, `inc!`, `dec!`, including error handling
-  - `persistence.sutra`: Tests for world state consistency and persistence across operations
-
-### Control Flow
-
-- **Purpose:** Validate control flow constructs and execution semantics
-- **Examples:**
-  - `conditionals.sutra`: Tests for `if`, `cond`, including arity and type errors
-  - `execution.sutra`: Tests for `do`, sequencing, and execution order
-  - `consistency.sutra`: Ensures test and production execution paths are identical
-
-### Input/Output
-
-- **Purpose:** Validate input/output operations
-- **Examples:**
-  - `output.sutra`: Tests for `print`, `println`, `display`, including arity errors and output matching
-
-### Syntax and Parsing
-
-- **Purpose:** Validate parsing and syntax error handling
-- **Examples:**
-  - `parsing.sutra`: Tests for grammar error detection (unclosed lists, invalid escapes, etc.)
-
-### CLI Regression
-
-- **Purpose:** Ensure all CLI errors are rendered as miette diagnostics
-- **Implementation:**
-  - `cli_regression.rs`: Runs the CLI with invalid input and asserts that the output contains miette-formatted diagnostics (error codes, labels, help, and source context)
-
----
-
-## Test Philosophy and Features
-
-- **Homoiconic:** All tests are valid Sutra code, not comments or metadata
-- **Composable:** Tests use macros like `(test ...)` and `(expect ...)` for clarity and extensibility
-- **Transparent:** All errors are surfaced as miette diagnostics, with full context, code, and help
-- **Automated Quality Gate:** The Rust regression test ensures no regressions in CLI error reporting
-
----
-
-## How to Run the Test Suite
-
-- **All Sutra tests:**
-
-  ```sh
-  cargo test
-  ```
-
-  This runs all `.sutra` tests via the test harness and the Rust CLI regression test.
-
-- **CLI regression only:**
-  ```sh
-  cargo test --test cli_regression
-  ```
-
----
-
-## Canonical Error Codes
-
-All errors use canonical codes (e.g., `ParseError`, `ValidationError`, `TypeError`, `DivisionByZero`, etc.) for stable, meaningful diagnostics. See the table below for all codes and their meanings.
-
-| Error Code               | Description                                  | Typical Use Case                    |
-| ------------------------ | -------------------------------------------- | ----------------------------------- |
-| `ParseError`             | Syntax or parsing failures                   | Malformed input, unexpected tokens  |
-| `ValidationError`        | Post-expansion validation failures           | Semantic errors, invalid structures |
-| `RecursionLimitExceeded` | Macro expansion or evaluation depth exceeded | Infinite recursion detection        |
-| `ArityError`             | Function argument count mismatch             | Wrong number of arguments           |
-| `TypeError`              | Type mismatch errors                         | Wrong value types for operations    |
-| `DivisionByZero`         | Division by zero operations                  | Mathematical errors                 |
-| `EvalError`              | General evaluation failures                  | Runtime errors not covered above    |
-| `IoError`                | File or system I/O failures                  | File read/write errors              |
-| `MalformedAstError`      | Internal AST structure errors                | Parser or AST construction bugs     |
-| `InternalParseError`     | Internal parser state errors                 | Parser implementation bugs          |
-
----
-
-## Example Test File Structure
+Here's what a simple test looks like:
 
 ```lisp
-(test "feature description"
-      (expect (value 42) (tags "math"))
-      (+ 40 2))
+(test "addition works correctly"
+      (expect (value 10)
+              (tags "math"))
+      (+ 4 6))
 ```
 
+This test runs `(+ 4 6)` and expects the result to be `10`. If the result matches, the test passes. If not, you'll see a detailed error message showing what went wrong.
+
+## How to Structure Your Tests
+
+### The Basic Test Form
+
+Every test follows this pattern:
+
+```lisp
+(test "descriptive test name"
+      (expect expectation-type
+              (tags "category"))
+      your-code-here)
+```
+
+Let's break this down:
+
+- **Test name**: A clear description of what you're testing. Make it specific enough that someone else can understand what should happen.
+- **Expectation**: What you expect to happen when your code runs.
+- **Tags**: Categories that help organize tests (like "math", "string", "error-handling").
+- **Test body**: The actual Sutra code you want to test.
+
+### Types of Expectations
+
+You can expect different kinds of results:
+
+**Value expectations** test that your code produces a specific result:
+
+```lisp
+(test "string concatenation"
+      (expect (value "hello world")
+              (tags "string"))
+      (str+ "hello" " " "world"))
+```
+
+**Error expectations** test that your code fails in the expected way:
+
+```lisp
+(test "division by zero fails"
+      (expect (error Runtime)
+              (tags "math" "error"))
+      (/ 10 0))
+```
+
+This is especially useful for testing error conditions—you want to make sure Sutra gives helpful error messages when things go wrong.
+
+## Running Your Tests
+
+### Run All Tests
+
+To run the entire test suite:
+
+```bash
+cargo run test
+```
+
+This discovers all `.sutra` files in the `tests/` directory and runs every test it finds. You'll see output like this:
+
+```
+✓ math: addition works correctly
+✓ string: concatenation works
+✗ math: division by zero fails
+```
+
+Green checkmarks (✓) mean tests passed. Red X marks (✗) mean tests failed, and you'll see detailed error information.
+
+### Run Tests from Rust
+
+You can also run the test suite through Cargo:
+
+```bash
+cargo test
+```
+
+This runs both the Sutra tests and additional Rust-based integration tests.
+
+### Understanding Test Output
+
+When tests pass, you see a simple success message. When they fail, Sutra shows you exactly what went wrong:
+
+- What you expected to happen
+- What actually happened
+- Where in your code the problem occurred
+- Suggestions for fixing the issue
+
+The error messages use the same system as Sutra's regular error reporting, so they include source context and helpful guidance.
+
+## Where to Put Your Tests
+
+Tests are organized by what they're testing:
+
+- **`core/`**: Core language features like literals, special forms, and scoping
+- **`builtins/`**: Built-in functions like arithmetic, string operations, and list manipulation
+- **`control/`**: Control flow like conditionals and loops
+- **`world/`**: World state operations like variable assignment
+- **`io/`**: Input and output operations
+- **`syntax/`**: Parsing and syntax validation
+
+When you add a new feature, put its tests in the most appropriate directory. If you're not sure, look at existing tests for similar features.
+
+## Writing Effective Tests
+
+### Test One Thing at a Time
+
+Good tests focus on a single behavior:
+
+```lisp
+;; Good - tests one specific case
+(test "addition with positive numbers"
+      (expect (value 5)
+              (tags "math"))
+      (+ 2 3))
+
+;; Good - tests error handling separately
+(test "addition requires numbers"
+      (expect (error Runtime)
+              (tags "math" "error"))
+      (+ 2 "not a number"))
+```
+
+### Use Descriptive Names
+
+Your test names should explain what's being tested:
+
+```lisp
+;; Good - specific and clear
+(test "car returns first element of non-empty list"
+      (expect (value 1)
+              (tags "list"))
+      (car '(1 2 3)))
+
+;; Less helpful - too vague
+(test "car works"
+      (expect (value 1)
+              (tags "list"))
+      (car '(1 2 3)))
+```
+
+### Test Both Success and Failure Cases
+
+Don't just test that things work—test that they fail appropriately:
+
+```lisp
+;; Test the happy path
+(test "list access with valid index"
+      (expect (value 2)
+              (tags "list"))
+      (car (cdr '(1 2 3))))
+
+;; Test error conditions
+(test "car fails on empty list"
+      (expect (error Runtime)
+              (tags "list" "error"))
+      (car '()))
+```
+
+### Use Tags Consistently
+
+Tags help organize and filter tests. Use consistent tag names:
+
+- `"math"` for arithmetic operations
+- `"string"` for string manipulation
+- `"list"` for list operations
+- `"error"` for error-handling tests
+- `"parse"` for syntax and parsing tests
+
+## Advanced Testing Patterns
+
+### Testing Complex Expressions
+
+You can test more complex code by building up expressions:
+
+```lisp
+(test "nested function calls"
+      (expect (value 8)
+              (tags "math"))
+      (+ (* 2 3) (/ 4 2)))
+```
+
+### Testing Functions You Define
+
+You can test functions you define within the test:
+
+```lisp
+(test "user-defined function works"
+      (expect (value 25)
+              (tags "function"))
+      (do
+        (define square (lambda (x) (* x x)))
+        (square 5)))
+```
+
+The `do` form lets you run multiple expressions in sequence, so you can set up what you need and then test it.
+
+## What Gets Tested Automatically
+
+The test suite includes additional automated checks:
+
+### CLI Error Reporting
+
+A Rust-based test (`cli_regression.rs`) ensures that when you run Sutra from the command line with invalid input, you get properly formatted error messages. This prevents regressions in error reporting quality.
+
+### Integration Testing
+
+The test framework itself runs integration tests to make sure the testing infrastructure works correctly.
+
+## When Tests Fail
+
+If your tests fail, here's how to debug them:
+
+1. **Read the error message carefully**—Sutra's error messages are designed to be helpful and specific.
+
+2. **Check your expectations**—Make sure you're expecting the right type of result (value vs. error).
+
+3. **Run individual tests**—You can focus on specific test files by running `sutra test tests/your-file.sutra`.
+
+4. **Use the REPL**—Try running your test code in the Sutra REPL to see what it actually produces.
+
+## Best Practices Summary
+
+- Write one test per behavior you want to validate
+- Use clear, descriptive test names
+- Test both success cases and error conditions
+- Organize tests in appropriate directories
+- Use consistent tagging
+- Keep test code simple and focused
+
+The goal is to build confidence that Sutra works as expected. Good tests catch bugs early and make it safe to change code, knowing that you'll be warned if something breaks.
+
 ---
 
-## Extending the Test Suite
+## Reference: Test Suite Structure
 
-- Add new `.sutra` files in the appropriate subdirectory for new features or bug fixes
-- Use the tagged `(expect ...)` syntax for new tests
-- For CLI or integration-level checks, add Rust tests in the top-level `tests/` directory
+The test suite is organized into these directories:
 
----
+| Directory   | Purpose                  | Example Files                                            |
+| ----------- | ------------------------ | -------------------------------------------------------- |
+| `core/`     | Core language constructs | `literals.sutra`, `special_forms.sutra`, `scoping.sutra` |
+| `builtins/` | Built-in functions       | `arithmetic.sutra`, `comparison.sutra`, `string.sutra`   |
+| `control/`  | Control flow             | `conditionals.sutra`, `execution.sutra`                  |
+| `world/`    | World state operations   | `assignment.sutra`, `persistence.sutra`                  |
+| `io/`       | Input/output             | `output.sutra`                                           |
+| `syntax/`   | Parsing and syntax       | `parsing.sutra`                                          |
 
-## Cross-References
-
-- For CLI philosophy and user experience, see the main [`README.md`](../README.md)
-- For language reference and canonical patterns, see `docs/`
-
----
-
-## Automated CLI Regression Test
-
-Sutra includes an automated Rust regression test (`cli_regression.rs`) that ensures all CLI errors are rendered as miette diagnostics. This test runs the CLI with deliberately invalid input and asserts that the output contains miette-formatted diagnostics (error codes, labels, help, and source context). This serves as a quality gate, preventing regressions in user-facing error reporting and guaranteeing actionable, context-rich feedback for all CLI errors.
-
----
-
-## Advanced Diagnostics: Multi-Label and Error Chaining
-
-Sutra's error system now supports:
-
-- **Multi-label diagnostics:** Errors can highlight multiple locations (spans) across one or more source files, with custom labels for each.
-- **Error chaining:** Errors can wrap a cause (another error), and the full chain is rendered in diagnostics output.
-- **Actionable help:** Errors can include detailed help messages, and help is aggregated from all levels of the error chain.
-
-These features are tested in:
-
-- **Rust unit tests:** See `src/diagnostics.rs` for direct tests of multi-label, chaining, and help rendering using `miette::Report`.
-- **CLI regression test:** `tests/cli_regression.rs` ensures that all CLI errors are rendered as miette diagnostics, including error codes, labels, help, and source context.
-
-**Edge cases** (errors with/without help, with/without cause, with/without labels) are also covered in the diagnostics unit tests.
-
----
+Plus `cli_regression.rs` for CLI integration testing.

@@ -284,7 +284,7 @@ fn validate_grammar() -> Result<(), SutraError> {
 }
 
 /// Enhanced test runner with detailed reporting
-fn run_tests(path: PathBuf) -> Result<(), SutraError> {
+pub fn run_tests(path: PathBuf) -> Result<(), SutraError> {
     let test_files = TestDiscoverer::discover_test_files(path).map_err(|e| {
         let context = ValidationContext {
             source: SourceContext::fallback("run_tests"),

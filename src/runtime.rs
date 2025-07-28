@@ -79,7 +79,7 @@ impl ConsRepr {
             ConsRepr::Chain(cell) => &cell.car,
         }
     }
-    
+
     /// Get the cdr (rest) of the cons cell
     pub fn cdr(&self) -> Value {
         match self {
@@ -87,19 +87,19 @@ impl ConsRepr {
             ConsRepr::Chain(cell) => cell.cdr.clone(),
         }
     }
-    
+
     /// Create a new cons cell with optimized representation
     pub fn cons(car: Value, cdr: Value) -> ConsRepr {
         match cdr {
             Value::Nil => ConsRepr::Single(Box::new(car)),
             Value::Cons(ConsRepr::Single(existing)) => {
                 // Create a proper two-element list where cdr points to single-element list
-                ConsRepr::Chain(Rc::new(ConsCell { 
-                    car, 
-                    cdr: Value::Cons(ConsRepr::Single(existing))
+                ConsRepr::Chain(Rc::new(ConsCell {
+                    car,
+                    cdr: Value::Cons(ConsRepr::Single(existing)),
                 }))
-            },
-            _ => ConsRepr::Chain(Rc::new(ConsCell { car, cdr }))
+            }
+            _ => ConsRepr::Chain(Rc::new(ConsCell { car, cdr })),
         }
     }
 }

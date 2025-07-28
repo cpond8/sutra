@@ -1,0 +1,156 @@
+---
+alwaysApply: false
+---
+
+# Thinking Like a Systems Debugger: Getting Unstuck with Clarity and Purpose
+
+## Purpose
+
+When you’re stuck—really stuck—not because of one bug, but because the *entire situation feels wrong*, the way forward is not to keep poking at the error. It’s to shift your mindset entirely.
+
+You are not here to squash symptoms.
+You are here to understand the system.
+You are here to solve the *real* problem—not the one that yelled loudest, but the one that created the noise in the first place.
+
+This is not a checklist.
+This is a thought process to walk yourself out of the weeds and into clarity.
+
+---
+
+## Core Phases
+
+### Phase 1: Recognize the Loop You’re In
+
+> “Wait—haven’t I fixed this already?”
+
+* I notice the signs of tunnel vision:
+
+  * Same error, different patch.
+  * Fragile fixes that don’t hold.
+  * A creeping sense of chaos or futility.
+* I stop chasing. I stop reacting. I name what’s happening: **I’m stuck.**
+
+That recognition is the first and most powerful act of debugging.
+
+---
+
+### Phase 2: Recenter on the Goal
+
+> “What am I actually trying to accomplish?”
+
+* I strip away noise and reframe:
+
+  * What is the *real* outcome I want?
+  * What was I building before this broke?
+  * What would success *feel* like to the user or system?
+* I ask: Is my current work helping with that, or just cleaning up symptoms?
+
+I anchor myself to intent. That’s my compass.
+
+---
+
+### Phase 3: Widen the Frame
+
+> “Where does this problem *live* in the system?”
+
+* I trace outward:
+
+  * What triggers this code?
+  * What depends on its output?
+  * What assumptions does it rely on that might be leaking?
+* I ask:
+
+  * Where does this fit in the flow of data?
+  * What other parts of the system are *impacted* when this breaks?
+
+I redraw the map until I see the full terrain—not just the failing node.
+
+---
+
+### Phase 4: Investigate the Root
+
+> “Where did this really start?”
+
+* I follow the fault upstream:
+
+  * What’s the first moment something goes wrong?
+  * Could this have been avoided earlier?
+  * Is the current design *forcing* failure modes downstream?
+* I distinguish: Is this code broken? Or is it faithfully executing a bad idea?
+
+I stop treating symptoms. I go digging for causes.
+
+---
+
+### Phase 5: Break the Illusions
+
+> “What if I’m just...wrong?”
+
+* I challenge my beliefs:
+
+  * What do I *think* is true here?
+  * Have I proved that—or just assumed it?
+  * What if the bug isn’t in the code—it’s in my mental model?
+* I flip the frame:
+
+  * If I changed how I conceptualize the system, would the problem even exist?
+
+I allow for the possibility that I am holding the wrong map.
+
+---
+
+### Phase 6: Rethink the Boundaries
+
+> “Maybe I’m solving the wrong problem.”
+
+* I shift the problem definition:
+
+  * Is this even the right interface?
+  * Does this logic belong here?
+  * Would a slightly different abstraction make the issue disappear?
+* I give myself permission to ask: “What if this shouldn’t exist at all?”
+
+I look for the design choice that, if undone, would ripple a better solution downstream.
+
+---
+
+### Phase 7: Design for Wholeness
+
+> “What’s the smallest, cleanest fix that resolves this at the *right* level?”
+
+* I don’t fix the code—I fix the system.
+* I look for changes that:
+
+  * Remove classes of bugs, not just instances
+  * Simplify future reasoning
+  * Make the design more *predictable*
+* I ask:
+
+  * What’s the least I can do to fix the root?
+  * How will I verify this works for the *right reasons*?
+
+I act decisively—but only after seeing the full board.
+
+---
+
+## Internal Prompts to Keep You Honest
+
+Ask yourself as you work:
+
+* Am I patching what’s visible—or solving what’s real?
+* What’s the earliest point this could have gone differently?
+* What invisible constraint am I not questioning?
+* What part of the system wants to be redesigned?
+* If this were easy, what would it look like?
+
+---
+
+## Final Directive
+
+You are not here to bandage broken parts.
+You are not here to react faster.
+You are here to stop, see clearly, and solve from the root.
+
+Widen your lens. Challenge the question. Rethink the shape of the solution.
+
+Then act—not out of frustration, but from clarity.

@@ -195,7 +195,7 @@ pub fn expr_from_value_with_span(val: Value, span: Span) -> Result<Expr, String>
         Value::Cons(cell) => {
             let mut items = Vec::new();
             let mut current = Value::Cons(cell);
-            
+
             loop {
                 match current {
                     Value::Cons(ref cell_repr) => {
