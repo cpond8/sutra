@@ -135,23 +135,14 @@ pub enum ErrorKind {
 pub struct SourceInfo {
     pub source: Arc<NamedSource<String>>,
     pub primary_span: SourceSpan,
-    pub file_context: FileContext,
-}
-
-#[derive(Debug, Clone)]
-pub enum FileContext {
-    ParseTime { parser_state: String },
-    Runtime { test_info: Option<(String, String)> },
-    Validation { phase: String },
+    pub phase: String,
 }
 
 /// Diagnostic enhancement data
 #[derive(Debug, Clone)]
 pub struct DiagnosticInfo {
     pub help: Option<String>,
-    pub related_spans: Vec<LabeledSpan>,
     pub error_code: String,
-    pub is_warning: bool,
 }
 
 /// Context-aware error creation - each context knows how to create appropriate errors
@@ -216,14 +207,16 @@ pub trait ErrorReporting {
     /// Creates an internal error - these indicate engine bugs, not user errors.
     /// Use this for situations that should never happen in correct engine operation.
     fn internal_error(&self, message: &str, span: SourceSpan) -> SutraError {
-        self.report(
+        let mut error = self.report(
             ErrorKind::InvalidOperation {
                 operation: "internal engine operation".into(),
                 operand_type: format!("INTERNAL ERROR: {}", message),
             },
             span,
-        )
-        .with_suggestion("This is an internal engine error. Please report this as a bug.")
+        );
+        error.diagnostic_info.help =
+            Some("This is an internal engine error. Please report this as a bug.".into());
+        error
     }
 }
 
@@ -387,11 +380,10 @@ impl Diagnostic for SutraError {
     }
 
     fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        let mut labels = vec![LabeledSpan::new_with_span(
+        let labels = vec![LabeledSpan::new_with_span(
             Some(self.primary_label()),
             self.source_info.primary_span,
         )];
-        labels.extend(self.diagnostic_info.related_spans.clone());
         Some(Box::new(labels.into_iter()))
     }
 
@@ -423,23 +415,6 @@ impl SutraError {
             ErrorKind::AssertionFailure { .. } => "assertion failed here".into(),
         }
     }
-
-    /// Adds a suggestion/help message to this error.
-    /// This is a builder method that modifies the diagnostic help text.
-    pub fn with_suggestion(mut self, suggestion: impl Into<String>) -> Self {
-        self.diagnostic_info.help = Some(suggestion.into());
-        self
-    }
-
-    /// Adds test context information to this error.
-    /// This is used when errors occur during test execution to provide better diagnostics.
-    pub fn with_test_context(mut self, test_file: String, test_name: String) -> Self {
-        // Update the file context to include test information
-        if let FileContext::Runtime { ref mut test_info } = self.source_info.file_context {
-            *test_info = Some((test_file, test_name));
-        }
-        self
-    }
 }
 
 /// Standalone constructor for grammar validation phase.
@@ -463,15 +438,11 @@ pub fn grammar_validation_error(
         source_info: SourceInfo {
             source,
             primary_span: (0..rule_definition.len()).into(),
-            file_context: FileContext::Validation {
-                phase: "Grammar Structure".into(),
-            },
+            phase: "Grammar Structure".into(),
         },
         diagnostic_info: DiagnosticInfo {
             help: None,
-            related_spans: vec![],
             error_code: format!("validation.grammar.{}", code_suffix),
-            is_warning,
         },
     }
 }
@@ -512,15 +483,11 @@ impl ErrorReporting for ValidationContext {
             source_info: SourceInfo {
                 source: self.source.to_named_source(),
                 primary_span: span,
-                file_context: FileContext::Validation {
-                    phase: self.phase.clone(),
-                },
+                phase: self.phase.clone(),
             },
             diagnostic_info: DiagnosticInfo {
                 help: None,
-                related_spans: Vec::new(),
                 error_code,
-                is_warning: false,
             },
         }
     }

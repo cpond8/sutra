@@ -11,8 +11,8 @@ pub use crate::{
 };
 
 // Module aliases for concise imports
-pub use runtime::{evaluate, EvaluationContext};
 pub use grammar_validation as grammar;
+pub use runtime::{evaluate, EvaluationContext};
 pub use semantic_validation as semantic;
 
 pub mod prelude {

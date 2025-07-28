@@ -418,20 +418,18 @@ impl crate::errors::ErrorReporting for EvaluationContext {
         kind: crate::errors::ErrorKind,
         span: miette::SourceSpan,
     ) -> crate::errors::SutraError {
-        use crate::errors::{DiagnosticInfo, FileContext, SourceInfo, SutraError};
+        use crate::errors::{DiagnosticInfo, SourceInfo, SutraError};
 
         SutraError {
             kind: kind.clone(),
             source_info: SourceInfo {
                 source: self.source.to_named_source(),
                 primary_span: span,
-                file_context: FileContext::Runtime { test_info: None },
+                phase: "runtime".into(),
             },
             diagnostic_info: DiagnosticInfo {
                 help: None,
-                related_spans: Vec::new(),
                 error_code: format!("sutra::runtime::{}", kind.code_suffix()),
-                is_warning: false,
             },
         }
     }

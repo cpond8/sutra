@@ -407,15 +407,11 @@ fn make_error(source: &SourceContext, kind: ErrorKind, span: Span) -> SutraError
         source_info: crate::errors::SourceInfo {
             source: source.to_named_source(),
             primary_span: to_source_span(span),
-            file_context: crate::errors::FileContext::ParseTime {
-                parser_state: "parsing".to_string(),
-            },
+            phase: "parsing".to_string(),
         },
         diagnostic_info: crate::errors::DiagnosticInfo {
             help: None,
-            related_spans: vec![],
             error_code: "sutra::parse".to_string(),
-            is_warning: false,
         },
     }
 }

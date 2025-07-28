@@ -163,7 +163,10 @@ impl std::fmt::Display for Expr {
 }
 
 fn spanned(expr: Expr, span: Span) -> Spanned<Arc<Expr>> {
-    Spanned { value: Arc::new(expr), span }
+    Spanned {
+        value: Arc::new(expr),
+        span,
+    }
 }
 
 /// Helper to check if a span is valid for a given source string.
@@ -227,9 +230,9 @@ pub fn expr_from_value_with_span(val: Value, span: Span) -> Result<Expr, String>
             Ok(Expr::List(items, span))
         }
         Value::Path(p) => Ok(Expr::Path(p, span)),
-        Value::Lambda(_) | Value::NativeFn(_) => {
-            Err("Cannot convert function value to AST expression. This is a logic error.".to_string())
-        }
+        Value::Lambda(_) | Value::NativeFn(_) => Err(
+            "Cannot convert function value to AST expression. This is a logic error.".to_string(),
+        ),
     }
 }
 

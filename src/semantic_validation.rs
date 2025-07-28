@@ -110,7 +110,7 @@ fn validate_call(
 }
 
 fn create_semantic_error(kind: ErrorKind, node: &AstNode) -> SutraError {
-    use crate::errors::{DiagnosticInfo, FileContext, SourceInfo};
+    use crate::errors::{DiagnosticInfo, SourceInfo};
     use miette::NamedSource;
     use std::sync::Arc;
 
@@ -121,15 +121,11 @@ fn create_semantic_error(kind: ErrorKind, node: &AstNode) -> SutraError {
         source_info: SourceInfo {
             source: Arc::new(NamedSource::new("semantic_validation", "".to_string())),
             primary_span: span,
-            file_context: FileContext::Validation {
-                phase: "Semantic".into(),
-            },
+            phase: "Semantic".into(),
         },
         diagnostic_info: DiagnosticInfo {
             help: None,
-            related_spans: vec![],
             error_code: "validation.semantic.error".to_string(),
-            is_warning: false,
         },
     }
 }
