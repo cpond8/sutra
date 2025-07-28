@@ -407,7 +407,7 @@ fn print_file_summary(file_summary: &FileTestSummary) {
     stdout.set_color(ColorSpec::new().set_fg(Some(color))).ok();
     write!(
         &mut stdout,
-        "\n{}: {}/{} passed ({:.1}%)\n",
+        "{}: {}/{} passed ({:.1}%)\n\n",
         file_summary
             .file_path
             .file_name()

@@ -8,7 +8,6 @@ use crate::{
     parser,
     prelude::*,
     runtime::evaluate,
-    runtime::ConsCell,
     EngineOutputBuffer,
 };
 
@@ -308,11 +307,8 @@ impl TestRunner {
                 // Build a list value from all elements after the keyword
                 let mut result = Value::Nil;
                 for item in items[1..].iter().rev() {
-                    let cell = ConsCell {
-                        car: Self::extract_value(item, test_form, source_context)?,
-                        cdr: result,
-                    };
-                    result = Value::Cons(Rc::new(cell));
+                    let car_value = Self::extract_value(item, test_form, source_context)?;
+                    result = Value::Cons(crate::runtime::ConsRepr::cons(car_value, result));
                 }
                 return Ok(Some(Expectation::Value(result)));
             }
@@ -352,11 +348,8 @@ impl TestRunner {
             Expr::List(items, _) => {
                 let mut result = Value::Nil;
                 for item in items.iter().rev() {
-                    let cell = ConsCell {
-                        car: Self::extract_value(item, test_form, source_context)?,
-                        cdr: result,
-                    };
-                    result = Value::Cons(Rc::new(cell));
+                    let car_value = Self::extract_value(item, test_form, source_context)?;
+                    result = Value::Cons(crate::runtime::ConsRepr::cons(car_value, result));
                 }
                 Ok(result)
             }

@@ -3,12 +3,11 @@
 //! This module provides atoms for working with lists, strings, and maps.
 //! Includes both pure operations and stateful world operations.
 
-use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::{
     errors::{to_source_span, ErrorReporting, SutraError},
-    runtime::{evaluate_ast_node, ConsCell, EvaluationContext, NativeFn, SpannedValue, Value},
+    runtime::{evaluate_ast_node, EvaluationContext, NativeFn, SpannedValue, Value},
     syntax::{AstNode, Span},
 };
 
@@ -66,10 +65,7 @@ fn ok_span(value: Value, span: Span) -> Result<SpannedValue, SutraError> {
 fn build_list(items: Vec<Value>, span: Span) -> SpannedValue {
     let mut result = Value::Nil;
     for item in items.into_iter().rev() {
-        result = Value::Cons(Rc::new(ConsCell {
-            car: item,
-            cdr: result,
-        }));
+        result = Value::Cons(crate::runtime::ConsRepr::cons(item, result));
     }
     SpannedValue {
         value: result,
@@ -130,10 +126,7 @@ pub const ATOM_LIST: NativeFn = |args, context, call_span| {
     let mut result = Value::Nil;
     for item in args.iter().rev() {
         let value = eval_arg(item, context)?.value;
-        result = Value::Cons(Rc::new(ConsCell {
-            car: value,
-            cdr: result,
-        }));
+        result = Value::Cons(crate::runtime::ConsRepr::cons(value, result));
     }
     ok_span(result, *call_span)
 };
@@ -216,7 +209,7 @@ pub const ATOM_CAR: NativeFn = |args, context, call_span| {
     let list = eval_arg(&args[0], context)?;
 
     let value = match &list.value {
-        Value::Cons(cell) => cell.car.clone(),
+        Value::Cons(cell) => cell.car().clone(),
         Value::Nil => Value::Nil,
         _ => return type_error("List or Nil", &list, context),
     };
@@ -230,7 +223,7 @@ pub const ATOM_CDR: NativeFn = |args, context, call_span| {
     let list = eval_arg(&args[0], context)?;
 
     let value = match &list.value {
-        Value::Cons(cell) => cell.cdr.clone(),
+        Value::Cons(cell) => cell.cdr(),
         Value::Nil => Value::Nil,
         _ => return type_error("List or Nil", &list, context),
     };
@@ -248,14 +241,11 @@ pub const ATOM_CONS: NativeFn = |args, context, call_span| {
         Value::Cons(_) | Value::Nil => cdr_val.value,
         other => {
             // Wrap non-list cdr as a single-element list (improper lists are not allowed)
-            Value::Cons(Rc::new(ConsCell {
-                car: other.clone(),
-                cdr: Value::Nil,
-            }))
+            Value::Cons(crate::runtime::ConsRepr::cons(other.clone(), Value::Nil))
         }
     };
 
-    ok_span(Value::Cons(Rc::new(ConsCell { car, cdr })), *call_span)
+    ok_span(Value::Cons(crate::runtime::ConsRepr::cons(car, cdr)), *call_span)
 };
 
 /// Concatenates lists: (append <list1> <list2> ...)

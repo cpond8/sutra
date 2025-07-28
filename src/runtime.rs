@@ -33,9 +33,7 @@ pub enum Value {
     /// Boolean value.
     Bool(bool),
     /// A Lisp-style cons cell, forming the head of a list.
-    Cons(Rc<ConsCell>),
-    /// A simple list of values (more efficient than cons cells).
-    List(Vec<Value>),
+    Cons(ConsRepr),
     /// Map from string keys to values (deeply compositional).
     Map(HashMap<String, Value>),
     /// Reference to a path in the world state (not auto-resolved).
@@ -64,6 +62,48 @@ pub struct ConsCell {
     pub cdr: Value,
 }
 
+/// Internal optimized representation for cons cells
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ConsRepr {
+    /// Single element list (most common case)
+    Single(Box<Value>),
+    /// General case for longer lists
+    Chain(Rc<ConsCell>),
+}
+
+impl ConsRepr {
+    /// Get the car (first element) of the cons cell
+    pub fn car(&self) -> &Value {
+        match self {
+            ConsRepr::Single(val) => val,
+            ConsRepr::Chain(cell) => &cell.car,
+        }
+    }
+    
+    /// Get the cdr (rest) of the cons cell
+    pub fn cdr(&self) -> Value {
+        match self {
+            ConsRepr::Single(_) => Value::Nil,
+            ConsRepr::Chain(cell) => cell.cdr.clone(),
+        }
+    }
+    
+    /// Create a new cons cell with optimized representation
+    pub fn cons(car: Value, cdr: Value) -> ConsRepr {
+        match cdr {
+            Value::Nil => ConsRepr::Single(Box::new(car)),
+            Value::Cons(ConsRepr::Single(existing)) => {
+                // Create a proper two-element list where cdr points to single-element list
+                ConsRepr::Chain(Rc::new(ConsCell { 
+                    car, 
+                    cdr: Value::Cons(ConsRepr::Single(existing))
+                }))
+            },
+            _ => ConsRepr::Chain(Rc::new(ConsCell { car, cdr }))
+        }
+    }
+}
+
 impl PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -71,8 +111,7 @@ impl PartialEq for Value {
             (Value::Number(a), Value::Number(b)) => a == b,
             (Value::String(a), Value::String(b)) => a == b,
             (Value::Bool(a), Value::Bool(b)) => a == b,
-            (Value::Cons(a), Value::Cons(b)) => Rc::ptr_eq(a, b) || a == b,
-            (Value::List(a), Value::List(b)) => a == b,
+            (Value::Cons(a), Value::Cons(b)) => a == b,
             (Value::Map(a), Value::Map(b)) => a == b,
             (Value::Path(a), Value::Path(b)) => a == b,
             (Value::Lambda(a), Value::Lambda(b)) => a == b,
@@ -93,7 +132,6 @@ impl Value {
             Value::String(_) => "String",
             Value::Bool(_) => "Bool",
             Value::Cons(_) => "List", // User-facing type name remains "List" for consistency.
-            Value::List(_) => "List", // User-facing type name remains "List" for consistency.
             Value::Map(_) => "Map",
             Value::Path(_) => "Path",
             Value::Lambda(_) => "Lambda",
@@ -131,22 +169,6 @@ impl Value {
         }
     }
 
-    /// Returns the contained bool if this is a Bool value, else None.
-    pub fn as_bool(&self) -> Option<bool> {
-        match self {
-            Value::Bool(b) => Some(*b),
-            _ => None,
-        }
-    }
-
-    /// Returns the contained string if this is a String value, else None.
-    pub fn as_string(&self) -> Option<String> {
-        match self {
-            Value::String(s) => Some(s.clone()),
-            _ => None,
-        }
-    }
-
     /// Returns a reference to the contained string if this is a String value, else None.
     pub fn as_str(&self) -> Option<&str> {
         match self {
@@ -167,14 +189,33 @@ impl Value {
     /// This provides a simpler interface than cons cell iteration.
     pub fn as_list(&self) -> Option<&[Value]> {
         match self {
-            Value::List(items) => Some(items),
             _ => None,
         }
     }
 
+    /// Generic type checking with clear error messages for common patterns.
+    pub fn expect_type(&self, expected: &str) -> Result<&Self, String> {
+        let actual = self.type_name();
+        if self.matches_type_name(expected) {
+            Ok(self)
+        } else {
+            Err(format!("expected {expected}, got {actual}"))
+        }
+    }
+
+    /// Helper to check if value matches a type name (handles List/Cons duality).
+    fn matches_type_name(&self, expected: &str) -> bool {
+        let actual = self.type_name();
+        actual == expected || (expected == "List" && matches!(self, Value::Cons(_)))
+    }
+
     /// Creates a list from a vector of values.
     pub fn from_list(items: Vec<Value>) -> Self {
-        Value::List(items)
+        let mut result = Value::Nil;
+        for item in items.into_iter().rev() {
+            result = Value::Cons(ConsRepr::cons(item, result));
+        }
+        result
     }
 
     /// Attempts to create an iterator over a `Value`.
@@ -182,35 +223,21 @@ impl Value {
     /// If the `Value` is a `Cons`, `List`, or `Nil`, it returns an iterator.
     /// This is the primary way to traverse list structures.
     pub fn try_into_iter(self) -> impl Iterator<Item = Value> {
-        ListIterImpl::new(self)
+        ValueIterator::new(self)
     }
 
     // ------------------------------------------------------------------------
     // Display formatting helpers (internal)
     // ------------------------------------------------------------------------
 
-    fn fmt_cons_chain(f: &mut fmt::Formatter<'_>, start_cell: &ConsCell) -> fmt::Result {
+    fn fmt_list_like(f: &mut fmt::Formatter<'_>, value: &Value) -> fmt::Result {
         write!(f, "(")?;
-        write!(f, "{}", start_cell.car)?;
-
-        let mut current_cdr = &start_cell.cdr;
-        loop {
-            match current_cdr {
-                // Proper list case: the cdr is another cons cell
-                Value::Cons(next_cell) => {
-                    write!(f, " {}", next_cell.car)?;
-                    current_cdr = &next_cell.cdr;
-                }
-                // Proper list termination
-                Value::Nil => {
-                    break;
-                }
-                // Improper list case (dotted pair)
-                other => {
-                    write!(f, " . {}", other)?;
-                    break;
-                }
+        let items: Vec<_> = value.clone().try_into_iter().collect();
+        for (i, item) in items.iter().enumerate() {
+            if i > 0 {
+                write!(f, " ")?;
             }
+            write!(f, "{item}")?;
         }
         write!(f, ")")
     }
@@ -233,28 +260,10 @@ impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Nil => write!(f, "nil"),
-            Value::Number(n) => {
-                if n.fract() == 0.0 {
-                    write!(f, "{}", *n as i64)
-                } else {
-                    write!(f, "{n}")
-                }
-            }
+            Value::Number(n) => write!(f, "{n}"),
             Value::String(s) => write!(f, "{s}"),
             Value::Bool(b) => write!(f, "{b}"),
-            Value::Cons(cell) => Value::fmt_cons_chain(f, cell),
-            Value::List(items) => {
-                write!(f, "(")?;
-                let mut first = true;
-                for item in items {
-                    if !first {
-                        write!(f, " ")?;
-                    }
-                    write!(f, "{item}")?;
-                    first = false;
-                }
-                write!(f, ")")
-            }
+            Value::Cons(_) => Value::fmt_list_like(f, self),
             Value::Map(map) => Value::fmt_map(f, map),
             Value::Path(p) => write!(f, "{p}"),
             Value::Lambda(_) => write!(f, "<lambda>"),
@@ -278,51 +287,127 @@ pub struct SpannedValue {
     pub span: Span,
 }
 
+impl SpannedValue {
+    /// Create a new SpannedValue with the given value and span.
+    pub fn new(value: Value, span: Span) -> Self {
+        Self { value, span }
+    }
+
+    /// Create a SpannedValue containing Nil.
+    pub fn nil(span: Span) -> Self {
+        Self {
+            value: Value::Nil,
+            span,
+        }
+    }
+
+    /// Create a SpannedValue containing a number.
+    pub fn number(n: f64, span: Span) -> Self {
+        Self {
+            value: Value::Number(n),
+            span,
+        }
+    }
+
+    /// Create a SpannedValue containing a boolean.
+    pub fn bool(b: bool, span: Span) -> Self {
+        Self {
+            value: Value::Bool(b),
+            span,
+        }
+    }
+
+    /// Create a SpannedValue containing a string.
+    pub fn string(s: String, span: Span) -> Self {
+        Self {
+            value: Value::String(s),
+            span,
+        }
+    }
+
+    /// Unwrap as a number with context-aware error reporting.
+    pub fn unwrap_number(self, ctx: &ErrorContext) -> Result<f64, crate::errors::SutraError> {
+        match self.value {
+            Value::Number(n) => Ok(n),
+            _ => Err(ctx.type_mismatch(
+                "Number",
+                self.value.type_name(),
+                crate::errors::to_source_span(self.span),
+            )),
+        }
+    }
+
+    /// Unwrap as a string with context-aware error reporting.
+    pub fn unwrap_string(self, ctx: &ErrorContext) -> Result<String, crate::errors::SutraError> {
+        match self.value {
+            Value::String(s) => Ok(s),
+            _ => Err(ctx.type_mismatch(
+                "String",
+                self.value.type_name(),
+                crate::errors::to_source_span(self.span),
+            )),
+        }
+    }
+
+    /// Unwrap as a boolean with context-aware error reporting.
+    pub fn unwrap_bool(self, ctx: &ErrorContext) -> Result<bool, crate::errors::SutraError> {
+        match self.value {
+            Value::Bool(b) => Ok(b),
+            _ => Err(ctx.type_mismatch(
+                "Bool",
+                self.value.type_name(),
+                crate::errors::to_source_span(self.span),
+            )),
+        }
+    }
+
+    /// Check if the value is truthy (useful for conditions).
+    pub fn is_truthy(&self) -> bool {
+        self.value.is_truthy()
+    }
+}
+
 /// The canonical result type for any operation that produces a value.
 pub type SpannedResult = Result<SpannedValue, SutraError>;
 
 /// Internal iterator implementation for Value lists.
-/// This is a private implementation detail.
-struct ListIterImpl {
-    current: Value,
+/// This is a more efficient implementation that handles different value types optimally.
+enum ValueIterator {
+    Cons { current: Value },
+    Empty,
 }
 
-impl ListIterImpl {
+impl ValueIterator {
     fn new(value: Value) -> Self {
-        ListIterImpl { current: value }
+        match value {
+            Value::Cons(_) => ValueIterator::Cons { current: value },
+            Value::Nil => ValueIterator::Empty,
+            _ => ValueIterator::Empty,
+        }
     }
 }
 
-impl Iterator for ListIterImpl {
+impl Iterator for ValueIterator {
     type Item = Value;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match &self.current {
-            Value::Cons(cell) => {
-                let car = cell.car.clone();
-                // Move to the next link in the chain.
-                self.current = cell.cdr.clone();
-                Some(car)
-            }
-            Value::List(items) => {
-                // For List variant, we need to handle it differently
-                // This is a simplified approach - in practice, we'd want to
-                // convert List to Cons cells or handle it more efficiently
-                if let Some(item) = items.first() {
-                    let item = item.clone();
-                    // Remove the first item and continue with the rest
-                    if items.len() > 1 {
-                        self.current = Value::List(items[1..].to_vec());
-                    } else {
-                        self.current = Value::Nil;
+        match self {
+            ValueIterator::Cons { current } => {
+                match current {
+                    Value::Cons(cell) => {
+                        let car = cell.car().clone();
+                        // Move to the next link in the chain
+                        *current = cell.cdr();
+                        Some(car)
                     }
-                    Some(item)
-                } else {
-                    None
+                    Value::Nil => None,
+                    _ => {
+                        // Non-list value, end iteration
+                        None
+                    }
                 }
             }
-            // If the current value is not a list type, the list has ended.
-            _ => None,
+            ValueIterator::Empty => None,
         }
     }
 }
@@ -430,6 +515,76 @@ impl crate::errors::ErrorReporting for EvaluationContext {
             diagnostic_info: DiagnosticInfo {
                 help: None,
                 error_code: format!("sutra::runtime::{}", kind.code_suffix()),
+            },
+        }
+    }
+}
+
+/// Separate error creation context for cleaner error handling patterns.
+/// This provides a cleaner separation of concerns than embedding error reporting
+/// directly in the evaluation context.
+pub struct ErrorContext<'a> {
+    pub source: &'a crate::errors::SourceContext,
+    pub phase: &'static str,
+}
+
+impl<'a> ErrorContext<'a> {
+    /// Create an error context from an evaluation context.
+    pub fn from_eval_context(ctx: &'a EvaluationContext) -> Self {
+        Self {
+            source: &ctx.source,
+            phase: "runtime",
+        }
+    }
+
+    /// Create a type mismatch error with clean interface.
+    pub fn type_mismatch(
+        &self,
+        expected: &str,
+        actual: &str,
+        span: miette::SourceSpan,
+    ) -> crate::errors::SutraError {
+        use crate::errors::{DiagnosticInfo, ErrorKind, SourceInfo, SutraError};
+
+        SutraError {
+            kind: ErrorKind::TypeMismatch {
+                expected: expected.to_string(),
+                actual: actual.to_string(),
+            },
+            source_info: SourceInfo {
+                source: self.source.to_named_source(),
+                primary_span: span,
+                phase: self.phase.into(),
+            },
+            diagnostic_info: DiagnosticInfo {
+                help: None,
+                error_code: format!("sutra::{}::type_mismatch", self.phase),
+            },
+        }
+    }
+
+    /// Create an arity mismatch error.
+    pub fn arity_mismatch(
+        &self,
+        expected: &str,
+        actual: usize,
+        span: miette::SourceSpan,
+    ) -> crate::errors::SutraError {
+        use crate::errors::{DiagnosticInfo, ErrorKind, SourceInfo, SutraError};
+
+        SutraError {
+            kind: ErrorKind::ArityMismatch {
+                expected: expected.to_string(),
+                actual,
+            },
+            source_info: SourceInfo {
+                source: self.source.to_named_source(),
+                primary_span: span,
+                phase: self.phase.into(),
+            },
+            diagnostic_info: DiagnosticInfo {
+                help: None,
+                error_code: format!("sutra::{}::arity_mismatch", self.phase),
             },
         }
     }
@@ -585,7 +740,7 @@ fn resolve_symbol(name: &str, node: &AstNode, context: &mut EvaluationContext) -
 
 /// Convert AST to quoted value
 fn ast_to_value(node: &AstNode) -> Value {
-    use crate::{syntax::ConsCell, Expr};
+    use crate::Expr;
 
     match &*node.value {
         Expr::Symbol(s, _) => Value::Symbol(s.clone()),
@@ -595,11 +750,8 @@ fn ast_to_value(node: &AstNode) -> Value {
         Expr::List(items, _) => {
             let mut result = Value::Nil;
             for item in items.iter().rev() {
-                let cell = ConsCell {
-                    car: ast_to_value(item),
-                    cdr: result,
-                };
-                result = Value::Cons(std::rc::Rc::new(cell));
+                let car_value = ast_to_value(item);
+                result = Value::Cons(ConsRepr::cons(car_value, result));
             }
             result
         }

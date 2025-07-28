@@ -8,7 +8,7 @@ use std::rc::Rc;
 use crate::{
     errors::{to_source_span, ErrorKind, ErrorReporting},
     runtime::{
-        evaluate_ast_node, ConsCell, EvaluationContext, Lambda, NativeFn, SpannedResult,
+        evaluate_ast_node, EvaluationContext, Lambda, NativeFn, SpannedResult,
         SpannedValue, Value,
     },
     syntax::{AstNode, Expr, ParamList, Span},
@@ -113,10 +113,7 @@ fn create_lambda(
 /// Builds a cons list from a slice of values
 fn build_cons_list(values: &[Value]) -> Value {
     values.iter().rev().fold(Value::Nil, |acc, val| {
-        Value::Cons(Rc::new(ConsCell {
-            car: val.clone(),
-            cdr: acc,
-        }))
+        Value::Cons(crate::runtime::ConsRepr::cons(val.clone(), acc))
     })
 }
 

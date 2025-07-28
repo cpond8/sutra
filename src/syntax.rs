@@ -194,30 +194,24 @@ pub fn expr_from_value_with_span(val: Value, span: Span) -> Result<Expr, String>
         }
         Value::Cons(cell) => {
             let mut items = Vec::new();
-            let mut current = Some(cell);
-            while let Some(cell_rc) = current {
-                let cell_ref = cell_rc.as_ref();
-                let car_expr = expr_from_value_with_span(cell_ref.car.clone(), span)?;
-                items.push(spanned(car_expr, span));
-                match &cell_ref.cdr {
-                    Value::Cons(next) => current = Some(next.clone()),
-                    Value::Nil => current = None,
+            let mut current = Value::Cons(cell);
+            
+            loop {
+                match current {
+                    Value::Cons(ref cell_repr) => {
+                        let car_expr = expr_from_value_with_span(cell_repr.car().clone(), span)?;
+                        items.push(spanned(car_expr, span));
+                        current = cell_repr.cdr();
+                    }
+                    Value::Nil => break,
                     other => {
-                        let cdr_expr = expr_from_value_with_span(other.clone(), span)?;
+                        let cdr_expr = expr_from_value_with_span(other, span)?;
                         items.push(spanned(cdr_expr, span));
-                        current = None;
+                        break;
                     }
                 }
             }
             Ok(Expr::List(items, span))
-        }
-        Value::List(items) => {
-            let mut expr_items = Vec::new();
-            for item in items {
-                let item_expr = expr_from_value_with_span(item, span)?;
-                expr_items.push(spanned(item_expr, span));
-            }
-            Ok(Expr::List(expr_items, span))
         }
         Value::Map(map) => {
             let mut items = Vec::new();
